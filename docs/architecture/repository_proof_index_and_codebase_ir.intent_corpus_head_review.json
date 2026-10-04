@@ -1,0 +1,1063 @@
+{
+  "as_of_utc": "2026-10-04T09:27:18.241408+00:00",
+  "authority": {
+    "all_32_repository_proof_index_criteria": "OPEN",
+    "behavioral_satisfaction": false,
+    "completion": false,
+    "default_supervisor_activation": false,
+    "execution": false,
+    "exit_criteria": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "formalization": false,
+    "general_convergence": false,
+    "mutation": false,
+    "official_score": null,
+    "omission": false,
+    "proof": false,
+    "semantic_alignment": false,
+    "source_semantics": false,
+    "whole_program": false
+  },
+  "corpus": {
+    "Bottle_query_unjudged_counts": [
+      355,
+      355
+    ],
+    "blind_holdout": false,
+    "corpus_sha256": "sha256:d4aa22b9a7bfe796c31adbcf78f9b72987549a85117b8f08534f5a06c032a3df",
+    "frozen_envelope": {
+      "bytes": 2029591,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/frozen-corpus/2a452811f54d85509e2d0b0c962ecab5d8cd221a6cd0321556a387c95da0a8e7.json",
+      "sha256": "2a452811f54d85509e2d0b0c962ecab5d8cd221a6cd0321556a387c95da0a8e7"
+    },
+    "function_banks": {
+      "bottle": 358,
+      "html-filter": 1,
+      "mnist": 2,
+      "terminal": 1
+    },
+    "historical_exposure": "declared_known_lineage_not_global_attestation",
+    "labels": "codex_authored_development_navigation",
+    "native_queries": 5,
+    "original_opaque_prompt_and_navigation_residuals": "unknown",
+    "reviewed_navigation_negatives": 5,
+    "reviewed_positives": 5,
+    "train_pairs": 4,
+    "validation_pairs_not_fitted": 1
+  },
+  "evaluation_limits": [
+    "Bottle labels are training judgments.",
+    "MNIST bank has two units and ties the complete lexical baseline.",
+    "Singleton test banks cannot discriminate ranking.",
+    "New lexical profile and authored queries differ from previous post-fit evaluation.",
+    "Unjudged candidates are never inferred negatives.",
+    "Endpoint/inference replay does not authenticate unobserved intermediate optimizer events."
+  ],
+  "evidence_pins": [
+    {
+      "bytes": 8506,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/inputs-manifest.json",
+      "sha256": "897c11aa00d3678158d75bff2addfe277fc2fc1648bc74f1530166fbf17069ee"
+    },
+    {
+      "bytes": 4940,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/source-manifest.json",
+      "sha256": "97c6209ba34351cdfbd347d4620bb19059b51ecbbd0be7022a0943f478e702bb"
+    },
+    {
+      "bytes": 714,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/freeze-01/prefit-freeze.json",
+      "sha256": "9aeecded9b679d5c4d67ce0713c240e608d09c40eadc2ed2ae0b981790fea71d"
+    },
+    {
+      "bytes": 47983,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/prefit-independent-review.json",
+      "sha256": "b35e97ef53c953a657f59a235cb3008542f6f061b032fbd0b35b5247e14edc64"
+    },
+    {
+      "bytes": 788,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/prefit-independent-review-closed.json",
+      "sha256": "2f9ea51c16244265d4f17335115d1df8cd51c9099f26979c6e51cc929e4affbd"
+    },
+    {
+      "bytes": 48577,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/prefit-independent-review-02.json",
+      "sha256": "b78bf6661b45c9f6abadcbf7a39b40d45d1d19289f6f1eed5f57b1e28da0415d"
+    },
+    {
+      "bytes": 793,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/prefit-independent-review-02-closed.json",
+      "sha256": "ab7c0574fd2302482d666ff6748f9641a8bff393bf635ba89c7c60301cfd9561"
+    },
+    {
+      "bytes": 111512,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/tests-01/closed.json",
+      "sha256": "cc85579aec698fe71143718d20608e36b4a3222975adccdf959c2b46779b20e1"
+    },
+    {
+      "bytes": 9745,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/tests-01/tests.xml",
+      "sha256": "38f4015948aefee9789906854b3e4417b02df39bcfc0127277d21bd873d6b959"
+    },
+    {
+      "bytes": 21069,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-01/closed.json",
+      "sha256": "4d46862a7ead2090cf838bcda0b988e33d36573ece627de67f555360799c0cbc"
+    },
+    {
+      "bytes": 862,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-01-closed.json",
+      "sha256": "ab0b39393e1e5e08c878422a45aa0a71de79f87518149f5e9b16f701b9ca2581"
+    },
+    {
+      "bytes": 115865,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/closed.json",
+      "sha256": "7e782629df23d948e0e85bbbf90943a6491bb08f156a7359d8787e81b5eef893"
+    },
+    {
+      "bytes": 862,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02-closed.json",
+      "sha256": "e00f177d548c491c422b4a5a3c470ce83e212144c56adfeeddcfbb4df0ab9398"
+    },
+    {
+      "bytes": 640834,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/ranker-result.json",
+      "sha256": "6a6b7eaa20bf1a82a958ff6c9a6ab6f64c613fb880569a76b625de156284d60a"
+    },
+    {
+      "bytes": 487,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/fit-output-pins.json",
+      "sha256": "cc61f5b8e65cfdc79ba870740811fef9944425f9e4d0cc2417fc25144b2b2e48"
+    },
+    {
+      "bytes": 5643300,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/metadata-inputs.json",
+      "sha256": "7e4c077f1ec1d917a47c18963999763bcf0112c71c671bc45ad4fd37872d544e"
+    },
+    {
+      "bytes": 15407,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/metadata/manifest.json",
+      "sha256": "13a8246837d0a21b4a4b2a85e82b8d9f28cd611eb8639a04659b296e23c2cbd3"
+    },
+    {
+      "bytes": 16463,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/metadata-readback.json",
+      "sha256": "d36ebe7421b200024cd1e7e8f0229acc028d9745d491697e98c02afa82ab6a0d"
+    },
+    {
+      "bytes": 64350,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/postfit-independent-review.json",
+      "sha256": "ac96cf2bc256e51e720a010c635bbb7925c5d96cc0f2eb08fc3fe157439ec480"
+    },
+    {
+      "bytes": 958,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/postfit-independent-review-closed.json",
+      "sha256": "9a2e20d877dc3346888a57b01a907430bb219d3fa88fbe63defadd03017bc834"
+    },
+    {
+      "bytes": 69819,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/postfit-independent-review-02.json",
+      "sha256": "52bcfc9f859d487abb47e4351184f5377913c4b743a91d18940b63753a3b318b"
+    },
+    {
+      "bytes": 968,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/postfit-independent-review-02-closed.json",
+      "sha256": "40c00dbf7fdbc6eeadae5343a50e505c249e41219be5bf64d004fa0e8ccb7e03"
+    },
+    {
+      "bytes": 5863,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/selected-producer-cost-ledger.json",
+      "sha256": "0187c04b497d45834531e7e3e410b6a56d7c04acb3e3f8ac50bf479844045fd5"
+    }
+  ],
+  "final_retention_status": {
+    "all_OS_processes": null,
+    "as_of_document_write": "not_yet_sealed",
+    "final_evidence_namespace": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/final-retention-01",
+    "full_turn_CPU_GPU_seconds": null
+  },
+  "fit": {
+    "checkpoint_sha256": "ab63f45bb3b6bc54038cc4ea4ff44b14c17a6f9f8b0426441a15933772227046",
+    "dimension": 80,
+    "epochs": 128,
+    "final_gradient_norm": 0.00986892303810749,
+    "final_objective": 0.11271831387410433,
+    "fitting_heldout_labels": false,
+    "initial_gradient_norm": 0.46974784579076295,
+    "initial_objective": 0.6931471805599453,
+    "monotone_observed_objective": true,
+    "new_Lean_or_other_checker_jobs": 0,
+    "new_autoencoder_fits": 0,
+    "optimizer_convergence_proved": false,
+    "prior_AE_weights_or_latents_copied": false,
+    "public_scratch_head_fits": 1,
+    "synthetic_unit_head_fits": 1,
+    "training_receipt_sha256": "89e5b20348bb6439a71d1aec72c962c4775a0b5fd1f6716243102f41ac7384e6"
+  },
+  "independent_postfit_review": {
+    "bytes": 69819,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/postfit-independent-review-02.json",
+    "sha256": "52bcfc9f859d487abb47e4351184f5377913c4b743a91d18940b63753a3b318b"
+  },
+  "independent_prefit_review": {
+    "bytes": 48577,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/prefit-independent-review-02.json",
+    "sha256": "b78bf6661b45c9f6abadcbf7a39b40d45d1d19289f6f1eed5f57b1e28da0415d"
+  },
+  "metadata": {
+    "exports": {
+      "ast": {
+        "bytes": 1344050,
+        "relative_path": "exports/ast.jsonl",
+        "sha256": "sha256:7ae647ebe6721c6bd79119ee77fc9bd68bd0df9112561708ff179f37d5251263"
+      },
+      "contracts": {
+        "bytes": 0,
+        "relative_path": "exports/contracts.jsonl",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "coverage_status": {
+        "bytes": 792,
+        "relative_path": "exports/coverage_status.jsonl",
+        "sha256": "sha256:610e59e82d266a4714d3105cb45e6cb904b4593a9066598d8b7b349719d37d55"
+      },
+      "judgments": {
+        "bytes": 13978,
+        "relative_path": "exports/judgments.jsonl",
+        "sha256": "sha256:99b02d03236eda140e48925439adc1923389cf6ea882e6698d7d3399ab23d712"
+      },
+      "kg": {
+        "bytes": 846809,
+        "relative_path": "exports/kg.jsonl",
+        "sha256": "sha256:99d02850d3320cf76d07b795dd4545cca02f11958c89f31708d88848ebff0657"
+      },
+      "queries": {
+        "bytes": 131443,
+        "relative_path": "exports/queries.jsonl",
+        "sha256": "sha256:037822bf76f43a48900e0b3e44ec6c36836f08c4a1be0dccd92446946f609ffc"
+      },
+      "ranker_checkpoint": {
+        "bytes": 1251,
+        "relative_path": "exports/ranker_checkpoint.jsonl",
+        "sha256": "sha256:d757e042673a658b29d660a143760bcd42dbf8f9b02ffc302e058e46b5783e3f"
+      },
+      "ranker_training": {
+        "bytes": 33366,
+        "relative_path": "exports/ranker_training.jsonl",
+        "sha256": "sha256:1cc069f27852a202532bedff6297cace517d1274e5bb7f40e9dc031372197be0"
+      },
+      "ranking": {
+        "bytes": 2041035,
+        "relative_path": "exports/ranking.jsonl",
+        "sha256": "sha256:256bdae81c55916dbc88823f8c1270e47828cc077112261d3dddde08030d30d5"
+      },
+      "sources": {
+        "bytes": 186431,
+        "relative_path": "exports/sources.jsonl",
+        "sha256": "sha256:5bfd5862349bccd9780f9d6641d35992e34e501db68a7924bf5d79a688342f9f"
+      },
+      "split_history": {
+        "bytes": 53603,
+        "relative_path": "exports/split_history.jsonl",
+        "sha256": "sha256:7c03626720972e4c0d7983d9c886545d9afe62199f5c8b43b573d23d5982d080"
+      },
+      "vectors": {
+        "bytes": 958018,
+        "relative_path": "exports/vectors.jsonl",
+        "sha256": "sha256:a0a330d695458c50ecd5e34f9cd68a8f64b409fa6b18a2b70bd1a8870a20373f"
+      }
+    },
+    "family_counts": {
+      "ast": 362,
+      "contracts": 0,
+      "coverage_status": 1,
+      "judgments": 10,
+      "kg": 372,
+      "queries": 5,
+      "ranker_checkpoint": 1,
+      "ranker_training": 1,
+      "ranking": 2880,
+      "sources": 4,
+      "split_history": 2,
+      "vectors": 362
+    },
+    "family_digests": {
+      "ast": "sha256:2d35a4ec8c999c323128efedb4adc64984bf6e2ede86f03dcd159fadc6250ed4",
+      "contracts": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "coverage_status": "sha256:ec6b095fe1b00ef9bbbaa7cc5bf18b37694c0cd964873b2444f8ce88eee3aabd",
+      "judgments": "sha256:32045f59b4e9e1e2d44c4c9f705e6be3cbc22f651c95fee36bacec91ff4cc7eb",
+      "kg": "sha256:a4735843fd2f80f7974bdb96debf5cec7a3bf495c4b004aa892376645fdc107a",
+      "queries": "sha256:8e374c8e8b3ab6efb26a3e8b266760c23a1b1bb9e17db68c1842dd5fffd2ae24",
+      "ranker_checkpoint": "sha256:bf59f246a41dfb65e4cdd46787b421c4f3657c1d4233d563ac3a104c1a8f2ef3",
+      "ranker_training": "sha256:75adeaf288d2c4ddc24315070d7bbebd4ce2c5265dae5d1cc352ab4c6d82f1a9",
+      "ranking": "sha256:090d8d068c8ec54507b3c60b6394bd48870678d897a43ea103bb1d18600077e4",
+      "sources": "sha256:3ebdb8a8be4dfd6d21d60af5f3abc2d8c00ef4ee46c642f87743bc9777e69243",
+      "split_history": "sha256:31a97246f2df1dca88a26d85dce6d07314f2c66dc01c5211d495fe93a815a099",
+      "vectors": "sha256:39b18700be456bdc6cc8189807ba49021427e80710b617a9731b45b1627af1de"
+    },
+    "family_views": {
+      "ast": "family_ast",
+      "contracts": "family_contracts",
+      "coverage_status": "family_coverage_status",
+      "judgments": "family_judgments",
+      "kg": "family_kg",
+      "queries": "family_queries",
+      "ranker_checkpoint": "family_ranker_checkpoint",
+      "ranker_training": "family_ranker_training",
+      "ranking": "family_ranking",
+      "sources": "family_sources",
+      "split_history": "family_split_history",
+      "vectors": "family_vectors"
+    },
+    "fresh_process_readback": {
+      "lake_snapshot_digest": "sha256:004c8544b7efe1086f10b749318beeb33d510c2b13e3a9832b04895bda9a4079",
+      "manifest_sha256": "sha256:13a8246837d0a21b4a4b2a85e82b8d9f28cd611eb8639a04659b296e23c2cbd3",
+      "method": "new_python_process_native_duckdb_and_ducklake_readback",
+      "row_count": 4000,
+      "row_root_sha256": "sha256:cf8f58ba7d9fdd036b5f2c4441ca5de1a2c74b919a60839ced6599e544627d5f",
+      "verified": true
+    },
+    "lake_layout": {
+      "encoding": "canonical-row-array-json-in-payload_json-string",
+      "native_event_batch_bytes": 1048576,
+      "native_event_batch_rows": 10,
+      "schema": "experimental-codebase-ir-metadata-row-packet@1",
+      "table": "history.events",
+      "typed_vector_columns": false
+    },
+    "lake_packet_count": 64,
+    "lake_receipts": [
+      {
+        "admitted": false,
+        "batch_id": "sha256:e87a9ecdcfe959dbb0f95d3cf27215d8b0cf6f447acc33cf4b0c8a48d99d8ca2",
+        "event_count": 7,
+        "event_ids": [
+          "sha256:0a3667018403d54699a97a6ae5d39321dfadf4a71ba325e30a222768a3366fb7",
+          "sha256:40953e49a86018e6faaa94a411b98d253867d42d26a97939bb43d3fc7821cd67",
+          "sha256:72538f507c6d6ed69bbe0715d4c721a183f66cca4dd7503fc32895ab43f3c75b",
+          "sha256:d11e65c05934f2723b532a5e9a18e8a9a328e9dd9be6835726a63ac9456fdad1",
+          "sha256:d71de7846daa3d943fe2dc63f0aaaa33247dab3280e05a40d6c262251a795848",
+          "sha256:e6f139987df25f10dd4d47bc46d2fe901b562c36f247a196b553b57b2000d199",
+          "sha256:f5c73210e0f7d709da92080cfbbe789a9f2817078d79b57b189e23bf9ed69c0c"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 2,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:294a79ca3598b1e0832eb64cdd072f8632877c6e7a0826769b2c5b78112b86a7",
+        "event_count": 9,
+        "event_ids": [
+          "sha256:0c7dd0d79f1b83ee96b6903180ab38c7b3da1c5fc462b3da9c1c31c68d2d5ba7",
+          "sha256:0e8ad2d54fd135d3799d5bbe3abde6b6fcbbc5993499bdb935362cf5534f07ea",
+          "sha256:500c65e813f3ddaa93039c90a8669dfd36d268ba28496a7dc1746f9ccbd0ed03",
+          "sha256:556434eff2bf699a71663c0d64281eb6e5c8d0a76e6ee04b9ab908b0ea72fb08",
+          "sha256:5f71ac7354ecec6e8f80e46adc97e7a80bffe5d07ec6ca941602afd82133a6cb",
+          "sha256:a77466112f9bba417777d4bd7e1963d5851be07eaa3589cc67f275554e7a3a6d",
+          "sha256:b869fe410c004bf0c99c15a976238b8cf5a37dc89f432f1d1126b7c0024357f4",
+          "sha256:bf0192ed574404fc277da25da69d20cc4a32e045eaa9339e85bceba263f79a80",
+          "sha256:c1090818fe962de6a7a3405ac356b8b465031a9af815a9c6ee11395eac2e2c32"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 3,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:993e973e314866672569040715b30a6eca217410f1233304d36c5b923b051c5e",
+        "event_count": 10,
+        "event_ids": [
+          "sha256:3cda63435e21a669712885195aacf253c5d3e4906264067370a7e275cae281ca",
+          "sha256:54752623128d20dea669eaf42fdbb277c6917e1243a63ad3adfb1d8d8052afb2",
+          "sha256:6bcd748f3b3a4031ab4d106efe49703af973da40d4519becec49e8058fd516fe",
+          "sha256:79ec3020e359a8e5eab77b6ad32c46a19b9c8b1d599e46e3ee97efa9fbc631db",
+          "sha256:7a259929618e2664165d4e40f838c34b751cb3a517e3bbd0b6ca91c0f1d16850",
+          "sha256:c15d02f44308313062ca8fa092b3a69ab8e1fc33ba3eaa56e2f38f56a1a905b5",
+          "sha256:c89f144d36349d6fdcdc20f6b12d873eb718a8c2f05c2ec09bf1b74faa8eb001",
+          "sha256:cfbaaafe721b3b6676a193749dee95143be1897b7e6985de5fa02f07d80185bb",
+          "sha256:e286cf85e0cff1ab576163b213988a83bf2371734d80a63b32380f45580460a3",
+          "sha256:ffdabd40d0c9b2b3b453b4c853786233af81d5f390944cb2a75381cf6a6f662c"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 4,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:5f3a30b2825453c31c9b4c9b318f749c548242da5f2eaac88a4b9185bccd2b57",
+        "event_count": 10,
+        "event_ids": [
+          "sha256:19ad4fd2aa8820e4de3372bf4aa26b4a4773a0b2fc5a1be6bce5c2e651ab2add",
+          "sha256:351cb860c3fb64aaf14b4db9ee91d318a4a782d4b1269c5589a06d4dfae507fc",
+          "sha256:4a2e7dcbc9af9e79fb0ba58046f68ddc97526fe20964c4f4725c2737508721c3",
+          "sha256:86000cd96d63908ae515f6a34be65f2fe65efb952861ae31f1dba9a18b1be8be",
+          "sha256:9f46dd58981397db632ff04cd97a76bff6fccda7b00bc6be3fd770ea927e9373",
+          "sha256:b42092a4815ccbbd3f1ea1112f38454ac8581b6cb074b7f825cd2203535e34c1",
+          "sha256:cdfa50f6e28311371587942a23cd784f61e8de908d8ff4c9af375da2711ab634",
+          "sha256:d39c1c94ded859a59f6708413377391274e5c2e8fc22c578140783aa4876cb75",
+          "sha256:d93b451e4f41ff19a03ea1a481f0b64edfe5e110c155fef7e1813dc8a7dd1f52",
+          "sha256:eef2a25ddce51668990bd34033e1a20b266f1267389a1d5ac383c6f974d86541"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 5,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:5c23592535a884e0e12feee4c644cdd5d5da7e11ed002e4ebdc212141177b200",
+        "event_count": 10,
+        "event_ids": [
+          "sha256:165edf6af9b06efa58f85fc06615b3b29b97f104a2acd00b770bf75902915078",
+          "sha256:2d9293d5562b3d47de93f231ca92f9815883e89df66a282c85f54df346b52209",
+          "sha256:340c8f249d03fb735e9dcf7391cd54609e73716ccd173c5922a7d2567ab5b2ad",
+          "sha256:8333e45013dcf0deeda1ad4c42a31b7bac88a5b359165da5fb596b59ea88e50a",
+          "sha256:83c2052ead92ffbf5e96cefefb4d81839c068c373ff5d3b245a429aa26c5f72f",
+          "sha256:959312ad1110f42d8b4a3e4b5ac38dfa5fe02dd3753ce29292750b853de297cd",
+          "sha256:9b019eee454622c52a6c2b35b0fa9e076d755d6050a114ea5720ba0f20aa66e6",
+          "sha256:a27ca638e1ff0d95d572d0eb24b4917c027a26ffb59823dd18eedc5296a7cf1e",
+          "sha256:a6b57bd1d0f5da1e1c04410e36e6b3abf984ffbc74ba3a771a447ca8c0c00772",
+          "sha256:d85c288bbfb660c5e7aefff4c9d0a2061586d09b5fb9483ce1a3affc3b37be39"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 6,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:45cc7a0ba0e29d90ed2dd95ca4c2d69acec1da0cdd14f76998c0fd7913624eb0",
+        "event_count": 10,
+        "event_ids": [
+          "sha256:808b68e1ada1c8c9f79ef3d092f6f4f7fb62e2728a1c02bf60be89ef79c888f2",
+          "sha256:8ab251fe4c8f0c65de20c785c3e0d81b6b8a62e8056161720d8dc51914f5396f",
+          "sha256:98e7687e69a3b18d73251970a0650fd0863c0ca9916bdb0bfc85680693b62343",
+          "sha256:99c9a53d99057f7b47fb30e12f8bb8c8b3dcf8d1f459627a921492065bc88fed",
+          "sha256:aa2f26d853fa85ca06ca5b3c30905b63ea55c3bf2a93b5c9c7e8a61bf3a49e01",
+          "sha256:bc4a003d74694667e64b4564c20ce7a9ccde51d0b49097fa20c1e624eb024abb",
+          "sha256:c66e7b2797de8f9f852faf92c2564f10d8959ba2d03f9f3fb9e05e031a80d1e1",
+          "sha256:e6ea83afb729ae9a8a09e04e44a061e8582fc9b2d27088528af2990683512ba5",
+          "sha256:f8507b828a0a72f05b4726f4823bd7940e932e5161002a1bbc169f486a6d303a",
+          "sha256:fef8b67e2d9a14be0147dff3c535cd4864f391dc7d2cf52df38d1ecd7452f304"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 7,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:071f2d81e2255beb74d6705062cb7f86b6003ec1203079f2076146ab8d9b6062",
+        "event_count": 7,
+        "event_ids": [
+          "sha256:560a4ba1786735e9136061b6a36a128100221a2100f0416cc2c7bd916bea368e",
+          "sha256:6df84126e26a9d17a197fb66a09001ec9b0b4645c07b7112bb71c72550ccdcca",
+          "sha256:a90fa6568e487f4f322660933ba5a272da208f0de27d9c2687cf9f631eee3d1c",
+          "sha256:b75d7899831afe5094f893aeb31f556b7f4f7f1141c4f3235ca67d21783ae0b3",
+          "sha256:b9ea86a6cae31937091f2578451afc1b73e4c028d6d3ae1ffe99054d0d51c082",
+          "sha256:c79edb47adb852711eed77dc5cbc8519d55797d76616e6301d6212cc143c020c",
+          "sha256:d8ab16e92384deeee022f5e5f9e10d7548f5542c8f7cde21be182d9928dc85fb"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 8,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      },
+      {
+        "admitted": false,
+        "batch_id": "sha256:dcaadb412caea61e73b4d5643698e10dd8178b0709319764c5a1e739cacc3a96",
+        "event_count": 1,
+        "event_ids": [
+          "sha256:9bc7b8240c8bc464552a907bc4201aab3979032853e8728dda6daf69a7cdab9c"
+        ],
+        "event_payloads_verified": true,
+        "history_id": "sha256:705ecf29f7b1e2958593b6ef01b1716351aea4863c44ee879a634273e78a0e48",
+        "production_activated": false,
+        "schema": "autoencoder-ducklake-commit-v1",
+        "scope": "isolated_history",
+        "snapshot_id": 9,
+        "source_id": "codebase-ir-experiment:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+      }
+    ],
+    "lake_snapshot_digest": "sha256:004c8544b7efe1086f10b749318beeb33d510c2b13e3a9832b04895bda9a4079",
+    "lake_snapshot_ids": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "limits": {
+      "families": 32,
+      "history_bytes": 268435456,
+      "json_depth": 32,
+      "json_nodes": 50000,
+      "manifest_bytes": 16777216,
+      "packet_bytes": 131072,
+      "packet_rows": 100,
+      "restart_seconds": 60,
+      "row_bytes": 262144,
+      "rows": 65536,
+      "single_row_packet_bytes": 263168,
+      "source_bytes": 1048576,
+      "total_payload_bytes": 67108864
+    },
+    "manifest_sha256": "sha256:13a8246837d0a21b4a4b2a85e82b8d9f28cd611eb8639a04659b296e23c2cbd3",
+    "native_runtime": {
+      "duckdb": "1.5.5",
+      "extensions": {
+        "ducklake": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
+        "httpfs": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+        "quack": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+      },
+      "platform": "linux_arm64"
+    },
+    "output": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/metadata",
+    "qualification": {
+      "admitted": false,
+      "experimental": true,
+      "production_activated": false,
+      "proof_authority": false
+    },
+    "row_count": 4000,
+    "row_root_sha256": "sha256:cf8f58ba7d9fdd036b5f2c4441ca5de1a2c74b919a60839ced6599e544627d5f",
+    "schema": "experimental-codebase-ir-metadata-readback@2",
+    "source_snapshot_sha256": "sha256:0f4610a2083f3ca7205980f46df73f6ca0909fc608d00b83213c37f967b323a3"
+  },
+  "next_work": [
+    "Expand independently frozen source/query families with nontrivial test banks and reviewed judgments.",
+    "Evaluate intent-conditioned advisory source relevance before supervisor integration.",
+    "Bind learned symbolic projections and checked proof-cache claims to current source identities.",
+    "Qualify logical-family/Lean projections and optimizer convergence separately."
+  ],
+  "preserved_failures": {
+    "first_public_attempt": "admission timeout, no lease, no fit, no SQL; historical memory PSI28.08 but terminal exact cause null",
+    "initial_file_preparation": "wrong protected admission path before copy; corrected actual preparation, unknown outer duration",
+    "initial_postfit_reader": "7/9 passed; canonical method ordering and dependent missing state; failed script/report unchanged",
+    "initial_prefit_reader": "4/6 passed, repeated-symbol/history-order assumptions; failed script/report unchanged"
+  },
+  "producer_costs": {
+    "actual_public_head_fit_count": 1,
+    "actual_synthetic_unit_completed_head_fits": 1,
+    "attempts": [
+      {
+        "actual_root_acquisitions": 1,
+        "actual_root_releases": 1,
+        "attempt": "tests-01",
+        "cleanup_errors": [],
+        "elapsed_seconds_outer": 1.1663486739998916,
+        "native_metadata_hydration_attempts": 0,
+        "new_autoencoder_fit_calls": 0,
+        "new_checker_calls": 0,
+        "outer_receipt": {
+          "bytes": 855,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/tests-01-closed.json",
+          "sha256": "3a015b1c5842c9003397785addd820a03643022aaa5040e8acc2deb9fe28744f"
+        },
+        "owned_receipt": {
+          "bytes": 111512,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/tests-01/closed.json",
+          "sha256": "cc85579aec698fe71143718d20608e36b4a3222975adccdf959c2b46779b20e1"
+        },
+        "public_head_fit_calls": 0,
+        "returncode": 0,
+        "root_drained": true,
+        "scope": "one measured producer outer; owned scope nested and not added",
+        "unit_fit_controls": [
+          {
+            "corpus_sha256": "sha256:e802faf1340f038125ebeeecac8a6b783a3516cca54777c571b123fc26fafacd",
+            "epochs": 16,
+            "scope": "synthetic_unit_control",
+            "status": "completed_fit"
+          },
+          {
+            "epochs": true,
+            "error_type": "IntentRankerTrainingError",
+            "scope": "synthetic_unit_control",
+            "status": "refused_or_failed"
+          },
+          {
+            "epochs": 0,
+            "error_type": "IntentRankerTrainingError",
+            "scope": "synthetic_unit_control",
+            "status": "refused_or_failed"
+          },
+          {
+            "epochs": 129,
+            "error_type": "IntentRankerTrainingError",
+            "scope": "synthetic_unit_control",
+            "status": "refused_or_failed"
+          }
+        ]
+      },
+      {
+        "actual_root_acquisitions": 1,
+        "actual_root_releases": 1,
+        "attempt": "freeze-01",
+        "cleanup_errors": [],
+        "elapsed_seconds_outer": 1.4662327639962314,
+        "native_metadata_hydration_attempts": 0,
+        "new_autoencoder_fit_calls": 0,
+        "new_checker_calls": 0,
+        "outer_receipt": {
+          "bytes": 856,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/freeze-01-closed.json",
+          "sha256": "4c4cb64ea97513bcbcfcf1f60425806e4f66d866ce989a8b9f4ebe3eb7446e70"
+        },
+        "owned_receipt": {
+          "bytes": 105979,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/freeze-01/closed.json",
+          "sha256": "66de9725c141744f194e512ba7104e102b32e0d206ca0b92c5747699d2207fab"
+        },
+        "public_head_fit_calls": 0,
+        "returncode": 0,
+        "root_drained": true,
+        "scope": "one measured producer outer; owned scope nested and not added",
+        "unit_fit_controls": []
+      },
+      {
+        "actual_root_acquisitions": 0,
+        "actual_root_releases": 0,
+        "attempt": "actual-01",
+        "cleanup_errors": [],
+        "elapsed_seconds_outer": 30.329492635006318,
+        "native_metadata_hydration_attempts": 0,
+        "new_autoencoder_fit_calls": 0,
+        "new_checker_calls": 0,
+        "outer_receipt": {
+          "bytes": 862,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-01-closed.json",
+          "sha256": "ab0b39393e1e5e08c878422a45aa0a71de79f87518149f5e9b16f701b9ca2581"
+        },
+        "owned_receipt": {
+          "bytes": 21069,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-01/closed.json",
+          "sha256": "4d46862a7ead2090cf838bcda0b988e33d36573ece627de67f555360799c0cbc"
+        },
+        "public_head_fit_calls": 0,
+        "returncode": 1,
+        "root_drained": true,
+        "scope": "one measured producer outer; owned scope nested and not added",
+        "unit_fit_controls": []
+      },
+      {
+        "actual_root_acquisitions": 1,
+        "actual_root_releases": 1,
+        "attempt": "actual-02",
+        "cleanup_errors": [],
+        "elapsed_seconds_outer": 15.397347172998707,
+        "native_metadata_hydration_attempts": 1,
+        "new_autoencoder_fit_calls": 0,
+        "new_checker_calls": 0,
+        "outer_receipt": {
+          "bytes": 862,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02-closed.json",
+          "sha256": "e00f177d548c491c422b4a5a3c470ce83e212144c56adfeeddcfbb4df0ab9398"
+        },
+        "owned_receipt": {
+          "bytes": 115865,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/closed.json",
+          "sha256": "7e782629df23d948e0e85bbbf90943a6491bb08f156a7359d8787e81b5eef893"
+        },
+        "public_head_fit_calls": 1,
+        "returncode": 0,
+        "root_drained": true,
+        "scope": "one measured producer outer; owned scope nested and not added",
+        "unit_fit_controls": []
+      }
+    ],
+    "full_turn_global_CPU_GPU_seconds": null,
+    "full_turn_global_OS_process_count": null,
+    "inherited_epochs_or_seconds_added": false,
+    "outside_this_sum": "File-only input preparation/capture, prefit and postfit reviews, documentation, final seal/readback and ambient tool calls; separately recorded if available.",
+    "preparation_initial_failed_inline_elapsed_seconds": null,
+    "schema": "terminal-intent-corpus-head-selected-producer-costs@1",
+    "selected_producer_outer_seconds": 48.35942124600115
+  },
+  "qualification_document": {
+    "bytes": 7621,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_ir_intent_corpus_head_qualification.md",
+    "sha256": "8fddc623a31c46d67e1d5afa7d257e9580a483a898339911664b94b61976be52"
+  },
+  "ranking": [
+    {
+      "candidate_count": 358,
+      "degenerate_singleton_bank": false,
+      "metrics": {
+        "lexical": {
+          "first_positive_rank": 79,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.012658227848101266,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "model_off": {
+          "first_positive_rank": null,
+          "recall_at": {
+            "1": null,
+            "10": null,
+            "5": null
+          },
+          "reciprocal_first_rank": null,
+          "status": "no_ranking"
+        },
+        "reverse": {
+          "first_positive_rank": 358,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.002793296089385475,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "trained": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "zero": {
+          "first_positive_rank": 112,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.008928571428571428,
+          "status": "reviewed_positive_navigation_only"
+        }
+      },
+      "query_id": "bottle-header-name",
+      "task_role": "train"
+    },
+    {
+      "candidate_count": 358,
+      "degenerate_singleton_bank": false,
+      "metrics": {
+        "lexical": {
+          "first_positive_rank": 183,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.00546448087431694,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "model_off": {
+          "first_positive_rank": null,
+          "recall_at": {
+            "1": null,
+            "10": null,
+            "5": null
+          },
+          "reciprocal_first_rank": null,
+          "status": "no_ranking"
+        },
+        "reverse": {
+          "first_positive_rank": 344,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.0029069767441860465,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "trained": {
+          "first_positive_rank": 15,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.06666666666666667,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "zero": {
+          "first_positive_rank": 311,
+          "recall_at": {
+            "1": 0.0,
+            "10": 0.0,
+            "5": 0.0
+          },
+          "reciprocal_first_rank": 0.003215434083601286,
+          "status": "reviewed_positive_navigation_only"
+        }
+      },
+      "query_id": "bottle-header-value",
+      "task_role": "train"
+    },
+    {
+      "candidate_count": 1,
+      "degenerate_singleton_bank": true,
+      "metrics": {
+        "lexical": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "model_off": {
+          "first_positive_rank": null,
+          "recall_at": {
+            "1": null,
+            "10": null,
+            "5": null
+          },
+          "reciprocal_first_rank": null,
+          "status": "no_ranking"
+        },
+        "reverse": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "trained": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "zero": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        }
+      },
+      "query_id": "html-removal",
+      "task_role": "test"
+    },
+    {
+      "candidate_count": 2,
+      "degenerate_singleton_bank": false,
+      "metrics": {
+        "lexical": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "model_off": {
+          "first_positive_rank": null,
+          "recall_at": {
+            "1": null,
+            "10": null,
+            "5": null
+          },
+          "reciprocal_first_rank": null,
+          "status": "no_ranking"
+        },
+        "reverse": {
+          "first_positive_rank": 2,
+          "recall_at": {
+            "1": 0.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 0.5,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "trained": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_only"
+        },
+        "zero": {
+          "first_positive_rank": 2,
+          "recall_at": {
+            "1": 0.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 0.5,
+          "status": "reviewed_positive_navigation_only"
+        }
+      },
+      "query_id": "mnist-forward",
+      "task_role": "validation"
+    },
+    {
+      "candidate_count": 1,
+      "degenerate_singleton_bank": true,
+      "metrics": {
+        "lexical": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "model_off": {
+          "first_positive_rank": null,
+          "recall_at": {
+            "1": null,
+            "10": null,
+            "5": null
+          },
+          "reciprocal_first_rank": null,
+          "status": "no_ranking"
+        },
+        "reverse": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "trained": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        },
+        "zero": {
+          "first_positive_rank": 1,
+          "recall_at": {
+            "1": 1.0,
+            "10": 1.0,
+            "5": 1.0
+          },
+          "reciprocal_first_rank": 1.0,
+          "status": "reviewed_positive_navigation_singleton_degenerate"
+        }
+      },
+      "query_id": "terminal-interface",
+      "task_role": "test"
+    }
+  ],
+  "schema": "repository-proof-index-codebase-IR-intent-corpus-head-review@1",
+  "source_scope": {
+    "all_loaded_module_census": false,
+    "atomic_whole_live_snapshot": false,
+    "base_manifest": {
+      "bytes": 25932539,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-08/generation-manifest.json",
+      "sha256": "5efc3725539ced8b5a0f6e172c3b4c7e92fccc158940feaa71b4890a054203a3"
+    },
+    "extension_manifest": {
+      "bytes": 4940,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/source-manifest.json",
+      "sha256": "97c6209ba34351cdfbd347d4620bb19059b51ecbbd0be7022a0943f478e702bb"
+    },
+    "fresh_child_import_census": false,
+    "parent_selected_module_counts": {
+      "actual-01": 10,
+      "actual-02": 90,
+      "freeze-01": 83,
+      "tests-01": 87
+    }
+  },
+  "status": "bounded_development_corpus_head_and_dual_store_qualification_only",
+  "tests": {
+    "passed": 58,
+    "passing_phases": 174,
+    "scope": "captured pure corpus controls plus one synthetic optimizer fixture",
+    "unit_invalid_fit_refusals": 3
+  }
+}

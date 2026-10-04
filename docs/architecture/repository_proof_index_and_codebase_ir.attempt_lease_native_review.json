@@ -1,0 +1,651 @@
+{
+  "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01",
+  "at_utc": "2026-10-04T01:33:58.103095+00:00",
+  "broader_acceptance": {
+    "cached_private_presentation_completeness": "open",
+    "complete_pipeline_proof_or_tool_invocation_count": null,
+    "complete_public_prompt_intent_source_correspondence": "open",
+    "current_live_attempt_freshness_claimed": false,
+    "default_terminal_bench_activation": false,
+    "expired_policy_stop_lifecycle": "open",
+    "full_recoverable_duckdb_ducklake_ast_cfg_kg_vector_contract_metadata": "open",
+    "global_model_fit_dense_inference_or_training_counts": null,
+    "new_complete_ducklake_hydration_qualified": false,
+    "new_telemetry_bytes_native_integration": "open",
+    "official_benchmark_score": null,
+    "private_codebase_ir_adaptation_exact_resume_frozen_eval_promotion": "open",
+    "production_acceptance_tasks": {
+      "RPI-001": "open",
+      "RPI-002": "open",
+      "RPI-003": "open",
+      "RPI-004": "open",
+      "RPI-005": "open",
+      "RPI-006": "open",
+      "RPI-007": "open",
+      "RPI-008": "open",
+      "RPI-009": "open",
+      "RPI-010": "open",
+      "RPI-011": "open",
+      "RPI-012": "open",
+      "RPI-013": "open",
+      "RPI-014": "open",
+      "RPI-015": "open",
+      "RPI-016": "open",
+      "RPI-017": "open",
+      "RPI-018": "open",
+      "RPI-019": "open",
+      "RPI-020": "open",
+      "RPI-021": "open",
+      "RPI-022": "open",
+      "RPI-023": "open",
+      "RPI-024": "open",
+      "RPI-025": "open",
+      "RPI-026": "open",
+      "RPI-027": "open",
+      "RPI-028": "open",
+      "RPI-029": "open",
+      "RPI-030": "open",
+      "RPI-031": "open",
+      "RPI-032": "open"
+    },
+    "representative_official_matched_benchmark_arms": "open",
+    "restricted_training_convergence_theorem": "open",
+    "supported_logic_projection_source_correspondence_and_exact_lean": "open",
+    "universal_process_origin_or_hostile_callback_attestation": false,
+    "whole_program_semantics_proved": false,
+    "whole_query_population_and_incremental_successor_equality": "open"
+  },
+  "existing_native_host_tests": {
+    "count": 128,
+    "root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01",
+    "status": "previously_qualified_reference_only_not_rerun"
+  },
+  "governing_document_provenance": {
+    "documents": [
+      {
+        "after_sha256": "2efb7db5587069e1303b55a18569660d8b2da1c5fc23db299b646bcfdef7903a",
+        "all_original_lines_preserved_in_order": true,
+        "before_sha256": "eaf48e94f6cec8fd172c73973a524e4ec97a1e91f9f5fbcbd6123cd6b8895c2f",
+        "foreign_heading_present": true,
+        "foreign_qualification_or_cost_transferred": false,
+        "label": "plan",
+        "observed_concurrent_foreign_heading": "ProVerif source-qualified secrecy binding \u2014 2026-10-04",
+        "opcode_counts": {
+          "equal": 2,
+          "insert": 2
+        },
+        "our_addition_heading": "native guarded-launch qualification"
+      },
+      {
+        "after_sha256": "cc0e82509f9b8642a6b941871f4d644fc2eb7fefc8c96040c6811186926efcdf",
+        "all_original_lines_preserved_in_order": true,
+        "before_sha256": "d26a4e088cc81d620e59c47dc99e53b3da0d39ed40575fc35fd81ed6740b63d9",
+        "foreign_heading_present": true,
+        "foreign_qualification_or_cost_transferred": false,
+        "label": "roadmap",
+        "observed_concurrent_foreign_heading": "ProVerif source-qualified secrecy binding \u2014 2026-10-04",
+        "opcode_counts": {
+          "equal": 2,
+          "insert": 2
+        },
+        "our_addition_heading": "native guarded-launch qualification"
+      }
+    ],
+    "schema": "finite-attempt-lease-native-shared-governing-provenance@1",
+    "scope": "Before/after snapshots observe the shared live files. The retained delta includes our additive native paragraph and an independent concurrent ProVerif appendix. It is not exclusive authorship of this increment. No original line was deleted or replaced. Foreign implementation, qualification or cost is not transferred. Evolving governing documents are not immutable qualification pins; no whole-live preservation or atomic snapshot is claimed."
+  },
+  "measured_cost_ledger": {
+    "corrected_ledger_provenance": "Original ledger01 is retained. Ledger02 updates the stale telemetry reader-pending note to the actual closed composite3+1; eight measured attempt rows, sum, pending[] and source/native qualification are unchanged.",
+    "final_doc_review_retention_verification": "Separate later measured receipts; not predicted or included in this closed sum.",
+    "metadata_collector_attempt_outer_seconds_separate": [
+      0.05353571000159718,
+      0.03961942999740131
+    ],
+    "pending_cost_inputs": [],
+    "pin": {
+      "bytes": 139081,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/accounting-preparation-01/final-ledger-02.json",
+      "sha256": "0912e627b4104d068ddefe2703599d8ec3ddf1e3a45611c186010bd681078049"
+    },
+    "scope": "Selected actual outer attempt durations, including failures/correction; not calendar elapsed, CPU/GPU work or a total global pipeline cost. Nested times and earlier costs are not added again.",
+    "selected_attempt_count": 8,
+    "status": "closed",
+    "sum_measured_selected_attempt_outer_seconds": 837.1070491250139
+  },
+  "native_negative_controls": {
+    "design": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/negative-native-control-design-01/review.json",
+    "earlier_parent_source_proof_refusals_substitute": false,
+    "gates": [
+      "actual_callback_failure_after_kernel_birth_ack",
+      "genuine_spawned_ack_transport_drop",
+      "real_attempt_lease_expiry_after_ack"
+    ],
+    "status": "prepared_only_unexecuted"
+  },
+  "native_positive_profile": {
+    "actual_container_driver_elapsed_seconds_nested": 648.5641630080063,
+    "actual_fixture_elapsed_seconds_nested": 641.4439244459936,
+    "actual_native_outer_elapsed_seconds": 666.5486852260074,
+    "actual_public_checks_passed": true,
+    "broker_closed": true,
+    "broker_socket_removed": true,
+    "captured_pure_replay_import_records": 315,
+    "changed_paths": [
+      "calc.py"
+    ],
+    "closed_native_eight_field_attempt_join": {
+      "arbitrary_hostile_callback_or_process_origin_attested": false,
+      "both_guard_closures_and_kernel_births_retained": true,
+      "bytes": 144886,
+      "committed_effect_claims": 1,
+      "current_live_attempt_freshness_claimed": false,
+      "eight_field_identity": {
+        "attempt_id": "attempt:ae62cc8bf3a2462f8ce6648293ea4815",
+        "attempt_number": 1,
+        "claim_id": "claim:74e71b000de847c2b9cf466980c59cf7",
+        "fence_epoch": 1,
+        "fencing_token": 1,
+        "lease_id": "lease:6af3d266e6c04e758eb604508a6ee2bd",
+        "owner_session_id": "embedded-store:2d66e06a365a553c6641cc4d62c16815",
+        "task_cid": "baguqeerai4j3hkrvdxlc7n6wdaqnvrsakd7ui4yht2avmlx5ypic55fd7gpq"
+      },
+      "full_SQL_rows": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/native-positive-independent-readback-01/positive-closed-attempt-authority-sql.json",
+      "historical_interval_check_relies_on_captured_cooperative_producer_and_native_kernel_receipts": true,
+      "native_closed_claim_and_lease_state": "released",
+      "native_completed_attempt_state": "succeeded",
+      "native_tuple_independently_joined": true,
+      "ordered_guard_boundaries": [
+        "native_daemon_to_owner_wrapper",
+        "isolated_worker"
+      ],
+      "provider_invocations": 1,
+      "read_only_SQL_no_owner_or_jobs": true,
+      "sha256": "b3736e31225036b93502bea5070e5fe634023b317a32b298c17427b34f5e93b6"
+    },
+    "committed_effect_claims": 1,
+    "container_removed": true,
+    "full_audit_checks": 12,
+    "full_audit_errors": 0,
+    "full_audit_report": {
+      "bytes": 14012771,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/native-positive-independent-readback-01/independent_selected_docker_audit.json",
+      "sha256": "4946a307cffbdd4b327f4db4ac7f06ce7ed7e71d8565b6e247501dcdddb3002d"
+    },
+    "full_audited_normalized_proof_inventory_counts": {
+      "dependencies": 89,
+      "entries": 1,
+      "keys": 5
+    },
+    "full_source_bytes": 587929540,
+    "full_source_copy_bytes": 483069585,
+    "full_source_copy_populations": {
+      "datasets": 8504,
+      "kit": 1341,
+      "source": 9601
+    },
+    "full_source_file_count": 22866,
+    "historical_interval_check_scope": "captured cooperative native guard producer plus retained actual kernel ACKs and closed native SQL tuples; no arbitrary hostile callback or universal process-origin proof",
+    "literal_fixture_model_off_counters": {
+      "provider_calls": 0,
+      "scope": "one authored two-task five-input model-off native isolated worker; no convergence claim",
+      "training_steps": 0
+    },
+    "live_production_import_fallback": false,
+    "native_active_leases": 0,
+    "native_remaining_processes_scoped_to_fixture": 0,
+    "native_resource_metrics_without_wait_samples": {
+      "acquisitions_total": 2739,
+      "cancellations_total": 0,
+      "lanes": {
+        "orchestration": {
+          "acquisitions_total": 17,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 17,
+          "wait_seconds_max": 7.039925549179316e-07,
+          "wait_seconds_total": 7.536029443144798e-06
+        },
+        "snapshot_evaluation": {
+          "acquisitions_total": 2622,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 2622,
+          "wait_seconds_max": 14.01640581000538,
+          "wait_seconds_total": 26.024798970669508
+        },
+        "validation": {
+          "acquisitions_total": 100,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 100,
+          "wait_seconds_max": 9.43997292779386e-07,
+          "wait_seconds_total": 4.931208968628198e-05
+        }
+      },
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 2739,
+      "saturation_events_total": 3,
+      "timeouts_total": 0,
+      "wait_seconds_max": 14.01640581000538,
+      "wait_seconds_total": 26.024855818788637
+    },
+    "native_source_module_count": 30,
+    "native_stopped": "succeeded",
+    "native_waiting_requests": 0,
+    "ordered_kernel_births": [
+      {
+        "allocation_cid": "baguqeeralqprcx3frd4viairjcls2tjkcaitejymz5jacjqtqf3f6boycvgq",
+        "attempt_id": "attempt:ae62cc8bf3a2462f8ce6648293ea4815",
+        "boundary": "native_daemon_to_owner_wrapper",
+        "claim_id": "claim:74e71b000de847c2b9cf466980c59cf7",
+        "completion_authority": false,
+        "context_cid": "baguqeeraitbyjm65xd65xo2zbgqxwvgwk7q7bcfuh5l3jhjbfqdfwc6uu7la",
+        "convergence_proved": false,
+        "daemon_pid": 50234,
+        "grant_ACK_budget_checked": true,
+        "grant_expires_at_ms": 1791075893638,
+        "independent_live_attempt_lease_checked": true,
+        "isolated_uid_observed": false,
+        "native_worktree_lease_checked": true,
+        "pid": 50776,
+        "process_birth_id": "birth:ed95a3918a7dfb2835574b3964662f86",
+        "proof_authority": false,
+        "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+        "status": "spawned",
+        "task_cid": "baguqeerai4j3hkrvdxlc7n6wdaqnvrsakd7ui4yht2avmlx5ypic55fd7gpq",
+        "task_revision": 3,
+        "worker_birth_observed": true
+      },
+      {
+        "allocation_cid": "baguqeeralqprcx3frd4viairjcls2tjkcaitejymz5jacjqtqf3f6boycvgq",
+        "attempt_id": "attempt:ae62cc8bf3a2462f8ce6648293ea4815",
+        "boundary": "isolated_worker",
+        "claim_id": "claim:74e71b000de847c2b9cf466980c59cf7",
+        "completion_authority": false,
+        "context_cid": "baguqeeraitbyjm65xd65xo2zbgqxwvgwk7q7bcfuh5l3jhjbfqdfwc6uu7la",
+        "convergence_proved": false,
+        "grant_ACK_budget_checked": true,
+        "grant_expires_at_ms": 1791075893638,
+        "independent_live_attempt_lease_checked": true,
+        "isolated_uid_observed": true,
+        "native_worktree_lease_checked": true,
+        "parent_chain": [
+          {
+            "parent_pid": 50778,
+            "pid": 50779,
+            "process_birth_id": "birth:d3d309b4e788af62d5c698885f52bd74",
+            "start_time_ticks": 9373904,
+            "uid": 1001
+          },
+          {
+            "parent_pid": 50776,
+            "pid": 50778,
+            "process_birth_id": "birth:e2df66423a4b2dfa75af1a934f0835f8",
+            "start_time_ticks": 9373904,
+            "uid": 0
+          }
+        ],
+        "proof_authority": false,
+        "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+        "status": "spawned",
+        "sudo_pid": 50778,
+        "task_cid": "baguqeerai4j3hkrvdxlc7n6wdaqnvrsakd7ui4yht2avmlx5ypic55fd7gpq",
+        "task_revision": 3,
+        "worker_birth_observed": true,
+        "worker_pid": 50779,
+        "worker_process_birth_id": "birth:d3d309b4e788af62d5c698885f52bd74",
+        "worker_uid": 1001,
+        "wrapper_pid": 50776
+      }
+    ],
+    "outer_wrapper_reader_report": {
+      "bytes": 5238,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/native-positive-outer-wrapper-readback-01/review.json",
+      "sha256": "4ad44ae5d16a53e075737565c47e833d67bd97027d3f4c6477b9cabc2d54fa9b"
+    },
+    "proof_query_key_count": 5,
+    "published_commit": "0dfbc4361b0b24dd33c8c3e81361b68684d18fc4",
+    "published_commit_parents": [
+      "f4df121cf89b63b2e014cb6e6b4b00e1eb7dba12",
+      "5b8281e425c2fb562b66c9a9f3795ffd50794282"
+    ],
+    "selected_initial_proof_and_tool_receipt_counts": {
+      "complete_pipeline_proof_or_tool_job_count": null,
+      "files": [
+        {
+          "bytes": 91364,
+          "kind": "verification",
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/docker-positive-01/native/positive/native-verification.json",
+          "sha256": "b923e22a2614cacfb6c540172263ec60fa7898c994aa452545cdfe7af1df610f"
+        },
+        {
+          "bytes": 187413,
+          "kind": "applicability",
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/docker-positive-01/native/positive/native-applicability.json",
+          "sha256": "23906a0676b07d0e61cf8987b533166a8f773bf8f684291fb627d4f6c0225151"
+        }
+      ],
+      "lean_compile_count": 2,
+      "lean_compile_elapsed_ms_sum": 427,
+      "lean_receipts": [
+        {
+          "compile_elapsed_ms": 179,
+          "kernel_checked_scope": "Kernel-checked recorded finite table arithmetic under standard trusted compiled Init imports; observation origin and CPython semantics are not Lean theorems.",
+          "profile": "finite-observation",
+          "result": {
+            "bytes": 11304,
+            "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/docker-positive-01/native/positive/before-preview/finite-observation/result.json",
+            "sha256": "ba81d2c93d2af02e33b448980e86f995f8a8403531c564bef3d43dd3d1fd3a71"
+          },
+          "source_semantics_verified": false,
+          "tool": {
+            "path": "/toolchains/lean/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "version_elapsed_ms": 53
+        },
+        {
+          "compile_elapsed_ms": 248,
+          "kernel_checked_scope": "mathematical_integer_operational_model",
+          "profile": "operational-model",
+          "result": {
+            "bytes": 20004,
+            "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/docker-positive-01/native/positive/before-preview/operational-model/result.json",
+            "sha256": "2d2dcadefc8f82539bba200c37f4969e322eb6d85bee1f9a7f7e20a30c11e123"
+          },
+          "source_semantics_verified": false,
+          "tool": {
+            "path": "/toolchains/lean/bin/lean",
+            "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+            "size_bytes": 13824
+          },
+          "version_elapsed_ms": 42
+        }
+      ],
+      "lean_version_elapsed_ms_sum": 95,
+      "lean_version_phase_count": 2,
+      "native_smt_observation_count": 10,
+      "native_smt_phase_count": 30,
+      "python_observation_count": 1,
+      "python_observation_elapsed_ms_sum": 22,
+      "python_receipts": [
+        {
+          "command": [
+            "/usr/local/bin/python3.12",
+            "-I",
+            "-S",
+            "driver.py"
+          ],
+          "elapsed_ms": 22,
+          "profile": "finite-observation"
+        }
+      ],
+      "scope": "selected initial native-verification/applicability files and before-preview finite/operational-model receipts only; repeated later previews are excluded",
+      "selected_counts_do_not_assert_full_pipeline_count": true,
+      "smt_observation_elapsed_ms_sum": 931,
+      "smt_observations": [
+        {
+          "backend": "z3",
+          "elapsed_ms": 108,
+          "ordinal": 0,
+          "phase_count": 3,
+          "record_kind": "verification"
+        },
+        {
+          "backend": "cvc5",
+          "elapsed_ms": 92,
+          "ordinal": 1,
+          "phase_count": 3,
+          "record_kind": "verification"
+        },
+        {
+          "backend": "z3",
+          "elapsed_ms": 78,
+          "ordinal": 0,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "cvc5",
+          "elapsed_ms": 77,
+          "ordinal": 1,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "z3",
+          "elapsed_ms": 102,
+          "ordinal": 2,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "cvc5",
+          "elapsed_ms": 96,
+          "ordinal": 3,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "z3",
+          "elapsed_ms": 101,
+          "ordinal": 4,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "cvc5",
+          "elapsed_ms": 88,
+          "ordinal": 5,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "z3",
+          "elapsed_ms": 102,
+          "ordinal": 6,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        },
+        {
+          "backend": "cvc5",
+          "elapsed_ms": 87,
+          "ordinal": 7,
+          "phase_count": 3,
+          "record_kind": "applicability"
+        }
+      ],
+      "smt_phase_counts": {
+        "model": 8,
+        "unsat_core": 2,
+        "verdict": 10,
+        "version": 10
+      },
+      "smt_phase_elapsed_ms_sum": 403
+    },
+    "source_generation_cid": "sha256:70b4b0e14f2c3f3ff63061af73ca51b8660c4e9a95b2dd3d2e91938e3ee33ceb",
+    "supervisor_execution_ledger_provider_invocations": 1
+  },
+  "new_refusal_diagnostic_profile": {
+    "all_owned_imports_inside_capsule": true,
+    "capture_elapsed_seconds": 102.87424335999822,
+    "composite_readback": {
+      "actual15_diagnostic_plus12_regression_cases": 27,
+      "actual_native_PSI_observation_claimed": false,
+      "actual_retained_resources_states": 15,
+      "actual_setup_call_teardown_pass_reports": 81,
+      "assertions_proved_only_by_exact_frozen_source_plus_actual_case_reports": true,
+      "closed_at_utc": "2026-10-04T01:22:11.880663+00:00",
+      "composite_independent_checks": 4,
+      "composite_status": "passed",
+      "correction_attempt_outer_elapsed_seconds": 0.03036247300042305,
+      "correction_attempt_status": "one_narrow_fixture_check_passed",
+      "correction_inner_elapsed_seconds_nested": 0.006321740002022125,
+      "final_fairness_state_older_waiter_is_not_intermediate_own_timeout": true,
+      "fixture_correction_report": {
+        "bytes": 50215,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-independent-fixture-correction-02/review.json",
+        "sha256": "9dd9e84bd22b85079977a48fd2e44d8c0ede1577efaa61a724f07025301fab6e"
+      },
+      "global_model_fit_dense_or_training_counts": null,
+      "initial_attempt_inner_elapsed_seconds_nested": 10.384564091000357,
+      "initial_attempt_outer_elapsed_seconds": 10.439058219999424,
+      "initial_attempt_status": "3_of_4_passed_one_reader_optional_key_error_preserved",
+      "initial_failure": [
+        {
+          "error_type": "KeyError",
+          "kind": "persisted_closed_unit_refusal_state_semantics",
+          "message": "'proof_backoff'",
+          "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-readback-preparation-01/independent_resource_refusal_readback_01.py\", line 268, in <module>\n    try:checks.append({'kind':kind,'passed':True,'evidence':fn(),'elapsed_seconds':time.monotonic()-start})\n                                                            ^^^^\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-readback-preparation-01/independent_resource_refusal_readback_01.py\", line 237, in retained_fixture_states\n    'last_proof_refusal':observation,'proof_backoff':state['proof_backoff'],\n                                                     ~~~~~^^^^^^^^^^^^^^^^^\nKeyError: 'proof_backoff'\n"
+        }
+      ],
+      "initial_passed_checks": [
+        "full_frozen_source04_before_after_custody",
+        "exact_driver_config_and_owned_imports",
+        "actual_selected15_plus12_cases_reports_and_junit"
+      ],
+      "initial_readback_report": {
+        "bytes": 13527,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-independent-readback-01/review.json",
+        "sha256": "ca3f54d1c6af28417843db37478b8bbecd9a200faf60f30c95d342ff9a6c3c7e"
+      },
+      "intermediate_own_waiter_and_shared_backoff_none_not_separately_retained": true,
+      "missing_optional_backoff_fields": [
+        "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/host-resource-refusal-run-01/fixtures/test_disabled_proof_safety_doe0/resources.json"
+      ],
+      "nativepositive_used_old_source03_new_telemetry_native_qualification_not_transferred": true,
+      "no_source_test_or_producer_repairs": true,
+      "no_tests_proofs_training_or_native_jobs_launched_by_readbacks": true,
+      "not_a_fresh_four_check_run": true,
+      "numeric_sample_fields": [
+        "available_memory_mb",
+        "available_pid_tasks",
+        "cpu_slots",
+        "cpu_stall_percent",
+        "io_stall_percent",
+        "memory_stall_percent",
+        "pid_task_limit",
+        "total_memory_mb"
+      ],
+      "old_sealed_root_modified": false,
+      "owned_import_labels": 79,
+      "owned_import_paths": 79,
+      "schema": "finite-resource-refusal-telemetry-composite-readback-summary@1",
+      "source04_bytes": 588258181,
+      "source04_cid": "sha256:4cd50c08870e8082cfc0f05995cd28f0d9c08a0d039f1d0c0c5b2fed226ae1e8",
+      "source04_file_count": 22892,
+      "states_with_historical_refusal": 14,
+      "unit_injected_sampler_and_clock_scope": true,
+      "unknown_samples": 2
+    },
+    "driver_elapsed_seconds": 5.014622522998252,
+    "driver_errors": [],
+    "driver_sha256": "708151a934b1e892b93dadf4dc0aec787ad6ca0572b477f0b4a9947cbf12cf9c",
+    "existing_regression_cases": 12,
+    "explicit_resource_omissions": 1799,
+    "inventory_differences": [],
+    "live_production_fallback": false,
+    "new_cases": 15,
+    "new_test_sha256": "ab7edd233257e782333fe6b0f7fcb7748f6e73d302e862583f73131565928bc2",
+    "owned_import_labels": 79,
+    "owned_import_paths": 79,
+    "phase_reports_passed": 81,
+    "producer_source_sha256": "9cb9f263c5a72cd1b1fa2dd9dcd070a549e11bd5483937d35508c6a86d929166",
+    "pytest_elapsed_seconds_nested": 1.45,
+    "scope": "Injected unit sampler/clock fixtures plus unchanged real scheduler state/locks/leases/fairness. Not actual native pressure measurements and not integrated in the older native positive source03.",
+    "selected_test_files": 2,
+    "source04_cid": "sha256:4cd50c08870e8082cfc0f05995cd28f0d9c08a0d039f1d0c0c5b2fed226ae1e8",
+    "source_bytes": 588258181,
+    "source_errors": [],
+    "source_file_count": 22892,
+    "tests_passed": 27
+  },
+  "official_markdown_pins": [
+    {
+      "bytes": 13005,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_proof_query_attempt_lease_native_qualification.md",
+      "sha256": "c5be2ff509fc1e213bf4bf2a16129ed233f95f60112d02b6906a4e6603377b3f"
+    },
+    {
+      "bytes": 8950,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ATTEMPT_LEASE_NATIVE_ADDENDUM.md",
+      "sha256": "753477938699ad3e4efdfcfb14b6c24ab39da928474472cd5839c0fd1fa8a046"
+    }
+  ],
+  "preliminary_precision_findings": "Retained original draft bytes and review. Corrected actual ACK hold/commit/release order and native transaction release before external failure cleanup.",
+  "record_corrections": {
+    "corrected_document_pin_link_readback": "follows_as_separate_final_control",
+    "corrections": [
+      "Initial selected SMT phase names/counts explicitly10version+10verdict+8model+2unsat_core. Native summary and actual receipts were already correct.",
+      "Ledger02 corrects stale reader-pending provenance; first ledger and both actual collector closures remain retained.",
+      "No production source, test, native, proof or training rerun."
+    ],
+    "initial_final_document_review": {
+      "aggregate_document_read_elapsed_seconds": null,
+      "closure_receipt_confirmation_elapsed_seconds": 0.0012376170052448288,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/document-final-review-01/review.json",
+      "status": "failed_precision_findings_preserved"
+    },
+    "original_machine_pin": {
+      "bytes": 29079,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/documentation-preparation-01/machine.before-final-review-fix-02.json",
+      "sha256": "e15eab02ca4dbcb953cf46d66efeb7f996b6a5ac1a9be831307665bae8f93e5b"
+    }
+  },
+  "retention_boundary": {
+    "collector": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/final-retention-01/retention.py",
+    "collector_sha256": "4352a4b3803da42ff457cb5f551774bf0da2a4c3d2f1b285fd58bc2488ef3a51",
+    "failed_readers_and_preparation_bytes_retained": true,
+    "old_sealed_roots_read_only": true,
+    "planned_external_role_counts": {
+      "new_official_document": 3,
+      "old_qualified_document": 9,
+      "old_retention_manifest": 3,
+      "protected_source": 4
+    },
+    "seal_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/final-retention-01/seal.json",
+    "status_at_document_write": "not_yet_sealed_final_control_follows",
+    "whole_live_atomic_snapshot_or_preservation_claimed": false
+  },
+  "schema": "repository-proof-index-codebase-ir-attempt-lease-native-review@1",
+  "source_and_evidence_inputs": {
+    "closed_cost_ledger": {
+      "bytes": 139081,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/accounting-preparation-01/final-ledger-02.json",
+      "sha256": "0912e627b4104d068ddefe2703599d8ec3ddf1e3a45611c186010bd681078049"
+    },
+    "native_summary": {
+      "bytes": 16352,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/native-positive-independent-summary-01/summary.json",
+      "sha256": "d4cc234703c24cccb92118db99ca8152e6d804ad77ba504dc97459d9d7ea35d1"
+    },
+    "preliminary_review": {
+      "bytes": 19778,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/documentation-preparation-01/preliminary-review-01.json",
+      "sha256": "4a5070e2e568825ff7a49aa712fdff6c93e34770133d09193a359a8f4cd92aea"
+    },
+    "scheduler_composite_readback": {
+      "bytes": 4109,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-composite-readback-summary-01.json",
+      "sha256": "a49cbcbee02b4390d1ae0a3e7fca7ebdd8780f6da54fb4f46b3b3be4ea437971"
+    },
+    "scheduler_test_review": {
+      "bytes": 61364,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/host-resource-refusal-run-01/review.json",
+      "sha256": "17ce1b5d3190bff06f773d9a78b57606e66e0398adf81b7bfc92f611ec5954cd"
+    },
+    "shared_governing_provenance": {
+      "bytes": 1792,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/documentation-preparation-01/governing-provenance-clarification-01.json",
+      "sha256": "1b17db36d5f983f5fd8e28e75f89754c40adb5501b73e965d871573c52069078"
+    },
+    "telemetry_source_freeze": {
+      "bytes": 2160,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-native-20261004-01/resource-refusal-telemetry-preparation-01/freeze.json",
+      "sha256": "fff15dafacb880ed0a00908101bdd348691a50d95da7b3aa8db874de98b32afa"
+    }
+  },
+  "status": "qualified_bounded_positive_native_and_separate_refusal_diagnostics"
+}

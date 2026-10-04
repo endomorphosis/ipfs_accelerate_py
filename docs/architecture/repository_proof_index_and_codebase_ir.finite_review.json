@@ -1,0 +1,256 @@
+{
+  "all_production_task_ids_open": [
+    "RPI-001",
+    "RPI-002",
+    "RPI-003",
+    "RPI-004",
+    "RPI-005",
+    "RPI-006",
+    "RPI-007",
+    "RPI-008",
+    "RPI-009",
+    "RPI-010",
+    "RPI-011",
+    "RPI-012",
+    "RPI-013",
+    "RPI-014",
+    "RPI-015",
+    "RPI-016",
+    "RPI-017",
+    "RPI-018",
+    "RPI-019",
+    "RPI-020",
+    "RPI-021",
+    "RPI-022",
+    "RPI-023",
+    "RPI-024",
+    "RPI-025",
+    "RPI-026",
+    "RPI-027",
+    "RPI-028",
+    "RPI-029",
+    "RPI-030",
+    "RPI-031",
+    "RPI-032"
+  ],
+  "documentation_pins": [
+    {
+      "bytes": 120209,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "b4eed8de5b2c36061eb30408b1b974cea7f87b67323a6798ddbcf3175c706952"
+    },
+    {
+      "bytes": 36293,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "d9e6d2857ed59abcf33e429e4328185e2acaaf152f8da0c648a8e420b6fa909e"
+    },
+    {
+      "bytes": 6915,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_finite_qualification.md",
+      "sha256": "b164ccd47a3ccbbae8ad875aec6d6d2781c81f10d19a7086e13b481a748cacd4"
+    }
+  ],
+  "execution_artifact_pins": [
+    {
+      "bytes": 234642,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/result.json",
+      "sha256": "5ce118a25ef8d66936d1f6222a00a8129b4fadb8fb632cf7d1ee90be0555c118"
+    },
+    {
+      "bytes": 6224,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/REPORT.md",
+      "sha256": "4da45dec77ace74e0d4c425fdecaaabc17ee7d862672755067c102c66d1d6545"
+    },
+    {
+      "bytes": 17927,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/audit.json",
+      "sha256": "1c6731f70f9c328005310e736f383841bffdf08ab62acbe6ddac0d0a7e61b898"
+    },
+    {
+      "bytes": 55795,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/independent-audit.json",
+      "sha256": "2f098ffd842eff5b8a4eadb5a3e1529ec9d4f56379c2f03e0fa68de6a620e9e2"
+    },
+    {
+      "bytes": 23332,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/independent-audit-implementation.py",
+      "sha256": "cbb2cd0772e92ab95076566468e404f779f273dc33ca975ac8d4f8f7390a60df"
+    },
+    {
+      "bytes": 23830,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/tests.json",
+      "sha256": "3b30a8757050ab81dfd3230aba6fc9c58a685c738461c742a7c0441c51c17603"
+    },
+    {
+      "bytes": 12196,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/metadata-replay.json",
+      "sha256": "26a9864780f021e7782884a1e15649d905ccfd99b340e5e9c8caf5fadd1bdc80"
+    },
+    {
+      "bytes": 10546,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/qualification-history.json",
+      "sha256": "92d935289f1c96729037ede96f5f3d53159caec481a577d0fdf32ea2f3b3119a"
+    }
+  ],
+  "fingerprint_captured_at_utc": "2026-10-02T02:01:54.077702+00:00",
+  "historical_planning_review": {
+    "bytes": 16836,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.planning_review.json",
+    "sha256": "41abc15bdfe44fc02e3ce81d0f66158e1751825b3721f207933f847c52defadf"
+  },
+  "identity_scope": "Selected implementation bytes captured before and after actual execution and independently reconciled; ending selected documentation and test-source observations. This is not an atomic snapshot or attestation of the entire environment or transitive runtime dependencies.",
+  "limits": {
+    "completion_authority": false,
+    "finite_recorded_arithmetic_only": true,
+    "general_source_semantics_verified": false,
+    "optimizer_convergence_proved": false,
+    "production_admitted": false,
+    "provider_calls": 0,
+    "public_bottle_task_satisfied": false,
+    "python_origin_proved": false,
+    "saved_historical_labels_supply_current_facts": false,
+    "training_steps": 0,
+    "trusted_compiled_lean_init": true,
+    "unlisted_integer_inputs_verified": false,
+    "worker_launched": false
+  },
+  "partial_acceptance_evidence": [
+    "RPI-005",
+    "RPI-006",
+    "RPI-007",
+    "RPI-012",
+    "RPI-013",
+    "RPI-016",
+    "RPI-022",
+    "RPI-023",
+    "RPI-032"
+  ],
+  "profile": "python-integer-offset-finite@1",
+  "results": {
+    "after": {
+      "facts": 2,
+      "residuals": 0,
+      "selected_tasks": []
+    },
+    "before": {
+      "facts": 1,
+      "residuals": 1,
+      "selected_tasks": [
+        "finite-fixture-task:0"
+      ]
+    },
+    "declared_integer_inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "ducklake_append_commits": 3,
+    "ducklake_append_snapshot_ids": [
+      2,
+      3,
+      4
+    ],
+    "ducklake_packets": 21,
+    "historical_initial_closure_failures": 2,
+    "latest_distinct_passing_cases": 89,
+    "metadata_families": 24,
+    "metadata_rows": 52,
+    "parent_artifact_pins_unchanged": 29,
+    "parquet_files": 26,
+    "qualified_raw_executions": 91,
+    "qualified_raw_test_outcomes": {
+      "passed": 91
+    },
+    "stable_declared_task_requirement_ids": {
+      "finite-fixture-task:0": "finite-integer-offset-goal",
+      "finite-fixture-task:1": "finite-integer-type-goal"
+    },
+    "stale_controls": [
+      {
+        "control": "old_observation",
+        "error": "current repository differs from the published snapshot",
+        "rejected": true
+      },
+      {
+        "control": "old_index",
+        "error": "current repository differs from the published snapshot",
+        "rejected": true
+      },
+      {
+        "control": "old_planning_materials",
+        "error": "current repository differs from the published snapshot",
+        "rejected": true
+      }
+    ],
+    "wall_seconds_excluding_tests": 9.332532384898514
+  },
+  "schema": "repository-proof-index-codebase-ir-finite-review@1",
+  "scope": "Authored finite current-source observations, aligned native IntentIR, typed historical indexes, actual native symbolic planning and lossless DuckDB/DuckLake replay. Exact original Terminal Bench Bottle source is an unsupported nonexecuted control. No model fitting or provider calls.",
+  "source_pins": [
+    {
+      "bytes": 26885,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_experiment.py",
+      "sha256": "11a9273909d8ba9e1c0226e627d63d8487aea3fe1d56bbbf87ab7515a8df88d9"
+    },
+    {
+      "bytes": 10960,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_index.py",
+      "sha256": "a9a277ccf82e3089dc01b04f0014dda51f3e480d0884a941ec6decc2f16ddc06"
+    },
+    {
+      "bytes": 41332,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py",
+      "sha256": "5613f32adc9212dab0a68c2f1ffe161255f4b27fae3a948f2d01bbd32229778b"
+    },
+    {
+      "bytes": 28822,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_codebase.py",
+      "sha256": "18be1fa7562fc60f2ecb1814f289db8ea5f5e376339376c04d0fb73cc573a226"
+    },
+    {
+      "bytes": 25834,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+      "sha256": "9baf67451294b29b7c9e205477293246b1dde46f6d4bebe627a4e3145832acf3"
+    },
+    {
+      "bytes": 28715,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "bytes": 63924,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+      "sha256": "97048ce560b367b4651def82dcb345d3ee34edc60373c15dbaba551ca459e9da"
+    },
+    {
+      "bytes": 71146,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "sha256": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2"
+    },
+    {
+      "bytes": 54671,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/backends/process.py",
+      "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+    }
+  ],
+  "status": "bounded_finite_route_qualified_all_32_production_acceptance_tasks_open",
+  "test_source_pins": [
+    {
+      "bytes": 17010,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/integration/logic/software_contracts/test_codebase_finite_integer_observation.py",
+      "sha256": "ef19e9b1c3e6c37a48fffe0c0a45a1b3842addab1f424bf70097faf3dbf0607d"
+    },
+    {
+      "bytes": 19022,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_finite_integer_codebase.py",
+      "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+    },
+    {
+      "bytes": 9764,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_terminal_codebase_finite_index.py",
+      "sha256": "001ba33c021b4b2edb085ae23bfff1b6e1abb1e69aa766bfa9d44321f19e248e"
+    }
+  ]
+}

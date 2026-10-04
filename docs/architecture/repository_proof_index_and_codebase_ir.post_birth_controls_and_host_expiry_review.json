@@ -1,0 +1,1043 @@
+{
+  "acceptance": {
+    "actual_update_bound_restricted_convergence_theorem": "OPEN",
+    "bounded_host_real_clock_expiry_qualified": true,
+    "complete_public_prompt_IntentIR_current_code_correspondence": "OPEN",
+    "default_terminal_bench_activation": false,
+    "dirty_allocated_worktree_automatic_recovery_or_removal": "OPEN",
+    "learned_formal_decoder_and_family_Lean_source_correspondence": "OPEN",
+    "native_ACK_expiry_qualified": false,
+    "native_post_birth_application_ACK_drop_qualified": false,
+    "native_post_birth_callback_error_qualified": false,
+    "native_post_birth_control_execution_count": 0,
+    "nonlinear_clipped_floating_point_Adam_convergence_proved": false,
+    "official_benchmark_score": null,
+    "official_representative_matched_benchmark_arms": "OPEN",
+    "production_exits": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "repository_autoencoder_private_training_resume_and_CAS_promotion": "OPEN",
+    "source05_native_matched_positive_qualified": false,
+    "whole_target_AST_KG_vectors_contracts_and_DuckLake_hydration": "OPEN"
+  },
+  "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01",
+  "as_of_utc": "2026-10-04T03:40:29.695093+00:00",
+  "costs": {
+    "CAS_receipt_body_counts_are_complete_command_invocations_or_jobs": false,
+    "collector_outer_receipt": {
+      "bytes": 4492,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collector-invocation-01/closed-attempt.json",
+      "sha256": "58d7db8d5c4c286ae5295cf402a27844fcbaf350b1480249993736d961458884"
+    },
+    "collector_receipt_contents": {
+      "actual_collector_outer_elapsed_seconds": 0.04096238600322977,
+      "child_pid": 1495952,
+      "child_started": true,
+      "cleanup_errors": [],
+      "closed_at_utc": "2026-10-04T03:36:36.384056+00:00",
+      "counted_as_additional_heavy_attempt_wall_time": false,
+      "exception": null,
+      "ledger_pin": {
+        "bytes": 121134,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/final-ledger-01.json",
+        "sha256": "15698e750f0eb2b866b2ef6b3772b3d70b212c853b2670f1bc86353e03f72d0f"
+      },
+      "ledger_selected": {
+        "collection_elapsed_seconds_before_output_write": 0.005656134002492763,
+        "collection_issues": [],
+        "collector_pin": {
+          "bytes": 10297,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collect_closed_costs_01.py",
+          "sha256": "f0ae7b4a52e4050760ef3b7558ed4186d69fb5e043e4153df2573a0fbe68d63e"
+        },
+        "input_spec_pin": {
+          "bytes": 30776,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collector-inputs-final-07.json",
+          "sha256": "e75feabc63c468f4dd7fbe4aa400967fc6ce4551424f3c5355aaf3cebaf8188e"
+        },
+        "pending": [],
+        "status": "closed_selected_outer_receipts",
+        "totals": {
+          "measured_closed_attempt_row_count": 9,
+          "native_provider_inference_count_without_counter_receipt": null,
+          "native_provider_training_count_without_counter_receipt": null,
+          "sum_measured_attempt_wall_seconds": 688.9905920219899,
+          "sum_scope": "Explicit closed outer elapsed receipts, including failures. Nested timings are not added. Concurrent intervals are not subtracted. This is not CPU/GPU utilization or a host census.",
+          "unreceipted_preparation_or_inline_command_elapsed_seconds": null,
+          "whole_host_OS_process_launch_count": null,
+          "whole_host_dense_inference_count": null,
+          "whole_host_training_count": null
+        }
+      },
+      "owned_production_imports_SQL_source_census_proof_training_jobs": 0,
+      "qualification_verifier": false,
+      "returncode": 0,
+      "schema": "finite-post-birth-accounting-collector-closed-attempt@1",
+      "source_pins_after": {
+        "collector": {
+          "bytes": 10297,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collect_closed_costs_01.py",
+          "sha256": "f0ae7b4a52e4050760ef3b7558ed4186d69fb5e043e4153df2573a0fbe68d63e"
+        },
+        "spec": {
+          "bytes": 30776,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collector-inputs-final-07.json",
+          "sha256": "e75feabc63c468f4dd7fbe4aa400967fc6ce4551424f3c5355aaf3cebaf8188e"
+        },
+        "wrapper": {
+          "bytes": 7268,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/run_collector_01.py",
+          "sha256": "d9952a01d550249586a3febbd2ee0309d93ebfe29fe53c55f388040f1aba72a3"
+        }
+      },
+      "source_pins_before": {
+        "collector": {
+          "bytes": 10297,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collect_closed_costs_01.py",
+          "sha256": "f0ae7b4a52e4050760ef3b7558ed4186d69fb5e043e4153df2573a0fbe68d63e"
+        },
+        "spec": {
+          "bytes": 30776,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collector-inputs-final-07.json",
+          "sha256": "e75feabc63c468f4dd7fbe4aa400967fc6ce4551424f3c5355aaf3cebaf8188e"
+        },
+        "wrapper": {
+          "bytes": 7268,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/run_collector_01.py",
+          "sha256": "d9952a01d550249586a3febbd2ee0309d93ebfe29fe53c55f388040f1aba72a3"
+        }
+      },
+      "started_at_utc": "2026-10-04T03:36:36.343089+00:00",
+      "status": "passed_metadata_accounting_only",
+      "timing_scope": "From before source/spec reads through child exit, ledger verification and cleanup; final receipt write and enclosing tool overhead excluded."
+    },
+    "global_model_training_dense_inference_OS_and_prover_job_counts": null,
+    "inline_host_pressure_durable_outer_seconds": null,
+    "inline_host_pressure_loop_seconds_separate": [
+      20.000921568003832,
+      20.000875583005836
+    ],
+    "later_document_review_and_seal_verify_in_nine_row_sum": false,
+    "ledger": {
+      "bytes": 121134,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/final-ledger-01.json",
+      "sha256": "15698e750f0eb2b866b2ef6b3772b3d70b212c853b2670f1bc86353e03f72d0f"
+    },
+    "measured_outer_rows": 9,
+    "nested_durations_not_added_twice": true,
+    "pending_accounting_receipts": [],
+    "sum_measured_outer_seconds": 688.9905920219899,
+    "unreceipted_preparation_or_calendar_or_CPU_GPU_cost": null
+  },
+  "final_retention": {
+    "byte_retention_confers_runtime_or_formal_qualification": false,
+    "expected_external_pin_roles": {
+      "new_official_document": 3,
+      "old_qualified_document": 12,
+      "old_retention_manifest": 4,
+      "protected_source": 4
+    },
+    "final_outcomes_and_actual_costs_only_in_excluded_verification_namespace": true,
+    "seal_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/final-retention-01/seal.json",
+    "state_at_official_document_write": "PENDING",
+    "whole_old_trees_recensused": false
+  },
+  "governing_document_append_provenance": [
+    {
+      "after": {
+        "bytes": 245117,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/documentation-preparation-01/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md.after",
+        "sha256": "f8e6293624755eb8d61f529f33b2a06be73c20d761c8c86beca1608d88fa09bd"
+      },
+      "before": {
+        "bytes": 243427,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/documentation-preparation-01/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md.before",
+        "sha256": "9a80af12ef22fa3a181d9c2a00ca9cb9410d9408d29b3304fbc420c9d291e211"
+      },
+      "observed_after_equals_before_plus_own_append": true,
+      "own_insert_sha256": "8edf6ecdfd466ce798816451f4df7c7a0314dde76e36df2a70803f20971cbd20",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "scope": "Observed append and retained before/after only; unrelated concurrent changes are not attributed to this increment.",
+      "whole_live_history_preservation_or_atomic_checkout_attestation": false
+    },
+    {
+      "after": {
+        "bytes": 151504,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/documentation-preparation-01/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md.after",
+        "sha256": "ab9f5eba5975b6c74f96062709c4a30ab1b970c900aa5187d8ef33fcd33ab6e9"
+      },
+      "before": {
+        "bytes": 149814,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/documentation-preparation-01/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md.before",
+        "sha256": "14ebe7f0905e9a511b7e038259cd90c1e09efcff9521c4718bc7b3184d6c093e"
+      },
+      "observed_after_equals_before_plus_own_append": true,
+      "own_insert_sha256": "8edf6ecdfd466ce798816451f4df7c7a0314dde76e36df2a70803f20971cbd20",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "scope": "Observed append and retained before/after only; unrelated concurrent changes are not attributed to this increment.",
+      "whole_live_history_preservation_or_atomic_checkout_attestation": false
+    }
+  ],
+  "host_expiry": {
+    "actual_cold_outer_seconds": 0.3646942290070001,
+    "actual_control_outer_seconds": 9.081341216995497,
+    "actual_final_authority": {
+      "attempt": {
+        "attempt_id": "attempt:6af89337b8d343f9a214f715bfc9d9b7",
+        "attempt_number": 1,
+        "fence_epoch": 1,
+        "fencing_token": 1,
+        "finished_at_ms": 1791081853889,
+        "owner_session_id": "session:real-clock-host",
+        "revision": 2,
+        "started_at_ms": 1791081845708,
+        "status": "expired",
+        "task_cid": "task:real-clock-host-expiry"
+      },
+      "claim": {
+        "attempt_id": "attempt:6af89337b8d343f9a214f715bfc9d9b7",
+        "attempt_number": 1,
+        "body_json": "{}",
+        "claim_id": "claim:55a9314a37874d6d95c91fe30cfaadd9",
+        "claimed_at_ms": 1791081845708,
+        "expires_at_ms": 1791081853792,
+        "fence_epoch": 1,
+        "fencing_token": 1,
+        "idempotency_key": "real-clock-expiry",
+        "lease_id": "lease:507ab1b1966746d48b32c35bdb3f856d",
+        "owner_session_id": "session:real-clock-host",
+        "released_at_ms": null,
+        "revision": 3,
+        "state": "expired",
+        "task_cid": "task:real-clock-host-expiry",
+        "worktree_id": ""
+      },
+      "lease": {
+        "acquired_at_ms": 1791081845708,
+        "attempt_id": "attempt:6af89337b8d343f9a214f715bfc9d9b7",
+        "attempt_number": 1,
+        "body_json": "{}",
+        "claim_id": "claim:55a9314a37874d6d95c91fe30cfaadd9",
+        "expires_at_ms": 1791081853792,
+        "fence_epoch": 1,
+        "fencing_token": 1,
+        "idempotency_key": "real-clock-expiry",
+        "lease_id": "lease:507ab1b1966746d48b32c35bdb3f856d",
+        "lease_kind": "task",
+        "mode": "exclusive",
+        "owner_session_id": "session:real-clock-host",
+        "path": "",
+        "repository_id": "",
+        "resource_id": "",
+        "resource_kind": "",
+        "revision": 3,
+        "scope": "task:real-clock-host-expiry",
+        "scope_key": "task:task:real-clock-host-expiry",
+        "state": "expired",
+        "task_cid": "task:real-clock-host-expiry",
+        "worktree_id": ""
+      }
+    },
+    "checks_passed": 11,
+    "cold_outer": {
+      "bytes": 2302,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-independent-readback-01/closed-attempt.json",
+      "sha256": "87ef1c2810837ddda492b37eb2a7c702ff93470a01bbe0372b5e2c4e9b8c2f02"
+    },
+    "control_outer": {
+      "bytes": 709,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-expiry-run-01/closed-attempt.json",
+      "sha256": "e4cd85852be66d1ee9b221f4856499f6ad8029a29610bf38c446a9a148cf0747"
+    },
+    "entry_margin_ms": 5000,
+    "errors": [],
+    "external_marker": {
+      "bytes": 24,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-expiry-run-01/control/external-child-effect.bin",
+      "sha256": "00a9c6c8c80e28d36ac4f5e34ca22f4970c8cc340bc908d454cd7e5eb57a1bae"
+    },
+    "fake_clock_raw_SQL_mutation_or_guard_reentry": false,
+    "full_import_census": null,
+    "general_effect_freedom_or_convergence": false,
+    "global_OS_process_census": false,
+    "independent_original_birth_absence": {
+      "observation": "PID_absent",
+      "original_PID_start_boot_absent": true
+    },
+    "independent_review": {
+      "bytes": 8034,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-independent-readback-01/readback/review.json",
+      "sha256": "b97dc8456f275fc01141511d6c4f5cc165201ee41306591f1a5bc232b4632a26"
+    },
+    "public_shortened_renewal_ms": 8000,
+    "scope": "One public default-clock host UID1000 control; no Docker/broker/UID1001/native ACK expiry transfer."
+  },
+  "native_failed_matching_positive_cases": [
+    {
+      "actual_database_count": 5,
+      "actual_native_resource_metrics": {
+        "acquisitions_total": 1614,
+        "cancellations_total": 0,
+        "lanes": {
+          "orchestration": {
+            "acquisitions_total": 10,
+            "cancellations_total": 0,
+            "timeouts_total": 0,
+            "wait_count": 10,
+            "wait_seconds_max": 5.759939085692167e-07,
+            "wait_seconds_total": 4.784000338986516e-06
+          },
+          "snapshot_evaluation": {
+            "acquisitions_total": 1534,
+            "cancellations_total": 0,
+            "timeouts_total": 1,
+            "wait_count": 1535,
+            "wait_seconds_max": 30.001209102003486,
+            "wait_seconds_total": 30.001906489764224
+          },
+          "validation": {
+            "acquisitions_total": 70,
+            "cancellations_total": 0,
+            "timeouts_total": 0,
+            "wait_count": 70,
+            "wait_seconds_max": 8.640054147690535e-07,
+            "wait_seconds_total": 3.729702439159155e-05
+          }
+        },
+        "recovered_leases_total": 0,
+        "recoveries_total": 0,
+        "releases_total": 1614,
+        "saturation_events_total": 1,
+        "timeouts_total": 1,
+        "wait_seconds_max": 30.001209102003486,
+        "wait_seconds_total": 30.001948570788954
+      },
+      "actual_stage_prefix": [
+        {
+          "seconds": 0.6975452740007313,
+          "stage": "native_fixture_prepared"
+        },
+        {
+          "seconds": 1.367982370997197,
+          "stage": "initial_source_capture_returned"
+        },
+        {
+          "seconds": 5.284219687993755,
+          "stage": "native_proof_publication_returned"
+        },
+        {
+          "seconds": 69.07244699400326,
+          "stage": "native_proof_admission_returned"
+        },
+        {
+          "seconds": 135.35963301500306,
+          "stage": "native_materialization_returned"
+        },
+        {
+          "seconds": 137.25084670999786,
+          "stage": "native_prerequisite_completion_returned"
+        },
+        {
+          "seconds": 138.53056307700172,
+          "stage": "public_context_authoring_returned"
+        }
+      ],
+      "all_available_SQL_table_counts": [
+        {
+          "actual_tables_and_views": 26,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/native/positive/codebase.duckdb"
+        },
+        {
+          "actual_tables_and_views": 226,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/native/positive/private/intent.duckdb"
+        },
+        {
+          "actual_tables_and_views": 11,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/native/positive/private/late-parent-source/launch/state/coordination.duckdb"
+        },
+        {
+          "actual_tables_and_views": 11,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/native/positive/private/prerequisite-coordination.duckdb"
+        },
+        {
+          "actual_tables_and_views": 6,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/native/positive/private/prerequisite-execution.duckdb"
+        }
+      ],
+      "attempt": "01",
+      "available_SQL_export": {
+        "bytes": 5323368,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-01-independent-partial-readback-01/readback/complete-actual-available-native-SQL.json",
+        "sha256": "be336439b5b0e6afbe87003fb1f306346f0a79abe32b33230169848a1d271cf5"
+      },
+      "codebase_IR_row_counts": {
+        "codebase_control.heads": 1,
+        "codebase_control.meta": 1,
+        "codebase_control.operations": 1,
+        "codebase_verification_control.entries": 1,
+        "codebase_verification_control.meta": 1,
+        "codebase_verification_control.operations": 1,
+        "codebase_verification_control.records": 1,
+        "codebase_verification_query.dependencies": 89,
+        "codebase_verification_query.entries": 1,
+        "codebase_verification_query.epochs": 1,
+        "codebase_verification_query.inventories": 1,
+        "codebase_verification_query.keys": 5,
+        "codebase_verification_query.meta": 1,
+        "main.ast_blobs": 7,
+        "main.ast_nodes": 75,
+        "main.calls": 5,
+        "main.diagnostics": 0,
+        "main.effects": 4,
+        "main.imports": 3,
+        "main.interfaces": 11,
+        "main.invalidations": 0,
+        "main.references": 25,
+        "main.scopes": 11,
+        "main.source_files": 7,
+        "main.source_revisions": 1,
+        "main.symbols": 9
+      },
+      "cold": {
+        "actual_checks": 7,
+        "actual_passed": 7,
+        "bytes": 14711737,
+        "errors": [],
+        "outer_timing": {
+          "bytes": 3329,
+          "elapsed_seconds": 26.719915245004813,
+          "exit": 0,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-01-independent-partial-readback-01/closed-attempt.json",
+          "sha256": "73b9bac876ed752ff279544ee0b1ca2950fa9780a262f07c5ff77b98cc26b953"
+        },
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-01-independent-partial-readback-01/readback/review.json",
+        "sha256": "56950c433b2aa3b2b3cc1f390709a0ca038268f7bff3419e3621143c73f4cd45"
+      },
+      "complete_source": {
+        "actual_NATIVE_SOURCE_count": 30,
+        "before_provenance_original_capture_no_new_host_test": true,
+        "copy_bytes": 483675828,
+        "copy_populations": {
+          "datasets": 8535,
+          "kit": 1341,
+          "source": 9601
+        },
+        "extra_declared_dependency_names": [
+          "benchmarks.agent_supervisor.container_coding.run_finite_proof_query_worker_docker",
+          "benchmarks.agent_supervisor.container_coding.finite_repository_worker_experiment",
+          "ipfs_accelerate_py.agent_supervisor.control.profile_authority",
+          "ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters",
+          "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile",
+          "ipfs_datasets_py.logic.software_verification.pipeline",
+          "ipfs_datasets_py.logic.software_verification.source_adapters",
+          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler"
+        ],
+        "extra_declared_dependency_pin_count": 8,
+        "generation_cid": "sha256:04faf155359a37678ae99bf926e4432680187469351acf661adb53f7358ce609",
+        "source_bytes": 588535783,
+        "source_declared_count": 30,
+        "source_files": 22897
+      },
+      "exact_final_timeout_observation_retained": false,
+      "explicit_main_artifact_presence": {
+        "execution-scope.json": false,
+        "native-lifecycle.json": false,
+        "private/intent.coordination.duckdb": false,
+        "private/intent.execution.duckdb": false,
+        "private/launch/state/proof-query-dispatch-broker-close-receipt.json": false,
+        "private/launch/state/stop-receipt.json": false,
+        "private/post-birth-control/post-birth-control.json": false,
+        "result.json": false
+      },
+      "global_fit_dense_model_training_and_OS_process_counts": null,
+      "historical_sample_not_exact_final_timeout_cause": true,
+      "main_birth_ACK_or_STOP_qualified": false,
+      "native_and_host_lease_waiter_drain": true,
+      "native_driver": {
+        "actual_exit": 1,
+        "actual_own_container_removed": true,
+        "bytes": 9330,
+        "nested_elapsed_seconds": 380.6198681030073,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-01/container-execution-final.json",
+        "sha256": "2efb885e90283db59178feeb975531b8d58e93cbb7eac15cbe70099ec20cc11d"
+      },
+      "native_historical_refusal": {
+        "backoff_until": 1791082532.8380716,
+        "decision_cycle_at": 1791082530.8380716,
+        "demand": {
+          "additional_memory_mb": 0,
+          "additional_process_slots": 0,
+          "pid_tasks_required": 160,
+          "root_reserved_memory_mb": 4096,
+          "root_reserved_process_slots": 8
+        },
+        "error_type": null,
+        "gate": "envelope",
+        "historical": true,
+        "lane": "snapshot_evaluation",
+        "parent_lease_id": "5c4d867bc7614ae28c7c4ae3e127d679",
+        "proof_memory_headroom_mb": 1639,
+        "reason": "proof_memory_stall",
+        "request_id": "codebase-ir:prepare",
+        "sample": {
+          "available_memory_mb": 7761,
+          "available_pid_tasks": 367,
+          "cpu_slots": 12,
+          "cpu_stall_percent": 17.52,
+          "io_stall_percent": 1.54,
+          "memory_stall_percent": 11.55,
+          "pid_task_limit": 512,
+          "total_memory_mb": 8192
+        },
+        "sample_contract": "max-host-visible-cgroup-avg10; memory/full,cpu/some,io/full; optional-psi-zero-fallback",
+        "schema": "proof-resource-admission-refusal@1",
+        "sequence": 1615,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_stall_percent": 2.0
+        },
+        "waiter_id": "fe324f2bc34b4cb8839d9c4322cd5897"
+      },
+      "native_outer": {
+        "actual_elapsed_seconds": 398.10012024499883,
+        "actual_exit": 1,
+        "bytes": 474,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/native-positive-01-outer-attempt.json",
+        "sha256": "754d91ae889ea066feefb972be6228afcd0823414a5795a3cb0eb61f40e7545d"
+      },
+      "native_route_qualified": false,
+      "native_status": "declined_unqualified",
+      "original_thresholds": {
+        "proof_backoff_seconds": 2.0,
+        "proof_cpu_stall_percent": 50.0,
+        "proof_io_stall_percent": 10.0,
+        "proof_memory_stall_percent": 2.0,
+        "proof_safety_enabled": true
+      },
+      "proof_and_token_validation_scope": {
+        "SMT_Lean_and_CPython_receipt_bodies_retained_not_complete_prover_job_census": true,
+        "current_conditional_formal_proof_validation_performed_by_this_partial_reader": false,
+        "current_public_token_signature_validation_performed_by_this_partial_reader": false,
+        "full_SQL_catalogs_and_raw_available_rows_independently_read_only": true,
+        "old_positive_signature_or_formal_qualification_transferred": false
+      },
+      "separate_cold_outer_custody": {
+        "bytes": 3619,
+        "elapsed_seconds": 0.07206454900733661,
+        "nested_maincold_elapsed_seconds_not_added_again": 26.719915245004813,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-01-cold-outer-readback-01/review.json",
+        "sha256": "4961c2de5226d69b5a382350f2106a50486778e16c9dfbd125951a0aabc7572d",
+        "status": "passed_partial_receipts_only"
+      },
+      "tool_inventory": {
+        "CPython_smoke": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 347,
+          "unique_JSON_receipt_body_count": 8
+        },
+        "Lean_compile": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 5690,
+          "unique_JSON_receipt_body_count": 16
+        },
+        "Lean_version": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 1041,
+          "unique_JSON_receipt_body_count": 16
+        },
+        "actual_structured_files": 29,
+        "bytes": 153636,
+        "observation_elapsed_ms_sum": 1307,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-01-independent-partial-readback-01/readback/actual-retained-proof-tool-receipt-inventory.json",
+        "phase_count_in_these_bodies": 30,
+        "phase_elapsed_ms_sum": 384,
+        "phase_kind_counts": {
+          "model": 8,
+          "unsat_core": 2,
+          "verdict": 10,
+          "version": 10
+        },
+        "receipt_body_counts_not_complete_OS_job_counts": true,
+        "sha256": "f3ed0603c26ed05d64fffe8e38746db07932ff583a8033aff90c7b0da6c15236",
+        "unique_command_receipt_bodies": 40,
+        "unique_retained_SMT_observation_bodies": 10
+      },
+      "whole_pipeline_prover_jobs": null
+    },
+    {
+      "actual_database_count": 2,
+      "actual_native_resource_metrics": {
+        "acquisitions_total": 523,
+        "cancellations_total": 0,
+        "lanes": {
+          "orchestration": {
+            "acquisitions_total": 2,
+            "cancellations_total": 0,
+            "timeouts_total": 0,
+            "wait_count": 2,
+            "wait_seconds_max": 3.839959390461445e-07,
+            "wait_seconds_total": 6.719928933307528e-07
+          },
+          "snapshot_evaluation": {
+            "acquisitions_total": 481,
+            "cancellations_total": 0,
+            "timeouts_total": 1,
+            "wait_count": 482,
+            "wait_seconds_max": 30.000079738005297,
+            "wait_seconds_total": 30.000290348150884
+          },
+          "validation": {
+            "acquisitions_total": 40,
+            "cancellations_total": 0,
+            "timeouts_total": 0,
+            "wait_count": 40,
+            "wait_seconds_max": 9.920040611177683e-07,
+            "wait_seconds_total": 1.7696977010928094e-05
+          }
+        },
+        "recovered_leases_total": 0,
+        "recoveries_total": 0,
+        "releases_total": 523,
+        "saturation_events_total": 1,
+        "timeouts_total": 1,
+        "wait_seconds_max": 30.000079738005297,
+        "wait_seconds_total": 30.000308717120788
+      },
+      "actual_stage_prefix": [
+        {
+          "seconds": 0.5863156109990086,
+          "stage": "native_fixture_prepared"
+        },
+        {
+          "seconds": 1.1783490519883344,
+          "stage": "initial_source_capture_returned"
+        },
+        {
+          "seconds": 4.533339494999382,
+          "stage": "native_proof_publication_returned"
+        },
+        {
+          "seconds": 62.77366649299802,
+          "stage": "native_proof_admission_returned"
+        }
+      ],
+      "all_available_SQL_table_counts": [
+        {
+          "actual_tables_and_views": 26,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-02/native/positive/codebase.duckdb"
+        },
+        {
+          "actual_tables_and_views": 226,
+          "database": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-02/native/positive/private/intent.duckdb"
+        }
+      ],
+      "attempt": "02",
+      "available_SQL_export": {
+        "bytes": 4694443,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-02-independent-partial-readback-01/readback/complete-actual-available-native-SQL.json",
+        "sha256": "1addef737f63b6c09e58c8f09fede54206cb73228edc18118c5f2c3ec79d32d2"
+      },
+      "codebase_IR_row_counts": {
+        "codebase_control.heads": 1,
+        "codebase_control.meta": 1,
+        "codebase_control.operations": 1,
+        "codebase_verification_control.entries": 1,
+        "codebase_verification_control.meta": 1,
+        "codebase_verification_control.operations": 1,
+        "codebase_verification_control.records": 1,
+        "codebase_verification_query.dependencies": 89,
+        "codebase_verification_query.entries": 1,
+        "codebase_verification_query.epochs": 1,
+        "codebase_verification_query.inventories": 1,
+        "codebase_verification_query.keys": 5,
+        "codebase_verification_query.meta": 1,
+        "main.ast_blobs": 7,
+        "main.ast_nodes": 75,
+        "main.calls": 5,
+        "main.diagnostics": 0,
+        "main.effects": 4,
+        "main.imports": 3,
+        "main.interfaces": 11,
+        "main.invalidations": 0,
+        "main.references": 25,
+        "main.scopes": 11,
+        "main.source_files": 7,
+        "main.source_revisions": 1,
+        "main.symbols": 9
+      },
+      "cold": {
+        "actual_checks": 7,
+        "actual_passed": 7,
+        "bytes": 14686340,
+        "errors": [],
+        "outer_timing": {
+          "bytes": 3329,
+          "elapsed_seconds": 15.893313619992114,
+          "exit": 0,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-02-independent-partial-readback-01/closed-attempt.json",
+          "sha256": "fedc5b60a520cab931c48eeb7053bbe0a74c6f7c2dddedf2400a4bb802f39995"
+        },
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-02-independent-partial-readback-01/readback/review.json",
+        "sha256": "c7ca45ed62f79eb9cec2301fbbd61b1a4f6f7d0aab324b33ecf031c9038d7175"
+      },
+      "complete_source": {
+        "actual_NATIVE_SOURCE_count": 30,
+        "before_provenance_original_capture_no_new_host_test": true,
+        "copy_bytes": 483675828,
+        "copy_populations": {
+          "datasets": 8535,
+          "kit": 1341,
+          "source": 9601
+        },
+        "extra_declared_dependency_names": [
+          "benchmarks.agent_supervisor.container_coding.run_finite_proof_query_worker_docker",
+          "benchmarks.agent_supervisor.container_coding.finite_repository_worker_experiment",
+          "ipfs_accelerate_py.agent_supervisor.control.profile_authority",
+          "ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters",
+          "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile",
+          "ipfs_datasets_py.logic.software_verification.pipeline",
+          "ipfs_datasets_py.logic.software_verification.source_adapters",
+          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler"
+        ],
+        "extra_declared_dependency_pin_count": 8,
+        "generation_cid": "sha256:04faf155359a37678ae99bf926e4432680187469351acf661adb53f7358ce609",
+        "source_bytes": 588535783,
+        "source_declared_count": 30,
+        "source_files": 22897
+      },
+      "exact_final_timeout_observation_retained": false,
+      "explicit_main_artifact_presence": {
+        "execution-scope.json": false,
+        "native-lifecycle.json": false,
+        "private/intent.coordination.duckdb": false,
+        "private/intent.execution.duckdb": false,
+        "private/launch/state/proof-query-dispatch-broker-close-receipt.json": false,
+        "private/launch/state/stop-receipt.json": false,
+        "private/post-birth-control/post-birth-control.json": false,
+        "result.json": false
+      },
+      "global_fit_dense_model_training_and_OS_process_counts": null,
+      "historical_sample_not_exact_final_timeout_cause": true,
+      "main_birth_ACK_or_STOP_qualified": false,
+      "native_and_host_lease_waiter_drain": true,
+      "native_driver": {
+        "actual_exit": 1,
+        "actual_own_container_removed": true,
+        "bytes": 9341,
+        "nested_elapsed_seconds": 129.90622084699862,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/docker-positive-02/container-execution-final.json",
+        "sha256": "b17f424d35210987b6beef48830731bfbf639d7c4c9c5e7229209d1a2b902511"
+      },
+      "native_historical_refusal": {
+        "backoff_until": 1791083793.6162615,
+        "decision_cycle_at": 1791083791.6162615,
+        "demand": {
+          "additional_memory_mb": 1024,
+          "additional_process_slots": 1,
+          "pid_tasks_required": 48,
+          "root_reserved_memory_mb": 0,
+          "root_reserved_process_slots": 0
+        },
+        "error_type": null,
+        "gate": "envelope",
+        "historical": true,
+        "lane": "snapshot_evaluation",
+        "parent_lease_id": null,
+        "proof_memory_headroom_mb": 1639,
+        "reason": "proof_memory_stall",
+        "request_id": "codebase-ir:prepare",
+        "sample": {
+          "available_memory_mb": 7901,
+          "available_pid_tasks": 499,
+          "cpu_slots": 12,
+          "cpu_stall_percent": 14.21,
+          "io_stall_percent": 0.31,
+          "memory_stall_percent": 10.31,
+          "pid_task_limit": 512,
+          "total_memory_mb": 8192
+        },
+        "sample_contract": "max-host-visible-cgroup-avg10; memory/full,cpu/some,io/full; optional-psi-zero-fallback",
+        "schema": "proof-resource-admission-refusal@1",
+        "sequence": 524,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_stall_percent": 2.0
+        },
+        "waiter_id": "3331c72f08f94569bd2a4f7f06868d6b"
+      },
+      "native_outer": {
+        "actual_elapsed_seconds": 142.07606821598893,
+        "actual_exit": 1,
+        "bytes": 474,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/native-positive-02-outer-attempt.json",
+        "sha256": "010b352677357202c891ffdeeafc6e3081fcd562dd87eff4d16d031160e10685"
+      },
+      "native_route_qualified": false,
+      "native_status": "declined_unqualified",
+      "original_thresholds": {
+        "proof_backoff_seconds": 2.0,
+        "proof_cpu_stall_percent": 50.0,
+        "proof_io_stall_percent": 10.0,
+        "proof_memory_stall_percent": 2.0,
+        "proof_safety_enabled": true
+      },
+      "proof_and_token_validation_scope": {
+        "SMT_Lean_and_CPython_receipt_bodies_retained_not_complete_prover_job_census": true,
+        "current_conditional_formal_proof_validation_performed_by_this_partial_reader": false,
+        "current_public_token_signature_validation_performed_by_this_partial_reader": false,
+        "full_SQL_catalogs_and_raw_available_rows_independently_read_only": true,
+        "old_positive_signature_or_formal_qualification_transferred": false
+      },
+      "separate_cold_outer_custody": {
+        "bytes": 3618,
+        "elapsed_seconds": 0.0754612390010152,
+        "nested_maincold_elapsed_seconds_not_added_again": 15.893313619992114,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-02-cold-outer-readback-01/review.json",
+        "sha256": "0b6e45598500d6d0f58cc888272e84245d29e3faac5ee4bfecedb09102e17cd9",
+        "status": "passed_partial_receipts_only"
+      },
+      "tool_inventory": {
+        "CPython_smoke": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 47,
+          "unique_JSON_receipt_body_count": 2
+        },
+        "Lean_compile": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 934,
+          "unique_JSON_receipt_body_count": 4
+        },
+        "Lean_version": {
+          "all_retained_returncodes_zero": true,
+          "elapsed_ms_sum_in_these_bodies": 152,
+          "unique_JSON_receipt_body_count": 4
+        },
+        "actual_structured_files": 17,
+        "bytes": 98880,
+        "observation_elapsed_ms_sum": 949,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-positive-02-independent-partial-readback-01/readback/actual-retained-proof-tool-receipt-inventory.json",
+        "phase_count_in_these_bodies": 30,
+        "phase_elapsed_ms_sum": 392,
+        "phase_kind_counts": {
+          "model": 8,
+          "unsat_core": 2,
+          "verdict": 10,
+          "version": 10
+        },
+        "receipt_body_counts_not_complete_OS_job_counts": true,
+        "sha256": "aade393d4f56d4c971ab91eeab433ec0828d8ecddd062a93af70a14681dfe4e5",
+        "unique_command_receipt_bodies": 10,
+        "unique_retained_SMT_observation_bodies": 10
+      },
+      "whole_pipeline_prover_jobs": null
+    }
+  ],
+  "new_baseline_or_old_positive_qualification_transfer": false,
+  "official_markdown_pins": [
+    {
+      "bytes": 12627,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_proof_query_post_birth_controls_and_host_expiry_qualification.md",
+      "sha256": "cb5567b03f4537eac3c8fc3a0d544e619243d3f5c4cbd37590526d9efaf78b50"
+    },
+    {
+      "bytes": 17167,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_POST_BIRTH_CONTROLS_AND_HOST_EXPIRY_ADDENDUM.md",
+      "sha256": "57edbb1e36562514436f4c2d0dceb8b0bbf1cdf29fcb332e66a004e8e3046a5f"
+    }
+  ],
+  "schema": "finite-post-birth-controls-and-host-expiry-official-review@1",
+  "source_and_closed_evidence_inputs": {
+    "capture_outer": {
+      "bytes": 458,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/capture-05-outer-attempt.json",
+      "sha256": "197b0def9f91355cc9a39958764525161ed5aed2da80afce0fb5bf376eb8fd4b"
+    },
+    "closed_cost_ledger": {
+      "bytes": 121134,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/final-ledger-01.json",
+      "sha256": "15698e750f0eb2b866b2ef6b3772b3d70b212c853b2670f1bc86353e03f72d0f"
+    },
+    "collector_outer_receipt": {
+      "bytes": 4492,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/accounting-preparation-01/collector-invocation-01/closed-attempt.json",
+      "sha256": "58d7db8d5c4c286ae5295cf402a27844fcbaf350b1480249993736d961458884"
+    },
+    "failed_native_summary": {
+      "bytes": 48274,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/failed-native-partial-readback-summary-02/summary.json",
+      "sha256": "afaec94999bbdb81b820747f6e3998a82c263aa5af326fcd9f95042597887a23"
+    },
+    "host_cold_outer": {
+      "bytes": 2302,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-independent-readback-01/closed-attempt.json",
+      "sha256": "87ef1c2810837ddda492b37eb2a7c702ff93470a01bbe0372b5e2c4e9b8c2f02"
+    },
+    "host_control_outer": {
+      "bytes": 709,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-expiry-run-01/closed-attempt.json",
+      "sha256": "e4cd85852be66d1ee9b221f4856499f6ad8029a29610bf38c446a9a148cf0747"
+    },
+    "host_expiry_independent_review": {
+      "bytes": 8034,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/host-real-clock-independent-readback-01/readback/review.json",
+      "sha256": "b97dc8456f275fc01141511d6c4f5cc165201ee41306591f1a5bc232b4632a26"
+    },
+    "source_only_review": {
+      "bytes": 8370,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/independent-fixture-source-review-01/review.json",
+      "sha256": "a69f1c178569ee26e735d9bddbf7f7d36024b8ad0b70d430178022f19ccb476d"
+    }
+  },
+  "source_capture": {
+    "actual_outer_seconds": 96.60761346199433,
+    "atomic_whole_checkout_or_write_origin_attestation": false,
+    "bytes": 588535783,
+    "explicit_omissions": 1799,
+    "files": 22897,
+    "generation_cid": "sha256:04faf155359a37678ae99bf926e4432680187469351acf661adb53f7358ce609",
+    "manifest": {
+      "bytes": 25854591,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/source-generation-05/generation-manifest.json",
+      "sha256": "bfc4cb6b070dde82d74fda42160e99e8ee1776177c15177971677dff26b9f03b"
+    },
+    "old_selected_test_nodes_executed": false,
+    "original_capture_before_map": {
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/source-generation-05-originalcapture-before.json",
+      "provenance": "Full original capture before native execution; no new host tests.",
+      "sha256": "83fb10e2f5318e0acab8a33dcd63280c156d587071522f25ebe2cc944ebc00b1"
+    },
+    "outer": {
+      "bytes": 458,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/capture-05-outer-attempt.json",
+      "sha256": "197b0def9f91355cc9a39958764525161ed5aed2da80afce0fb5bf376eb8fd4b"
+    },
+    "whole_target_formal_CodebaseIR_conversion": false
+  },
+  "source_only_controls": {
+    "checks_passed": 13,
+    "default_all_contains_new_cases": false,
+    "fixture_sources": [
+      {
+        "AST_parse_compile_without_execution": true,
+        "bytes": 99954,
+        "changed_existing_definitions": [
+          "run",
+          "main"
+        ],
+        "live_equals_retained_after_review": true,
+        "live_equals_retained_before_review": true,
+        "live_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py",
+        "new_definitions": [
+          "_post_birth_kernel_identity",
+          "_post_birth_gone",
+          "_post_birth_native_snapshot",
+          "_post_birth_worktree_effects",
+          "_PostBirthFixtureError",
+          "_PostBirthControl",
+          "_validate_post_birth_control"
+        ],
+        "original_pin": {
+          "bytes": 66780,
+          "sha256": "aa852416c23538398b65171366d271e002d6d7f503f5ca86a85a4001020c5760"
+        },
+        "original_source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/fixture-preparation-01/finite_proof_query_worker_experiment.before.py",
+        "removed_existing_definitions": [],
+        "retained_source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/fixture-preparation-02/finite_proof_query_worker_experiment.after.py",
+        "sha256": "b67744389148c444d8dfd1dc3089c0a05205d41630d1bafd3d7571653742aa35"
+      },
+      {
+        "AST_parse_compile_without_execution": true,
+        "bytes": 24842,
+        "changed_existing_definitions": [
+          "run"
+        ],
+        "live_equals_retained_after_review": true,
+        "live_equals_retained_before_review": true,
+        "live_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/run_finite_proof_query_worker_docker.py",
+        "new_definitions": [],
+        "original_pin": {
+          "bytes": 24290,
+          "sha256": "d95df3a48741c054052d8c785bb0a23353faf22261fcd09017524be67d931742"
+        },
+        "original_source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/fixture-preparation-01/run_finite_proof_query_worker_docker.before.py",
+        "removed_existing_definitions": [],
+        "retained_source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/fixture-preparation-02/run_finite_proof_query_worker_docker.after.py",
+        "sha256": "5b7ce5f7cac3bbbe833d5c283f5a0866a358f4a668b5c743825b32ca13b440df"
+      }
+    ],
+    "review": {
+      "bytes": 8370,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-post-birth-controls-20261004-01/independent-fixture-source-review-01/review.json",
+      "sha256": "a69f1c178569ee26e735d9bddbf7f7d36024b8ad0b70d430178022f19ccb476d"
+    },
+    "review_facts": {
+      "ACK_drop": "Only broker-thread isolated actual_isolated_birth_ack invokes original real parser on recv-only tee; retains original header/body and live kernel witnesses before application exception. No packet-loss, synthetic frame, successful broker ACK-consumption or supplied lease claim.",
+      "authority": "Original default real clock, full8tuple/token/completion guards and SQL transaction/process locks remain unchanged, strict5000ms ACK admission unchanged; original95s client and Docker resource limits unchanged.",
+      "callback_error": "Runs original genuine isolated close_handoff inside original native transaction, retains immutable native lease and decoded original validated result plus actual kernel witnesses, writes explicitly owner-UID1000 marker, then deliberately raises before guard postcheck/release. Raw wire ACK is not observed and remains null.",
+      "cleanup": "Allocation map initialized before START; post-control preSTOP helper/event errors are caught so native STOP is attempted. Runtime close and hook restoration run in nested finally after STOP. Actual STOP/kernel birth disappearance/socket/resource assertions must be established by future matched native execution.",
+      "completion": "Actual task, execution attempt, coordinator completion rows and raw Portal body receipt/operation retained. Legitimate database_attempt_admitted receipt is distinct from database_complete. Literal operation absence is not proof that an arbitrary unknown receipt is valid. Canonical no-publication separately checked.",
+      "effects": "External owner marker and actual worktree status/diff/file bytes retained; UNKNOWN settlement does not imply no effects, child never entered, or general callback rollback. Live worktree retention explicitly does not claim an atomic snapshot or write-origin attestation.",
+      "original_cases": "Existing helper/class AST definitions unchanged; run/main additions reviewed and original positive/prebirth routes retained. Source review is not a runtime regression-test claim.",
+      "raw_native_rows": "Before-guard coordination export and after-STOP closed coordination/execution schemas/tables/indexes precede control summaries. Active control SQL is deliberately not reentered; owner cold reader must export the full third control DB after fixture closure."
+    },
+    "runtime_qualification": false,
+    "selected_unchanged_authority_producers": [
+      {
+        "bytes": 321499,
+        "original_generation03_pin_equal": true,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+        "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+      },
+      {
+        "bytes": 64741,
+        "original_generation03_pin_equal": true,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+        "sha256": "ef57a607fbe19806be72fc103747268d28dc9bf3427ffde4b7c8470c4b13dbc4"
+      },
+      {
+        "bytes": 3185922,
+        "original_generation03_pin_equal": true,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "45f64db38f63bd78b58a225f062dc00d446ec362f45316d7e4ce6b03119d4fcd"
+      }
+    ],
+    "selectors": [
+      "child-post-birth-callback-error",
+      "child-post-birth-ack-drop"
+    ]
+  },
+  "status": "source_controls_reviewed_host_expiry_qualified_two_native_failures_retained"
+}

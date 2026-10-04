@@ -1,0 +1,1191 @@
+{
+  "decisions": [
+    "Reuse existing structural/model/corpus/evidence owners; proposed joinedcatalog is derived discovery/planning only.",
+    "Preserve cohort-bound 8D inference; add separately versioned batched/resident inventory inference and sealed shards.",
+    "8D feature reconstruction is current; 384D source-conditioned semantic decoding remains proposed and uses an independently selected latent width/update protocol.",
+    "Freeze source, instruction, model/off identity, domains, keys, evidence, query pages/frontier, operations and optional lake snapshot in one planning generation.",
+    "Exact proof eligibility follows source correspondence, full keys, assumption/domain policy and evidence custody, not retrieval similarity or CID byte integrity alone.",
+    "Current local parallel/indexed optimizations default on with opt-outs; public integration, remote delivery and collectives remain unqualified.",
+    "Next crossing is current requirement/property matching through independent admission, native edit and rechecked/rematched successor; model-off is the control."
+  ],
+  "documentation_pins": [
+    {
+      "bytes": 149825,
+      "observed_utc": "2026-10-02T05:43:49.216444+00:00",
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "2f0e1c66496ecf2f2e95ae083d6968e6112afb4bdb8a8cc0403ba541f2bf7205"
+    },
+    {
+      "bytes": 54334,
+      "observed_utc": "2026-10-02T05:43:49.216555+00:00",
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "sha256": "a4221c477dd8508cfb607f71c8023c2dc1e8d91beabd024edaf270d57c3c6563"
+    },
+    {
+      "bytes": 56415,
+      "observed_utc": "2026-10-02T05:43:49.216654+00:00",
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "3b96b6721219ac730501a4ad44244cfa798f4e3a1692a48da2b63af222f0e273"
+    }
+  ],
+  "identity_scope": "Selected ending per-file observations in a concurrently edited workspace; not an atomic checkout capture, transitive environment attestation or rerun of retained experiments.",
+  "local_links": [
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "repository_proof_index_and_codebase_ir.todo.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "repository_proof_index_and_codebase_ir.comprehensive_refresh_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md#next-integration-deliverable"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_ir_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_decoder_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "repository_proof_index_and_codebase_ir.followup_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_IR_FOUNDATION.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/datasets-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/accelerate-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/benchmark.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-integer-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/checked_integer_codebase.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_IR_FOUNDATION.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-conditional-verification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-domain-index-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/conditional_codebase_evidence.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "TERMINAL_BENCH_INTENT_PLANNING_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "INCREMENTAL_PROOF_SEALER_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "PROOF_GROUNDED_IR_LEARNING_SUCCESSOR_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-batch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/checked_integer_batch.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-feature-qualification-20261002/benchmark.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_FEATURE_TRAINING.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "repository_proof_index_and_codebase_ir.roadmap_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_IR_FOUNDATION.md#train-source-bound-programir-feature-generations"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/source-training-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/runtime-targets-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_federated_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-federation-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-federation-qualification-20261002/codebase-federation-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-federation-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_federated_sync.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_dispatched_federation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_federated_artifacts.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/p2p_tasks/codebase_federated_dispatch.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-dispatch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/p2p_tasks/codebase_federated_history.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_indexed_dispatch_recovery.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-indexed-recovery-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_indexed_dispatched_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_dispatched_federation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_resources.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-scaling-qualification-20261002/scaling.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-scaling-qualification-20261002/datasets-integration.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-tlc-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-isabelle-qualification-20261002/adapter-corrected.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md#release-integration-before-expansion"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_repository_preview_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_service_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_adaptation_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_intent_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../agent_supervisor/terminal_codebase_repository_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../../artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/REPORT.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../../artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/independent-audit.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/tests/integration/logic/software_verification/test_source_adapter_snapshot_grounding.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/knowledge_graphs/adapters/duckdb_code_evidence.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_incremental_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_modality_contracts.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_v2.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_source_units.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_continuation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_logic_projection.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_lean.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/common/canonical_cache_key.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/common/proof_repository.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/query.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/verifier.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/common/duckdb_proof_store.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/duckdb_repository.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/duckdb_control/source_corpus_catalog.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/ducklake/autoencoder_history.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/ducklake/source_corpus.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/code_proof_query.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/incremental_verification.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/intent_codebase_matching.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated_update_codec.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_training_sync.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_codebase_indexed_planning.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_continuation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated_codebase.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/docs/autoencoders/control_plane_and_sync.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/mcp_server/tools/p2p/native_p2p_tools.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_training_sync.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/applicability.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/backends/tla/execution_v2.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/hammers/semantic_routing.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_ducklake.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_publication.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../../artifacts/codebase_ir_terminal_bench/qualification-20261001-04/supervisor/repository/.supervisor-instruction.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_initial_context.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_grammar_v2.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../benchmarks/agent_supervisor/container_coding/INDEXED_ABLATIONS.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/benchmarks/bench_resource_aware_proving.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "target": "../../../ipfs_datasets/benchmarks/bench_proving_real_stress.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "repository_proof_index_and_codebase_ir.todo.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "repository_proof_index_and_codebase_ir.comprehensive_refresh_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "repository_proof_index_and_codebase_ir.roadmap_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_repository_preview_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_service_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_codebase_adaptation_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "repository_proof_index_and_codebase_ir.integration_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_service_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_codebase_adaptation_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-tlc-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-isabelle-qualification-20261002/adapter-corrected.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-feature-qualification-20261002/benchmark.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_FEATURE_TRAINING.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_logic_requirements.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "target": "../agent_supervisor/terminal_repository_preview_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.incremental_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.roadmap_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.comprehensive_refresh_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md#next-integration-deliverable"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md#release-integration-before-expansion"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_repository_preview_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_service_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.finite_service_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_adaptation_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.planning_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_ir_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_decoder_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_intent_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_repository_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-conditional-verification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-domain-index-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../agent_supervisor/terminal_codebase_finite_qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.finite_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-scaling-qualification-20261002/scaling.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-scaling-qualification-20261002/datasets-integration.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-tlc-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/shared-prover-isabelle-qualification-20261002/adapter-corrected.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "repository_proof_index_and_codebase_ir.followup_review.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_IR_FOUNDATION.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/datasets-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/accelerate-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/benchmark.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-current-qualification-20261001/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-integer-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-batch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-feature-qualification-20261002/benchmark.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/docs/software_contracts/CODEBASE_FEATURE_TRAINING.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/source-training-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-source-training-qualification-20261002/runtime-targets-tests.xml"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_federated_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-federation-qualification-20261002/execution.json"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-federation-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_federated_sync.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_dispatched_federation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_federated_artifacts.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../ipfs_accelerate_py/p2p_tasks/codebase_federated_dispatch.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-dispatch-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../ipfs_accelerate_py/p2p_tasks/codebase_federated_history.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_indexed_dispatch_recovery.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-indexed-recovery-qualification-20261002/qualification.md"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_indexed_dispatched_training.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_dispatched_federation.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_resources.py"
+    },
+    {
+      "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "target": "../../../ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/qualification.md"
+    }
+  ],
+  "official_sources_checked": [
+    {
+      "observed_date": "2026-10-02",
+      "role": "Native single-process ownership and client-server Quack access are distinct.",
+      "url": "https://duckdb.org/docs/current/connect/concurrency"
+    },
+    {
+      "observed_date": "2026-10-02",
+      "role": "Catalog backend choice for local or multi-client deployment.",
+      "url": "https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database"
+    },
+    {
+      "observed_date": "2026-10-02",
+      "role": "Owner-side identity enforcement remains required.",
+      "url": "https://ducklake.select/docs/stable/duckdb/advanced_features/constraints"
+    },
+    {
+      "observed_date": "2026-10-02",
+      "role": "DuckLake history is not the native hot exact index.",
+      "url": "https://ducklake.select/docs/stable/duckdb/unsupported_features"
+    },
+    {
+      "observed_date": "2026-10-02",
+      "role": "Bind actual catalog and snapshot identities for historical queries.",
+      "url": "https://ducklake.select/docs/stable/duckdb/usage/time_travel"
+    }
+  ],
+  "peer_review_domains": [
+    "source_scanning_model_storage_and_cache",
+    "instruction_matching_planner_admission_and_successors",
+    "independent_architectural_consistency"
+  ],
+  "recorded_utc": "2026-10-02T05:43:49.216232+00:00",
+  "retained_evidence_distinctions": {
+    "finite_capacity_adaptation": "The concurrent adaptation qualification documentation appeared during this review and was reread. Its 122 focused cases, advisory features, mathematical model theorem and held capacity retain their own scopes; facts remain fresh finite observations, admission remains review-only and reservation is released before return.",
+    "historical_reviews": "Older review JSON and execution receipts retain their recorded identities; this refresh does not rewrite them or claim their doc hashes are current.",
+    "isabelle_bundle": "The aggregate qualification.md link was absent at final review. Updated links reference actual adapter-corrected.xml evidence and explicitly preserve pending aggregate report status rather than an unavailable report.",
+    "local_parallel_training": "170 distinct retained passing cases; small local 8D whole-round timing, actual overlap, cancellation/restart; no inference or fleet performance claim."
+  },
+  "retained_input_pins": [
+    {
+      "bytes": 5673,
+      "observed_utc": "2026-10-02T05:43:49.216720+00:00",
+      "path": "external/ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/execution.json",
+      "sha256": "82e9ed6ea90441d8121e702cd4514ae7eee4d97278931eeb734b3afc5e7da288"
+    },
+    {
+      "bytes": 10536,
+      "observed_utc": "2026-10-02T05:43:49.217221+00:00",
+      "path": "external/ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/qualification.md",
+      "sha256": "abbc773359f0c9d8f2b4dd57cc95004adc46bbdd42078ebc3fcc06dc9341e62a"
+    },
+    {
+      "bytes": 48308,
+      "observed_utc": "2026-10-02T05:43:49.217750+00:00",
+      "path": "external/ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/test-summary.json",
+      "sha256": "6c8bc6cbf320ffe22e5682aaa0ee95e40a31596949f4135b28a2d41045478595"
+    },
+    {
+      "bytes": 11093,
+      "observed_utc": "2026-10-02T05:43:49.218260+00:00",
+      "path": "external/ipfs_datasets/workspace/codebase-parallel-dispatch-qualification-20261002/verification.json",
+      "sha256": "c53af9915190e862193f008603c255b7f5f4f053479b5798b69d10ddec67b9f5"
+    },
+    {
+      "bytes": 13254,
+      "observed_utc": "2026-10-02T05:43:49.218735+00:00",
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.roadmap_review.json",
+      "sha256": "2b9f3b4fb53d7498ba4f0f9dcfbefa7abe6445a6a6ca2636f00dfb57cc2ecb6d"
+    },
+    {
+      "bytes": 10677,
+      "observed_utc": "2026-10-02T05:43:49.219242+00:00",
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.integration_review.json",
+      "sha256": "f401f1b16325229a12a6f5e90e7286a0b3de153823bba398a6cf88de84b69500"
+    },
+    {
+      "bytes": 8753,
+      "observed_utc": "2026-10-02T05:43:49.219736+00:00",
+      "path": "external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_adaptation_qualification.md",
+      "sha256": "2b759c9dafa3e75690bc739931c6bd82f2a4b64fd67d87c3c4e876b9b1306e7a"
+    },
+    {
+      "bytes": 553,
+      "observed_utc": "2026-10-02T05:43:49.220059+00:00",
+      "path": "external/ipfs_datasets/workspace/shared-prover-isabelle-qualification-20261002/adapter-corrected.xml",
+      "sha256": "3a1f444bccaac8880abe8bec95ecacef33798627dfbd3d95d2f6347751dec974"
+    }
+  ],
+  "schema": "repository-proof-index-codebase-ir-comprehensive-refresh-review@1",
+  "scope": "Current-source and retained-evidence read-only review plus architecture plan, roadmap and backlog documentation updates. No new repository-under-test execution, inference, fitting, proving, native database opening or service activation.",
+  "source_pins": [
+    {
+      "bytes": 28715,
+      "observed_utc": "2026-10-02T05:43:49.182144+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "bytes": 32144,
+      "observed_utc": "2026-10-02T05:43:49.182584+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+    },
+    {
+      "bytes": 29578,
+      "observed_utc": "2026-10-02T05:43:49.182735+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+    },
+    {
+      "bytes": 47987,
+      "observed_utc": "2026-10-02T05:43:49.182872+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+    },
+    {
+      "bytes": 7385,
+      "observed_utc": "2026-10-02T05:43:49.183245+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_indexed_dispatched_training.py",
+      "sha256": "b255bf3784b0d3309402c66ca59987ca9d4b1be34671a5bfe925caa8b19b1d98"
+    },
+    {
+      "bytes": 23665,
+      "observed_utc": "2026-10-02T05:43:49.183627+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_dispatched_federation.py",
+      "sha256": "bfe051cbcfb2ebeed7cfdab802748af3a8c8f92890917843f8c751dc5d1660f8"
+    },
+    {
+      "bytes": 4864,
+      "observed_utc": "2026-10-02T05:43:49.183722+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_parallel_resources.py",
+      "sha256": "634a6a2e46b1e4301f20c4d8e4bdbab357449ab00905a16e9f87f199cac4e185"
+    },
+    {
+      "bytes": 42244,
+      "observed_utc": "2026-10-02T05:43:49.184125+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_verification.py",
+      "sha256": "9d735f56c3624dfaf9bd3ffbabc107ea6118057bfc85d8787b13077382cc6eb3"
+    },
+    {
+      "bytes": 28416,
+      "observed_utc": "2026-10-02T05:43:49.184534+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py",
+      "sha256": "f930724d5e7e939605a83e8e453c28827595890bbff5ba191bfe68bae775c080"
+    },
+    {
+      "bytes": 31360,
+      "observed_utc": "2026-10-02T05:43:49.184658+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_model_lean.py",
+      "sha256": "ab1e5bba2c9b63767068b5f5709af09145efd30e730c40d2474bb7143e369217"
+    },
+    {
+      "bytes": 39109,
+      "observed_utc": "2026-10-02T05:43:49.185024+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py",
+      "sha256": "1a8041f0bee49eaa788d37c80e757ffd4abf4a1b9242e3159bb9c878094acf71"
+    },
+    {
+      "bytes": 17103,
+      "observed_utc": "2026-10-02T05:43:49.185401+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_ducklake.py",
+      "sha256": "0da701042c3efe8e5de383c04f90af7df125803d870b08872f7766c0b46aa949"
+    },
+    {
+      "bytes": 3468,
+      "observed_utc": "2026-10-02T05:43:49.185492+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_384.py",
+      "sha256": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7"
+    },
+    {
+      "bytes": 29936,
+      "observed_utc": "2026-10-02T05:43:49.185812+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+    },
+    {
+      "bytes": 58156,
+      "observed_utc": "2026-10-02T05:43:49.185957+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+    },
+    {
+      "bytes": 10342,
+      "observed_utc": "2026-10-02T05:43:49.186308+00:00",
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated_update_codec.py",
+      "sha256": "0a8d97306ca72f2ed8c9ee08c4422d5f0e5210d1318a3e99013b4c98108c12ee"
+    },
+    {
+      "bytes": 26435,
+      "observed_utc": "2026-10-02T05:43:49.186419+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d"
+    },
+    {
+      "bytes": 15118,
+      "observed_utc": "2026-10-02T05:43:49.186507+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "33ae420f26b6645da4e1328954ece93da22831ca538dc95cbb1c8350b57efc6b"
+    },
+    {
+      "bytes": 26795,
+      "observed_utc": "2026-10-02T05:43:49.186905+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/conditional_codebase_evidence.py",
+      "sha256": "4de302b415bdf15862819558ca24e1255d946a5f61c91655b0560169cb6e3a68"
+    },
+    {
+      "bytes": 28822,
+      "observed_utc": "2026-10-02T05:43:49.187008+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_codebase.py",
+      "sha256": "18be1fa7562fc60f2ecb1814f289db8ea5f5e376339376c04d0fb73cc573a226"
+    },
+    {
+      "bytes": 19336,
+      "observed_utc": "2026-10-02T05:43:49.187095+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_preview.py",
+      "sha256": "537401aff19067c0d0462b30b1878e164596d1508d81e3bb43340589ebed7a56"
+    },
+    {
+      "bytes": 18224,
+      "observed_utc": "2026-10-02T05:43:49.187179+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_capacity_preview.py",
+      "sha256": "27acde76095e6e424512a8327038cfcea20df1fec4ca47c7517c406bb928aff1"
+    },
+    {
+      "bytes": 26038,
+      "observed_utc": "2026-10-02T05:43:49.187278+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py",
+      "sha256": "651df2ce0489987a18a104cca9d5aecccf3dc27f1fe34e5207e0d0dcddf9d034"
+    },
+    {
+      "bytes": 110040,
+      "observed_utc": "2026-10-02T05:43:49.187463+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "5f0d119aaa46cd12705cbaeecff64fc5cee250341ecc5230291c901d2cf67a4d"
+    },
+    {
+      "bytes": 5309,
+      "observed_utc": "2026-10-02T05:43:49.187792+00:00",
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_context.py",
+      "sha256": "d293d3177366ab5b546f43555889f9fb6e5af04bc05347d3297c35be9f3836dd"
+    }
+  ],
+  "status": "comprehensive_plan_reconciled_all_32_production_acceptance_exits_open",
+  "validation": {
+    "local_document_links": 225,
+    "markdown_anchors_checked": 5,
+    "native_databases_opened": 0,
+    "new_checker_invocations": 0,
+    "new_model_steps": 0,
+    "new_tests_executed": 0,
+    "preserved_parallel_producer_file_hashes_checked": 16,
+    "production_exits_closed": 0,
+    "trailing_whitespace": false,
+    "unclosed_code_fences": 0,
+    "unique_ordered_production_task_ids": 32
+  }
+}

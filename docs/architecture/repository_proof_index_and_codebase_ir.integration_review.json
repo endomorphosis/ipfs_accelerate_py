@@ -1,0 +1,222 @@
+{
+  "backlog_task_count": 32,
+  "concurrent_change_note": "PLAN and todo received additive indexed-history/parallel-headroom qualification text during this review. It was preserved; aggregate ending hashes include those concurrent additions. This review does not claim authorship or fresh execution of them.",
+  "document_changes": [
+    {
+      "added_lines": 38,
+      "after_sha256": "9c3ab8f3e478a9a14746e038d80d006b17f78a000f276632b3b09a8ed2f8beaa",
+      "before_sha256": "ac3eb983885166683d5c10ca0b847c7521d03fb20b24f2b52825325a739a21e3",
+      "concurrent_document_additions_preserved": true,
+      "path": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "preservation": "insertions_only",
+      "removed_lines": 0
+    },
+    {
+      "added_lines": 250,
+      "after_sha256": "3107575660a0abecfedce3ab6555b866e5c1a89901605eddcb3d49717d3fe77a",
+      "before_sha256": "4896e229bf2144dd1552e30263b1fc6bd2440bf9bbb922164ca67f85976f7213",
+      "concurrent_document_additions_preserved": false,
+      "path": "REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "preservation": "insertions plus canary terminology clarification",
+      "removed_lines": 2
+    },
+    {
+      "added_lines": 24,
+      "after_sha256": "83bd7de049c7060f028a9e205107b4df4bbb8ee067fe3ea707b0e7eff9a3eae2",
+      "before_sha256": "b97ac4ebe0072be5c25501a0860a436c20f9c0c47ec70eeb7669b7b629f332c5",
+      "concurrent_document_additions_preserved": true,
+      "path": "repository_proof_index_and_codebase_ir.todo.md",
+      "preservation": "insertions_only",
+      "removed_lines": 0
+    }
+  ],
+  "documentation_validation": {
+    "backlog_ids_preserved": true,
+    "local_link_targets_resolved": 199,
+    "missing_local_targets": [],
+    "model_or_prover_runs_started": false,
+    "software_tests_run": false,
+    "unique_backlog_tasks": 32
+  },
+  "external_primary_sources": [
+    "https://duckdb.org/docs/current/connect/concurrency",
+    "https://ducklake.select/docs/stable/duckdb/advanced_features/constraints",
+    "https://ducklake.select/docs/stable/duckdb/unsupported_features",
+    "https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database"
+  ],
+  "independent_review": {
+    "planner_contracts": "reviewed; existing task mapping and production limits preserved; clarified encoded provider token accounting",
+    "proof_cache_contracts": "reviewed; clarified per-file ingestion bound and no evidence promotion through key translation",
+    "training_contracts": "reviewed; clarified input width, exact ridge refit versus optimizer resume, and acceptance canaries versus final tests"
+  },
+  "production_tasks_closed_by_review": 0,
+  "proposed_new_profile": "codebase_ir/source_conditioned_384_v1",
+  "reviewed_at_utc": "2026-10-02T04:46:03.157875+00:00",
+  "schema": "repository-proof-codebase-integration-plan-review/v1",
+  "scope": "Selected local source inspection and additive planning update; no new training, prover, benchmark, service activation, model promotion or publication. Selected file digests are ending observations, not an atomic working-tree capture.",
+  "selected_sources_changed_after_inspection": [],
+  "sources": {
+    "released_accelerate": {
+      "checkout": "/tmp/ir-release-accelerate-20261001",
+      "files": [
+        {
+          "bytes": 109558,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+          "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f"
+        },
+        {
+          "bytes": 80622,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+          "sha256": "08fdf045f68160b127b0e3a94ce2cfa045461bc04cc6c07d8beb247ce0881047"
+        },
+        {
+          "bytes": 149605,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py",
+          "sha256": "6482376fe353704397470d2495b745cdc086b40652b832f88f24e05e048d7f6f"
+        },
+        {
+          "bytes": 82569,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_directed_retrieval.py",
+          "sha256": "470d2982c34d4b1a9c98ad3183b5076ef26bbaf7328bbee8e606d5a475c1da61"
+        },
+        {
+          "bytes": 52658,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+          "sha256": "a35c5c5fddc906499845cdcfda61bb5e0e0277d1bce07a52a2e794ebdf0009e9"
+        },
+        {
+          "bytes": 27682,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "sha256": "d43e9e7bd35fb7487b522c512eec9e4c0b5938b83d8a448bee4f0520151084b5"
+        },
+        {
+          "bytes": 32888,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+          "sha256": "69eb2b9d02f4493ea93ed412593a4428ed55149260ba51e516bd4efc64db31a1"
+        },
+        {
+          "bytes": 17289,
+          "git_status": "tracked_clean",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/scalar_repair_advisor.py",
+          "sha256": "538247172c3cb3d655f6e14d5588a344dca49ae0e711e34a82a722dba8ffa69b"
+        },
+        {
+          "bytes": 3761,
+          "git_status": "tracked_clean",
+          "path": "docs/agent_supervisor/evidence/scalar-repair-supervision-20261002/summary.json",
+          "sha256": "67aac0697ebba1fb56afbff2f9d27396b869993ca3b8833856fad7b64d3ad2c7"
+        }
+      ],
+      "head": "6ab718bf96126c0f78d60d322cf86c6de74eac72"
+    },
+    "released_datasets": {
+      "checkout": "/tmp/ir-release-datasets-20261001",
+      "files": [
+        {
+          "bytes": 16522,
+          "git_status": "tracked_clean",
+          "path": "ipfs_datasets_py/logic/formalization/autoencoder/distributed_384/runner.py",
+          "sha256": "d418339deea5e35ff9152a7026ebc7f73ff1f47d14ae554aa0399fae56d46170"
+        },
+        {
+          "bytes": 19759,
+          "git_status": "tracked_clean",
+          "path": "ipfs_datasets_py/logic/formalization/autoencoder/distributed_384/local_store.py",
+          "sha256": "fb66e57115da24f649243a62c248f85a3f1b346aa606d3fbf4e73a4a5b9fbaf2"
+        },
+        {
+          "bytes": 19441,
+          "git_status": "tracked_clean",
+          "path": "ipfs_datasets_py/logic/formalization/autoencoder/distributed_384/exchange.py",
+          "sha256": "0d51cc13fa5dbc7f4b8c9db9d8591866ca0557da1340edaabf91ffedaf5e79fb"
+        },
+        {
+          "bytes": 14373,
+          "git_status": "tracked_clean",
+          "path": "ipfs_datasets_py/logic/security_ir/code_logic_projection.py",
+          "sha256": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b"
+        }
+      ],
+      "head": "c9446bd44cef1603c1461242e6c577e26af45ad8"
+    },
+    "working_accelerate": {
+      "checkout": "/home/barberb/lift_coding/external/ipfs_accelerate",
+      "files": [
+        {
+          "bytes": 9927,
+          "git_status": "?? ipfs_accelerate_py/agent_supervisor/planning/repository_plan_preview.py",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/repository_plan_preview.py",
+          "sha256": "f150d648d1d4b7fa9c20f17e91973f2ea8bdc87193c0a50a7ed59208df0c6c6b"
+        },
+        {
+          "bytes": 9491,
+          "git_status": "?? ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+          "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+        },
+        {
+          "bytes": 26795,
+          "git_status": "?? ipfs_accelerate_py/agent_supervisor/planning/conditional_codebase_evidence.py",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/conditional_codebase_evidence.py",
+          "sha256": "4de302b415bdf15862819558ca24e1255d946a5f61c91655b0560169cb6e3a68"
+        },
+        {
+          "bytes": 23125,
+          "git_status": "?? ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_service.py",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_service.py",
+          "sha256": "7fdda757d6cdb600a78d4dacf3df5e379e46ae6433df979eea6a0a26594262a7"
+        }
+      ],
+      "head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7"
+    },
+    "working_datasets": {
+      "checkout": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "files": [
+        {
+          "bytes": 28715,
+          "git_status": "?? ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+          "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+          "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+        },
+        {
+          "bytes": 29578,
+          "git_status": "?? ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+          "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+          "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+        },
+        {
+          "bytes": 47987,
+          "git_status": "?? ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+          "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+          "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+        },
+        {
+          "bytes": 36177,
+          "git_status": "?? ipfs_datasets_py/logic/software_contracts/codebase_federated_training.py",
+          "path": "ipfs_datasets_py/logic/software_contracts/codebase_federated_training.py",
+          "sha256": "64eb3e7fea8c4ae7a16d2aaabae9dd5cda2002a811195032cbe1533f01818adc"
+        },
+        {
+          "bytes": 58156,
+          "git_status": "M ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+          "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+          "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+        },
+        {
+          "bytes": 13298,
+          "git_status": "?? ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated_codebase.py",
+          "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_federated_codebase.py",
+          "sha256": "9a2d469ab47fdf40b4c20d8cc0fa2201eb51203a2ca544a7bee6e162122ca98a"
+        }
+      ],
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee"
+    }
+  }
+}

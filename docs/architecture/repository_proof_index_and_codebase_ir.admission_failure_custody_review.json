@@ -1,0 +1,439 @@
+{
+  "acceptance": {
+    "all_32_macro_gates_closed": false,
+    "all_logic_family_source_alignment_qualified": false,
+    "all_native_import_process_origin_or_external_effect_absence_proved": false,
+    "current_formal_or_token_signature_validation_by_reader": false,
+    "default_TerminalBench_activation": false,
+    "exact_exclusive_timeout_cause": null,
+    "exit_criteria": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "general_Lean_compilation_or_model_convergence_proved": false,
+    "hard_aggregate_formatting_serialization_CPU_RAM_containment": "OPEN",
+    "historical_own_and_shared_refusal_separate": true,
+    "learned_IntentIR_source_equivalence_qualified": false,
+    "native_positive_or_post_birth_route_qualified": false,
+    "nested_runtime_STOP_close_hook_error_priority": "OPEN",
+    "new_general_codebase_IR_training_qualified": false,
+    "official_score": null,
+    "original_fixture_connection_cleanup_failure_priority_tested": true,
+    "original_scheduler_decision_policy_unchanged": true,
+    "terminal_timeout_branch_descriptor_retained": true,
+    "whole_LIVE_workspace_preservation_claimed": false,
+    "whole_repository_DuckDB_DuckLake_metadata_hydration_qualified": false
+  },
+  "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01",
+  "as_of_utc": "2026-10-04T06:08:29.406239+00:00",
+  "captured_changed_sources_and_new_tests": [
+    {
+      "bytes": 97272,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/source-generation-06/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "f156511991e33d3b4ba523c3c5080ea30d0a53ad8a4dbcccea0487432679a9aa"
+    },
+    {
+      "bytes": 114127,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/source-generation-06/accelerate/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py",
+      "sha256": "46bab256cceb75b756a295bc09c8f95c921596925c8771208680513278c0c162"
+    },
+    {
+      "bytes": 13783,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/source-generation-06/datasets/tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py",
+      "sha256": "03b109889627ec49c51e6494e3d20abd41f4af8c5f2df6f57eebc50d0332a30e"
+    },
+    {
+      "bytes": 25580,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/source-generation-06/accelerate/test/api/test_finite_proof_query_failure_retention.py",
+      "sha256": "784ea16dd80b200644ef0b046a264a8ccf4f777659d7c746966833fb7e0c1eb7"
+    }
+  ],
+  "cost": {
+    "global_CPU_GPU_training_inference_prover_process_calendar_totals": null,
+    "nested_timings_added_again": false,
+    "selected_closed_attempt_count": 10,
+    "sum_known_selected_outer_seconds": 270.5619607529952
+  },
+  "evidence_pins": [
+    {
+      "bytes": 66405,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/host-admission-failure-checks-01/review.json",
+      "sha256": "3f15e3d0466b70d4ca17782388dcdae1bea8f91be4f3b295e03a9ae13ab3264b"
+    },
+    {
+      "bytes": 4854,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/unit-readback-small-summary-01/summary.json",
+      "sha256": "556b807cb45befcb22c985291acf8215dd53ff208bed2bf98de6627b597084ab"
+    },
+    {
+      "bytes": 48174,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/native-failure-composite-small-summary-01/summary.json",
+      "sha256": "224a884d7e59bd3bb217d73d40d3fe02d3ac5778422c6f4e28baa66fb4f2ea13"
+    },
+    {
+      "bytes": 6872,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/selected-closed-attempt-ledger-01.json",
+      "sha256": "25110e0176a1775d8274f7689aded792853f4f8fa012acbb9fce0af512cfaee6"
+    },
+    {
+      "bytes": 2510,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/scheduler-timeout-decision-independent-source-review-01/review.json",
+      "sha256": "04b62e31443abb605cf72c5dad1b1e445644d096e5499dfefd6bb806b51c5b29"
+    },
+    {
+      "bytes": 7232,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/independent-fixture-failure-source-review-01/review.json",
+      "sha256": "785189e939e1f934e00e64115d9001018f047706084d965379b3ceb8ec8b45d8"
+    },
+    {
+      "bytes": 4625,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/root-driver-independent-source-review-01/review.json",
+      "sha256": "b5a84916ddc49a228b797c08b6062bc66a133b28f8b0d5d4d13c9d5a40e12e8d"
+    },
+    {
+      "bytes": 4142,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/native-wrapper-source-review-01/review.json",
+      "sha256": "9589224b6b430a9b2ac986b020768203f73ac5a3471c308acb728994001677f0"
+    },
+    {
+      "bytes": 7812,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/native-failure-reader-independent-source-review-01/review.json",
+      "sha256": "b399bcaba7f9a728bb9e09cfe1001276bdbef0e8d09fde3ea4de894c1cea969b"
+    },
+    {
+      "bytes": 5183,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/native-source-correction-peer-review-01/review.json",
+      "sha256": "dd62aa93625db25b54a48e6c5edbd3b8dfb8122fdeceb7316af5112a7c4a3eb9"
+    },
+    {
+      "bytes": 5984,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/final-retention-source-review-01/report.json",
+      "sha256": "32fff676ba76038861f771e9476fbced184175d4a239b5fe8989aa1425dd4553"
+    },
+    {
+      "bytes": 15217,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/next-codebase-ir-training-gap-review-01/report.json",
+      "sha256": "456a831857226c7beb548b109a7c8bb8286eb6241742ba898a22f4e2c343f9da"
+    }
+  ],
+  "final_retention": {
+    "collector": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/final-retention-01/retention.py",
+    "expected_external_pin_count": 26,
+    "scope": "Separate subsequent byte/path seal and verification; all preparation/failed/partial attempts retained, old manifests rehashed without old whole-tree census.",
+    "status": "PENDING_AS_OF_DOCUMENT_WRITE"
+  },
+  "generation": {
+    "cid": "sha256:e69bfb0743e4e2a07da3fea9997f1aaf4ce39ca1db57953432060581a2f90ccf",
+    "complete_file_count": 22925,
+    "complete_regular_bytes": 589038948,
+    "manifest": {
+      "bytes": 26022930,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/source-generation-06/generation-manifest.json",
+      "sha256": "d7d80b8b1566732f84544a8666e8ba50e81fdba5b150cf04edd6e71f839daa1c"
+    },
+    "native_complete_byte_census_origin": "actual one-group cold source correction",
+    "unit_complete_byte_census_origin": "retained driver observation; unit readers hash selected sources and84actualimports"
+  },
+  "native": {
+    "actual_SQL_export_pin": {
+      "bytes": 664236,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/failed-native-positive-01-independent-readback-01/readback/complete-actual-available-native-SQL.json",
+      "sha256": "ed487c967d6d7a5a378acc7e87558eba2d943ba687088ea5728b50332fbc6b51"
+    },
+    "actual_container_removed": true,
+    "actual_database_count": 1,
+    "actual_exception_attributes": [
+      {
+        "actual": {
+          "access": "exception_instance_dict",
+          "present": true,
+          "value": {
+            "backoff_until": 1791093142.3785186,
+            "decision_cycle_at": 1791093140.3785186,
+            "demand": {
+              "additional_memory_mb": 0,
+              "additional_process_slots": 0,
+              "pid_tasks_required": 48,
+              "root_reserved_memory_mb": 1024,
+              "root_reserved_process_slots": 1
+            },
+            "error_type": null,
+            "gate": "envelope",
+            "historical": true,
+            "lane": "snapshot_evaluation",
+            "parent_lease_id": "68802c49e35c4718b74e354e45627f92",
+            "proof_memory_headroom_mb": 1639,
+            "reason": "proof_memory_stall",
+            "request_id": "codebase-ir:prepare",
+            "sample": {
+              "available_memory_mb": 7876,
+              "available_pid_tasks": 499,
+              "cpu_slots": 12,
+              "cpu_stall_percent": 20.02,
+              "io_stall_percent": 0.55,
+              "memory_stall_percent": 16.18,
+              "pid_task_limit": 512,
+              "total_memory_mb": 8192
+            },
+            "sample_contract": "max-host-visible-cgroup-avg10; memory/full,cpu/some,io/full; optional-psi-zero-fallback",
+            "schema": "proof-resource-admission-refusal@1",
+            "sequence": 226,
+            "thresholds": {
+              "cpu_stall_percent": 50.0,
+              "io_stall_percent": 10.0,
+              "memory_stall_percent": 2.0
+            },
+            "waiter_id": "475a6d5fb2c842788662b414596b1eef"
+          },
+          "value_type": "dict"
+        },
+        "exception": "primary",
+        "name": "admission_observation"
+      },
+      {
+        "actual": {
+          "access": "exception_instance_dict",
+          "present": true,
+          "value": {
+            "can_grant_now": false,
+            "clock_scope": "acquire_process_local_monotonic_clock",
+            "cycle_monotonic_time": 111215.765590377,
+            "cycle_wall_time": 1791093142.3667176,
+            "deadline_monotonic": 111215.764975761,
+            "decision_scope": "actual_terminal_timeout_branch",
+            "elapsed_seconds": 30.000614616001258,
+            "exact_blocking_cause": null,
+            "exact_blocking_predicate": null,
+            "externally_cancelled": false,
+            "lane": "snapshot_evaluation",
+            "lane_truncated": false,
+            "parent_cancelled": false,
+            "parent_lease_id": "68802c49e35c4718b74e354e45627f92",
+            "proof_safety_enabled": true,
+            "request_id": "codebase-ir:prepare",
+            "schema": "resource-lease-timeout-decision@1",
+            "sequence": 226,
+            "timed_out": true,
+            "waiter_id": "475a6d5fb2c842788662b414596b1eef"
+          },
+          "value_type": "dict"
+        },
+        "exception": "primary",
+        "name": "timeout_decision"
+      }
+    ],
+    "actual_extra_dependencies": 8,
+    "actual_failure_receipt_pin": {
+      "bytes": 21343,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/docker-positive-01/native/positive/failure-custody/failure-receipt.json",
+      "sha256": "f464c958b43b9973dfdd623d0104d0411ce44339263e9ddba430cb3a1bcb5a31"
+    },
+    "actual_full_CAP_bytes": 589038948,
+    "actual_full_CAP_files": 22925,
+    "actual_main_artifact_presence": {
+      "execution-scope.json": false,
+      "native-lifecycle.json": false,
+      "private/intent.coordination.duckdb": false,
+      "private/intent.execution.duckdb": false,
+      "private/launch/state/proof-query-dispatch-broker-close-receipt.json": false,
+      "private/launch/state/stop-receipt.json": false,
+      "private/post-birth-control/post-birth-control.json": false,
+      "result.json": false
+    },
+    "actual_native_SOURCE_modules": 30,
+    "actual_native_copy_bytes": 484062120,
+    "actual_native_copy_populations": {
+      "datasets": 8549,
+      "kit": 1341,
+      "source": 9602
+    },
+    "actual_native_driver_seconds_nested": 89.96576112999173,
+    "actual_native_outer_seconds": 100.87558021400764,
+    "actual_native_returncode": 1,
+    "actual_phase_count_in_those_bodies": 30,
+    "actual_source_before_bindings": {
+      "exact_current_generation": 19492,
+      "original_ancestor": 0
+    },
+    "actual_source_correction_groups": 1,
+    "actual_source_correction_passed": 1,
+    "actual_structured_artifact_count": 15,
+    "actual_timeout_decisions": [
+      {
+        "actual": {
+          "can_grant_now": false,
+          "clock_scope": "acquire_process_local_monotonic_clock",
+          "cycle_monotonic_time": 111215.765590377,
+          "cycle_wall_time": 1791093142.3667176,
+          "deadline_monotonic": 111215.764975761,
+          "decision_scope": "actual_terminal_timeout_branch",
+          "elapsed_seconds": 30.000614616001258,
+          "exact_blocking_cause": null,
+          "exact_blocking_predicate": null,
+          "externally_cancelled": false,
+          "lane": "snapshot_evaluation",
+          "lane_truncated": false,
+          "parent_cancelled": false,
+          "parent_lease_id": "68802c49e35c4718b74e354e45627f92",
+          "proof_safety_enabled": true,
+          "request_id": "codebase-ir:prepare",
+          "schema": "resource-lease-timeout-decision@1",
+          "sequence": 226,
+          "timed_out": true,
+          "waiter_id": "475a6d5fb2c842788662b414596b1eef"
+        },
+        "exception": "primary",
+        "own_refusal_history_is_not_exclusive_terminal_cause": true
+      }
+    ],
+    "actual_tool_inventory_pin": {
+      "bytes": 89942,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/failed-native-positive-01-independent-readback-01/readback/actual-retained-proof-tool-receipt-inventory.json",
+      "sha256": "b52bf687439f4141f0857497d9f8459cdcc1f8cd7f5d6f7ba01a357d1015106d"
+    },
+    "command_receipt_bodies_are_not_process_invocation_or_job_counts": true,
+    "composite_groups_passed": 8,
+    "composite_groups_total": 8,
+    "current_formal_or_token_signature_validation_performed": false,
+    "fresh_eight_group_execution": false,
+    "original_actual_audit_returncode": 1,
+    "persisted_global_history_separate": {
+      "backoff_until": 1791093142.3785186,
+      "decision_cycle_at": 1791093140.3785186,
+      "demand": {
+        "additional_memory_mb": 0,
+        "additional_process_slots": 0,
+        "pid_tasks_required": 48,
+        "root_reserved_memory_mb": 1024,
+        "root_reserved_process_slots": 1
+      },
+      "error_type": null,
+      "gate": "envelope",
+      "historical": true,
+      "lane": "snapshot_evaluation",
+      "parent_lease_id": "68802c49e35c4718b74e354e45627f92",
+      "proof_memory_headroom_mb": 1639,
+      "reason": "proof_memory_stall",
+      "request_id": "codebase-ir:prepare",
+      "sample": {
+        "available_memory_mb": 7876,
+        "available_pid_tasks": 499,
+        "cpu_slots": 12,
+        "cpu_stall_percent": 20.02,
+        "io_stall_percent": 0.55,
+        "memory_stall_percent": 16.18,
+        "pid_task_limit": 512,
+        "total_memory_mb": 8192
+      },
+      "sample_contract": "max-host-visible-cgroup-avg10; memory/full,cpu/some,io/full; optional-psi-zero-fallback",
+      "schema": "proof-resource-admission-refusal@1",
+      "sequence": 226,
+      "thresholds": {
+        "cpu_stall_percent": 50.0,
+        "io_stall_percent": 10.0,
+        "memory_stall_percent": 2.0
+      },
+      "waiter_id": "475a6d5fb2c842788662b414596b1eef"
+    },
+    "producer_connection_cleanup_errors": [],
+    "producer_diagnostic_errors": [],
+    "producer_owned_connection_cleanup": {
+      "attached": true,
+      "close_attempted": true,
+      "close_returned": true
+    },
+    "producer_retention_complete": true,
+    "unique_command_receipt_body_count": 5,
+    "unique_retained_observation_body_count": 10
+  },
+  "next_training_integration": {
+    "acceptance_tests": [
+      "prompt_source_join",
+      "real_training_and_controls",
+      "semantic_hard_negative",
+      "metadata_cold_join",
+      "proof_and_evaluation_scope"
+    ],
+    "proposal": "Join real Bottle training to native IntentIR source nominations and full DuckDB/DuckLake cold metadata reconstruction.",
+    "review": {
+      "bytes": 15217,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/next-codebase-ir-training-gap-review-01/report.json",
+      "sha256": "456a831857226c7beb548b109a7c8bb8286eb6241742ba898a22f4e2c343f9da"
+    },
+    "status": "source_only_planning_not_executed"
+  },
+  "schema": "repository-proof-index-codebase-ir-admission-failure-custody-review@1",
+  "status": "scoped_failure_diagnostics_tested_native_positive_unqualified",
+  "unit": {
+    "actual_AST_controlled_witnesses": 27,
+    "actual_nonreceipt_controls": 10,
+    "actual_owned_import_labels": 84,
+    "actual_owned_import_paths": 84,
+    "actual_raw_failure_receipts": 17,
+    "actual_tests": {
+      "JUnit_pin": {
+        "bytes": 11188,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/host-admission-failure-checks-01/tests.xml",
+        "sha256": "300f3d96f1f48d2952b67418758d32da9af3f2d21d2a529ada3e145fb2f87af8"
+      },
+      "JUnit_suite_elapsed_seconds": 3.518,
+      "actual_call_pass": 65,
+      "actual_setup_pass": 65,
+      "actual_teardown_pass": 65,
+      "actual_tests": 65,
+      "errors": 0,
+      "failures": 0,
+      "per_selected_file": {
+        "test/api/test_finite_proof_query_failure_retention.py": 27,
+        "tests/unit/optimizers/logic_theorem_optimizer/test_global_resource_scheduler.py": 12,
+        "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": 15,
+        "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": 11
+      },
+      "report_pin": {
+        "bytes": 43359,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-admission-failure-custody-20261004-01/host-admission-failure-checks-01/reports.jsonl",
+        "sha256": "0a76ecfeb8036571eb74a47e3b315731ab1dc91c550bd6fbbaae59157c15fc4c"
+      },
+      "skips": 0
+    },
+    "all_observed_states_drained": true,
+    "composite_checks_passed": 7,
+    "composite_checks_total": 7,
+    "correction_returncode": 0,
+    "fresh_seven_group_run": false,
+    "original_audit_returncode": 1,
+    "persisted_active_leases": 0,
+    "persisted_scheduler_unit_state_files": 25,
+    "persisted_waiters": 0
+  }
+}

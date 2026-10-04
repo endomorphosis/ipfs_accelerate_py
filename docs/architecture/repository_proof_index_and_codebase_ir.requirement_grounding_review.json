@@ -1,0 +1,873 @@
+{
+  "all_leases_released_and_recorded_counts_drained": true,
+  "authority": {
+    "all_32_repository_proof_index_criteria": "OPEN",
+    "behavioral_satisfaction": false,
+    "completion": false,
+    "default_supervisor_activation": false,
+    "execution": false,
+    "exit_criteria": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "formalization": false,
+    "general_convergence": false,
+    "mutation": false,
+    "official_score": null,
+    "omission": false,
+    "proof": false,
+    "semantic_alignment": false,
+    "source_semantics": false,
+    "whole_program": false
+  },
+  "complete_all_loaded_manual_or_fresh_child_import_census": false,
+  "corpus_sha256": "sha256:43da7b53f322e21b495d0352b6ca90378399ffe0fc49864e729a9edf2a8306c6",
+  "cost_scope": "Seven producer outers including failed tests01 and inconclusive actual01/02; nested owned time excluded from sum.",
+  "currentness": "Selected pinned admitted files before/after; not atomic whole checkout",
+  "evidence_pins": [
+    {
+      "bytes": 5498,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/file-only-audit-04.json",
+      "sha256": "bc9679770e88a57422fb8e18fef33a2d5d3e98621cb18431c4ef0a71504a5e96"
+    },
+    {
+      "bytes": 17588,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/preparation/request.json",
+      "sha256": "a0909e43321f2bb963f240f431f2a968d83f55ed1a7a95fa8565f67dee2a8bb2"
+    },
+    {
+      "bytes": 4258,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/source-manifest-04.json",
+      "sha256": "56c501311230b8522125cc8961b197a7ac4c3f515c9547ca448b751b0237c158"
+    },
+    {
+      "bytes": 849,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/preparation/producer-pins-04.json",
+      "sha256": "bd1aa3b6dce91307997d535b281379fd8ed8b138b19e8c10834d344a928ca099"
+    },
+    {
+      "bytes": 3142,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/preparation/successor-source-reviews.json",
+      "sha256": "c84eefcd9f909876042231875fbd4cffc4fa88b00bf9101f374f3759f29dacbf"
+    },
+    {
+      "bytes": 2815,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/preparation/source-04-review.json",
+      "sha256": "9966e8c91fff2b8165d55c0900053e94e00a9e3ae3391d16ea1402ad8b0cd0cb"
+    },
+    {
+      "bytes": 3446,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/file-only-peer-reviews.json",
+      "sha256": "74475b5282276c2d4e14f07a12a2600af01f381899027a4c9d425593f5304017"
+    },
+    {
+      "bytes": 3434788,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/grounding-arguments.json",
+      "sha256": "ae618ee9b32fa12dc66f03933a2fdc16f99c9b7263198db486b6a597f6d47a07"
+    },
+    {
+      "bytes": 795935,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/grounding-result.json",
+      "sha256": "d3955cf780acf247081a60c68bdc94dafb94df554559e306595a79d4a9bfa011"
+    },
+    {
+      "bytes": 5447,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean-checks.json",
+      "sha256": "2824086dc43f98cd4aacaef5ffc0c5caa99c8adb484855a4abead4efe81372d4"
+    },
+    {
+      "bytes": 8011943,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/metadata-inputs.json",
+      "sha256": "e6bd859d02ff7760492f67bbb304dba678b3e58de3fb3858ef2e530fbb93070f"
+    },
+    {
+      "bytes": 22444,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/metadata-readback.json",
+      "sha256": "91f5482f46d1da58f12ba137f9a735436c00ba368af67018f235b8d5fecabdd2"
+    },
+    {
+      "bytes": 1015,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01-invocation.json",
+      "sha256": "fe9691d90b1d934f269dd6219be3d1a8125d8b34b39da731721c457a6c55a2e2"
+    },
+    {
+      "bytes": 1082,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01-closed.json",
+      "sha256": "e772c6d8fcfcc27b243a96c9a06f1b9cb1d97859cb53e09c70c961062ceda570"
+    },
+    {
+      "bytes": 36007,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01.stdout.log",
+      "sha256": "e805c1af5d126350af849dc67da5d1fccc51aee0994cd7d072f21a8ac1039bac"
+    },
+    {
+      "bytes": 148697,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01/closed.json",
+      "sha256": "50798056306e28f93e8661b9868d7e1e52aef64fb868a099d456e4c6e100b2a6"
+    },
+    {
+      "bytes": 1024,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02-invocation.json",
+      "sha256": "27879b93e3129d0e7e7937adf24fd4584ace439362876bfaaf42878fa9ca43cb"
+    },
+    {
+      "bytes": 1091,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02-closed.json",
+      "sha256": "2119e70268ff5716cd4c755ea71ca45d5f4a64579338df42c36fc7acdb286769"
+    },
+    {
+      "bytes": 181,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02.stdout.log",
+      "sha256": "2fdbb32220b242c17946892d69dd19fda8211d5320959a941d9e13673cd0ed15"
+    },
+    {
+      "bytes": 226921,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02/closed.json",
+      "sha256": "fb19d0f62c72257880b7012844432456e614fc10b3890f16a3cef993664417b7"
+    },
+    {
+      "bytes": 1025,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-01-invocation.json",
+      "sha256": "e71bca0cd266ebb68ca83c3663e7896a8baaba2f7444cc0ed8bb6eaa4bd1d3a9"
+    },
+    {
+      "bytes": 1091,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-01-closed.json",
+      "sha256": "57d115e01caba8f457bc4dff083ece689682c114d090d83e53eb66cab95975b2"
+    },
+    {
+      "bytes": 641,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-01.stdout.log",
+      "sha256": "d477c554c69785219ca088b5860d4414dd83771631a31ba8ced5be44a4e39807"
+    },
+    {
+      "bytes": 149176,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-01/closed.json",
+      "sha256": "ae275a641cd2603ae81250cce563fe6daa03271c7bce471985c101792f300046"
+    },
+    {
+      "bytes": 1024,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03-invocation.json",
+      "sha256": "0a208d1504815701499f63f9afc11820c0cbc635e267c31685f3d72621849b3d"
+    },
+    {
+      "bytes": 1092,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03-closed.json",
+      "sha256": "5117fb4464d046500f4dd1d81b59a95c19b4c2af3a492e22577eb698e231d025"
+    },
+    {
+      "bytes": 180,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03.stdout.log",
+      "sha256": "9b9dbcc07475e94c50f587581f07262d18b381436b78708e2a87caeb79f3f02e"
+    },
+    {
+      "bytes": 226919,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03/closed.json",
+      "sha256": "969db728e0645210ad54794352ac32e5fef09d1a44e5b749f236ee3bf4d844ce"
+    },
+    {
+      "bytes": 1025,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-02-invocation.json",
+      "sha256": "e6b4796194d7499907d8ef2e43197b9c7e8057d53b6221d5505153acb5289eba"
+    },
+    {
+      "bytes": 1093,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-02-closed.json",
+      "sha256": "8c696fc3fdc3e6b7339b7d92d69f03d858a039b6e5a119e8970b91763eea50ef"
+    },
+    {
+      "bytes": 640,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-02.stdout.log",
+      "sha256": "02a5b85128d502d4e1f89fdbdeef8dcb528a18729431593c3c3efaeb3a38e390"
+    },
+    {
+      "bytes": 149174,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-02/closed.json",
+      "sha256": "aae87728af44c3298ab4cb9c5cfde34d6eb22919abf5261b9fa6424077988bad"
+    },
+    {
+      "bytes": 1024,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04-invocation.json",
+      "sha256": "78523f4b2e3dd4f26fa9662224f92bb5c2c77895dc60dcfc83880c114e1708db"
+    },
+    {
+      "bytes": 1090,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04-closed.json",
+      "sha256": "ccbe74bc991713fc3167f5cf3e7bc189066395e6451472e4696c1cecdc32841d"
+    },
+    {
+      "bytes": 180,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04.stdout.log",
+      "sha256": "b7eff6578cd38c3ad4b9243fa2bd9625a92329089f0011d04214676977ef59f8"
+    },
+    {
+      "bytes": 226920,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04/closed.json",
+      "sha256": "166b0f8803414f050feb430b6d4ba5b5fe90d8807d8cf68aff1d5afc60afb6bf"
+    },
+    {
+      "bytes": 1025,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03-invocation.json",
+      "sha256": "9cdb3f97712c34438c197a5a20f8ec6b12696af89c88387c1ea08c1c3e9caec5"
+    },
+    {
+      "bytes": 1093,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03-closed.json",
+      "sha256": "de1732162faf9a833b11ef7ca98ad0c540d92676a8f1faa8deb35b6b08c4ad8e"
+    },
+    {
+      "bytes": 81,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03.stdout.log",
+      "sha256": "a37def0e3f96cf56fa139b4d430489516724e48d93612641b431203057bd43cb"
+    },
+    {
+      "bytes": 153791,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/closed.json",
+      "sha256": "196e491570886c6385316ce911211605df255f835031abb23d505e24b9131520"
+    },
+    {
+      "bytes": 18885,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01/phases.json",
+      "sha256": "c5c97221a512f3c57099d8e88af5d98eaa715504ce2b14a0180c80933eaf6dc1"
+    },
+    {
+      "bytes": 40271,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-01/tests.xml",
+      "sha256": "eb50d4833feb2654d435c5277b59e3b3b07a759249a66bae859b133b39bc4bf3"
+    },
+    {
+      "bytes": 22813,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02/phases.json",
+      "sha256": "ec94add91090a61c50b0b4ddd19d7ae466887d9f9e18e0fc64ec1bdeab7ad409"
+    },
+    {
+      "bytes": 5753,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-02/tests.xml",
+      "sha256": "29d5cf6d54359ee194b1dde65e70fcc51a79c111b984f6459b2352c0c7128a03"
+    },
+    {
+      "bytes": 22821,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03/phases.json",
+      "sha256": "102fffc95aa63d5b4464b4eab98b018f9c07df31eecf578a46d538319e78765e"
+    },
+    {
+      "bytes": 5753,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-03/tests.xml",
+      "sha256": "95018240857c9eee072b44b4580947defd2fad49f9119bb9cd9f0ef0fefe1bbc"
+    },
+    {
+      "bytes": 22816,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04/phases.json",
+      "sha256": "669661a578f48ec768bb93b41b85f9a73e00a6cfbf1a4a3ac13e69c439de440e"
+    },
+    {
+      "bytes": 5753,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/tests-04/tests.xml",
+      "sha256": "1e14f13911b7fb0242169adc0e3c14490ac5b87fd04fd78200f204fdf749f0a2"
+    },
+    {
+      "bytes": 1958,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/OriginalRequirementDeclarations.lean",
+      "sha256": "0e4910dcaf57b37175cdc02685ab79e3b4046fdf10c1eb75613018933226151d"
+    },
+    {
+      "bytes": 54176,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/OriginalRequirementDeclarations.olean",
+      "sha256": "3c5eb9b2e28860efb74f4a431ccab6a434292a9c2688519eeb3f35d1b83f59dd"
+    },
+    {
+      "bytes": 1119,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/IndependentBucketCountermodel.lean",
+      "sha256": "18ff9af3caf2bdf18e6255c7a690653d1b50d0c21efed9358db72a754ed87ecd"
+    },
+    {
+      "bytes": 24296,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/IndependentBucketCountermodel.olean",
+      "sha256": "6b57baf02d32204de6f1b3b758ecf36ceb68340ff27f8f54218939faaf1a424f"
+    },
+    {
+      "bytes": 811,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/FalseGlobalCapControl.lean",
+      "sha256": "d5a41a23364e759facea31387fb364391bc101c0953012807d48ab12a3fa6c21"
+    },
+    {
+      "bytes": 22177,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.expanded_transfer_review.json",
+      "sha256": "576c4d87bd043ea2bbf0f3d7d1eb11c1a4d053dcd98c1122a387af836d949a03"
+    },
+    {
+      "bytes": 2248025,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/frozen-corpus/baf3ea631e06ff366768f489d67026d0caabd26a87d5561818db6d03b40eb508.json",
+      "sha256": "baf3ea631e06ff366768f489d67026d0caabd26a87d5561818db6d03b40eb508"
+    },
+    {
+      "bytes": 7238278,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/metadata-inputs.json",
+      "sha256": "35cbf203c8a47acd0e76bc9c2210fcec82a7c8f5cde21038014a3c876156b2ca"
+    }
+  ],
+  "final_retention": {
+    "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01",
+    "final_closure": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/final-retention-01/verification/final-closure.json",
+    "status_as_of_document_write": "pending_separate_last_writer"
+  },
+  "full_session_measurements": {
+    "CPU_seconds": null,
+    "GPU_seconds": null,
+    "OS_process_count": null,
+    "memory_peak": null
+  },
+  "grounding": {
+    "candidate_atoms": 8,
+    "constraint_bullets": 4,
+    "extraction_kind": "authored_reviewed_candidates",
+    "full_original_UTF8_bytes": 4365,
+    "full_original_characters": 4346,
+    "machine_extracted_confidence": 0,
+    "native_ProgramIR_or_ProgramContract_created": false,
+    "native_family_count": 16,
+    "native_family_statuses": {
+      "concurrency": [
+        "unsupported"
+      ],
+      "cryptographic_protocol": [
+        "unsupported"
+      ],
+      "datalog": [
+        "projected"
+      ],
+      "dcec": [
+        "projected"
+      ],
+      "doxastic": [
+        "unsupported"
+      ],
+      "epistemic": [
+        "unsupported"
+      ],
+      "event_calculus": [
+        "unsupported"
+      ],
+      "frame_logic": [
+        "projected"
+      ],
+      "higher_order": [
+        "projected"
+      ],
+      "horn_chc": [
+        "projected"
+      ],
+      "hyperproperty": [
+        "unsupported"
+      ],
+      "refinement": [
+        "unsupported"
+      ],
+      "separation_logic": [
+        "unsupported"
+      ],
+      "session_process": [
+        "unsupported"
+      ],
+      "tdfol": [
+        "projected"
+      ],
+      "transition_system": [
+        "unsupported"
+      ]
+    },
+    "native_projection_reports": 17,
+    "native_projection_statuses": [
+      {
+        "family_id": "concurrency",
+        "profile_id": null,
+        "projection_id": "intent-extended/concurrency/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "cryptographic_protocol",
+        "profile_id": null,
+        "projection_id": "intent-extended/cryptographic_protocol/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "datalog",
+        "profile_id": null,
+        "projection_id": "intent-extended/datalog/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "dcec",
+        "profile_id": null,
+        "projection_id": "intent-extended/dcec/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "doxastic",
+        "profile_id": null,
+        "projection_id": "intent-extended/doxastic/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "epistemic",
+        "profile_id": null,
+        "projection_id": "intent-extended/epistemic/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "event_calculus",
+        "profile_id": null,
+        "projection_id": "intent-extended/event_calculus/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "frame_logic",
+        "profile_id": null,
+        "projection_id": "intent-extended/frame_logic/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "higher_order",
+        "profile_id": null,
+        "projection_id": "intent-extended/higher_order/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "horn_chc",
+        "profile_id": null,
+        "projection_id": "intent-extended/horn_chc/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "hyperproperty",
+        "profile_id": null,
+        "projection_id": "intent-extended/hyperproperty/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "refinement",
+        "profile_id": null,
+        "projection_id": "intent-extended/refinement/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "separation_logic",
+        "profile_id": null,
+        "projection_id": "intent-extended/separation_logic/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "session_process",
+        "profile_id": null,
+        "projection_id": "intent-extended/session_process/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "tdfol",
+        "profile_id": null,
+        "projection_id": "intent-extended/tdfol/default/v1",
+        "status": "projected"
+      },
+      {
+        "family_id": "transition_system",
+        "profile_id": null,
+        "projection_id": "intent-extended/transition_system/default/v1",
+        "status": "unsupported"
+      },
+      {
+        "family_id": "transition_system",
+        "profile_id": "tla_plus",
+        "projection_id": "intent-extended/transition_system/tla_plus/v1",
+        "status": "unsupported"
+      }
+    ],
+    "original_SourceRefs": 2,
+    "original_unknown_residuals": 2,
+    "semantic_support_complete": false,
+    "source_function_bank": 6
+  },
+  "grounding_sha256": "2ced136639be8937ba8b7734d7c88c2dc0626bc09d6ce815740420332d356e94",
+  "independent_reader": {
+    "elapsed_seconds": 0.4113243219908327,
+    "fit_calls": 0,
+    "native_SQL_calls": 0,
+    "product_imports": 0,
+    "prover_calls": 0
+  },
+  "initial_cleanup_field_check_failure_retained": true,
+  "metadata": {
+    "KG_scope": "syntactic containment and authored navigation judgments",
+    "SQL_statement_count": null,
+    "all_metadata_coverage": false,
+    "contracts": "unknown_empty",
+    "families": 22,
+    "family_counts": {
+      "ast": 375,
+      "batching_finite_witness": 1,
+      "batching_grounding_coverage": 1,
+      "batching_native_intent": 1,
+      "batching_native_targets": 2,
+      "batching_projection_reports": 17,
+      "batching_requirement_ledger": 1,
+      "batching_requirement_links": 8,
+      "batching_source_context": 1,
+      "contracts": 0,
+      "coverage_status": 1,
+      "grounding_lean_checks": 3,
+      "judgments": 22,
+      "kg": 397,
+      "queries": 9,
+      "ranker_checkpoint": 1,
+      "ranker_training": 1,
+      "ranker_transfer": 1,
+      "ranking": 2984,
+      "sources": 6,
+      "split_history": 2,
+      "vectors": 375
+    },
+    "fresh_process_readback": {
+      "lake_snapshot_digest": "sha256:505fa7cef3e8be648220293e2cb7e20f9b89bc06717991a44e72cfad8327cb83",
+      "manifest_sha256": "sha256:e781a5487629e680dedebcc9f5aa8257bd7c998c7f835276cb652ef748455189",
+      "method": "new_python_process_native_duckdb_and_ducklake_readback",
+      "row_count": 4209,
+      "row_root_sha256": "sha256:fbf13e84ace137c8917c967bfef9b1db3d129713437b4e971e70fc2e9d39ee70",
+      "verified": true
+    },
+    "lake_packets": 78,
+    "lake_snapshot_digest": "sha256:505fa7cef3e8be648220293e2cb7e20f9b89bc06717991a44e72cfad8327cb83",
+    "manifest_sha256": "sha256:e781a5487629e680dedebcc9f5aa8257bd7c998c7f835276cb652ef748455189",
+    "native_hydration_and_fresh_restart_passed": true,
+    "native_hydration_attempts_here": 1,
+    "native_runtime": {
+      "duckdb": "1.5.5",
+      "extensions": {
+        "ducklake": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
+        "httpfs": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+        "quack": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+      },
+      "platform": "linux_arm64"
+    },
+    "new_grounding_families": 8,
+    "prior_family_count": 13,
+    "prior_payload_rows_unchanged": 4174,
+    "row_root_sha256": "sha256:fbf13e84ace137c8917c967bfef9b1db3d129713437b4e971e70fc2e9d39ee70",
+    "rows": 4209,
+    "typed_vector_columns": false,
+    "vectors": "native_44_dimensional_AST_features"
+  },
+  "next_work": [
+    "Qualify native list/loop/closure/import dependency semantics and source-to-model bridge",
+    "Bind full original mandatory requirements to supported contracts and solver/checker obligations",
+    "Validate proof-cache content/dependency invalidation and checker/toolchain pinning",
+    "Predeclare autoencoder adaptation data/splits/targets/negative controls before fitting",
+    "Separate finite optimization evidence from formal optimizer convergence and source satisfaction",
+    "Review evidence-complete supervisor admission and explicit analysis-consumer profile migration"
+  ],
+  "proof": {
+    "actual_benchmark_request_inputs_used": false,
+    "actual_source_violation_established": false,
+    "assumptions": [
+      "This is an authored finite conditional model, not observed runtime input or execution.",
+      "Both bucket calls independently receive max_shapes=8 and granularity=64.",
+      "Each bucket has eight unique aligned sequence values, hence the no-reduction branch reps=unique sequences.",
+      "Request IDs are unique across both modeled buckets; each modeled prompt_len equals its aligned sequence value.",
+      "The representative helper dispatch selects the same value from the sorted representatives for each modeled request.",
+      "Imported cost_model.align, HEADS=32, HIDDEN=4096 and Python builtins are supplied modeling premises, unread and unverified here.",
+      "Shape identity is exactly (seq_align, heads_align, hidden_align); no fourth component is introduced."
+    ],
+    "bucket_shape_counts": [
+      8,
+      8
+    ],
+    "dependency_semantics_verified": false,
+    "distinct_shape_triples": 16,
+    "false_global_cap_rejected": true,
+    "final_checks": [
+      {
+        "artifact": {
+          "bytes": 1958,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/OriginalRequirementDeclarations.lean",
+          "sha256": "0e4910dcaf57b37175cdc02685ab79e3b4046fdf10c1eb75613018933226151d"
+        },
+        "asymptotic_optimizer_convergence_proved": false,
+        "backend_executed": true,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+          "-o",
+          "OriginalRequirementDeclarations.olean",
+          "OriginalRequirementDeclarations.lean"
+        ],
+        "compiled_artifacts": [
+          {
+            "bytes": 54176,
+            "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/OriginalRequirementDeclarations.olean",
+            "sha256": "3c5eb9b2e28860efb74f4a431ccab6a434292a9c2688519eeb3f35d1b83f59dd"
+          }
+        ],
+        "completion_authority": false,
+        "elapsed_seconds": 0.3456181820074562,
+        "executable": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+        "executable_sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "execution_authority": false,
+        "expected_success": true,
+        "file": "OriginalRequirementDeclarations.lean",
+        "key": "intent",
+        "matches_expectation": true,
+        "mutation_authority": false,
+        "output_truncated": false,
+        "proof_authority": false,
+        "proof_scope": "kernel_checked_generated_model_statement_only",
+        "resource_exhausted": false,
+        "returncode": 0,
+        "schema": "terminal-codebase-lean-check@1",
+        "source_semantics_verified": false,
+        "status": "passed",
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false,
+        "whole_program_proved": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      },
+      {
+        "artifact": {
+          "bytes": 1119,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/IndependentBucketCountermodel.lean",
+          "sha256": "18ff9af3caf2bdf18e6255c7a690653d1b50d0c21efed9358db72a754ed87ecd"
+        },
+        "asymptotic_optimizer_convergence_proved": false,
+        "backend_executed": true,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+          "-o",
+          "IndependentBucketCountermodel.olean",
+          "IndependentBucketCountermodel.lean"
+        ],
+        "compiled_artifacts": [
+          {
+            "bytes": 24296,
+            "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/IndependentBucketCountermodel.olean",
+            "sha256": "6b57baf02d32204de6f1b3b758ecf36ceb68340ff27f8f54218939faaf1a424f"
+          }
+        ],
+        "completion_authority": false,
+        "elapsed_seconds": 0.6909276559890714,
+        "executable": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+        "executable_sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "execution_authority": false,
+        "expected_success": true,
+        "file": "IndependentBucketCountermodel.lean",
+        "key": "finite_countermodel",
+        "matches_expectation": true,
+        "mutation_authority": false,
+        "output_truncated": false,
+        "proof_authority": false,
+        "proof_scope": "kernel_checked_generated_model_statement_only",
+        "resource_exhausted": false,
+        "returncode": 0,
+        "schema": "terminal-codebase-lean-check@1",
+        "source_semantics_verified": false,
+        "status": "passed",
+        "stderr": "",
+        "stdout": "",
+        "timed_out": false,
+        "whole_program_proved": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      },
+      {
+        "artifact": {
+          "bytes": 811,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-requirement-grounding-20261004-01/evidence/actual-03/lean/FalseGlobalCapControl.lean",
+          "sha256": "d5a41a23364e759facea31387fb364391bc101c0953012807d48ab12a3fa6c21"
+        },
+        "asymptotic_optimizer_convergence_proved": false,
+        "backend_executed": true,
+        "command": [
+          "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+          "FalseGlobalCapControl.lean"
+        ],
+        "compiled_artifacts": [],
+        "completion_authority": false,
+        "elapsed_seconds": 0.5128624550125096,
+        "executable": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean",
+        "executable_sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085",
+        "execution_authority": false,
+        "expected_success": false,
+        "file": "FalseGlobalCapControl.lean",
+        "key": "false_global_cap_control",
+        "matches_expectation": true,
+        "mutation_authority": false,
+        "output_truncated": false,
+        "proof_authority": false,
+        "proof_scope": "kernel_checked_generated_model_statement_only",
+        "resource_exhausted": false,
+        "returncode": 1,
+        "schema": "terminal-codebase-lean-check@1",
+        "source_semantics_verified": false,
+        "status": "rejected",
+        "stderr": "",
+        "stdout": "FalseGlobalCapControl.lean:10:69: error: Tactic `decide` proved that the proposition\n  distinctShapes.length ≤ 8\nis false\n",
+        "timed_out": false,
+        "whole_program_proved": false,
+        "workspace_cleaned": true,
+        "workspace_limit_exceeded": false
+      }
+    ],
+    "finite_countermodel_kernel_checked": true,
+    "native_IntentIR_Lean_check_scope": "syntax_and_types_of_uninterpreted_declarations",
+    "proof_cache_qualified": false,
+    "required_global_cap": 8,
+    "source_runtime_equivalence_proved": false,
+    "verified_proof_cache_hits": 0
+  },
+  "public": {
+    "PlanCreate_calls": 0,
+    "default_supervisor_integration": false,
+    "existing_closed_analysis_consumer_profile_migrated": false,
+    "final_Lean_checks": 3,
+    "initial_inconclusive_truncated_finite_artifact_count": 2,
+    "native_unresolved_source_gate_exercised": true,
+    "new_Lean_backend_invocations": 7,
+    "new_autoencoder_fit_calls": 0,
+    "new_optimizer_steps": 0,
+    "new_public_fit_calls": 0,
+    "new_synthetic_fits": 0,
+    "planning_handoff": "abstained"
+  },
+  "qualification_document": {
+    "bytes": 8004,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_ir_requirement_grounding_qualification.md",
+    "sha256": "7e42659e980196c4ba75b02a6f61340e6f1376a1c7c569c721605474409c5dcb"
+  },
+  "schema": "terminal-codebase-ir-requirement-grounding-qualified-review@1",
+  "selected_costs": [
+    {
+      "cleanup_errors": [
+        {
+          "error": "'active_leases'",
+          "stage": "drain"
+        }
+      ],
+      "mode": "tests-01",
+      "native_lean_checks_invoked": 0,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 8.988406255026348,
+      "owned_seconds_nested": 8.768534831993748,
+      "selected_parent_imports": 175,
+      "status": "failed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "tests-02",
+      "native_lean_checks_invoked": 0,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 16.25675469500129,
+      "owned_seconds_nested": 15.987774619017728,
+      "selected_parent_imports": 267,
+      "status": "passed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "actual-01",
+      "native_lean_checks_invoked": 2,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 7.43723420999595,
+      "owned_seconds_nested": 7.2614866529766005,
+      "selected_parent_imports": 175,
+      "status": "failed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "tests-03",
+      "native_lean_checks_invoked": 0,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 16.957337946019834,
+      "owned_seconds_nested": 16.65503288101172,
+      "selected_parent_imports": 267,
+      "status": "passed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "actual-02",
+      "native_lean_checks_invoked": 2,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 3.5251730309973937,
+      "owned_seconds_nested": 3.338390879012877,
+      "selected_parent_imports": 175,
+      "status": "failed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "tests-04",
+      "native_lean_checks_invoked": 0,
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 16.1547769960016,
+      "owned_seconds_nested": 15.91662291600369,
+      "selected_parent_imports": 267,
+      "status": "passed"
+    },
+    {
+      "cleanup_errors": [],
+      "mode": "actual-03",
+      "native_lean_checks_invoked": 3,
+      "native_metadata_hydration_attempts": 1,
+      "outer_seconds": 20.218177319999086,
+      "owned_seconds_nested": 20.022239701007493,
+      "selected_parent_imports": 180,
+      "status": "passed"
+    }
+  ],
+  "selected_parent_imports_before_after_equal": true,
+  "selected_producer_outer_seconds": 89.5378604530415,
+  "source_generation": {
+    "bytes": 25932539,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-08/generation-manifest.json",
+    "sha256": "5efc3725539ced8b5a0f6e172c3b4c7e92fccc158940feaa71b4890a054203a3"
+  },
+  "tests": {
+    "first_run": {
+      "failed": 2,
+      "passed": 12,
+      "setup_errors": 16
+    },
+    "passed_final": 30,
+    "passed_final_phases": 90,
+    "skips": 0,
+    "successful_test_modes": [
+      "tests-02",
+      "tests-03",
+      "tests-04"
+    ]
+  }
+}

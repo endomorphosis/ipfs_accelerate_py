@@ -1,0 +1,366 @@
+{
+  "audit": {
+    "correction": "Portal acceptance uses its own native preparation/receipt/transition path; both signed local validation-event guards remain required.",
+    "primary": {
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/primary-artifact-pins.json",
+      "pin_bytes": 1555324682,
+      "pin_count": 38671,
+      "sha256": "0f08733ddaeb41c356a7828ea677c2795487be7d8afcc6949e43a178cc1cfbfe"
+    },
+    "retained_failed_v3": true,
+    "schema": "independent-advisory-worker-artifact-audit@4",
+    "script_sha256": "d6f0d3cdb8f5d7f8101ca248f0342a79a97a9850697e8f280cba9b8d1a532d88",
+    "signatures": 20,
+    "status": "passed"
+  },
+  "claims": {
+    "advisory_final_spawn_closure_qualified": false,
+    "convergence_proved": false,
+    "generalization_verified": false,
+    "learned_features_authorize_execution": false,
+    "process_origin_attested": false,
+    "production_activated": false,
+    "public_terminal_bench_task_satisfied": false,
+    "universal_python_semantics_proved": false,
+    "whole_population_atomic_transaction": false
+  },
+  "costs": {
+    "combined_epochs": 240,
+    "combined_native_seconds": 2152.4137594597414,
+    "preceding_candidate_epochs": 144,
+    "this_increment_epochs": 96,
+    "this_increment_native_seconds": 1210.221367495833
+  },
+  "ending_documents": [
+    {
+      "bytes": 13860,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_repository_advisory_worker_qualification.md",
+      "sha256": "dc2ed08353d7152f9b09eaf59edcf06c7d789334e06171d8c0dd76bf8398e418"
+    },
+    {
+      "bytes": 20250,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_repository_candidate_qualification.md",
+      "sha256": "b3496cf57152a8fd8923b3de4f85f60ab517016fba44020b0f01b68f012da21c"
+    },
+    {
+      "bytes": 164600,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "04e389693fabc9aba60735645f281d70ee34e7971b4555e8ebacf26fa9a86de3"
+    },
+    {
+      "bytes": 72727,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "sha256": "f584f345efc6a46d9c293ef6ca03b84eaf9da5a32d2021601f81953497c9f545"
+    },
+    {
+      "bytes": 68569,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "9a04ac23336265bc508d06b049110b4e71d39bf89a6742cea1e7638ef3d578b1"
+    }
+  ],
+  "evidence": [
+    {
+      "bytes": 4392,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/REPORT.md",
+      "sha256": "cebd6599d079640e41fa77a1009c7f4dfe669016799ecc46fdc21f7a56141525"
+    },
+    {
+      "bytes": 869659,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/native/result.json",
+      "sha256": "a09d5f794af548a1bc2bbace0ba87bd8ef685f0b7d0ac7204f2a106673128cd6"
+    },
+    {
+      "bytes": 12829,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/independent-audit.json",
+      "sha256": "f0e655506b4436af49243b4b49838437f11ccff2883f8100e6a730becbfb84b4"
+    },
+    {
+      "bytes": 11271852,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/primary-artifact-pins.json",
+      "sha256": "0f08733ddaeb41c356a7828ea677c2795487be7d8afcc6949e43a178cc1cfbfe"
+    },
+    {
+      "bytes": 899275,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/review-retention/joined-test-history.json",
+      "sha256": "4920fac388084c148f049546914098eb4b9672e453ba419965bbbfa2d7efb1b9"
+    },
+    {
+      "bytes": 47267,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/review-retention/accounting-complete-four.json",
+      "sha256": "498c7907f98024dae0a2696b9f244973cb481314fa22b5b178bd2b12c5da0a32"
+    },
+    {
+      "bytes": 2568,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04/review-retention/ending-preservation-summary.json",
+      "sha256": "0c8ab09bdebf40213d15e77a544848f0009c890c7f6935295800dee18ac0df0a"
+    }
+  ],
+  "native": {
+    "actual_attempted_training_epochs": 32,
+    "metadata": {
+      "chunks": 1069,
+      "complete_families": 24,
+      "complete_records": 723,
+      "packaged_families": 25,
+      "packaged_rows": 1792,
+      "parts": 3,
+      "payload_bytes": 74716573
+    },
+    "seconds": 522.1783980289474,
+    "selected_execution_producers": [
+      {
+        "bytes": 36028,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_advisory_worker_experiment.py",
+        "sha256": "c0186e9d4e42f2ee603efec233ca2cfdc5441f59639a69d0d0bdc7af7e869a28"
+      },
+      {
+        "bytes": 52702,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_advisory_worker_support.py",
+        "sha256": "29abac4c45288a68cb8fabe3465331d9cec6def87968ea3f0a27dadda1d1a5a9"
+      },
+      {
+        "bytes": 30867,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_sharded_metadata.py",
+        "sha256": "f8c44167970f4a7398f03e75c88fe602a0d5b32a15700ce25144713b4b8f2f15"
+      },
+      {
+        "bytes": 33788,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_worker_experiment.py",
+        "sha256": "827df4371800dd7f65ca5bbf72e7ac61031f2666f09310ce4efda9c859a6b987"
+      },
+      {
+        "bytes": 25945,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+        "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832"
+      },
+      {
+        "bytes": 42674,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+        "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03"
+      },
+      {
+        "bytes": 31649,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py",
+        "sha256": "411667288fba893031d72298f959454ba444038bfe950a685ef803b0d8a65943"
+      },
+      {
+        "bytes": 25612,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate_runner.py",
+        "sha256": "833f88d7ae449091917e94f7a09c6b820dbc62c0cc4dbc4231d8f2d0dfeb67b5"
+      },
+      {
+        "bytes": 54005,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+        "sha256": "caf12feb6d99a6d0ec013dcba39a1921d1db3a47c05c4f405224c9b29b7d74be"
+      },
+      {
+        "bytes": 9454,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+        "sha256": "f8bd110dd70d4d2c710d1953b883bd1c7779af9480d2fb4c1a3bba40b68a5054"
+      },
+      {
+        "bytes": 25376,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+        "sha256": "a929f7411550f651eb085ec115d6a383a09b02fb2cd0b6dc79e83fc70b97c9fa"
+      },
+      {
+        "bytes": 72131,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74"
+      },
+      {
+        "bytes": 429497,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf"
+      },
+      {
+        "bytes": 40917,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_candidate_experiment.py",
+        "sha256": "a1697ad55b0c93e821f8b240ba4a5dc7ea773db8542d79a0074b4a44f824a341"
+      },
+      {
+        "bytes": 45603,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_codebase_adaptation_experiment.py",
+        "sha256": "525890833983863220109c161d59fcae6f9349b8ebc4449e103ac0df2987b5c9"
+      },
+      {
+        "bytes": 29874,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_service_experiment.py",
+        "sha256": "584016c52d500205aac52038e15f8882fee1a77f958e8d4632088981fc409678"
+      },
+      {
+        "bytes": 26885,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_experiment.py",
+        "sha256": "11a9273909d8ba9e1c0226e627d63d8487aea3fe1d56bbbf87ab7515a8df88d9"
+      },
+      {
+        "bytes": 31364,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py",
+        "sha256": "9673422923915be2cd75ac1bbcd8157ec9db58eb9a1d73a35888599b7d5152bf"
+      },
+      {
+        "bytes": 25291,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_codebase_supervisor_fixture.py",
+        "sha256": "8edeb5a2f40c534b5c0913c6cf96fef4c0b6bb4440c384d2b074ab12f70e5da1"
+      },
+      {
+        "bytes": 42047,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate.py",
+        "sha256": "eba6a95ffbc2d9b0ed33d7616572f810b6fd69a4dfbdbca101289dca5be22610"
+      },
+      {
+        "bytes": 26038,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/codebase_feature_context.py",
+        "sha256": "651df2ce0489987a18a104cca9d5aecccf3dc27f1fe34e5207e0d0dcddf9d034"
+      },
+      {
+        "bytes": 22196,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_source_custody.py",
+        "sha256": "b3edc537cf98be9518038e2b842c885275cb7155c5b64ae13d5bdabb25bb5344"
+      },
+      {
+        "bytes": 20617,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_capacity_preview.py",
+        "sha256": "d40812ae9b3d72f66e1fdfec183734775a24a0304486cff5dcfbb88c990f5098"
+      },
+      {
+        "bytes": 29684,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_capacity.py",
+        "sha256": "d5e590ca1f55030be76451662cbd0b47c86398fbfb630dfd2265c41d3766ad96"
+      },
+      {
+        "bytes": 19336,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_preview.py",
+        "sha256": "537401aff19067c0d0462b30b1878e164596d1508d81e3bb43340589ebed7a56"
+      },
+      {
+        "bytes": 23125,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_service.py",
+        "sha256": "7fdda757d6cdb600a78d4dacf3df5e379e46ae6433df979eea6a0a26594262a7"
+      },
+      {
+        "bytes": 28822,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_codebase.py",
+        "sha256": "18be1fa7562fc60f2ecb1814f289db8ea5f5e376339376c04d0fb73cc573a226"
+      },
+      {
+        "bytes": 9927,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/repository_plan_preview.py",
+        "sha256": "f150d648d1d4b7fa9c20f17e91973f2ea8bdc87193c0a50a7ed59208df0c6c6b"
+      },
+      {
+        "bytes": 9491,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+        "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+      },
+      {
+        "bytes": 86490,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "sha256": "ac317966efe97582026f045c2a0acfc5c58151f7f3dd62d81d506b4e57dc9377"
+      },
+      {
+        "bytes": 44612,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_lowering_lean.py",
+        "sha256": "c2f55e9c96d504ab357ce4fb8d8bd8044f6277a965812458784714de1a91dda3"
+      },
+      {
+        "bytes": 31360,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_model_lean.py",
+        "sha256": "ab1e5bba2c9b63767068b5f5709af09145efd30e730c40d2474bb7143e369217"
+      },
+      {
+        "bytes": 25834,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+        "sha256": "9baf67451294b29b7c9e205477293246b1dde46f6d4bebe627a4e3145832acf3"
+      },
+      {
+        "bytes": 41332,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py",
+        "sha256": "5613f32adc9212dab0a68c2f1ffe161255f4b27fae3a948f2d01bbd32229778b"
+      },
+      {
+        "bytes": 47987,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+        "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+      },
+      {
+        "bytes": 28715,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+        "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+      },
+      {
+        "bytes": 94154,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+        "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+      },
+      {
+        "bytes": 71146,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+        "sha256": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2"
+      },
+      {
+        "bytes": 68367,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/backends/process.py",
+        "sha256": "9035ba1982cf5fbd0db40ec994a3829902d9f4a25cc7aeb0c0ae2705f233cbf5"
+      },
+      {
+        "bytes": 29575,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+        "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+      },
+      {
+        "bytes": 51708,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+        "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f"
+      },
+      {
+        "bytes": 87518,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+        "sha256": "00257f921b48bc78c6971378ff2e688a2cf5b6ae1330965f85627bbbfb23968d"
+      },
+      {
+        "bytes": 32125,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+        "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+      },
+      {
+        "bytes": 58156,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+      },
+      {
+        "bytes": 5967,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+        "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+      },
+      {
+        "bytes": 69046,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+        "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+      }
+    ],
+    "signed_worker_feature_mode": "model_off"
+  },
+  "output": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-advisory-worker-qualification-20261002-04",
+  "production_acceptance_exits_closed": 0,
+  "remaining_gates": [
+    "typed_advisory_final_spawn_admission_and_mutation_controls",
+    "learned_semantic_decoder_and_source_parser_runtime_correspondence",
+    "conditional_optimizer_convergence_and_held_out_public_task_evaluation",
+    "atomic_cross_part_publication_recovery",
+    "normalized_root_bound_proof_index_queries",
+    "deployed_terminal_budget_and_release_qualification"
+  ],
+  "schema": "finite-advisory-worker-codebase-ir-increment-review@1",
+  "scope": "Authored ten-file, two-task, five-input fixture; structural adaptation and mathematical AST/native IR correspondence. Selected retained bytes are individually observed; not a released checkout or process-origin attestation.",
+  "status": "bounded_native_and_independent_audit_passed",
+  "tests": {
+    "actual_process_controls": 20,
+    "bridge_structural": 132,
+    "historical_identity_union": 251,
+    "latest_distinct": 249,
+    "old_candidate_and_lowering_93_renewed": false,
+    "raw_records": 844,
+    "sharding_structural": 97
+  }
+}

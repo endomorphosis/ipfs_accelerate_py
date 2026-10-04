@@ -1,0 +1,2179 @@
+{
+  "384d_qualified": false,
+  "attempts": [
+    {
+      "error": "selected package staging failed before native launch",
+      "independent_audits": [],
+      "initial_staging_elapsed_unknown": true,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-01",
+      "native_argument_refusal_before_setup": false,
+      "native_elapsed_unrecorded": true,
+      "native_recorded_seconds": null,
+      "qualified": false,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16275,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-02/container-execution-final.json",
+        "sha256": "4790ed3e1dc96bc98d18019196df44c99227f834b7d7a25d9b0859b81e07eeab"
+      },
+      "container_removed": true,
+      "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 345.4580229029998 seconds",
+      "error_type": "TimeoutExpired",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 7500159,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-02-readonly-audit-20261003-01.json",
+          "sha256": "7ec01707a7f185c79cd86c26031f8c6f4cc1a1b9907c11a8a35ae852c436afb2"
+        }
+      ],
+      "inherited_actual_setup_epochs": 0,
+      "known_actual_setup_epochs": 2,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-02",
+      "native_recorded_seconds": 850.053916197001,
+      "outer_recorded_seconds": 858.4477252760007,
+      "phases": [
+        {
+          "elapsed_seconds": 0.09155213300073228,
+          "name": "create_300_tracked_sources",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 18.729737491001288,
+          "name": "publish_large_native_source_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 53.31086388600124,
+          "name": "fit_private_one_epoch_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 87.56335746900004,
+          "name": "fit_private_same_head_one_epoch_child",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.7508987199998955,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 44.81520459700005,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 87.48560161499881,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 99.86763475299995,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 55.69660064299933,
+          "name": "incomplete_prefix_cannot_complete",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 54.736662217999765,
+          "name": "cursor_offset_forgery",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.00870590100021218,
+          "name": "pre_cancelled_resume",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 345.50129816499975,
+          "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 345.4580229029998 seconds",
+          "error_type": "TimeoutExpired",
+          "name": "restart_owners_and_resume_in_fresh_process",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 5092,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-02/native/result.json",
+        "sha256": "0afc40ada260f28f1aab67ad39c9b2a821bc833ef5b804915df75b26acca25cf"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 2.8388563040007284,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16293,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-03/container-execution-final.json",
+        "sha256": "ce9267c62b4695cf45ccce848106526537c4947ac7bacb34f33291479382a1e0"
+      },
+      "container_removed": true,
+      "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 264.55180788600046 seconds",
+      "error_type": "TimeoutExpired",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 7506503,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-03-readonly-audit-20261003-01.json",
+          "sha256": "9434c2a0f31d64d72ab5ee1a2e527730bedaba4fe7155c29af54f83d4dd0278d"
+        }
+      ],
+      "inherited_actual_setup_epochs": 0,
+      "known_actual_setup_epochs": 2,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-03",
+      "native_recorded_seconds": 850.3769716660026,
+      "outer_recorded_seconds": 862.731426407001,
+      "phases": [
+        {
+          "elapsed_seconds": 0.05891810699904454,
+          "name": "create_300_tracked_sources",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 19.0201405029984,
+          "name": "publish_large_native_source_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 54.8103070899997,
+          "name": "fit_private_one_epoch_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 85.34529676599777,
+          "name": "fit_private_same_head_one_epoch_child",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.7463862710028479,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 45.42769887599934,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 74.41908364599658,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 79.20774638600051,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 44.18255419600246,
+          "name": "start_opt_out_reference_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 88.14621012899806,
+          "name": "opt_out_reference_first_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 46.515688872998,
+          "name": "incomplete_prefix_cannot_complete",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 45.991728572000284,
+          "name": "cursor_offset_forgery",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.008908720999897923,
+          "name": "pre_cancelled_resume",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 264.6298106309987,
+          "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 264.55180788600046 seconds",
+          "error_type": "TimeoutExpired",
+          "name": "restart_owners_and_resume_in_fresh_process",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 5915,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-03/native/result.json",
+        "sha256": "5f62b3aef1351a24adf1f88597e14217f927d5dafb8ec6a7b3350e58cc986fe8"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 2.9144254839993664,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 15911,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-04/container-execution-final.json",
+        "sha256": "757c3bde6daf575e1a0b14cd7401d10f60a23fdd776e035743f9fb5aecbf7e0c"
+      },
+      "container_removed": true,
+      "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 295.9260476210002 seconds",
+      "error_type": "TimeoutExpired",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 7506748,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-04-readonly-audit-20261003-01.json",
+          "sha256": "7f17a7ea0af12941e46c816f70758d9a37fd499c4840359c0f20c753173f1697"
+        }
+      ],
+      "inherited_actual_setup_epochs": 0,
+      "known_actual_setup_epochs": 2,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-04",
+      "native_recorded_seconds": 850.0479748389989,
+      "outer_recorded_seconds": 858.6966863130001,
+      "phases": [
+        {
+          "elapsed_seconds": 0.08578768900042633,
+          "name": "create_300_tracked_sources",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 22.111092278999422,
+          "name": "publish_large_native_source_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 54.49692021299779,
+          "name": "fit_private_one_epoch_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 85.61567374900187,
+          "name": "fit_private_same_head_one_epoch_child",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.793949816001259,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 35.678667420997954,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 64.35981840399836,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 71.08289662900279,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 43.99058516099831,
+          "name": "start_opt_out_reference_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 89.38726219400269,
+          "name": "opt_out_reference_first_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 42.84579063100318,
+          "name": "incomplete_prefix_cannot_complete",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 41.867571078000765,
+          "name": "cursor_offset_forgery",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.009867789001873462,
+          "name": "pre_cancelled_resume",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 295.9628454800004,
+          "error": "Command '['/opt/ipfs-supervisor/venv/bin/python', '-B', '-m', 'benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume', 'resume', '/results/native']' timed out after 295.9260476210002 seconds",
+          "error_type": "TimeoutExpired",
+          "name": "restart_owners_and_resume_in_fresh_process",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 5919,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-04/native/result.json",
+        "sha256": "0c536095548cdd51c613ae8a3437ff4d7c0b953b9aa6e5e83ef14fc35a467b3b"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 2.9316859650025435,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 15995,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-05/container-execution-final.json",
+        "sha256": "d1c1c96219c97aa01add946cd59e9e16b20b59a48742e0a6c72e0f4ca9cd926a"
+      },
+      "container_removed": true,
+      "error": "qualification budget refused before output initialization",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 6621647,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-05-readonly-audit-20261003-01.json",
+          "sha256": "1c77cce4e19a6164b7a944f7991118709c31fba6e5ffe87485920796d15e1f54"
+        }
+      ],
+      "initial_staging_elapsed_unknown": false,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-05",
+      "native_argument_refusal_before_setup": true,
+      "native_elapsed_unrecorded": true,
+      "native_recorded_seconds": null,
+      "outer_recorded_seconds": 9.055987826999626,
+      "qualified": false,
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 4.48373673199967,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16138,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-06/container-execution-final.json",
+        "sha256": "e24bc6442dd5066b1205f2bba4fbdacd4832cb05f00f1c73e1d53ee89bdc07d5"
+      },
+      "container_removed": true,
+      "error": "timed out waiting for a resource lease",
+      "error_type": "LeaseTimeoutError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 7504782,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-06-readonly-audit-20261003-01.json",
+          "sha256": "8020c5c31f67d0ee8e903c2e97123af6fa9cebf8dbf2a570710457f0035a9091"
+        }
+      ],
+      "inherited_actual_setup_epochs": 0,
+      "known_actual_setup_epochs": 2,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-06",
+      "native_recorded_seconds": 362.1653594129966,
+      "outer_recorded_seconds": 377.62827856700096,
+      "phases": [
+        {
+          "elapsed_seconds": 0.08291491199997836,
+          "name": "create_300_tracked_sources",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 18.726579054000467,
+          "name": "publish_large_native_source_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 55.03714311400108,
+          "name": "fit_private_one_epoch_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 86.25930168099876,
+          "name": "fit_private_same_head_one_epoch_child",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.7423940379994747,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 19.55982757200036,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 47.776288495999324,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 55.12651381899923,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 45.18309516800218,
+          "name": "start_opt_out_reference_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 30.019770981001784,
+          "error": "timed out waiting for a resource lease",
+          "error_type": "LeaseTimeoutError",
+          "name": "opt_out_reference_first_page",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 3916,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-06/native/result.json",
+        "sha256": "cd15edc25d89026196f5fb8849e0e1ca1d0e6ae9703c31f648da6bae9dcfd692"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 6.065772346999438,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16760,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07/container-execution-final.json",
+        "sha256": "a7e2d975dfcda185566012be5ad5992ed15437383cd2b061ad93650cc842e0d8"
+      },
+      "container_removed": true,
+      "error": "fresh-process chunk failed; retained numbered stdout/stderr identify boundary",
+      "error_type": "AssertionError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8346447,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07-readonly-audit-20261003-01.json",
+          "sha256": "0606a56be31d5d93443ef4ad49edac815b05294bb2287a5553b1eb05a96eda3d"
+        },
+        {
+          "bytes": 8606399,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07-readonly-audit-20261003-02.json",
+          "sha256": "765ae186e5dd707f52450b5125ef88e00ec7e1909e9f8f50705c97bb6489219d"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07",
+      "native_recorded_seconds": 483.0992198979984,
+      "outer_recorded_seconds": 498.3254458329975,
+      "phases": [
+        {
+          "elapsed_seconds": 5.642670982000709,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 1.226236834001611,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 21.273610629999894,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 51.65435650600193,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 59.74015985400183,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 50.574998823001806,
+          "name": "start_opt_out_reference_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.4185023889986,
+          "name": "opt_out_reference_first_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 28.334096760001557,
+          "name": "incomplete_prefix_cannot_complete",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 28.160024148000957,
+          "name": "cursor_offset_forgery",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.009580884001479717,
+          "name": "pre_cancelled_resume",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 137.65667126900007,
+          "name": "restart_owners_and_resume_chunk_01",
+          "status": "completed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 227559,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07/native/result.json",
+        "sha256": "989b3f2d917681734f98867238f61968cbf4d5b49c096d112f4fde18887b7c4a"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 9.406040224999742,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "byte_only_seed_completed_epochs": 2,
+      "error": "type object 'ResourceSchedulerConfig' has no attribute 'for_proof_host'",
+      "error_type": "AttributeError",
+      "host_failure": {
+        "bytes": 1652,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-08-host-launch-failure-20261003-01.json",
+        "sha256": "8c69bbe0d82023656cc8be0635fce2eb1bcfd3a2ac4886d7d2f3a16b15457580"
+      },
+      "host_launcher_failure_before_container": true,
+      "independent_audits": [
+        {
+          "bytes": 5260278,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-08-readonly-audit-20261003-01.json",
+          "sha256": "0d55b3638bb5df69df3a9976e0ff20de84ed0a33b3ff90d51bbc7921a3eacfbd"
+        },
+        {
+          "bytes": 5264035,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-08-readonly-audit-20261003-02.json",
+          "sha256": "21965dfca455917ff09fbdb32131cac783ef42208572f2f14a2e01ef36925656"
+        }
+      ],
+      "inherited_actual_setup_epochs": 0,
+      "initial_staging_elapsed_unknown": true,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-08",
+      "native_argument_refusal_before_setup": false,
+      "native_elapsed_unrecorded": true,
+      "native_materialized_inherited_setup_epochs": 0,
+      "native_recorded_seconds": null,
+      "qualified": false,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 17422,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09/container-execution-final.json",
+        "sha256": "e26b4c5a6fbe49c8f30540529d885d14c9ee965a13e875f01a8d08819ead7e3c"
+      },
+      "container_removed": true,
+      "error": "$[0] rejects float; use int or encode as a reviewed string",
+      "error_type": "StructuredIdentityError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8651479,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09-readonly-audit-20261003-01.json",
+          "sha256": "d65bc85e797243067926aecaf147970fc065834ce60db00d577a5666f3c5a126"
+        },
+        {
+          "bytes": 6204895,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09-readonly-audit-20261003-02.json",
+          "sha256": "501330f167706f39bdbde7ac235de2444f2c94cb7a14bfe27f0f5258fb87e940"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09",
+      "native_recorded_seconds": 2402.112151169,
+      "outer_recorded_seconds": 2416.7967488549984,
+      "phases": [
+        {
+          "elapsed_seconds": 5.5930456740024965,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 1.2318519709988323,
+          "name": "legacy_256_profile_refuses_large_head",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 20.778291323000303,
+          "name": "start_durable_large_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 52.72247032999803,
+          "name": "first_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 59.046749097997235,
+          "name": "second_scan_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 46.223636186001386,
+          "name": "start_opt_out_reference_root",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 89.04929635799999,
+          "name": "opt_out_reference_first_page",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 24.90776803299741,
+          "name": "incomplete_prefix_cannot_complete",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 25.295805625999492,
+          "name": "cursor_offset_forgery",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.009122446997935185,
+          "name": "pre_cancelled_resume",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 135.38540623600056,
+          "name": "restart_owners_and_resume_chunk_01",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 166.47156889700273,
+          "name": "restart_owners_and_resume_chunk_02",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 192.51990431300146,
+          "name": "restart_owners_and_resume_chunk_03",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 363.25786952199996,
+          "name": "restart_owners_and_resume_chunk_04",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 89.89852028300083,
+          "name": "receive_complete_resumed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 2.457291399001406,
+          "name": "current_source_drift",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 12.78683980599817,
+          "name": "durable_page_byte_tamper",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 2.510312348000298,
+          "name": "native_projection_row_tamper",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 86.28310402800344,
+          "name": "receive_after_exact_fault_restoration",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.10791744099697098,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 101.44842791599876,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.40409586399983,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.89986887899795,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 101.64324599199972,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.5788990809996903,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.1930004009991535,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 107.33559797699854,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.0010429100002511404,
+          "error": "$[0] rejects float; use int or encode as a reviewed string",
+          "error_type": "StructuredIdentityError",
+          "name": "bind_inventory_native_runtime",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 239640,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09/native/result.json",
+        "sha256": "56275f04227e19d7bebe3f9ed1df18ddeefd140e417e6841ead56f447ede982d"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 8.832816230999015,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16512,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10/container-execution-final.json",
+        "sha256": "b8f7e7b6eba7346055ce3f3b3a531cb9849e350481fd0f1e4a8f7205ee4cf88f"
+      },
+      "container_removed": true,
+      "error": "$.receipt.payload.pending_requirements[0].kind is not a reviewed structured-identity type: EvidenceRequirementKind",
+      "error_type": "StructuredIdentityError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8670140,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10-readonly-audit-20261003-01.json",
+          "sha256": "7a0ba1c49e94a05c60f012b2dd2e01851ceb78117d7c15476022fc3eae0984ba"
+        },
+        {
+          "bytes": 8672331,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10-readonly-audit-20261003-02.json",
+          "sha256": "c08f26617299134c4b03dc4db96c70e2ac68968f81cd3692114586f81365e6ea"
+        },
+        {
+          "bytes": 8719533,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10-readonly-audit-20261003-03.json",
+          "sha256": "da798541f84a329962a6fcb5a81599d0bcb504dbcb92631d690a23108cd2f891"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10",
+      "native_recorded_seconds": 1196.1542798539995,
+      "outer_recorded_seconds": 1220.7428422389967,
+      "phases": [
+        {
+          "elapsed_seconds": 5.672083199999179,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.18640224599948851,
+          "name": "materialize_verified_closed_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 87.86444339100126,
+          "name": "receive_reused_completed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.09488315499766031,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 96.09233291200144,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 94.61254947500129,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 93.66174794499966,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 98.56405093400099,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.5732833219990425,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.15634302900070907,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 102.0764431150019,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.42648463599835,
+          "error": "$.receipt.payload.pending_requirements[0].kind is not a reviewed structured-identity type: EvidenceRequirementKind",
+          "error_type": "StructuredIdentityError",
+          "name": "bind_inventory_native_runtime",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 259643,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10/native/result.json",
+        "sha256": "a5c6a7c842763d9593177aca347575e120c70d26a650964bad0db166695c6f3b"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 18.43471748799857,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16510,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-11/container-execution-final.json",
+        "sha256": "1a3ce32096e5a35c442842ba0c8a740a52ae42b3b68ed6f36dfa9887e33e7812"
+      },
+      "container_removed": true,
+      "error": "template load_store_generation failed: timed out",
+      "error_type": "QuackClientTransportError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8676114,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-11-readonly-audit-20261003-01.json",
+          "sha256": "39e68ba0008f64f4a330238d202c41667f35834cc6ce276bd0da3971557f857a"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-11",
+      "native_recorded_seconds": 1207.384119207003,
+      "outer_recorded_seconds": 1231.6668207039984,
+      "phases": [
+        {
+          "elapsed_seconds": 6.0789588230036316,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.19135330399876693,
+          "name": "materialize_verified_closed_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 89.93825155899685,
+          "name": "receive_reused_completed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.11539374299900373,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.26393959599955,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 98.12398469899927,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.44174072000169,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 98.13739539499511,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.5853702860040357,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.15571133999765152,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 101.29550475299766,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 123.00983904200257,
+          "error": "template load_store_generation failed: timed out",
+          "error_type": "QuackClientTransportError",
+          "name": "bind_inventory_native_runtime",
+          "status": "failed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 259521,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-11/native/result.json",
+        "sha256": "d07dbc7bdf36c1dcc947192524a1272f189ed188a1c0b2209a13991c5e176dd9"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 18.483000223001,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16503,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12/container-execution-final.json",
+        "sha256": "da38f5279e1e43f1bb39b7b93d9818b6de450c7bb1105891928245c92544f018"
+      },
+      "container_removed": true,
+      "error": "isolated native worker lifecycle is incomplete",
+      "error_type": "AssertionError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8705997,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12-readonly-audit-20261003-01.json",
+          "sha256": "c0ac27a41e87d4d240b51bc2dfe9bbf8830d3426a9337976644b2d93a59a80c5"
+        },
+        {
+          "bytes": 9855,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12-readonly-audit-20261003-02.json",
+          "sha256": "5db8453e2fceba09682b79a099f69a516b6e0dd0adb6ad71b6ab0d3d4f1379b3"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12",
+      "native_recorded_seconds": 1414.5123397720017,
+      "outer_recorded_seconds": 1430.0724546269994,
+      "phases": [
+        {
+          "elapsed_seconds": 5.632472230005078,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.17731058000208577,
+          "name": "materialize_verified_closed_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 85.88984206500027,
+          "name": "receive_reused_completed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.08916803100146353,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.01223912600108,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 98.45740106399899,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 94.32115257799887,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 93.16329851200135,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.5193040750018554,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.13002018599945586,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 100.1665827389952,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 103.46146394500101,
+          "name": "bind_inventory_native_runtime",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 108.3714960790021,
+          "name": "native_worker_start",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.9509841269973549,
+          "name": "native_worker_stop_and_uid_cleanup",
+          "status": "completed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 325870,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12/native/result.json",
+        "sha256": "6c68fb2af6c911557d586e7f05dad4ef8a44fabfa7db6fcb96c6221d5646bb3c"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 9.948961023001175,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16513,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13/container-execution-final.json",
+        "sha256": "b09296c0a50ae5189f1cdd781dc0f71b2de8bb8dd1e1db4f5b637979e3d49a61"
+      },
+      "container_removed": true,
+      "error": "exactly one actual authored worker stdout receipt required; logs=",
+      "error_type": "InventoryWorkerAuditError",
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8709629,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13-readonly-audit-20261003-01.json",
+          "sha256": "8a7a7bd06a72523c587d82e331d0ac3ced808a2618a8923af7197b1fd278c144"
+        },
+        {
+          "bytes": 73314,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13-readonly-audit-20261003-03.json",
+          "sha256": "9486d865fcc026c42eaa1cb486d2df3eb151c0572b19e5f19479145e0721f142"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13",
+      "native_recorded_seconds": 1303.6888567560018,
+      "outer_recorded_seconds": 1319.094172705998,
+      "phases": [
+        {
+          "elapsed_seconds": 5.357900085997244,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.18142612700466998,
+          "name": "materialize_verified_closed_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 83.50809768999898,
+          "name": "receive_reused_completed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.086973063996993,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 97.67942624499847,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 100.83125448100327,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 96.12385463400278,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 95.33956045800005,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.6532269080053084,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.15151941099611577,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 101.93230702299479,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 99.31332074099919,
+          "name": "bind_inventory_native_runtime",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 107.40017980500124,
+          "name": "native_worker_start",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.8711070230056066,
+          "name": "native_worker_stop_and_uid_cleanup",
+          "status": "completed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": false,
+      "result": {
+        "bytes": 335007,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13/native/result.json",
+        "sha256": "b3707c5f2ae63591a94460b03d87fffdaffa1999c58ccf778e62ce550e33bc94"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 10.036603052001738,
+      "unknown_fitting_epochs": false
+    },
+    {
+      "container": {
+        "bytes": 16510,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/container-execution-final.json",
+        "sha256": "2bb87ec56e569c382f49e7104fd4a6a0712531a537b5f01e92746f9a61f2f47a"
+      },
+      "container_removed": true,
+      "error": null,
+      "error_type": null,
+      "host_reservation_released": true,
+      "independent_audits": [
+        {
+          "bytes": 8757691,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14-readonly-audit-20261003-01.json",
+          "sha256": "1a7c9ca9cedb023e4f3c1d4733cd3ef4779dfe67351992f7f6e9d3890679ed4e"
+        }
+      ],
+      "inherited_actual_setup_epochs": 2,
+      "known_actual_setup_epochs": 0,
+      "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14",
+      "native_recorded_seconds": 1312.6200456269944,
+      "outer_recorded_seconds": 1336.3160486619963,
+      "phases": [
+        {
+          "elapsed_seconds": 5.666135655999824,
+          "name": "materialize_verified_closed_setup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.18683038499875693,
+          "name": "materialize_verified_closed_scan",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 91.97053192800377,
+          "name": "receive_reused_completed_chain",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.08716781999828527,
+          "name": "initialize_private_signed_owner",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 93.32309857899963,
+          "name": "sign_full_inventory_task_manifest",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 94.62098719200003,
+          "name": "admit_full_native_graph",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 94.0804638510017,
+          "name": "receive_signed_full_admission",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 93.75880208899616,
+          "name": "transactional_native_full_task_install",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.5172548929986078,
+          "name": "claim_native_prerequisite",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.13494910800363868,
+          "name": "execute_native_prerequisite_public_check",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 99.87661218799622,
+          "name": "prepare_public_inventory_worker_context",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 108.39519336800004,
+          "name": "bind_inventory_native_runtime",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 114.2204294050025,
+          "name": "native_worker_start",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.8834960720050731,
+          "name": "native_worker_stop_and_uid_cleanup",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.007919135001429822,
+          "name": "check_published_check_type.py",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 0.007757947998470627,
+          "name": "check_published_check_offset.py",
+          "status": "completed"
+        },
+        {
+          "elapsed_seconds": 3.765984818004654,
+          "name": "published_source_rejects_old_completion",
+          "status": "completed"
+        }
+      ],
+      "post_setup_fit_attempt_count": 0,
+      "qualified": true,
+      "result": {
+        "bytes": 341072,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/native/result.json",
+        "sha256": "b6307c0c8cd912c55161c3f6d50563cbf71e2d1ac9ba5538b52cb498a90e353f"
+      },
+      "retained_source_verified_after_execution": true,
+      "staging_seconds": 18.23308927499602,
+      "unknown_fitting_epochs": false
+    }
+  ],
+  "closed_container": {
+    "bytes": 16510,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/container-execution-final.json",
+    "sha256": "2bb87ec56e569c382f49e7104fd4a6a0712531a537b5f01e92746f9a61f2f47a"
+  },
+  "costs": {
+    "inherited_setup_epochs_by_attempt": [
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-01"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-02"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-03"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-04"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-05"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-06"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-07"
+      },
+      {
+        "epochs": 0,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-08"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-10"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-11"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-12"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13"
+      },
+      {
+        "epochs": 2,
+        "namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14"
+      }
+    ],
+    "initial_staging_seconds_unknown": true,
+    "known_new_native_setup_epochs": 8,
+    "native_attempt_seconds": 12232.215234397998,
+    "scope": "native attempt totals exclude source staging, units, diagnostic profiles and independent audits"
+  },
+  "cuda_qualified": false,
+  "date": "2026-10-03",
+  "diagnostic_profile": {
+    "container": {
+      "bytes": 3147,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-operation-profile-20261003-07/container.json",
+      "sha256": "50ab15cee4f8bc6907e0e2df47151a2dff42e426fdd929b6a15505ba084be27a"
+    },
+    "lineage_instrumented_cpu_seconds": 56.361,
+    "native_target_validations": 33,
+    "result": {
+      "bytes": 566,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-operation-profile-20261003-07/diagnostic.json",
+      "sha256": "c2adb7b3a8709e35a1cbcf5dcfb3dade5dcaf7a331ee97d959e4225460a62470"
+    },
+    "scope": "isolated closed fixture copy under cProfile; zero guarded post-setup fits; not a throughput qualification",
+    "validation_instrumented_cumulative_cpu_seconds": 45.487
+  },
+  "distinct_pytest_cases": 835,
+  "implementation_files": [
+    {
+      "bytes": 71935,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_resume.py",
+      "sha256": "3578e1b53991530b0393efecb87c73b1a4b6b4a0e0fc82b0f4be29bf60a2ce8b"
+    },
+    {
+      "bytes": 12815,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_receiving.py",
+      "sha256": "a7a32852fcac286a1b675de94ee495dd30e1ec695d62a80754a4f06dffca61fc"
+    },
+    {
+      "bytes": 18105,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_projection_replay.py",
+      "sha256": "c0333bb79378c6cf51771b550a1d9e736e8154ecc590b676df8308741f3e7c4d"
+    },
+    {
+      "bytes": 23356,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_lineage.py",
+      "sha256": "c37d229456cc755dd184e4274a7a8de502364fb65886039738b74b8df4a18a4f"
+    },
+    {
+      "bytes": 10151,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_resume_worker.py",
+      "sha256": "e312fd87289ea6141fb92d43d8ceb9da1494b44bf0cfc79eec879a84b43526de"
+    },
+    {
+      "bytes": 14062,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_admission.py",
+      "sha256": "96e7c9a45f6337fc0f4e5407bd58e1d78c054a8c840dbca3d5a890f15bb6ffa1"
+    },
+    {
+      "bytes": 15486,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_worker_context.py",
+      "sha256": "4c9067bc0676def94f2d4962450054a41a56988b84315a06f1922d57dca2a5d7"
+    },
+    {
+      "bytes": 58789,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_execution.py",
+      "sha256": "d60332f41c6e7cc8c032028d0a2d3059aed434966b43dade6ac7b05164d472e8"
+    },
+    {
+      "bytes": 78716,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "bb1c0cdeea1042d2ca414cfbc6985e9754150c359f06aece75445400ad62d3b9"
+    },
+    {
+      "bytes": 21889,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "94566d9ed11af1f5cfc5eb6d3552d322cc15ed185128f98b331c01d1ec95711b"
+    },
+    {
+      "bytes": 28755,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+      "sha256": "6a174824161f7e489f61a1d1f60bbb870f63b7bf4644a7183fb88b9c441ee114"
+    },
+    {
+      "bytes": 69323,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "9a8b64e010a628669d1a519807d9288dd02697b7cdcb3f726e279f6dee7a718b"
+    },
+    {
+      "bytes": 66054,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_resume.py",
+      "sha256": "4e501f8bc134713d3788a1000c8b08015e9ebaaa501ef161f1de6124ff576e23"
+    },
+    {
+      "bytes": 31522,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/run_codebase_inventory_resume_docker.py",
+      "sha256": "6f8e16e6546c07c7c66e700b79a7aeb6aaa689d1c48bc2086a927abae676de6c"
+    },
+    {
+      "bytes": 112194,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/audit_codebase_inventory_resume_worker.py",
+      "sha256": "db0d93f8321ea0a09a8dd22bc7b42b6195c3ce31e7eb638b5c15d9b7cc111076"
+    },
+    {
+      "bytes": 39568,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/inventory_resume_setup_fixture.py",
+      "sha256": "3972cd4f2158106733a1c561d38736a867fb463928f056a35678f0f3d1ac0437"
+    },
+    {
+      "bytes": 44677,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/inventory_resume_scan_fixture.py",
+      "sha256": "9782708de3ce97ee9418e6f0dcdac5db2b97ab6d00124f1f12fa7cbb3c1520f3"
+    }
+  ],
+  "independent_audit": {
+    "bytes": 8757691,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14-readonly-audit-20261003-01.json",
+    "sha256": "1a7c9ca9cedb023e4f3c1d4733cd3ef4779dfe67351992f7f6e9d3890679ed4e"
+  },
+  "independent_reader_guards": {
+    "included_in_pytest_total": false,
+    "named_tamper_controls": 89,
+    "receipt": {
+      "bytes": 20388,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-independent-reader-guard-tests-20261003-05.json",
+      "sha256": "2a50d18976b04d84d6798318ad1825f690d05db5a1db58a95f8a67bc85134a49"
+    },
+    "unittest_cases": 15
+  },
+  "limitations": [
+    "no learned patch generator",
+    "no general source/runtime equivalence proof",
+    "no complete transitive deployment attestation",
+    "fresh observations are sequential across owners and checkout",
+    "immutable hashes do not authenticate numerical execution",
+    "automatic pool cleanup and crash recovery remain separate",
+    "all 32 production acceptance tasks remain open"
+  ],
+  "limits": {
+    "default_reservation_memory_mb": 1024,
+    "estimate_is_rss_limit": false,
+    "fixture_members": 300,
+    "fixture_page_entries": 32,
+    "max_inventory_entries": 1024,
+    "max_page_entries": 64,
+    "native_task_body_limit_bytes": 262144,
+    "paired_receiving_serialized_retention_estimate_bytes": 247463936,
+    "scanner_serialized_retention_estimate_bytes": 234881024
+  },
+  "measured_phases": [
+    {
+      "elapsed_seconds": 5.666135655999824,
+      "name": "materialize_verified_closed_setup",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.18683038499875693,
+      "name": "materialize_verified_closed_scan",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 91.97053192800377,
+      "name": "receive_reused_completed_chain",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.08716781999828527,
+      "name": "initialize_private_signed_owner",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 93.32309857899963,
+      "name": "sign_full_inventory_task_manifest",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 94.62098719200003,
+      "name": "admit_full_native_graph",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 94.0804638510017,
+      "name": "receive_signed_full_admission",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 93.75880208899616,
+      "name": "transactional_native_full_task_install",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.5172548929986078,
+      "name": "claim_native_prerequisite",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.13494910800363868,
+      "name": "execute_native_prerequisite_public_check",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 99.87661218799622,
+      "name": "prepare_public_inventory_worker_context",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 108.39519336800004,
+      "name": "bind_inventory_native_runtime",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 114.2204294050025,
+      "name": "native_worker_start",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.8834960720050731,
+      "name": "native_worker_stop_and_uid_cleanup",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.007919135001429822,
+      "name": "check_published_check_type.py",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.007757947998470627,
+      "name": "check_published_check_offset.py",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 3.765984818004654,
+      "name": "published_source_rejects_old_completion",
+      "status": "completed"
+    }
+  ],
+  "native_lineage_parity": {
+    "complete_chain_bytes": 35222429,
+    "complete_chain_sha256": "1d313077c4ea98416a529bd1a8bc4a48ebb6563027527e4c79b64b95f11e09d3",
+    "container": {
+      "bytes": 3148,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-operation-profile-20261003-08/container.json",
+      "sha256": "01e4babdb9efb69054f5e401dcac85a254c2e2d48acd70a7c01bd2c94670b1cc"
+    },
+    "native_target_preparations": {
+      "optimized": 3,
+      "reference": 6
+    },
+    "native_target_validations": {
+      "optimized": 3,
+      "reference": 33
+    },
+    "new_training_epochs": 0,
+    "optimized_seconds": [
+      4.494383558001573,
+      4.602149418002227
+    ],
+    "process_uid": 0,
+    "reference_seconds": [
+      21.875575616999413,
+      22.035261504999653
+    ],
+    "result": {
+      "bytes": 4828,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-operation-profile-20261003-08/diagnostic.json",
+      "sha256": "ac30ecf4342ff56e4bdff5dcfe5c39bc12d22fd055704dd3adb8ff7d6a6d2130"
+    },
+    "scope": "four full trained-chain comparisons on one isolated300-member8DCPUfixture, diagnostic timings only; no general throughput qualification",
+    "worker_uid_qualification": false
+  },
+  "native_result": {
+    "bytes": 341072,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/native/result.json",
+    "sha256": "b6307c0c8cd912c55161c3f6d50563cbf71e2d1ac9ba5538b52cb498a90e353f"
+  },
+  "prequalification_archive_endpoint_observation": {
+    "all_other_original_membership_rows_unchanged": true,
+    "git_status_diagnostic_cause_independently_attested": false,
+    "native_overall_qualified": false,
+    "post_main_audit_git_index_changed": true,
+    "receipt": {
+      "bytes": 73314,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13-readonly-audit-20261003-03.json",
+      "sha256": "9486d865fcc026c42eaa1cb486d2df3eb151c0572b19e5f19479145e0721f142"
+    },
+    "scope": "original closed13 audit remains point-time history; scoped03 observes current before/after stability and discloses changed Git index without restoration"
+  },
+  "prequalification_authored_worker_observation": {
+    "native_overall_qualified": false,
+    "post_stop_gate_recorded_by_native": false,
+    "receipt": {
+      "bytes": 7616,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-13-authored-worker-receiving-20261003-01.json",
+      "sha256": "f9a57615bbc854a01798a47e2fb6a8f303da6085242003dc4502821499f57343"
+    },
+    "scope": "pure receiving of actual closed13 worker stdout and signed context after exact log-locator repair; explicit worktree cleanup and source invalidation tail not executed"
+  },
+  "production_default_activated": false,
+  "production_open_tasks": 32,
+  "proof_authority": false,
+  "public_read_uid_diagnostic": {
+    "actual_uid1001_children": 6,
+    "container": {
+      "bytes": 4826,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-public-worker-read-20261003-01/container-execution-final.json",
+      "sha256": "2afdd5bc9278b3c7af7af36b4b3286e263dbaab79314f8e5cb5ae6268b7413d9"
+    },
+    "fitting_attempts": 0,
+    "input": {
+      "bytes": 96722,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-public-worker-read-20261003-01/input-receipt.json",
+      "sha256": "19fa9bef5e8243e0a3854faf55e911f10ef05b3f1a304c638841f4a3dc878f99"
+    },
+    "native_owners_opened": false,
+    "native_worker_qualified": false,
+    "private_database_or_signing_key_inputs": false,
+    "result": {
+      "bytes": 13900,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-public-worker-read-20261003-01/result.json",
+      "sha256": "a3b4edb808a596176a42e5ed9239cf5a03e55b0cba90b5d7326688ceaba25050"
+    },
+    "retained_helper": {
+      "bytes": 23101,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-public-worker-read-20261003-01/diagnostic.py",
+      "sha256": "e0017fcd75d67878c126e12c216bfb54b37d06a9e35ff93250614d79d4e72302"
+    },
+    "scope": "actual UID1001/group1000 public reader on copied closed12 signed artifact/repository; no task claim, patch, publication or worker completion qualification",
+    "source_index_and_foreign_worktree_refusals": 4,
+    "successful_public_reads": 4
+  },
+  "pytest_deduplication_rule": "classname/name, stripping only the explicitly isolated .test.api. package prefix",
+  "qualification_summary": {
+    "completed_pages": 10,
+    "coverage": {
+      "dispositions": {
+        "deferred_budget": 89,
+        "inferred": 205,
+        "opaque": 2,
+        "parse_failed": 1,
+        "unindexed": 1,
+        "unsupported_target": 2
+      },
+      "inferred_rows": 205,
+      "inventory_entries": 300,
+      "pages": 10
+    },
+    "explicit_fixture_worktree_cleanup": {
+      "linked_worktree_admin_absent_from_audited_archive": true,
+      "receipt": {
+        "bytes": 1329,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/native/owner-fixture-worktree-cleanup.json",
+        "sha256": "f9aa7b44097aeebc3d56d0cc345b452240858d89ba1c3094d20f7016932ecadb"
+      },
+      "removed_allocation_count": 1,
+      "scope": "explicit owner cleanup after native STOP; automatic pool cleanup and crash recovery remain separate"
+    },
+    "final_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "inherited_epochs": 2,
+    "native_task_body_bytes": {
+      "INVENTORY-OFFSET": 52820,
+      "INVENTORY-TYPE": 52725
+    },
+    "native_task_statuses": {
+      "INVENTORY-OFFSET": "completed",
+      "INVENTORY-TYPE": "completed"
+    },
+    "new_epochs": 0,
+    "numerical_state": {
+      "adam_steps": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "completed_epochs": 2,
+      "feature_columns": 53,
+      "latent_width": 8,
+      "state_sha256": "54519a8b3b31853f4926add3a5ec3dc013e3e3349e610a8dc11dbd2920d99712"
+    },
+    "opt_out_equivalence": {
+      "comparison_scope": "first 32 ordered source members of one frozen 8D CPU model",
+      "entries_coverage_and_inference_exact": true,
+      "optimized_page_cid": "bafkreidqknc2rgmrdxu7scx3sv2jn6qicemrvb7v4v56nw52qk7f5di4va",
+      "optimized_root_cid": "baguqeera6mgvkld4pceoxxuqkehusjtc6t24qnv3mspruqlydam44iadcvhq",
+      "reference_page_cid": "bafkreihm5yxw726qwmsulhlloezo2mlthvbx4cb3mmex4i3p2wbrrjrlve",
+      "reference_root_cid": "baguqeerajkkqtyja6d6ml24iasdalgg57rnvolrhe4clx7nipxr7ruxfxa5a",
+      "throughput_qualified": false
+    },
+    "publication": {
+      "baseline_commit": "b02eafe5ee3c75ca1b594216414c4ddb8956c310",
+      "changed_paths": [
+        "calc.py"
+      ],
+      "parents": [
+        "b02eafe5ee3c75ca1b594216414c4ddb8956c310",
+        "73e3f08185d00af7c0b84a270a0d5e6a18457bb3"
+      ],
+      "public_checks_passed": true,
+      "published_commit": "6d84c69392bbb73f0300b7243e47125e6583981c"
+    },
+    "recorded_native_seconds": 1312.6200456269944,
+    "scan_provenance": {
+      "fresh_native_receiving_required_and_completed": true,
+      "historical_fresh_processes": 4,
+      "historical_owner_reopen_transition": {
+        "after": 7,
+        "before": 2,
+        "child_generations": [
+          3,
+          4,
+          5,
+          6
+        ],
+        "other_owner_fields_unchanged": true,
+        "reopens": 5,
+        "schema": "inventory-resume-registry-owner-reopen@1"
+      },
+      "historical_resumed_pages": 8,
+      "new_registry_reopens": 0,
+      "new_scan_pages": 0,
+      "source_audit": {
+        "bytes": 6204895,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09-readonly-audit-20261003-02.json",
+        "sha256": "501330f167706f39bdbde7ac235de2444f2c94cb7a14bfe27f0f5258fb87e940"
+      },
+      "source_namespace": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-09"
+    },
+    "start_status": "succeeded",
+    "stop_status": "succeeded",
+    "worker_uid": 1001
+  },
+  "qualified": true,
+  "qualified_namespace": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14",
+  "qualified_staged_implementation_files": [
+    {
+      "bytes": 71935,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_resume.py",
+      "sha256": "3578e1b53991530b0393efecb87c73b1a4b6b4a0e0fc82b0f4be29bf60a2ce8b",
+      "working_path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_resume.py"
+    },
+    {
+      "bytes": 12815,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_receiving.py",
+      "sha256": "a7a32852fcac286a1b675de94ee495dd30e1ec695d62a80754a4f06dffca61fc",
+      "working_path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_receiving.py"
+    },
+    {
+      "bytes": 18105,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_projection_replay.py",
+      "sha256": "c0333bb79378c6cf51771b550a1d9e736e8154ecc590b676df8308741f3e7c4d",
+      "working_path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_projection_replay.py"
+    },
+    {
+      "bytes": 23356,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_lineage.py",
+      "sha256": "c37d229456cc755dd184e4274a7a8de502364fb65886039738b74b8df4a18a4f",
+      "working_path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_lineage.py"
+    },
+    {
+      "bytes": 10151,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_resume_worker.py",
+      "sha256": "e312fd87289ea6141fb92d43d8ceb9da1494b44bf0cfc79eec879a84b43526de",
+      "working_path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_resume_worker.py"
+    },
+    {
+      "bytes": 14062,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_admission.py",
+      "sha256": "96e7c9a45f6337fc0f4e5407bd58e1d78c054a8c840dbca3d5a890f15bb6ffa1",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_admission.py"
+    },
+    {
+      "bytes": 15486,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_worker_context.py",
+      "sha256": "4c9067bc0676def94f2d4962450054a41a56988b84315a06f1922d57dca2a5d7",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_evidence_worker_context.py"
+    },
+    {
+      "bytes": 58789,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_execution.py",
+      "sha256": "d60332f41c6e7cc8c032028d0a2d3059aed434966b43dade6ac7b05164d472e8",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_execution.py"
+    },
+    {
+      "bytes": 78716,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "bb1c0cdeea1042d2ca414cfbc6985e9754150c359f06aece75445400ad62d3b9",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py"
+    },
+    {
+      "bytes": 21889,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "94566d9ed11af1f5cfc5eb6d3552d322cc15ed185128f98b331c01d1ec95711b",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py"
+    },
+    {
+      "bytes": 28651,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+      "sha256": "6ef77c5956e274a8f0a159f523843fdd366f3de39f8fbc714169b3a5641dc722",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py"
+    },
+    {
+      "bytes": 61764,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "5dc0ec392e9d44adc94d03dfe515caca5e5cbaef0418cc5031a95c8cd42f34c6",
+      "working_path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "bytes": 66054,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_resume.py",
+      "sha256": "4e501f8bc134713d3788a1000c8b08015e9ebaaa501ef161f1de6124ff576e23",
+      "working_path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_resume.py"
+    },
+    {
+      "bytes": 31522,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/benchmarks/agent_supervisor/container_coding/run_codebase_inventory_resume_docker.py",
+      "sha256": "6f8e16e6546c07c7c66e700b79a7aeb6aaa689d1c48bc2086a927abae676de6c",
+      "working_path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/run_codebase_inventory_resume_docker.py"
+    },
+    {
+      "bytes": 112194,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/benchmarks/agent_supervisor/container_coding/audit_codebase_inventory_resume_worker.py",
+      "sha256": "db0d93f8321ea0a09a8dd22bc7b42b6195c3ce31e7eb638b5c15d9b7cc111076",
+      "working_path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/audit_codebase_inventory_resume_worker.py"
+    },
+    {
+      "bytes": 39568,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/benchmarks/agent_supervisor/container_coding/inventory_resume_setup_fixture.py",
+      "sha256": "3972cd4f2158106733a1c561d38736a867fb463928f056a35678f0f3d1ac0437",
+      "working_path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/inventory_resume_setup_fixture.py"
+    },
+    {
+      "bytes": 44677,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-worker-qualification-20261003-14/source/benchmarks/agent_supervisor/container_coding/inventory_resume_scan_fixture.py",
+      "sha256": "9782708de3ce97ee9418e6f0dcdac5db2b97ab6d00124f1f12fa7cbb3c1520f3",
+      "working_path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/inventory_resume_scan_fixture.py"
+    }
+  ],
+  "receiving": {
+    "canonical_start_stop_timeout_ms": 30000,
+    "counts_are_source_path_accounting_not_native_trace": true,
+    "cross_operation_freshness_cache": false,
+    "default_optimized": true,
+    "detached_native_authority_rows": [
+      "tasks",
+      "relations",
+      "completion_receipts",
+      "plans",
+      "goals",
+      "validation_results/domain_events",
+      "store_generations",
+      "control_plane_metadata"
+    ],
+    "final_receiving_sql_receipt_and_popen_share_original_owner_lock": true,
+    "fresh_close_immediately_precedes_popen": true,
+    "full_start_entry_precedes_control_dispatch": true,
+    "global_canonical_identity_codec_changed": false,
+    "global_git_trust_configuration_written": false,
+    "launch_repair_tests": {
+      "actual_threaded_quack_profiles": [
+        "optimized",
+        "reference"
+      ],
+      "isolated": {
+        "bytes": 48392,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-isolated-quack-lock-tests-20261003-01.xml",
+        "sha256": "e0b91edbf9dca8ef531b852d17da92dd554214ffdedfb5bb09988d5e9e6350fe"
+      },
+      "post_prepare_authority_mutation_refusals_per_profile": 8,
+      "scope": "actual native owner/RPC/SQL; controlled scan/signature adapters; literal launch-point probe, not a worker",
+      "working": {
+        "bytes": 29491,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-quack-lock-tests-20261003-02.xml",
+        "sha256": "9b546a9bc371f899e2652a87b0fabde3fefc70cf14b8a5bb9a5e8707d1b9435f"
+      }
+    },
+    "maximum_explicit_api_timeout_seconds": 600,
+    "native_admission_enum_path_class_member_value_ledger": true,
+    "native_admission_original_reference_pinned": true,
+    "opt_out_preserves_full_replay": true,
+    "ordinary_owner_git_route_unchanged": true,
+    "original_signed_workflow_full_completion_walks_expected": 40,
+    "planning_receipt_final_guard": "exact private canonical path, raw bytes, SHA-256, mode/owner/single-link and stable fstat",
+    "private_spawn_preparation_one_use_pid_thread_runtime_and_owner_pinned": true,
+    "public_inventory_read_route": "signature/canonical root/baseline/common-dir worktree/source checks before fixed3readcommands with per-command exact-root Git trust and clean environment",
+    "qualified_timeout_is_default": true,
+    "reviewed_native_requirement_enums": [
+      "EvidenceRequirementKind",
+      "AssuranceLevel"
+    ],
+    "shared_operation_timeout_seconds": 120,
+    "signed_workflow_full_completion_walks_expected_from_implementation": 12,
+    "typed_quack_callbacks_precede_final_receiving_popen_lock_section": true
+  },
+  "report": "external/ipfs_accelerate/docs/agent_supervisor/codebase_inventory_resume_worker_qualification.md",
+  "required_native_evidence": [
+    "complete ten-page 300-member scan",
+    "eight returned pages after genuine owner/process restart",
+    "full default/reference first-page equality",
+    "signed manifest@5 and receipt@3 retaining both original tasks",
+    "genuine UID1001 worker boundary/public-reader receipt",
+    "actual native claim/public checks/two-parent merge",
+    "STOP, UID cleanup, container deletion and drained reservations"
+  ],
+  "scan_execution_attested": false,
+  "scanner_test_breakdown": {
+    "inert_or_pure_protocol": 250,
+    "native_resource_controls": 3,
+    "native_sql_cas_target": 64
+  },
+  "schema": "repository-proof-index-inventory-resume-worker-review@1",
+  "scope": "additive larger resumable source inventory; signed full-task advisory admission; explicit isolated native worker",
+  "source_execution_attested": false,
+  "status": "bounded composed native integration independently qualified",
+  "test_scope": "distinct final scanner, new supervisor boundaries and legacy public reader; native integration separately required; no skips accepted as passes",
+  "tests": [
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 60428,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-scanner-receiving-tests-20261003-01.xml",
+        "sha256": "f90817c237e1516f1129a5092edceff14db1c6cb11868104c1a1b52f192b9c3a"
+      },
+      "seconds": 55.104,
+      "skipped": 0,
+      "tests": 317
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 52622,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-paired-supervisor-tests-20261003-03.xml",
+        "sha256": "654538994f122421d8c7d20bd5faf8ccf2b5a9f2f930979ec8a51899077a8194"
+      },
+      "seconds": 273.074,
+      "skipped": 0,
+      "tests": 312
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 23256,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-paired-supervisor-tests-20261003-07.xml",
+        "sha256": "6a144abb37f7907b2ab81f00c93328ef9ca0bb7453f71cfdc0e51372658d883e"
+      },
+      "seconds": 53.539,
+      "skipped": 0,
+      "tests": 141
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 38484,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-isolated-float-guard-tests-20261003-01.xml",
+        "sha256": "dcbac48169a9df27f9f254279e130d075d94422487030bb04abf7f59da5a51aa"
+      },
+      "seconds": 19.155,
+      "skipped": 0,
+      "tests": 141
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 9053,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-legacy-public-tests-20261003-01.xml",
+        "sha256": "bbd02cf6afd7770624584131b115ecd6f375ac3fce1c255f32db502bf0efdc12"
+      },
+      "seconds": 68.279,
+      "skipped": 0,
+      "tests": 54
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 6725,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-setup-guard-tests-20261003-01.xml",
+        "sha256": "5ae8fe31ae79830d6abae505072a1a3c330a7ad64516aa93ae55d05d01bf63b1"
+      },
+      "seconds": 33.219,
+      "skipped": 0,
+      "tests": 34
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 5695,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-resume-scan-guard-tests-20261003-01.xml",
+        "sha256": "61ddc66b50d1e28be7ca4d7ca9e0600000ce0cc6452afc833709308e21ee1631"
+      },
+      "seconds": 3.82,
+      "skipped": 0,
+      "tests": 29
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 11812,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-enum-guard-tests-20261003-02.xml",
+        "sha256": "5cccfe20a391ae05fa5e73bbccc963ccfd6d4806218a7bb0c3f020eef8b1dcc1"
+      },
+      "seconds": 19.895,
+      "skipped": 0,
+      "tests": 67
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 46727,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-isolated-admission-guard-tests-20261003-02.xml",
+        "sha256": "50116356d67a7a7a9df00e60dd6980abac42f01525a40d29779f5e19b8ad9148"
+      },
+      "seconds": 22.277,
+      "skipped": 0,
+      "tests": 169
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 29491,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-quack-lock-tests-20261003-02.xml",
+        "sha256": "9b546a9bc371f899e2652a87b0fabde3fefc70cf14b8a5bb9a5e8707d1b9435f"
+      },
+      "seconds": 65.467,
+      "skipped": 0,
+      "tests": 175
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 48392,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-isolated-quack-lock-tests-20261003-01.xml",
+        "sha256": "e0b91edbf9dca8ef531b852d17da92dd554214ffdedfb5bb09988d5e9e6350fe"
+      },
+      "seconds": 56.018,
+      "skipped": 0,
+      "tests": 175
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 4184,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-public-git-tests-20261003-01.xml",
+        "sha256": "3927372025b1bddbe8a5674e4a1c8917a928ccced98659b44ac7eea7e5468008"
+      },
+      "seconds": 19.084,
+      "skipped": 0,
+      "tests": 25
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 7010,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-public-git-legacy-tests-20261003-01.xml",
+        "sha256": "300ea232eec7ce61221bb2e8f6e34cf861a9e9adc195176dafa4fcfa34c084cc"
+      },
+      "seconds": 59.818,
+      "skipped": 0,
+      "tests": 44
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 18398,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-isolated-public-git-tests-20261003-01.xml",
+        "sha256": "7ceb8b431c262cbcf2f398086c1f2db7c89cdce6fe15be0c2a1ed858d3361774"
+      },
+      "seconds": 37.377,
+      "skipped": 0,
+      "tests": 69
+    }
+  ],
+  "unchanged_checkpoint_producers": [
+    {
+      "bytes": 47987,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+    },
+    {
+      "bytes": 29578,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+    },
+    {
+      "bytes": 58156,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+    },
+    {
+      "bytes": 32125,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+      "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+    },
+    {
+      "bytes": 5967,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+      "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+    },
+    {
+      "bytes": 69046,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+      "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+    }
+  ],
+  "working_endpoint_scope": "mutable working bytes observed when review is written; native qualification applies only to separately pinned staged files",
+  "working_implementation_files_qualified": false
+}

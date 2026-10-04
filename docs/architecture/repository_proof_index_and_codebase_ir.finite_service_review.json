@@ -1,0 +1,131 @@
+{
+  "authorities": {
+    "completion_authority": false,
+    "convergence_proved": false,
+    "execution_authority": false,
+    "mutation_authority": false,
+    "omission_authority": false,
+    "production_admitted": false,
+    "proof_authority": false,
+    "signed_evidence_admitted": false,
+    "source_semantics_verified": false,
+    "worker_launched": false
+  },
+  "complete_metadata_records": 83,
+  "documentation_link_corrections": "Three prior scaling-report references now point directly to existing retained scaling measurements and native integration test evidence.",
+  "documentation_pins": [
+    {
+      "bytes": 137366,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "ac3eb983885166683d5c10ca0b847c7521d03fb20b24f2b52825325a739a21e3"
+    },
+    {
+      "bytes": 22017,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "sha256": "4896e229bf2144dd1552e30263b1fc6bd2440bf9bbb922164ca67f85976f7213"
+    },
+    {
+      "bytes": 48537,
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "b97ac4ebe0072be5c25501a0860a436c20f9c0c47ec70eeb7669b7b629f332c5"
+    },
+    {
+      "bytes": 7611,
+      "path": "external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_finite_service_qualification.md",
+      "sha256": "6db8614c25974b9d55e43b2ad9fca9b24586da8b411a2c5480d124ecf198c93c"
+    }
+  ],
+  "execution_result": {
+    "bytes": 485562,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-service-qualification-20261002-01/result.json",
+    "sha256": "44e6df4fb49e5953a0fd6e1a60b472e3acff9531e506843839d5261fa9d38a35"
+  },
+  "experiment_seconds": 12.997252675006166,
+  "historical_index_current_facts": 0,
+  "latest_qualification_counts": {
+    "distinct_cases": 70,
+    "errors": 0,
+    "failures": 0,
+    "passed": 70,
+    "skipped": 0,
+    "tests": 70
+  },
+  "metadata_families": 31,
+  "native_cold_observation_executed": true,
+  "open_acceptance_tasks": [
+    "RPI-001",
+    "RPI-002",
+    "RPI-003",
+    "RPI-004",
+    "RPI-005",
+    "RPI-006",
+    "RPI-007",
+    "RPI-008",
+    "RPI-009",
+    "RPI-010",
+    "RPI-011",
+    "RPI-012",
+    "RPI-013",
+    "RPI-014",
+    "RPI-015",
+    "RPI-016",
+    "RPI-017",
+    "RPI-018",
+    "RPI-019",
+    "RPI-020",
+    "RPI-021",
+    "RPI-022",
+    "RPI-023",
+    "RPI-024",
+    "RPI-025",
+    "RPI-026",
+    "RPI-027",
+    "RPI-028",
+    "RPI-029",
+    "RPI-030",
+    "RPI-031",
+    "RPI-032"
+  ],
+  "partial_evidence_tasks": [
+    "RPI-012",
+    "RPI-013",
+    "RPI-014",
+    "RPI-016",
+    "RPI-021",
+    "RPI-022",
+    "RPI-023",
+    "RPI-032"
+  ],
+  "provider_calls": 0,
+  "qualification_directory": "artifacts/codebase_ir_terminal_bench/finite-service-qualification-20261002-01",
+  "raw_execution_counts": {
+    "errors": 0,
+    "failures": 44,
+    "passed": 264,
+    "skipped": 0,
+    "tests": 308
+  },
+  "remaining": [
+    "applicable source semantics and checker provenance",
+    "independently bound executable capacity",
+    "versioned signed repository-evidence admission",
+    "complete public prompt interpretation",
+    "actual worker repair/capture/reproof",
+    "qualified learned semantic decoding and optimizer convergence"
+  ],
+  "reviewed_at_utc": "2026-10-02T04:32:49.358181+00:00",
+  "schema": "repository-proof-index-codebase-ir-finite-service-review@1",
+  "scope": "Selected ending source/documentation observations and retained authored finite experiment; no atomic repository snapshot, complete environment attestation or signed evidence admission.",
+  "selected_source_count": 26,
+  "source_pins": {
+    "bytes": 18163,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-service-qualification-20261002-01/source-pins.json",
+    "sha256": "016c9c0d18cdce931b95bdaf8bb2d8b3be0ef1dcabc12ea6e47807763fd049bc"
+  },
+  "test_ledger": {
+    "bytes": 450427,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-service-qualification-20261002-01/tests.json",
+    "sha256": "152addfbadf4a204a9fa91491ae3f27875e46cb6ad8976e12fef437273a6f6ab"
+  },
+  "training_steps": 0
+}

@@ -1,0 +1,1764 @@
+{
+  "acceptance": {
+    "existing_query_api": "CodebaseVerificationCatalog.query_current",
+    "next_deliverable": "exact_source_inventory_to_existing_normalized_conditional_query_to_supervisor_material_join",
+    "partial_tasks": [
+      "RPI-029",
+      "RPI-032"
+    ],
+    "production_tasks_closed": 0,
+    "production_tasks_open": 32,
+    "runtime_requirements_remain_residual": true
+  },
+  "date": "2026-10-02",
+  "documentation_validation": {
+    "documentation_file_pins": [
+      {
+        "bytes": 9626,
+        "path": "external/ipfs_accelerate/docs/agent_supervisor/codebase_inventory_inference_reuse_qualification.md",
+        "sha256": "882583cb9e99538ea3dc2e52a5dee139711f4d065f282bae15832f01bb74d8a8"
+      },
+      {
+        "bytes": 11302,
+        "path": "external/ipfs_accelerate/docs/agent_supervisor/codebase_inventory_scan_qualification.md",
+        "sha256": "bd1c5e1d4aa5e436af94ea81bd68c74abf94d924eea860c12f68d60a8aeb2bb4"
+      },
+      {
+        "bytes": 169595,
+        "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "sha256": "880f519d1d9569360cd5dd5f4d592a5891ffe0296d6538697f4f2ca5f6bf287d"
+      },
+      {
+        "bytes": 77361,
+        "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "sha256": "0a017b2cdc331d134593b3784955e427de2bd035425045e470521217e1a9b8da"
+      },
+      {
+        "bytes": 72451,
+        "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+        "sha256": "a3c9b3eab71efc76896bb9f0e673a4d3f2e1382dc7b29d35e9e6b61c163650ce"
+      }
+    ],
+    "documentation_whitespace_files": 5,
+    "local_links_checked": 333,
+    "new_increment_document_links_resolved": true,
+    "python_sources_compiled": 10,
+    "resolved": 330,
+    "scope": "current selected files and ending documentation observations; concurrent SMT report links preserved without repair; no native rerun or primary archive mutation",
+    "selected_source_and_receipt_pin_checks": 63,
+    "selected_source_whitespace_clean": true,
+    "unresolved_existing_concurrent_references": [
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-smt-execution-qualification-20261002/REPORT.md"
+      },
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-smt-execution-qualification-20261002/REPORT.md"
+      },
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-smt-execution-qualification-20261002/REPORT.md"
+      }
+    ]
+  },
+  "execution_history": [
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 15369,
+      "error": null,
+      "generation_scope": "historical_source_and_harness",
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-01/result.json",
+      "qualified": true,
+      "recorded_seconds": 44.40199691709131,
+      "sha256": "74b1ab3e673bb1b6bbabe689e5fde8fa12ae9ba0b0f700a4e6e7dfe031f7d2bb"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 14079,
+      "error": "changed_registry_candidate_metadata failed for an unrelated reason: RuntimeVersionError: registry version content identity differs",
+      "generation_scope": "historical_source_and_harness",
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-02/result.json",
+      "qualified": false,
+      "recorded_seconds": 29.303138528950512,
+      "sha256": "2cf0df82ddaa0d7ef2682a6a5f53f2c2e54a295c325a503a381de44c9377a71a"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 27964,
+      "error": null,
+      "generation_scope": "historical_source_and_harness",
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-03/result.json",
+      "qualified": true,
+      "recorded_seconds": 59.403018875047565,
+      "sha256": "c354c66a2e0e5c0d4697ea997fb8d9fca0a088a518d8bd82f9a0de72ac7e3a52"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 27968,
+      "error": null,
+      "generation_scope": "historical_source_and_harness",
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/result.json",
+      "qualified": true,
+      "recorded_seconds": 59.3474078590516,
+      "sha256": "00a52f57d708bf57cade1f8a81844b2932e1ac4985eef233646935b6e0767a7e"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 67942,
+      "error": null,
+      "generation_scope": "current_operation_reuse_selected_producers",
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-qualification-20261002-01/result.json",
+      "qualified": true,
+      "recorded_seconds": 88.35289280116558,
+      "sha256": "d9ae27ad295c83bdbee8d745a372d8a965e5ce72f584c854f921d4738f125967"
+    }
+  ],
+  "generation_inputs": {
+    "bytes": 9983,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-qualification-20261002-01/generation-inputs.json",
+    "sha256": "911ca2bd57249e2a423ce6f677ac3b772a8c2055d5a2cb3f91a63126c34a045e"
+  },
+  "implementation": {
+    "cache_serialized_byte_cap": 41943040,
+    "candidate_and_exact_canonical_target_cache": "one_scan_only",
+    "checkpoint_pinned_producers_unchanged": true,
+    "coverage_canonical_types_checked": true,
+    "default_on": true,
+    "default_retained_serialized_phase_ceiling": 247463936,
+    "final_artifacts_rechecked_after_final_source": true,
+    "memory_reservation_mib": 1024,
+    "native_lowering_per_receiving_row": true,
+    "no_cross_operation_cache": true,
+    "opt_out": "optimized=False",
+    "serialized_bounds_are_not_python_rss": true
+  },
+  "independent_readonly_audit": {
+    "bounded_reads": 645,
+    "bytes": 41320,
+    "jobs_started": 0,
+    "limitations": [
+      "Selected files are sequential copies, not a transitive dependency closure or execution attestation.",
+      "Worker input/output streams are receipt digests; streams are not archived for independent recomputation.",
+      "Native completion observations and function profile counts are archived claims; native APIs are not re-executed.",
+      "Owner equality is scoped to retained exports and artifact bytes; no source SQL receipt or DuckDB owner is replayed.",
+      "Two balanced samples per mode establish no statistical significance or generalized production speedup.",
+      "Fixed transductive 8D CPU float64 profile establishes no CUDA, 384D, held-out planning benefit, semantic proof authority or activation.",
+      "Source/model observations are sequential fences; checkout is not locked. PID absence is a point-in-time check."
+    ],
+    "native_api_calls": 0,
+    "owner_scope": "exact exported model SQL rows plus source head and immutable artifact populations; no DuckDB files opened as owners",
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-readonly-audit-20261002-01.json",
+    "primary_archive_preserved": true,
+    "primary_archive_writes": 0,
+    "registry_owner_opens": 0,
+    "script": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-readonly-audit-20261002-01.py",
+    "script_sha256": "81b307480a572a71628515d9246386c92f43daa153e7b186b427acbae1189328",
+    "selected_current_and_retained_sources_match": true,
+    "selected_source_files": 27,
+    "sha256": "9a24360d111a09b39bd69195047ea6645732b1d22dd63a0b0d82b13d556aa72b",
+    "structured_key_checks": 8345,
+    "substantive_assertions": 4713,
+    "tests_run": 0,
+    "total_assertions": 13058,
+    "training_calls": 0,
+    "unique_paths": 209,
+    "verified": true
+  },
+  "limitations": [
+    "two unprofiled samples per mode on one fixed same-head 8D CPU float64 fixture; no statistical or generalized production speedup",
+    "selected sequential local file copies, not transitive dependency closure or execution attestation",
+    "sampled child RSS and cooperative bounded Git operations, not kernel aggregate containment",
+    "observations are sequential point-in-time fences, not an atomic checkout lock",
+    "no CUDA/384D/semantic decoder/proof reuse/planner authority/production activation qualified",
+    "historical-source transitions, pressure, crash recovery, larger captures and cross-operation reuse remain separately gated"
+  ],
+  "native_qualification": {
+    "comparisons": [
+      {
+        "absolute_tolerance": 1e-12,
+        "exact_source_and_structural_identity": true,
+        "maximum_absolute_numerical_difference": 0.0
+      },
+      {
+        "absolute_tolerance": 1e-12,
+        "exact_source_and_structural_identity": true,
+        "maximum_absolute_numerical_difference": 0.0
+      },
+      {
+        "absolute_tolerance": 1e-12,
+        "exact_source_and_structural_identity": true,
+        "maximum_absolute_numerical_difference": 0.0
+      },
+      {
+        "absolute_tolerance": 1e-12,
+        "exact_source_and_structural_identity": true,
+        "maximum_absolute_numerical_difference": 0.0
+      }
+    ],
+    "ending_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "ending_selected_inputs": {
+      "current_and_retained_copies_unchanged": true,
+      "execution_attestation": false,
+      "selected_file_count": 27
+    },
+    "exact_output_max_abs_difference": 0.0,
+    "feature_columns": 53,
+    "genuine_host_resources_before": {
+      "available_memory_mb": 100378,
+      "available_pid_tasks": 334962,
+      "cpu_slots": 20,
+      "cpu_stall_percent": 29.81,
+      "io_stall_percent": 0.69,
+      "memory_stall_percent": 0.0,
+      "pid_task_limit": 337808,
+      "total_memory_mb": 124610
+    },
+    "inference_training_executed": false,
+    "latent_dimensions": 8,
+    "measured_public_calls": 4,
+    "numerical_after": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "9a1e09fd22fe52f67bf2546978a8c478840971b4cb6785a15996fbb6f4b729f7"
+    },
+    "numerical_before": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "9a1e09fd22fe52f67bf2546978a8c478840971b4cb6785a15996fbb6f4b729f7"
+    },
+    "owners_preserved": true,
+    "profile_probes_excluded_from_measurements": 2,
+    "qualified": true,
+    "recorded_seconds": 88.35289280116558,
+    "refusal_controls": [
+      {
+        "details": {
+          "genuine_isolated_worker_attempted": true,
+          "native_process_observation": {
+            "cancelled": false,
+            "elapsed_ms": 1392,
+            "returncode": 1,
+            "termination_reason": "nonzero_exit",
+            "timed_out": false,
+            "workspace_cleaned": true
+          },
+          "payload_mutated_after_sender_preparation": true
+        },
+        "elapsed_seconds": 2.835383865982294,
+        "error": "inventory numerical child failed: nonzero_exit: g.py\", line 108, in __post_init__\n    raise CodebaseCatalogError(\"head AST revision does not bind its repository snapshot\")\nipfs_datasets_py.duckdb_control.codebase_catalog.CodebaseCatalogError: head AST revision does not bind its repository snapshot\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 393, in <module>\n    main()\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 385, in main\n    response = execute(request, _input_bytes=len(raw))\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 271, in execute\n    shared = timed(\"shared_inventory_validation\",\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 242, in timed\n    return operation()\n           ^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 272, in <lambda>\n    lambda: transport.validate_shared_inventory_envelope(request[\"shared_inventory\"]))\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_targets.py\", line 489, in validate_shared_inventory_envelope\n    raise CodebaseInventoryError(\"malformed shared native inventory publication\") from exc\nipfs_datasets_py.logic.software_contracts.codebase_inventory_targets.CodebaseInventoryError: malformed shared native inventory publication\n",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "rehashed_shared_publication_binding",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_isolated_worker_attempted": true,
+          "native_process_observation": {
+            "cancelled": false,
+            "elapsed_ms": 1541,
+            "returncode": 1,
+            "termination_reason": "nonzero_exit",
+            "timed_out": false,
+            "workspace_cleaned": true
+          },
+          "payload_mutated_after_sender_preparation": true
+        },
+        "elapsed_seconds": 2.9320755591616035,
+        "error": "inventory numerical child failed: nonzero_exit: Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 393, in <module>\n    main()\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 385, in main\n    response = execute(request, _input_bytes=len(raw))\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in execute\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 242, in timed\n    return operation()\n           ^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in <lambda>\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_replay.py\", line 266, in validate_inventory_codebase_target\n    raise CodebaseTargetError(\"CodebaseIR target native replay differs\")\nipfs_datasets_py.logic.software_contracts.codebase_ir_targets.CodebaseTargetError: CodebaseIR target native replay differs\n",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "rehashed_native_projection",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_isolated_worker_attempted": true,
+          "native_process_observation": {
+            "cancelled": false,
+            "elapsed_ms": 1391,
+            "returncode": 1,
+            "termination_reason": "nonzero_exit",
+            "timed_out": false,
+            "workspace_cleaned": true
+          },
+          "payload_mutated_after_sender_preparation": true
+        },
+        "elapsed_seconds": 2.809374697972089,
+        "error": "inventory numerical child failed: nonzero_exit: Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 393, in <module>\n    main()\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 385, in main\n    response = execute(request, _input_bytes=len(raw))\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in execute\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 242, in timed\n    return operation()\n           ^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in <lambda>\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_replay.py\", line 266, in validate_inventory_codebase_target\n    raise CodebaseTargetError(\"CodebaseIR target native replay differs\")\nipfs_datasets_py.logic.software_contracts.codebase_ir_targets.CodebaseTargetError: CodebaseIR target native replay differs\n",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "rehashed_native_target_authority",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_isolated_worker_attempted": true,
+          "native_process_observation": {
+            "cancelled": false,
+            "elapsed_ms": 1253,
+            "returncode": 1,
+            "termination_reason": "nonzero_exit",
+            "timed_out": false,
+            "workspace_cleaned": true
+          },
+          "payload_mutated_after_sender_preparation": true
+        },
+        "elapsed_seconds": 2.5913720838725567,
+        "error": "inventory numerical child failed: nonzero_exit: Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 393, in <module>\n    main()\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 385, in main\n    response = execute(request, _input_bytes=len(raw))\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in execute\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 242, in timed\n    return operation()\n           ^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py\", line 302, in <lambda>\n    target = timed(\"native_target_replay\", lambda: native_replay.validate_inventory_codebase_target(\n                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_replay.py\", line 233, in validate_inventory_codebase_target\n    raise CodebaseTargetError(\"embedded source bytes differ from the captured entry\")\nipfs_datasets_py.logic.software_contracts.codebase_ir_targets.CodebaseTargetError: embedded source bytes differ from the captured entry\n",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "rehashed_captured_source",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.16535318386740983,
+        "error": "stored source object CID mismatch",
+        "error_type": "CacheIntegrityError",
+        "name": "tampered_captured_source",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.11951179197058082,
+        "error": "stored structured object is not canonical",
+        "error_type": "CacheIntegrityError",
+        "name": "tampered_captured_ast",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.3550619399175048,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "tampered_selected_checkpoint",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.35161008895374835,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "tampered_ancestor_checkpoint",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 3.5047352130059153,
+        "error": "current repository differs from sealed inventory",
+        "error_type": "StaleCodebaseError",
+        "name": "source_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "deliberate_owner_fault_restored_after_control": true,
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 3.3171435359399766,
+        "error": "model owner state changed during scan",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "registry_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "deliberate_artifact_fault_restored_after_control": true,
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 3.3061845740303397,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "selected_checkpoint_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "artifact_changed_after_final_source_observation": true,
+          "deliberate_artifact_fault_restored_after_control": true,
+          "successful_native_source_observations": 2
+        },
+        "elapsed_seconds": 3.7453463228885084,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "selected_checkpoint_change_after_final_source_observation",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "deliberate_catalog_fault_restored_after_control": true,
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 3.7576438311953098,
+        "error": "current head does not bind its committed operation receipt",
+        "error_type": "CodebaseCatalogError",
+        "name": "catalog_head_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.0317645980976522,
+        "error": "resource lease request was cancelled",
+        "error_type": "LeaseCancelledError",
+        "name": "pre_cancelled_scan",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "actual_child_pids": [
+            462028
+          ],
+          "cancellation_triggered_after_child_observed": true,
+          "native_process_observation": {
+            "cancelled": true,
+            "elapsed_ms": 23,
+            "returncode": -15,
+            "termination_reason": "cancelled",
+            "timed_out": false,
+            "workspace_cleaned": true
+          }
+        },
+        "elapsed_seconds": 1.4256303580477834,
+        "error": "inventory scan cancelled",
+        "error_type": "LeaseCancelledError",
+        "name": "cancel_actual_running_child",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      }
+    ],
+    "setup_actual_epochs": 3
+  },
+  "native_result": {
+    "bytes": 67942,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-qualification-20261002-01/result.json",
+    "sha256": "d9ae27ad295c83bdbee8d745a372d8a965e5ce72f584c854f921d4738f125967"
+  },
+  "observed_at_utc": "2026-10-02T17:42:53.113366+00:00",
+  "performance": {
+    "balanced_order": [
+      "optimized",
+      "reference",
+      "reference",
+      "optimized"
+    ],
+    "generalized_production_speedup_claimed": false,
+    "observed_reference_over_optimized_median_public_call": 1.607739692329727,
+    "optimized": {
+      "actual_counters": [
+        {
+          "dispositions": {
+            "inferred": 22,
+            "opaque": 3,
+            "parse_failed": 1,
+            "unindexed": 1,
+            "unsupported_target": 1
+          },
+          "entry_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 820416,
+            "compact_targets": 22,
+            "full_target_transport_bytes": 3471834,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 3629595,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 1,
+            "shared_transport_bytes": 121500,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 23,
+            "target_preparations": 23
+          },
+          "final_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 0,
+            "compact_targets": 0,
+            "full_target_transport_bytes": 0,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 0,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 0,
+            "shared_transport_bytes": 0,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 0,
+            "target_preparations": 0
+          },
+          "inferred_rows": 22,
+          "inventory_entries": 28,
+          "lineage": {
+            "binding_cache_reads": 33,
+            "cache_retained_bytes": 2858289,
+            "cache_retained_bytes_high_water": 2858289,
+            "candidate_cache_hits": 1,
+            "candidate_native_reads": 2,
+            "completed_run_metadata_replays": 1,
+            "current_seal_reuses": 3,
+            "historical_seal_reads": 0,
+            "historical_seal_retained_bytes": 0,
+            "historical_seal_retained_bytes_high_water": 0,
+            "historical_seal_reuses": 0,
+            "reference_guard_file_hashes": 4,
+            "runtime_constructor_validations": 2,
+            "target_native_validations": 3,
+            "target_preparation_cache_hits": 6,
+            "target_preparations": 3,
+            "target_validation_cache_hits": 41
+          },
+          "lineage_replays": 1,
+          "model_versions": 2,
+          "numerical_process_starts": 1,
+          "shards": 2,
+          "source_observations": 2,
+          "training_calls": 0,
+          "worker": {
+            "contract_validations": 1,
+            "input_tensor_builds": 2,
+            "matrix_builds": 2,
+            "native_target_replays": 22,
+            "replay_ast_digest_checks": 22,
+            "replay_authored_contract_replays": 22,
+            "replay_full_target_comparisons": 22,
+            "replay_native_lowering_replays": 22,
+            "replay_shared_manifest_parses_avoided": 22,
+            "replay_shared_receipt_parses_avoided": 22,
+            "replay_shared_replay_preparations": 1,
+            "replay_source_digest_checks": 22,
+            "replay_target_replay_attempts": 22,
+            "replay_target_replays": 22,
+            "rows": 22,
+            "shards": 2,
+            "shared_inventory_validations": 1,
+            "state_validations": 1,
+            "target_restorations": 22,
+            "vocabulary_builds": 1,
+            "weight_tensor_builds": 4
+          }
+        },
+        {
+          "dispositions": {
+            "inferred": 22,
+            "opaque": 3,
+            "parse_failed": 1,
+            "unindexed": 1,
+            "unsupported_target": 1
+          },
+          "entry_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 820416,
+            "compact_targets": 22,
+            "full_target_transport_bytes": 3471834,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 3629595,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 1,
+            "shared_transport_bytes": 121500,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 23,
+            "target_preparations": 23
+          },
+          "final_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 0,
+            "compact_targets": 0,
+            "full_target_transport_bytes": 0,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 0,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 0,
+            "shared_transport_bytes": 0,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 0,
+            "target_preparations": 0
+          },
+          "inferred_rows": 22,
+          "inventory_entries": 28,
+          "lineage": {
+            "binding_cache_reads": 33,
+            "cache_retained_bytes": 2858289,
+            "cache_retained_bytes_high_water": 2858289,
+            "candidate_cache_hits": 1,
+            "candidate_native_reads": 2,
+            "completed_run_metadata_replays": 1,
+            "current_seal_reuses": 3,
+            "historical_seal_reads": 0,
+            "historical_seal_retained_bytes": 0,
+            "historical_seal_retained_bytes_high_water": 0,
+            "historical_seal_reuses": 0,
+            "reference_guard_file_hashes": 4,
+            "runtime_constructor_validations": 2,
+            "target_native_validations": 3,
+            "target_preparation_cache_hits": 6,
+            "target_preparations": 3,
+            "target_validation_cache_hits": 41
+          },
+          "lineage_replays": 1,
+          "model_versions": 2,
+          "numerical_process_starts": 1,
+          "shards": 2,
+          "source_observations": 2,
+          "training_calls": 0,
+          "worker": {
+            "contract_validations": 1,
+            "input_tensor_builds": 2,
+            "matrix_builds": 2,
+            "native_target_replays": 22,
+            "replay_ast_digest_checks": 22,
+            "replay_authored_contract_replays": 22,
+            "replay_full_target_comparisons": 22,
+            "replay_native_lowering_replays": 22,
+            "replay_shared_manifest_parses_avoided": 22,
+            "replay_shared_receipt_parses_avoided": 22,
+            "replay_shared_replay_preparations": 1,
+            "replay_source_digest_checks": 22,
+            "replay_target_replay_attempts": 22,
+            "replay_target_replays": 22,
+            "rows": 22,
+            "shards": 2,
+            "shared_inventory_validations": 1,
+            "state_validations": 1,
+            "target_restorations": 22,
+            "vocabulary_builds": 1,
+            "weight_tensor_builds": 4
+          }
+        }
+      ],
+      "coordinator_stages": {
+        "elapsed_seconds_before_record_serialization": {
+          "count": 2,
+          "maximum": 3.8267637649551034,
+          "mean": 3.748912735376507,
+          "median": 3.748912735376507,
+          "minimum": 3.6710617057979107,
+          "samples": [
+            3.6710617057979107,
+            3.8267637649551034
+          ]
+        },
+        "historical_entry": {
+          "count": 2,
+          "maximum": 0.006424244027584791,
+          "mean": 0.006216954439878464,
+          "median": 0.006216954439878464,
+          "minimum": 0.006009664852172136,
+          "samples": [
+            0.006009664852172136,
+            0.006424244027584791
+          ]
+        },
+        "historical_final": {
+          "count": 2,
+          "maximum": 0.013839594088494778,
+          "mean": 0.010325246606953442,
+          "median": 0.010325246606953442,
+          "minimum": 0.0068108991254121065,
+          "samples": [
+            0.0068108991254121065,
+            0.013839594088494778
+          ]
+        },
+        "lineage_replay": {
+          "count": 2,
+          "maximum": 0.3493655901402235,
+          "mean": 0.3473835645709187,
+          "median": 0.3473835645709187,
+          "minimum": 0.34540153900161386,
+          "samples": [
+            0.3493655901402235,
+            0.34540153900161386
+          ]
+        },
+        "model_closing": {
+          "count": 2,
+          "maximum": 0.00224733492359519,
+          "mean": 0.0020459259394556284,
+          "median": 0.0020459259394556284,
+          "minimum": 0.0018445169553160667,
+          "samples": [
+            0.00224733492359519,
+            0.0018445169553160667
+          ]
+        },
+        "model_final": {
+          "count": 2,
+          "maximum": 0.013745930045843124,
+          "mean": 0.010166190448217094,
+          "median": 0.010166190448217094,
+          "minimum": 0.0065864508505910635,
+          "samples": [
+            0.0065864508505910635,
+            0.013745930045843124
+          ]
+        },
+        "numerical_process": {
+          "count": 2,
+          "maximum": 2.1649763248860836,
+          "mean": 2.1120096679078415,
+          "median": 2.1120096679078415,
+          "minimum": 2.0590430109295994,
+          "samples": [
+            2.0590430109295994,
+            2.1649763248860836
+          ]
+        },
+        "registry_entry": {
+          "count": 2,
+          "maximum": 0.0038362829945981503,
+          "mean": 0.0038324114866554737,
+          "median": 0.0038324114866554737,
+          "minimum": 0.003828539978712797,
+          "samples": [
+            0.0038362829945981503,
+            0.003828539978712797
+          ]
+        },
+        "source_entry": {
+          "count": 2,
+          "maximum": 0.32840270292945206,
+          "mean": 0.309766688500531,
+          "median": 0.309766688500531,
+          "minimum": 0.29113067407161,
+          "samples": [
+            0.29113067407161,
+            0.32840270292945206
+          ]
+        },
+        "source_final": {
+          "count": 2,
+          "maximum": 0.3303252460900694,
+          "mean": 0.31782701052725315,
+          "median": 0.31782701052725315,
+          "minimum": 0.3053287749644369,
+          "samples": [
+            0.3303252460900694,
+            0.3053287749644369
+          ]
+        },
+        "target_preparation": {
+          "count": 2,
+          "maximum": 0.5792085079010576,
+          "mean": 0.5488056334434077,
+          "median": 0.5488056334434077,
+          "minimum": 0.5184027589857578,
+          "samples": [
+            0.5184027589857578,
+            0.5792085079010576
+          ]
+        }
+      },
+      "public_call_seconds": {
+        "count": 2,
+        "maximum": 3.840679951943457,
+        "mean": 3.7630445698741823,
+        "median": 3.7630445698741823,
+        "minimum": 3.6854091878049076,
+        "samples": [
+          3.6854091878049076,
+          3.840679951943457
+        ]
+      },
+      "worker_stages": {
+        "contract_decode": {
+          "count": 2,
+          "maximum": 0.000993891153484583,
+          "mean": 0.0009810025803744793,
+          "median": 0.0009810025803744793,
+          "minimum": 0.0009681140072643757,
+          "samples": [
+            0.0009681140072643757,
+            0.000993891153484583
+          ]
+        },
+        "contract_validation": {
+          "count": 2,
+          "maximum": 0.0010009638499468565,
+          "mean": 0.0009715473279356956,
+          "median": 0.0009715473279356956,
+          "minimum": 0.0009421308059245348,
+          "samples": [
+            0.0009421308059245348,
+            0.0010009638499468565
+          ]
+        },
+        "feature_matrix": {
+          "count": 2,
+          "maximum": 0.12022241507656872,
+          "mean": 0.11862681352067739,
+          "median": 0.11862681352067739,
+          "minimum": 0.11703121196478605,
+          "samples": [
+            0.11703121196478605,
+            0.12022241507656872
+          ]
+        },
+        "feature_space_detach": {
+          "count": 2,
+          "maximum": 7.38238450139761e-05,
+          "mean": 6.788840983062983e-05,
+          "median": 6.788840983062983e-05,
+          "minimum": 6.195297464728355e-05,
+          "samples": [
+            6.195297464728355e-05,
+            7.38238450139761e-05
+          ]
+        },
+        "native_imports": {
+          "count": 2,
+          "maximum": 0.8687801128253341,
+          "mean": 0.8637247919104993,
+          "median": 0.8637247919104993,
+          "minimum": 0.8586694709956646,
+          "samples": [
+            0.8586694709956646,
+            0.8687801128253341
+          ]
+        },
+        "native_replay_preparation": {
+          "count": 2,
+          "maximum": 0.015614207135513425,
+          "mean": 0.015537965577095747,
+          "median": 0.015537965577095747,
+          "minimum": 0.015461724018678069,
+          "samples": [
+            0.015461724018678069,
+            0.015614207135513425
+          ]
+        },
+        "native_target_replay": {
+          "count": 2,
+          "maximum": 0.46891947742551565,
+          "mean": 0.45434888382442296,
+          "median": 0.45434888382442296,
+          "minimum": 0.43977829022333026,
+          "samples": [
+            0.43977829022333026,
+            0.46891947742551565
+          ]
+        },
+        "numerical_inference": {
+          "count": 2,
+          "maximum": 0.0042479499243199825,
+          "mean": 0.004157949006184936,
+          "median": 0.004157949006184936,
+          "minimum": 0.004067948088049889,
+          "samples": [
+            0.004067948088049889,
+            0.0042479499243199825
+          ]
+        },
+        "request_validation": {
+          "count": 2,
+          "maximum": 1.761619932949543e-05,
+          "mean": 1.7336104065179825e-05,
+          "median": 1.7336104065179825e-05,
+          "minimum": 1.705600880086422e-05,
+          "samples": [
+            1.705600880086422e-05,
+            1.761619932949543e-05
+          ]
+        },
+        "response_bound_serialization": {
+          "count": 2,
+          "maximum": 0.00039750500582158566,
+          "mean": 0.000391161534935236,
+          "median": 0.000391161534935236,
+          "minimum": 0.0003848180640488863,
+          "samples": [
+            0.0003848180640488863,
+            0.00039750500582158566
+          ]
+        },
+        "shared_inventory_validation": {
+          "count": 2,
+          "maximum": 0.09310041181743145,
+          "mean": 0.09272324887569994,
+          "median": 0.09272324887569994,
+          "minimum": 0.09234608593396842,
+          "samples": [
+            0.09234608593396842,
+            0.09310041181743145
+          ]
+        },
+        "source_profile_validation": {
+          "count": 2,
+          "maximum": 0.00014303997159004211,
+          "mean": 0.00013260799460113049,
+          "median": 0.00013260799460113049,
+          "minimum": 0.00012217601761221886,
+          "samples": [
+            0.00012217601761221886,
+            0.00014303997159004211
+          ]
+        },
+        "state_detach": {
+          "count": 2,
+          "maximum": 0.0011941799893975258,
+          "mean": 0.0011749555123969913,
+          "median": 0.0011749555123969913,
+          "minimum": 0.0011557310353964567,
+          "samples": [
+            0.0011557310353964567,
+            0.0011941799893975258
+          ]
+        },
+        "state_validation": {
+          "count": 2,
+          "maximum": 0.0005150088109076023,
+          "mean": 0.0005136488471180201,
+          "median": 0.0005136488471180201,
+          "minimum": 0.0005122888833284378,
+          "samples": [
+            0.0005150088109076023,
+            0.0005122888833284378
+          ]
+        },
+        "target_restoration": {
+          "count": 2,
+          "maximum": 0.12680494599044323,
+          "mean": 0.12216712953522801,
+          "median": 0.12216712953522801,
+          "minimum": 0.1175293130800128,
+          "samples": [
+            0.1175293130800128,
+            0.12680494599044323
+          ]
+        },
+        "vocabulary_preparation": {
+          "count": 2,
+          "maximum": 7.571210153400898e-05,
+          "mean": 7.50240869820118e-05,
+          "median": 7.50240869820118e-05,
+          "minimum": 7.433607243001461e-05,
+          "samples": [
+            7.433607243001461e-05,
+            7.571210153400898e-05
+          ]
+        },
+        "weight_tensor_preparation": {
+          "count": 2,
+          "maximum": 0.0010718281846493483,
+          "mean": 0.0010506515391170979,
+          "median": 0.0010506515391170979,
+          "minimum": 0.0010294748935848475,
+          "samples": [
+            0.0010294748935848475,
+            0.0010718281846493483
+          ]
+        }
+      }
+    },
+    "reference": {
+      "actual_counters": [
+        {
+          "dispositions": {
+            "inferred": 22,
+            "opaque": 3,
+            "parse_failed": 1,
+            "unindexed": 1,
+            "unsupported_target": 1
+          },
+          "entry_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 820416,
+            "compact_targets": 22,
+            "full_target_transport_bytes": 3471834,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 3629595,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 1,
+            "shared_transport_bytes": 121500,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 23,
+            "target_preparations": 23
+          },
+          "final_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 0,
+            "compact_targets": 0,
+            "full_target_transport_bytes": 0,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 0,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 0,
+            "shared_transport_bytes": 0,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 0,
+            "target_preparations": 0
+          },
+          "inferred_rows": 22,
+          "inventory_entries": 28,
+          "lineage": {},
+          "lineage_replays": 1,
+          "model_versions": 2,
+          "numerical_process_starts": 1,
+          "shards": 2,
+          "source_observations": 2,
+          "training_calls": 0,
+          "worker": {
+            "contract_validations": 2,
+            "input_tensor_builds": 2,
+            "matrix_builds": 2,
+            "native_target_replays": 22,
+            "replay_ast_digest_checks": 22,
+            "replay_authored_contract_replays": 22,
+            "replay_full_target_comparisons": 22,
+            "replay_native_lowering_replays": 22,
+            "replay_shared_manifest_parses_avoided": 0,
+            "replay_shared_receipt_parses_avoided": 0,
+            "replay_shared_replay_preparations": 0,
+            "replay_source_digest_checks": 22,
+            "replay_target_replay_attempts": 22,
+            "replay_target_replays": 22,
+            "rows": 22,
+            "shards": 2,
+            "shared_inventory_validations": 1,
+            "state_validations": 2,
+            "target_restorations": 22,
+            "vocabulary_builds": 2,
+            "weight_tensor_builds": 8
+          }
+        },
+        {
+          "dispositions": {
+            "inferred": 22,
+            "opaque": 3,
+            "parse_failed": 1,
+            "unindexed": 1,
+            "unsupported_target": 1
+          },
+          "entry_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 820416,
+            "compact_targets": 22,
+            "full_target_transport_bytes": 3471834,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 3629595,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 1,
+            "shared_transport_bytes": 121500,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 23,
+            "target_preparations": 23
+          },
+          "final_seal": {
+            "ast_bytes": 79991,
+            "ast_cas_reads": 24,
+            "compact_target_transport_bytes": 0,
+            "compact_targets": 0,
+            "full_target_transport_bytes": 0,
+            "manifest_bytes": 120383,
+            "manifest_reads": 1,
+            "prepared_target_bytes": 0,
+            "publication_receipt_bytes": 501,
+            "publication_receipt_reads": 1,
+            "shared_envelope_creations": 0,
+            "shared_transport_bytes": 0,
+            "source_bytes": 1068,
+            "source_cas_reads": 25,
+            "target_preparation_attempts": 0,
+            "target_preparations": 0
+          },
+          "inferred_rows": 22,
+          "inventory_entries": 28,
+          "lineage": {},
+          "lineage_replays": 1,
+          "model_versions": 2,
+          "numerical_process_starts": 1,
+          "shards": 2,
+          "source_observations": 2,
+          "training_calls": 0,
+          "worker": {
+            "contract_validations": 2,
+            "input_tensor_builds": 2,
+            "matrix_builds": 2,
+            "native_target_replays": 22,
+            "replay_ast_digest_checks": 22,
+            "replay_authored_contract_replays": 22,
+            "replay_full_target_comparisons": 22,
+            "replay_native_lowering_replays": 22,
+            "replay_shared_manifest_parses_avoided": 0,
+            "replay_shared_receipt_parses_avoided": 0,
+            "replay_shared_replay_preparations": 0,
+            "replay_source_digest_checks": 22,
+            "replay_target_replay_attempts": 22,
+            "replay_target_replays": 22,
+            "rows": 22,
+            "shards": 2,
+            "shared_inventory_validations": 1,
+            "state_validations": 2,
+            "target_restorations": 22,
+            "vocabulary_builds": 2,
+            "weight_tensor_builds": 8
+          }
+        }
+      ],
+      "coordinator_stages": {
+        "elapsed_seconds_before_record_serialization": {
+          "count": 2,
+          "maximum": 6.121125993086025,
+          "mean": 6.03576789307408,
+          "median": 6.03576789307408,
+          "minimum": 5.950409793062136,
+          "samples": [
+            5.950409793062136,
+            6.121125993086025
+          ]
+        },
+        "historical_entry": {
+          "count": 2,
+          "maximum": 0.00734523800201714,
+          "mean": 0.0069433164317160845,
+          "median": 0.0069433164317160845,
+          "minimum": 0.006541394861415029,
+          "samples": [
+            0.006541394861415029,
+            0.00734523800201714
+          ]
+        },
+        "historical_final": {
+          "count": 2,
+          "maximum": 0.013400040101259947,
+          "mean": 0.010040534078143537,
+          "median": 0.010040534078143537,
+          "minimum": 0.006681028055027127,
+          "samples": [
+            0.013400040101259947,
+            0.006681028055027127
+          ]
+        },
+        "lineage_replay": {
+          "count": 2,
+          "maximum": 1.8971227060537785,
+          "mean": 1.858823055983521,
+          "median": 1.858823055983521,
+          "minimum": 1.8205234059132636,
+          "samples": [
+            1.8205234059132636,
+            1.8971227060537785
+          ]
+        },
+        "model_closing": {
+          "count": 2,
+          "maximum": 0.0021056700497865677,
+          "mean": 0.0019974380265921354,
+          "median": 0.0019974380265921354,
+          "minimum": 0.0018892060033977032,
+          "samples": [
+            0.0021056700497865677,
+            0.0018892060033977032
+          ]
+        },
+        "model_final": {
+          "count": 2,
+          "maximum": 0.011960210977122188,
+          "mean": 0.009020939003676176,
+          "median": 0.009020939003676176,
+          "minimum": 0.0060816670302301645,
+          "samples": [
+            0.011960210977122188,
+            0.0060816670302301645
+          ]
+        },
+        "numerical_process": {
+          "count": 2,
+          "maximum": 2.492586721200496,
+          "mean": 2.467857571085915,
+          "median": 2.467857571085915,
+          "minimum": 2.443128420971334,
+          "samples": [
+            2.492586721200496,
+            2.443128420971334
+          ]
+        },
+        "registry_entry": {
+          "count": 2,
+          "maximum": 0.003962460206821561,
+          "mean": 0.00381399504840374,
+          "median": 0.00381399504840374,
+          "minimum": 0.003665529889985919,
+          "samples": [
+            0.003665529889985919,
+            0.003962460206821561
+          ]
+        },
+        "source_entry": {
+          "count": 2,
+          "maximum": 0.3634775010868907,
+          "mean": 0.3430996284587309,
+          "median": 0.3430996284587309,
+          "minimum": 0.32272175583057106,
+          "samples": [
+            0.32272175583057106,
+            0.3634775010868907
+          ]
+        },
+        "source_final": {
+          "count": 2,
+          "maximum": 0.3061700910329819,
+          "mean": 0.30160412855912,
+          "median": 0.30160412855912,
+          "minimum": 0.2970381660852581,
+          "samples": [
+            0.2970381660852581,
+            0.3061700910329819
+          ]
+        },
+        "target_preparation": {
+          "count": 2,
+          "maximum": 0.6338372151367366,
+          "mean": 0.6173155010910705,
+          "median": 0.6173155010910705,
+          "minimum": 0.6007937870454043,
+          "samples": [
+            0.6007937870454043,
+            0.6338372151367366
+          ]
+        }
+      },
+      "public_call_seconds": {
+        "count": 2,
+        "maximum": 6.135326354997233,
+        "mean": 6.049996118992567,
+        "median": 6.049996118992567,
+        "minimum": 5.964665882987902,
+        "samples": [
+          5.964665882987902,
+          6.135326354997233
+        ]
+      },
+      "worker_stages": {
+        "contract_decode": {
+          "count": 2,
+          "maximum": 0.0009817630052566528,
+          "mean": 0.0009722510585561395,
+          "median": 0.0009722510585561395,
+          "minimum": 0.0009627391118556261,
+          "samples": [
+            0.0009817630052566528,
+            0.0009627391118556261
+          ]
+        },
+        "feature_space_detach": {
+          "count": 2,
+          "maximum": 7.617613300681114e-05,
+          "mean": 6.908806972205639e-05,
+          "median": 6.908806972205639e-05,
+          "minimum": 6.200000643730164e-05,
+          "samples": [
+            7.617613300681114e-05,
+            6.200000643730164e-05
+          ]
+        },
+        "native_imports": {
+          "count": 2,
+          "maximum": 0.8155097751878202,
+          "mean": 0.8119115825975314,
+          "median": 0.8119115825975314,
+          "minimum": 0.8083133900072426,
+          "samples": [
+            0.8155097751878202,
+            0.8083133900072426
+          ]
+        },
+        "native_target_replay": {
+          "count": 2,
+          "maximum": 0.851611350197345,
+          "mean": 0.8418102188734338,
+          "median": 0.8418102188734338,
+          "minimum": 0.8320090875495225,
+          "samples": [
+            0.851611350197345,
+            0.8320090875495225
+          ]
+        },
+        "reference_inference": {
+          "count": 2,
+          "maximum": 0.2252653161995113,
+          "mean": 0.220036237151362,
+          "median": 0.220036237151362,
+          "minimum": 0.21480715810321271,
+          "samples": [
+            0.2252653161995113,
+            0.21480715810321271
+          ]
+        },
+        "request_validation": {
+          "count": 2,
+          "maximum": 1.5072990208864212e-05,
+          "mean": 1.440045889467001e-05,
+          "median": 1.440045889467001e-05,
+          "minimum": 1.3727927580475807e-05,
+          "samples": [
+            1.5072990208864212e-05,
+            1.3727927580475807e-05
+          ]
+        },
+        "response_bound_serialization": {
+          "count": 2,
+          "maximum": 0.00037560099735856056,
+          "mean": 0.0003721530083566904,
+          "median": 0.0003721530083566904,
+          "minimum": 0.00036870501935482025,
+          "samples": [
+            0.00037560099735856056,
+            0.00036870501935482025
+          ]
+        },
+        "shared_inventory_validation": {
+          "count": 2,
+          "maximum": 0.09256372600793839,
+          "mean": 0.0917308310745284,
+          "median": 0.0917308310745284,
+          "minimum": 0.09089793614111841,
+          "samples": [
+            0.09256372600793839,
+            0.09089793614111841
+          ]
+        },
+        "source_profile_validation": {
+          "count": 2,
+          "maximum": 0.0001253439113497734,
+          "mean": 0.0001202805433422327,
+          "median": 0.0001202805433422327,
+          "minimum": 0.000115217175334692,
+          "samples": [
+            0.0001253439113497734,
+            0.000115217175334692
+          ]
+        },
+        "state_detach": {
+          "count": 2,
+          "maximum": 0.0012029639910906553,
+          "mean": 0.0011847475543618202,
+          "median": 0.0011847475543618202,
+          "minimum": 0.0011665311176329851,
+          "samples": [
+            0.0012029639910906553,
+            0.0011665311176329851
+          ]
+        },
+        "target_restoration": {
+          "count": 2,
+          "maximum": 0.07636028807610273,
+          "mean": 0.07564841001294553,
+          "median": 0.07564841001294553,
+          "minimum": 0.07493653194978833,
+          "samples": [
+            0.07636028807610273,
+            0.07493653194978833
+          ]
+        }
+      }
+    },
+    "samples_per_mode": 2,
+    "scope": "same_fixed_source_model_complete_public_call",
+    "statistical_significance_established": false
+  },
+  "profile_probes": [
+    {
+      "actual_parent_function_calls": {
+        "captured_ast_reads": 6,
+        "legacy_candidate_reader": 2,
+        "legacy_lineage_entry": 1,
+        "manifest_reads": 8,
+        "native_source_binding_replay": 33,
+        "native_target_lowering": 70,
+        "native_target_validator": 41,
+        "publication_receipt_reads": 12,
+        "registry_artifact_verification": 9,
+        "registry_version_reads": 9,
+        "runtime_candidate_reader": 5,
+        "runtime_version_loader": 2
+      },
+      "excluded_from_performance_samples": true,
+      "optimized": false,
+      "owner_state_preserved": true,
+      "profile_probe_seconds_including_tracer": 15.110446525970474,
+      "record": "profiled-reference.json",
+      "record_raw_cid": "bafkreieoie6oegzvgb6tmesqn4bfp3pomcsnnx6lb6b5gt5imeu64p7zp4",
+      "resources_after": {
+        "active_lease_count": 0,
+        "waiting_request_count": 0
+      },
+      "scope": "main_parent_thread_only_not_child_process",
+      "worker_counters": {
+        "contract_validations": 2,
+        "input_tensor_builds": 2,
+        "matrix_builds": 2,
+        "native_target_replays": 22,
+        "replay_ast_digest_checks": 22,
+        "replay_authored_contract_replays": 22,
+        "replay_full_target_comparisons": 22,
+        "replay_native_lowering_replays": 22,
+        "replay_shared_manifest_parses_avoided": 0,
+        "replay_shared_receipt_parses_avoided": 0,
+        "replay_shared_replay_preparations": 0,
+        "replay_source_digest_checks": 22,
+        "replay_target_replay_attempts": 22,
+        "replay_target_replays": 22,
+        "rows": 22,
+        "shards": 2,
+        "shared_inventory_validations": 1,
+        "state_validations": 2,
+        "target_restorations": 22,
+        "vocabulary_builds": 2,
+        "weight_tensor_builds": 8
+      }
+    },
+    {
+      "actual_parent_function_calls": {
+        "captured_ast_reads": 0,
+        "legacy_candidate_reader": 2,
+        "legacy_lineage_entry": 0,
+        "manifest_reads": 2,
+        "native_source_binding_replay": 0,
+        "native_target_lowering": 26,
+        "native_target_validator": 3,
+        "publication_receipt_reads": 6,
+        "registry_artifact_verification": 6,
+        "registry_version_reads": 6,
+        "runtime_candidate_reader": 2,
+        "runtime_version_loader": 0
+      },
+      "excluded_from_performance_samples": true,
+      "optimized": true,
+      "owner_state_preserved": true,
+      "profile_probe_seconds_including_tracer": 6.390982805984095,
+      "record": "profiled-optimized.json",
+      "record_raw_cid": "bafkreicuq6lbitqyvbhionf3re5x2iiml4sdmc7lkzsrijcsvuzigz5vwm",
+      "resources_after": {
+        "active_lease_count": 0,
+        "waiting_request_count": 0
+      },
+      "scope": "main_parent_thread_only_not_child_process",
+      "worker_counters": {
+        "contract_validations": 1,
+        "input_tensor_builds": 2,
+        "matrix_builds": 2,
+        "native_target_replays": 22,
+        "replay_ast_digest_checks": 22,
+        "replay_authored_contract_replays": 22,
+        "replay_full_target_comparisons": 22,
+        "replay_native_lowering_replays": 22,
+        "replay_shared_manifest_parses_avoided": 22,
+        "replay_shared_receipt_parses_avoided": 22,
+        "replay_shared_replay_preparations": 1,
+        "replay_source_digest_checks": 22,
+        "replay_target_replay_attempts": 22,
+        "replay_target_replays": 22,
+        "rows": 22,
+        "shards": 2,
+        "shared_inventory_validations": 1,
+        "state_validations": 1,
+        "target_restorations": 22,
+        "vocabulary_builds": 1,
+        "weight_tensor_builds": 4
+      }
+    }
+  ],
+  "schema": "codebase-inventory-inference-reuse-review@1",
+  "selected_inputs": [
+    {
+      "bytes": 36871,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_scan.py",
+      "sha256": "d8f62a51d21996c840955b5f9ef5d9ccfcffdfd68cf219bcf3076f2fb75867f0"
+    },
+    {
+      "bytes": 32298,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_targets.py",
+      "sha256": "a31a7d974d040ab5820bb8b53f2dbb88ee8cbdc39765132be128bc66381ae060"
+    },
+    {
+      "bytes": 20576,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py",
+      "sha256": "0e5e3ce4b95a6d2d6b22dc0228eb9101ae8589d64346f3e200be2e4d0c6bcb02"
+    },
+    {
+      "bytes": 47987,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_source_training.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_source_training",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+    },
+    {
+      "bytes": 29578,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_ir_targets.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir_targets",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+    },
+    {
+      "bytes": 58156,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+    },
+    {
+      "bytes": 32125,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+      "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+    },
+    {
+      "bytes": 5967,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+      "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+    },
+    {
+      "bytes": 69046,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+      "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+    },
+    {
+      "bytes": 28715,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_ir.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "bytes": 57876,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.cache.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.cache",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/cache.py",
+      "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+    },
+    {
+      "bytes": 21152,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.content.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.content",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "a7036a66ec6b476a78cb3e9a2384eaf9dca72cb8c7cf57ed0b25cd3b592720c9"
+    },
+    {
+      "bytes": 94154,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.duckdb_ast_store.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+    },
+    {
+      "bytes": 29575,
+      "copy": "producers/ipfs_datasets_py.duckdb_control.codebase_catalog.py",
+      "name": "ipfs_datasets_py.duckdb_control.codebase_catalog",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+    },
+    {
+      "bytes": 51708,
+      "copy": "producers/ipfs_datasets_py.duckdb_control.autoencoder_registry.py",
+      "name": "ipfs_datasets_py.duckdb_control.autoencoder_registry",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f"
+    },
+    {
+      "bytes": 3454,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_resources.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_resources",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+      "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+    },
+    {
+      "bytes": 87518,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "00257f921b48bc78c6971378ff2e688a2cf5b6ae1330965f85627bbbfb23968d"
+    },
+    {
+      "bytes": 8008,
+      "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety.py",
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "3cc2de908a6d24708f81818932415694c6866878c9dae670dea49dde547f5e48"
+    },
+    {
+      "bytes": 68367,
+      "copy": "producers/ipfs_datasets_py.logic.backends.process.py",
+      "name": "ipfs_datasets_py.logic.backends.process",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/backends/process.py",
+      "sha256": "9035ba1982cf5fbd0db40ec994a3829902d9f4a25cc7aeb0c0ae2705f233cbf5"
+    },
+    {
+      "bytes": 14549,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_replay.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_replay",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_replay.py",
+      "sha256": "c3f7db2db59479851279f8af69b586672604d50d3db2d16c773f1804a592ccb6"
+    },
+    {
+      "bytes": 23356,
+      "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_lineage.py",
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_lineage",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_lineage.py",
+      "sha256": "c37d229456cc755dd184e4274a7a8de502364fb65886039738b74b8df4a18a4f"
+    },
+    {
+      "bytes": 38099,
+      "copy": "producers/reuse_qualification_harness.py",
+      "name": "reuse_qualification_harness",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_inference_reuse.py",
+      "sha256": "6de7597eebfa1868e0fca80cb219c3dbaefbebf0ae6d67b80dfe6251965d537f"
+    },
+    {
+      "bytes": 36166,
+      "copy": "producers/unchanged_fixture_helper.py",
+      "name": "unchanged_fixture_helper",
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_scan.py",
+      "sha256": "d3f2ed54b99ab2d62d0892576db2375f17eebafccb2eb1ddda5a6691f128fd4a"
+    },
+    {
+      "bytes": 8909,
+      "copy": "producers/scan_unit_controls.py",
+      "name": "scan_unit_controls",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_scan.py",
+      "sha256": "47400544711e3d670c9c64e54a2aa409e6e619d3020d95e73cf953769033a392"
+    },
+    {
+      "bytes": 15901,
+      "copy": "producers/replay_unit_controls.py",
+      "name": "replay_unit_controls",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_replay.py",
+      "sha256": "f6db73fe61548efeb625c0522ab0c4a3a06267580da345acfa2d46bc6d72ff55"
+    },
+    {
+      "bytes": 13933,
+      "copy": "producers/lineage_unit_controls.py",
+      "name": "lineage_unit_controls",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_lineage.py",
+      "sha256": "18f1413ac79d64cce90c3da6df37daed0cdf2de36112b320d85cc7dfceb94521"
+    },
+    {
+      "bytes": 7834,
+      "copy": "producers/response_unit_controls.py",
+      "name": "response_unit_controls",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_response.py",
+      "sha256": "8980741694d41e24081b01a17f2bb416345c078387efda5c07a08b9c715096b5"
+    }
+  ],
+  "total_actual_setup_epochs": 15,
+  "total_recorded_inventory_and_reuse_seconds": 280.80845498130657,
+  "unit_validation": {
+    "autoload_disabled": true,
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/barberb/.local/bin/python -m pytest -q tests/unit/logic/software_contracts/test_codebase_inventory_scan.py tests/unit/logic/software_contracts/test_codebase_inventory_replay.py tests/unit/logic/software_contracts/test_codebase_inventory_lineage.py tests/unit/logic/software_contracts/test_codebase_inventory_response.py",
+    "distinct_cases": 205,
+    "elapsed_seconds": 1.23,
+    "failed": 0,
+    "passed": 205,
+    "python": "/home/barberb/.local/bin/python",
+    "raw_pytest_transcript_archived": false,
+    "result_observed_in_tool_output": true,
+    "scope": "pure_protocol_cache_replay_controls_not_native_workload_qualification",
+    "suite_cases": {
+      "lineage": 22,
+      "replay": 47,
+      "response": 52,
+      "scan": 84
+    }
+  },
+  "unknown_fitting_epochs": 0
+}

@@ -1,0 +1,286 @@
+{
+  "schema": "repository-proof-index-codebase-ir-planning-review@1",
+  "environment_context_date": "2026-10-02",
+  "fingerprint_captured_at_utc": "2026-10-02T00:47:32.860492+00:00",
+  "status": "plan_updated_all_32_production_acceptance_tasks_open",
+  "scope": "Documentation and selected current-source review only; no new repository-under-test scan, inference, fitting, prover execution, native database replay, production mutation or live benchmark. Existing frozen execution artifacts were read and byte-checked.",
+  "canonical_accelerate_for_this_review": "external/ipfs_accelerate; nested accelerator checkout is not interchangeable",
+  "identity_scope": "ending per-file observations; source changed during review; not an atomic repository snapshot or qualification of the current working environment",
+  "repositories": {
+    "ipfs_accelerate": {
+      "path": "external/ipfs_accelerate",
+      "head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7",
+      "identity_scope": "selected per-file digests; HEAD alone is insufficient"
+    },
+    "ipfs_datasets": {
+      "path": "external/ipfs_datasets",
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "identity_scope": "selected per-file digests; HEAD alone is insufficient"
+    }
+  },
+  "peer_review_domains": [
+    "supervisor_entrypoint_live_roots_and_behavioral_profile",
+    "training_continuation_source_semantics_and_storage",
+    "full_public_prompt_acceptance_and_qualification_matrix"
+  ],
+  "source_observations": [
+    "Current Python/JS lowerers forward supplied revision; current AST spans use byte offsets; current SMT sort mapping rejects unsupported types. Focused regression source exists; no tests rerun by this review. Integrated operational source/property qualification remains open.",
+    "Implemented intent-codebase-match@1 and repository-proof-planning-snapshot@1 carry conditional context. Behavioral @2 contracts and new admission profile are proposals preserving old replay meanings.",
+    "Completed indexed adapter executes a fresh native symbolic portfolio with exact input/material binding, but public terminal preparation still uses administrative coverage and no current behavioral facts.",
+    "PlanCreateService currently permits absent root observation and caller static roots can shadow an observer. New repository route requires an owner-backed live observer and checked source-root correspondence.",
+    "Existing SecurityIR continuation copies full parent parameters into new AdamW state; it is distinct from exact optimizer resume and not a registered CodebaseIR continuation adapter. Complete ancestral split roles are required for held-out claims.",
+    "Current structural feature vectors omit integer literal values. Source semantics/invalidation must distinguish behavior-changing literals or guards even if feature/latent vectors coincide.",
+    "Existing learned validators repeat frozen inference. Preserve them; authenticated receipt-only numerical replay is a separate proposed qualification.",
+    "Actual terminal runner defaults285 seconds, accepts90..300 and reserves40 cleanup. The373.294-second development run was separate and does not establish trial efficiency."
+  ],
+  "proposed_behavioral_contracts": [
+    "intent-codebase-match@2",
+    "repository-proof-planning-snapshot@2",
+    "repository-evidence admission profile; version assigned during implementation review"
+  ],
+  "official_sources_checked": [
+    "https://ducklake.select/docs/stable/duckdb/unsupported_features",
+    "https://ducklake.select/docs/stable/duckdb/advanced_features/constraints",
+    "https://duckdb.org/docs/current/connect/concurrency",
+    "https://ducklake.select/docs/stable/duckdb/usage/time_travel",
+    "https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database",
+    "https://arxiv.org/abs/1608.04636"
+  ],
+  "existing_execution_evidence": {
+    "experiment": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01",
+    "elapsed_seconds": 373.2937493431382,
+    "typed_data_rows": 7800,
+    "typed_identity_rows": 1,
+    "metadata_rows": 8919,
+    "metadata_views": 31,
+    "complete_producer_records": 8553,
+    "metadata_chunk_rows": 366,
+    "distinct_latest_passing_tests": 91,
+    "new_training_steps_in_that_run": 0,
+    "current_behavioral_facts": [],
+    "public_request_planned": false,
+    "scope": "four signed development files; conditional model evidence and administrative planning context only",
+    "stored_audit_artifacts_byte_verified": 29
+  },
+  "source_files": [
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "798308917911be224ff54be6f932ac7061a62ee2a1c0d566e737aaed0c78cfc6",
+      "bytes": 20216,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "867f7a8551aade949bbd7258127185670b8f34bd6789da63a39df7c654c66e87",
+      "bytes": 34890,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "f8a1e14c6e35883e8736f161ba20d96e096b0458d0f91c8243e8fa3e298134bb",
+      "bytes": 48623,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_repository_experiment.py",
+      "sha256": "f99dbdeaf00573a2fbd8d8ab99d7f74bf33e0ea58ba2951073a89e50c23906b0",
+      "bytes": 20263,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_repository_index.py",
+      "sha256": "adc5e8f39ab54f5aa9c686393e97172952f74e685bd5ea71132e2951cd10f0df",
+      "bytes": 45144,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_catalog_capture.py",
+      "sha256": "4092fc291d81f201f05933725ab77a7aef21706e1758dd2b79782aa4ff2de71d",
+      "bytes": 15886,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_indexed_planning.py",
+      "sha256": "45213cbad0671c6e9b367253e69a4132fcc7bc8b375da50eb8a7635a6deb78be",
+      "bytes": 15159,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_planning_snapshot.py",
+      "sha256": "48f47af2afcf9ad18921749056e9a3acd5bbf0196e6dae6ae7b8e270bc1ada11",
+      "bytes": 11886,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_codebase_matching.py",
+      "sha256": "b47efed2d68931cdaa650ddcce2287e0b2f7be7a6aa6b05abfe9d09a2656a834",
+      "bytes": 33702,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d",
+      "bytes": 26435,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be",
+      "bytes": 135680,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+      "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511",
+      "bytes": 9491,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "17e425276464b3556e9eee88594fcba6ceb81ac4c4c93735f6b24cd73fa6d365",
+      "bytes": 106298,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74",
+      "bytes": 72131,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+      "bytes": 109558,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+      "bytes": 28715,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "bytes": 48191,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "sha256": "0dd22f59cd1af93e229752194d0415506d2cf0177727da5f15cb09715297b8ba",
+      "bytes": 32114,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "sha256": "f903d036b38199f1cfd3ca72b065d2fec70e23ed6065795b11423e991d6f2fa2",
+      "bytes": 71146,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+      "sha256": "b60cd36b17b5e6ac7456150244ce25caf0b0217c4fd7b3bf3254c28e3b62f383",
+      "bytes": 62527,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/tests/integration/logic/software_verification/test_source_adapter_snapshot_grounding.py",
+      "sha256": "f0ff84b2f1355021195463ee07850031d22536566daa61bf9bdbb905ccf78a14",
+      "bytes": 9456,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py",
+      "sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a",
+      "bytes": 32609,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_v2.py",
+      "sha256": "e60f7e295e7b60dedf836fe33ee583633b7478ae59898d6b8dabaf12bf1e3e47",
+      "bytes": 31344,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_continuation.py",
+      "sha256": "40fe65a705045b8833f73e1525551c05571d5ef6c6f0a3b7e65b68c310df4333",
+      "bytes": 24421,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "d7d9c8f93d4423438fd2965fe36ba70950eddce081875623f3d7a58790bc5cc4",
+      "bytes": 38006,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_modality_contracts.py",
+      "sha256": "5a6a88054e2b60dbe205625ffcb1d1c798c869ca5801a1ad1f4907467360de7f",
+      "bytes": 20688,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_incremental_training.py",
+      "sha256": "0f76f56a53d67867f2447ef97f63d05db2cce80aaf32c46ef662b64cff398fd2",
+      "bytes": 22784,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140",
+      "bytes": 29575,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f",
+      "bytes": 51708,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/autoencoder_history.py",
+      "sha256": "846a8bd8640694cb5a47ec9fa91eb71e4345262f22b8c16e36e217f715e05079",
+      "bytes": 21476,
+      "review_basis": "selected contracts inspected by root or read-only peer; digest is not full-file semantic review"
+    }
+  ],
+  "execution_artifacts": [
+    {
+      "path": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/result.json",
+      "sha256": "70d12b6dc13c949e4a7b8c21caa061741d58d127c1a1877d8d4422807747e7f4",
+      "bytes": 1208629
+    },
+    {
+      "path": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/REPORT.md",
+      "sha256": "369f03ebbaef6efc37e2e947a719d4d81d7119d4a5bfc12367b1ac53cd2d4df1",
+      "bytes": 6828
+    },
+    {
+      "path": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/audit.json",
+      "sha256": "7b5a33d6a388e83db56e18b95139e22d6b93f157298eefbd87c6bdd4667dabd9",
+      "bytes": 5966
+    },
+    {
+      "path": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/independent-audit.json",
+      "sha256": "774ec882feae00ff6825e0c756e5c607d9f838dca528fe1b284a6b30b3601f4c",
+      "bytes": 2834
+    },
+    {
+      "path": "artifacts/codebase_ir_terminal_bench/repository-qualification-20261002-01/acceptance-tests/latest-outcomes.json",
+      "sha256": "4d31ae8d7bf1ded8b2e2d76961c268689a01adf08edd98ef7ebd5ece302ae9da",
+      "bytes": 17924
+    }
+  ],
+  "documents": [
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "822ab77ef78ee649a71642050f93cb9dc76c13c94467f8af207db2fd9ce780a8",
+      "bytes": 111528
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "eb036b1555ede8ba0c8b4993a9f8f6054ad614d71c23981c158e92738632bedf",
+      "bytes": 29515
+    }
+  ]
+}

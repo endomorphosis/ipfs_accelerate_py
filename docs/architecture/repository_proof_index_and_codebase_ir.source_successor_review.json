@@ -1,0 +1,868 @@
+{
+  "384d_qualified": false,
+  "checkpoint_6_producers_unchanged": [
+    {
+      "bytes": 47987,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+    },
+    {
+      "bytes": 29578,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+    },
+    {
+      "bytes": 58156,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+    },
+    {
+      "bytes": 32125,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+      "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+    },
+    {
+      "bytes": 5967,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+      "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+    },
+    {
+      "bytes": 69046,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+      "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+    }
+  ],
+  "complete_successor_scan_qualified": false,
+  "costs": {
+    "benchmark_new_fitting_epochs_across_two_attempts": 4,
+    "failed_native_seconds": 394.9489786000049,
+    "independent_reader_seconds": 4.723127142999147,
+    "inherited_benchmark_fitting_epochs": 0,
+    "qualified_native_seconds": 809.9157215740051,
+    "qualified_phase_seconds": {
+      "actual_current_source_delta_plan_preview": 82.76629467499879,
+      "author_fresh_300_member_repository": 0.06240640200121561,
+      "build_default_source_delta": 12.266458874000818,
+      "cold_current_source_delta_plan_preview": 84.76230633699743,
+      "cold_receive_fresh_prefix_page": 31.506063646993425,
+      "cold_receive_successor_selection": 34.93015358300181,
+      "explicit_current_head_child_training": 90.80075667399797,
+      "explicit_previous_head_root_training": 52.56480722499691,
+      "infer_default_fresh_32_member_prefix": 53.17746449900005,
+      "infer_opt_out_fresh_32_member_prefix": 102.7454871220034,
+      "publish_current_source": 12.097827801000676,
+      "publish_previous_source": 13.779457295000611,
+      "refuse_old_model_for_new_head": 12.276960021001287,
+      "refuse_precancelled_selection_receiving": 0.01434154600428883,
+      "select_default_fresh_successor_root": 75.90857166899514,
+      "select_opt_out_successor_root": 146.54480737000267
+    },
+    "unit_fixture_new_fitting_epochs_separate": 2
+  },
+  "cuda_qualified": false,
+  "distinct_test_receipt": {
+    "bytes": 179677,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-test-dedup-20261003-01.json",
+    "sha256": "8526ca0ea481939165dfed4518fdaa629e4ef26c15d9979c2f4f94e1deac1e44"
+  },
+  "failed_initial_planning_tests": {
+    "errors": 0,
+    "failures": 10,
+    "junit": {
+      "bytes": 14681,
+      "path": "artifacts/codebase_ir_terminal_bench/source-successor-planning-tests-20261003-01/results.xml",
+      "sha256": "7927815d984263268c66a967416b0d5fe7af0e20a32931906ef9d3e2abef1c20"
+    },
+    "seconds_decimal": "50.853",
+    "skipped": 0,
+    "tests": 33
+  },
+  "failed_native_attempt": {
+    "error": "resumable inventory deadline exceeded",
+    "error_type": "LeaseTimeoutError",
+    "final_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "new_fitting_epochs": 2,
+    "new_scan_pages_created": 0,
+    "phases": [
+      {
+        "elapsed_seconds": 0.05698653499712236,
+        "name": "author_fresh_300_member_repository",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 14.081089728002553,
+        "name": "publish_previous_source",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 54.50702313399961,
+        "name": "explicit_previous_head_root_training",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 11.8481234389983,
+        "name": "publish_current_source",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 13.270863115998509,
+        "name": "build_default_source_delta",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 93.05912712999998,
+        "name": "explicit_current_head_child_training",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 80.18998692400055,
+        "name": "select_default_fresh_successor_root",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 125.63792760900105,
+        "name": "select_opt_out_successor_root",
+        "status": "failed"
+      }
+    ],
+    "qualified": false,
+    "recorded_seconds": 394.9489786000049,
+    "result": {
+      "bytes": 4840,
+      "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-01/result.json",
+      "sha256": "b108a4ccb9ca3d75582f0204ca32c8f3a983417451b753ff78f5272941823c81"
+    }
+  },
+  "independent_closed_audit": {
+    "bytes": 482926,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02-readonly-audit-20261003-01.json",
+    "sha256": "c096ce302f556af7f1733372de8b54cfb1f56ad23561f7ab78a860e9f0504fea"
+  },
+  "limitations": [
+    "300-member captures with one fresh32-member prefix per route; no full successor completion",
+    "CPU8D only; two explicit setup epochs per native attempt; no automatic training/promotion",
+    "same-process source/model owner reopen; no fresh process restart claimed",
+    "source-advisory metadata preserves complete tasks and supplies zero behavioral facts",
+    "sequential native observation and listed local source pins; no atomic or full transitive execution attestation",
+    "explicit600s opt-out qualification allowance; API default120s and optimization opt-out unchanged",
+    "cold planning reuses exact warm material preimages against identical consumed snapshot/result",
+    "shared scheduler admission accounting; no kernel memory/RSS guarantee",
+    "lineage three-to-one replay optimization, batched Git, larger global capture, DuckLake and signed successor dispatch remain open"
+  ],
+  "native_namespace": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02",
+  "native_result": {
+    "bytes": 7410,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/result.json",
+    "sha256": "1a2de8246df5e561ae994f5b77578d69921323e3b18d9c3d0da6ff8d32638f45"
+  },
+  "native_work": {
+    "checkpoint_states": {
+      "child": {
+        "adam_steps": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "artifact": {
+          "bytes": 7383819,
+          "sha256": "e6574fe2a38f58b15a37cd7dac893ea8504d863387f420c3b9737d774c3c227b"
+        },
+        "completed_epochs": 2,
+        "feature_columns": 53,
+        "latent_width": 8,
+        "report_sha256": "8c5e33c2f89351ec239d2261d95d9bf3b9f5afcb45565196df4485e537979fef",
+        "state_sha256": "b30182cf138acd8e7163e883846e80bf3494362d3f389929b9244ac58caf8307"
+      },
+      "root": {
+        "adam_steps": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "artifact": {
+          "bytes": 5921417,
+          "sha256": "e8d4ff1087228591c61d11d3a3982f3d8512abf6108ffe7d5d16cbc6491b881b"
+        },
+        "completed_epochs": 1,
+        "feature_columns": 53,
+        "latent_width": 8,
+        "report_sha256": "94b4bd487c069348a19429849585b91f98eb79248eb3dab7dc1f0c7c60668df3",
+        "state_sha256": "c02a74cee23f22678b0f709e670414b2fb7f4176c930d3ef64c26d7262a36007"
+      }
+    },
+    "controls": [
+      {
+        "elapsed_seconds": 12.272674994004774,
+        "error": "selected version must be an exact registered direct child",
+        "error_type": "CodebaseSuccessorScanError",
+        "name": "old_model_for_new_head",
+        "refused": true
+      },
+      {
+        "elapsed_seconds": 0.009794502999284305,
+        "error": "resource lease request was cancelled",
+        "error_type": "LeaseCancelledError",
+        "name": "precancelled_selection_receiving",
+        "refused": true
+      }
+    ],
+    "coverage": {
+      "ast_identity_comparisons": {
+        "different": 295,
+        "equal": 0,
+        "unavailable": 7
+      },
+      "classifications": {
+        "added": 2,
+        "changed": 1,
+        "removed": 2,
+        "retained": 297
+      },
+      "current_entries": 300,
+      "previous_entries": 300,
+      "source_bytes_comparisons": {
+        "different": 1,
+        "equal": 295,
+        "unavailable": 6
+      },
+      "union_entries": 302
+    },
+    "current_head": {
+      "ast_revision_id": "rev:qualification:source-successor:snapshot:baguqeeragfv5tn2lyq54jcqqhifw6isstu2z2rpzsfhxykt3yzkvjr3eeqka",
+      "generation": 2,
+      "manifest_cid": "baguqeerachuamdmnn32pzygyktyjkx4f5at7tyio3naj52omyauxtlkuabdq",
+      "receipt_cid": "baguqeera6f5js5saf3xce7aru62vtbt2vyyowiddf6hxyu4x4qs4niyatzda",
+      "repository_id": "qualification:source-successor",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeragfv5tn2lyq54jcqqhifw6isstu2z2rpzsfhxykt3yzkvjr3eeqka"
+    },
+    "final_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "inference_attempts_during_selection_or_cold_receiving": 0,
+    "inherited_scan_pages": 0,
+    "inherited_setup_epochs": 0,
+    "model_owner_reopens": 1,
+    "new_fitting_epochs": 2,
+    "new_scan_pages_created": 2,
+    "operation_deadline_seconds": {
+      "default_selection": 120,
+      "existing_repository_preview": 90,
+      "inference_page": 600,
+      "planning_adapter": 120,
+      "reference_override_is_qualification_only": true,
+      "reference_selection": 600.0
+    },
+    "opt_out_equivalence": {
+      "entries_coverage_and_inference_exact": true,
+      "optimized_page_cid": "bafkreie6nx6n3itmx7wx7rjauupapqttyuwrpijs62vgkuy53qm53d6q4m",
+      "optimized_root_cid": "baguqeeraxrn5cb7i25akf3cwvqblspdka5xyhox6zxmp4svcp5vrhnodpuca",
+      "reference_page_cid": "bafkreie6yof4ecyqhiqdfsupj7p6ybvxqcywvrenom2lqu7zxenlhzmmzy",
+      "reference_root_cid": "baguqeerajzxrhe4jo7aavus7wfwdeuf4c64bv2uxhxwtd3w7kzhlggxirriq",
+      "scope": "first32_ordered_members_only",
+      "throughput_qualified": false
+    },
+    "planning_result_cid": "baguqeera3fdxe4pt43e3zampivtvm72rsvvltqqasgsyn5ghkt6ih2gmszja",
+    "prefix_coverage": {
+      "dispositions": {
+        "deferred_budget": 9,
+        "inferred": 22,
+        "unindexed": 1
+      },
+      "inferred_rows": 22,
+      "inventory_entries": 32
+    },
+    "prefix_page_cid": "bafkreie6nx6n3itmx7wx7rjauupapqttyuwrpijs62vgkuy53qm53d6q4m",
+    "previous_head": {
+      "ast_revision_id": "rev:qualification:source-successor:snapshot:baguqeeraadu5b2oyzt6mpza7dcnrhzr3bmlqtqlbeaw6am7s7xux24j7pq7a",
+      "generation": 1,
+      "manifest_cid": "baguqeera7aw7wsqmvm7gmd74zjdliboudpio5owhsf4z3hyftnvxqdbcageq",
+      "receipt_cid": "baguqeera3mwqemnic7xfc52gs3ubw7cwjq2cnl723b3vtvzeb7wijennvoza",
+      "repository_id": "qualification:source-successor",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeeraadu5b2oyzt6mpza7dcnrhzr3bmlqtqlbeaw6am7s7xux24j7pq7a"
+    },
+    "root_cid": "baguqeeraxrn5cb7i25akf3cwvqblspdka5xyhox6zxmp4svcp5vrhnodpuca",
+    "source_delta_cid": "baguqeera6ccxqm2irpyjvk5cj75y6jb62e6areqrnwyrtlwshjbvqlv5yr3a",
+    "source_owner_reopens": 1,
+    "successor_selection_cid": "baguqeera2rf6bnbqvwcyihztgir3vxhtfjidlh2l4mg36qkahmg5i6wdirnq",
+    "training_attempts_after_setup": 0
+  },
+  "prior_source_runtime_review": {
+    "bytes": 30829,
+    "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.source_delta_runtime_review.json",
+    "sha256": "fb7664d68f863de982e12361014296cdaf668ea2bc22fa20d16a313e3452d040"
+  },
+  "production_default_activated": false,
+  "production_open_tasks": 32,
+  "production_task_status_changed": false,
+  "proof_authority": false,
+  "qualified": true,
+  "reader": {
+    "bytes": 118630,
+    "imports": "standard_library_only",
+    "sha256": "ada264cb162b4d20751e36c80d5504348a5439b05d04ad2469ee41450ea0bf14"
+  },
+  "reader_guard_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 93
+  },
+  "reader_guard_receipt": {
+    "bytes": 9593,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-reader-guards-20261003-01/receipt.json",
+    "sha256": "8e239c4d915f49568dfda7a0e94f37c14b964f3677f19f881f02bfaaa5ec85cf"
+  },
+  "reader_retained_copy": {
+    "bytes": 118630,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02-readonly-audit-20261003-01.json.reader.py",
+    "sha256": "ada264cb162b4d20751e36c80d5504348a5439b05d04ad2469ee41450ea0bf14"
+  },
+  "reader_source": {
+    "bytes": 118630,
+    "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/audit_codebase_source_successor.py",
+    "sha256": "ada264cb162b4d20751e36c80d5504348a5439b05d04ad2469ee41450ea0bf14"
+  },
+  "recorded_at_utc": "2026-10-03T16:36:05.575321+00:00",
+  "report": {
+    "bytes": 14381,
+    "path": "external/ipfs_accelerate/docs/agent_supervisor/codebase_source_successor_qualification.md",
+    "sha256": "750241dca442202f93d50dbebaaea85c9dc7490580b3b2f72192735838d8efe6"
+  },
+  "review_builder": {
+    "bytes": 12864,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-review-builder-20261003-01.py",
+    "sha256": "af226b676086ffc134fd8e51703107c67e09290f097c8e0cd95a02052baf0b91"
+  },
+  "runtime_core_observations": [
+    {
+      "bytes": 72223,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "f24e8bb88ba2e00680749ea8f8f149e8d8912f6254211670e2549882bad5f390"
+    },
+    {
+      "bytes": 65752,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codebase_inventory_execution.py",
+      "sha256": "418b009d741374e892690a8cf7f38402e1a61440031148aba4b12bb5c5ae419c"
+    },
+    {
+      "bytes": 31819,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_execution.py",
+      "sha256": "5161d1aee23cc79e1e4c23cf102476f57bb0091ab0ee804cbda8c60fa73e14fb"
+    },
+    {
+      "bytes": 31678,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+      "sha256": "45da53b7321f7a475fd3be125dd337a52ad509f72e865ee3be8e5e3cf7cb3209"
+    }
+  ],
+  "runtime_reexecuted_here": false,
+  "scan_execution_attested": false,
+  "schema": "repository-proof-index-source-successor-review@1",
+  "selected_producers": [
+    {
+      "current": {
+        "bytes": 28054,
+        "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_source_successor.py",
+        "sha256": "d908ca8d8fccc7201e943b36cb2a81b763432644b0c7e47ff59baad9744f4de8"
+      },
+      "name": "__main__",
+      "retained": {
+        "bytes": 28054,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/__main__.py",
+        "sha256": "d908ca8d8fccc7201e943b36cb2a81b763432644b0c7e47ff59baad9744f4de8"
+      }
+    },
+    {
+      "current": {
+        "bytes": 66054,
+        "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_resume.py",
+        "sha256": "4e501f8bc134713d3788a1000c8b08015e9ebaaa501ef161f1de6124ff576e23"
+      },
+      "name": "benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume",
+      "retained": {
+        "bytes": 66054,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_resume.py",
+        "sha256": "4e501f8bc134713d3788a1000c8b08015e9ebaaa501ef161f1de6124ff576e23"
+      }
+    },
+    {
+      "current": {
+        "bytes": 36166,
+        "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_scan.py",
+        "sha256": "d3f2ed54b99ab2d62d0892576db2375f17eebafccb2eb1ddda5a6691f128fd4a"
+      },
+      "name": "benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_scan",
+      "retained": {
+        "bytes": 36166,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/benchmarks.agent_supervisor.container_coding.qualify_codebase_inventory_scan.py",
+        "sha256": "d3f2ed54b99ab2d62d0892576db2375f17eebafccb2eb1ddda5a6691f128fd4a"
+      }
+    },
+    {
+      "current": {
+        "bytes": 188123,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+        "sha256": "7063afbf58ae9ac0016567875d836d265962645ec9976c06715c44eb92a2cf0c"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.adaptive_planner",
+      "retained": {
+        "bytes": 188123,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.adaptive_planner.py",
+        "sha256": "7063afbf58ae9ac0016567875d836d265962645ec9976c06715c44eb92a2cf0c"
+      }
+    },
+    {
+      "current": {
+        "bytes": 24892,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/codebase_source_delta_context.py",
+        "sha256": "49e9cc515245afa91836f74c44b8f8609152af1018cd9cba64a15ec5ffc5de66"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.codebase_source_delta_context",
+      "retained": {
+        "bytes": 24892,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.codebase_source_delta_context.py",
+        "sha256": "49e9cc515245afa91836f74c44b8f8609152af1018cd9cba64a15ec5ffc5de66"
+      }
+    },
+    {
+      "current": {
+        "bytes": 135680,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+        "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler",
+      "retained": {
+        "bytes": 135680,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler.py",
+        "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+      }
+    },
+    {
+      "current": {
+        "bytes": 126682,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/plan_evaluator.py",
+        "sha256": "29af3d254dfa0497038284be5e2383573de8aa4e7937e0df28947d6f6bedbc24"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator",
+      "retained": {
+        "bytes": 126682,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator.py",
+        "sha256": "29af3d254dfa0497038284be5e2383573de8aa4e7937e0df28947d6f6bedbc24"
+      }
+    },
+    {
+      "current": {
+        "bytes": 103294,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/plan_revision_contracts.py",
+        "sha256": "8e4d6cf724ef65a15e6ac2ef3933fd4c765469d3fa95994784df72afbc3b39fd"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts",
+      "retained": {
+        "bytes": 103294,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.plan_revision_contracts.py",
+        "sha256": "8e4d6cf724ef65a15e6ac2ef3933fd4c765469d3fa95994784df72afbc3b39fd"
+      }
+    },
+    {
+      "current": {
+        "bytes": 9927,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/repository_plan_preview.py",
+        "sha256": "f150d648d1d4b7fa9c20f17e91973f2ea8bdc87193c0a50a7ed59208df0c6c6b"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.repository_plan_preview",
+      "retained": {
+        "bytes": 9927,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.repository_plan_preview.py",
+        "sha256": "f150d648d1d4b7fa9c20f17e91973f2ea8bdc87193c0a50a7ed59208df0c6c6b"
+      }
+    },
+    {
+      "current": {
+        "bytes": 9491,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+        "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.planning.structural_codebase_context",
+      "retained": {
+        "bytes": 9491,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.planning.structural_codebase_context.py",
+        "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+      }
+    },
+    {
+      "current": {
+        "bytes": 110040,
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+        "sha256": "5f0d119aaa46cd12705cbaeecff64fc5cee250341ecc5230291c901d2cf67a4d"
+      },
+      "name": "ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service",
+      "retained": {
+        "bytes": 110040,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service.py",
+        "sha256": "5f0d119aaa46cd12705cbaeecff64fc5cee250341ecc5230291c901d2cf67a4d"
+      }
+    },
+    {
+      "current": {
+        "bytes": 29575,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+        "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+      },
+      "name": "ipfs_datasets_py.duckdb_control.codebase_catalog",
+      "retained": {
+        "bytes": 29575,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.duckdb_control.codebase_catalog.py",
+        "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+      }
+    },
+    {
+      "current": {
+        "bytes": 23356,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_lineage.py",
+        "sha256": "c37d229456cc755dd184e4274a7a8de502364fb65886039738b74b8df4a18a4f"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_lineage",
+      "retained": {
+        "bytes": 23356,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_lineage.py",
+        "sha256": "c37d229456cc755dd184e4274a7a8de502364fb65886039738b74b8df4a18a4f"
+      }
+    },
+    {
+      "current": {
+        "bytes": 18105,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_projection_replay.py",
+        "sha256": "c0333bb79378c6cf51771b550a1d9e736e8154ecc590b676df8308741f3e7c4d"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_projection_replay",
+      "retained": {
+        "bytes": 18105,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_projection_replay.py",
+        "sha256": "c0333bb79378c6cf51771b550a1d9e736e8154ecc590b676df8308741f3e7c4d"
+      }
+    },
+    {
+      "current": {
+        "bytes": 12815,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_receiving.py",
+        "sha256": "a7a32852fcac286a1b675de94ee495dd30e1ec695d62a80754a4f06dffca61fc"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_receiving",
+      "retained": {
+        "bytes": 12815,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_receiving.py",
+        "sha256": "a7a32852fcac286a1b675de94ee495dd30e1ec695d62a80754a4f06dffca61fc"
+      }
+    },
+    {
+      "current": {
+        "bytes": 71935,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_resume.py",
+        "sha256": "3578e1b53991530b0393efecb87c73b1a4b6b4a0e0fc82b0f4be29bf60a2ce8b"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_resume",
+      "retained": {
+        "bytes": 71935,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_resume.py",
+        "sha256": "3578e1b53991530b0393efecb87c73b1a4b6b4a0e0fc82b0f4be29bf60a2ce8b"
+      }
+    },
+    {
+      "current": {
+        "bytes": 36871,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_scan.py",
+        "sha256": "d8f62a51d21996c840955b5f9ef5d9ccfcffdfd68cf219bcf3076f2fb75867f0"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan",
+      "retained": {
+        "bytes": 36871,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan.py",
+        "sha256": "d8f62a51d21996c840955b5f9ef5d9ccfcffdfd68cf219bcf3076f2fb75867f0"
+      }
+    },
+    {
+      "current": {
+        "bytes": 22712,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_successor.py",
+        "sha256": "11c81fe431241e0909f68431eb9645141630fd6cc6163ea15ea1a6ab95edd963"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_successor",
+      "retained": {
+        "bytes": 22712,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_successor.py",
+        "sha256": "11c81fe431241e0909f68431eb9645141630fd6cc6163ea15ea1a6ab95edd963"
+      }
+    },
+    {
+      "current": {
+        "bytes": 21495,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_successor_model.py",
+        "sha256": "0a9edbe9b1bdfb8e9744a0519114d1a61be22a092deaa58dbc1791de2fd47e51"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_successor_model",
+      "retained": {
+        "bytes": 21495,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_successor_model.py",
+        "sha256": "0a9edbe9b1bdfb8e9744a0519114d1a61be22a092deaa58dbc1791de2fd47e51"
+      }
+    },
+    {
+      "current": {
+        "bytes": 32298,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_targets.py",
+        "sha256": "a31a7d974d040ab5820bb8b53f2dbb88ee8cbdc39765132be128bc66381ae060"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets",
+      "retained": {
+        "bytes": 32298,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets.py",
+        "sha256": "a31a7d974d040ab5820bb8b53f2dbb88ee8cbdc39765132be128bc66381ae060"
+      }
+    },
+    {
+      "current": {
+        "bytes": 28715,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+        "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir",
+      "retained": {
+        "bytes": 28715,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_ir.py",
+        "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+      }
+    },
+    {
+      "current": {
+        "bytes": 29578,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+        "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir_targets",
+      "retained": {
+        "bytes": 29578,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_ir_targets.py",
+        "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+      }
+    },
+    {
+      "current": {
+        "bytes": 3454,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+        "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_resources",
+      "retained": {
+        "bytes": 3454,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_resources.py",
+        "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+      }
+    },
+    {
+      "current": {
+        "bytes": 47987,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+        "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.codebase_source_training",
+      "retained": {
+        "bytes": 47987,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.codebase_source_training.py",
+        "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+      }
+    },
+    {
+      "current": {
+        "bytes": 94154,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+        "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store",
+      "retained": {
+        "bytes": 94154,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.duckdb_ast_store.py",
+        "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+      }
+    },
+    {
+      "current": {
+        "bytes": 59397,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py",
+        "sha256": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.duckdb_ingest",
+      "retained": {
+        "bytes": 59397,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.duckdb_ingest.py",
+        "sha256": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e"
+      }
+    },
+    {
+      "current": {
+        "bytes": 32144,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+        "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.semantic_index.scanner",
+      "retained": {
+        "bytes": 32144,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.semantic_index.scanner.py",
+        "sha256": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1"
+      }
+    },
+    {
+      "current": {
+        "bytes": 48191,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+        "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+      },
+      "name": "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot",
+      "retained": {
+        "bytes": 48191,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot.py",
+        "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+      }
+    },
+    {
+      "current": {
+        "bytes": 32125,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+        "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features",
+      "retained": {
+        "bytes": 32125,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features.py",
+        "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+      }
+    },
+    {
+      "current": {
+        "bytes": 58156,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry",
+      "retained": {
+        "bytes": 58156,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry.py",
+        "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+      }
+    },
+    {
+      "current": {
+        "bytes": 5967,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+        "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker",
+      "retained": {
+        "bytes": 5967,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker.py",
+        "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+      }
+    },
+    {
+      "current": {
+        "bytes": 20576,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py",
+        "sha256": "0e5e3ce4b95a6d2d6b22dc0228eb9101ae8589d64346f3e200be2e4d0c6bcb02"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker",
+      "retained": {
+        "bytes": 20576,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker.py",
+        "sha256": "0e5e3ce4b95a6d2d6b22dc0228eb9101ae8589d64346f3e200be2e4d0c6bcb02"
+      }
+    },
+    {
+      "current": {
+        "bytes": 10151,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_resume_worker.py",
+        "sha256": "e312fd87289ea6141fb92d43d8ceb9da1494b44bf0cfc79eec879a84b43526de"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_resume_worker",
+      "retained": {
+        "bytes": 10151,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_resume_worker.py",
+        "sha256": "e312fd87289ea6141fb92d43d8ceb9da1494b44bf0cfc79eec879a84b43526de"
+      }
+    },
+    {
+      "current": {
+        "bytes": 69046,
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+        "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+      },
+      "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda",
+      "retained": {
+        "bytes": 69046,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda.py",
+        "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+      }
+    }
+  ],
+  "selected_source_generation": {
+    "bytes": 13392,
+    "path": "artifacts/codebase_ir_terminal_bench/source-successor-qualification-20261003-02/generation-inputs.json",
+    "sha256": "31c2c11435125e7a6b46ef9e144981a77085f103e8a3e1d7fa6e49f88fe8836c"
+  },
+  "signed_successor_worker_qualified": false,
+  "source_22_producers_unchanged": true,
+  "source_execution_attested": false,
+  "status": "closed_native_successor_prefix_and_model_off_plan_qualified",
+  "targeted_planning_repeat": {
+    "errors": 0,
+    "failures": 0,
+    "junit": {
+      "bytes": 2136,
+      "path": "artifacts/codebase_ir_terminal_bench/source-successor-planning-tests-20261003-02/results.xml",
+      "sha256": "d10e474cbaba4201f423ec975f75698ec52bb1fe63188520ca58c0fe9043b494"
+    },
+    "seconds_decimal": "25.932",
+    "skipped": 0,
+    "tests": 12
+  },
+  "test_accounting": {
+    "combined_distinct": 1000,
+    "known_unit_fixture_new_fitting_epochs": 2,
+    "new_unique": 88,
+    "overlap_prior": 0,
+    "prior_distinct": 912,
+    "successful_final_junit_seconds_decimal": "91.621"
+  },
+  "tests": [
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 11053,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-model-successor-tests-20261003-01.xml",
+        "sha256": "4df8e2114275a016dd2cbbcb7b58c4bac2bcd25890c55062e1172732379ce0ee"
+      },
+      "seconds_decimal": "35.705",
+      "skipped": 0,
+      "tests": 53
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "junit": {
+        "bytes": 5823,
+        "path": "artifacts/codebase_ir_terminal_bench/source-successor-planning-tests-20261003-03/results.xml",
+        "sha256": "57d38b99876e13ae8631ed31ec975fbc0e248bde45a59a892bf4fa5fca53157f"
+      },
+      "seconds_decimal": "55.916",
+      "skipped": 0,
+      "tests": 35
+    }
+  ]
+}
