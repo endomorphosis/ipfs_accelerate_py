@@ -8,7 +8,7 @@ compact references and bounded spans only.
 
 ## VFS-001 Define program-assurance evidence, claim, finding, and stage-receipt contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: assurance-contracts
@@ -28,7 +28,7 @@ compact references and bounded spans only.
 
 ## VFS-002 Implement independently bound repository descriptors and authority forests
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: repository-identity
@@ -48,7 +48,7 @@ compact references and bounded spans only.
 
 ## VFS-003 Add a frozen four-repository manifest loader and replay validator
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: repository-identity
@@ -68,7 +68,7 @@ compact references and bounded spans only.
 
 ## VFS-004 Probe real ipfs_datasets_py AST, GraphRAG, IR, solver, multiformats, and ZKP capabilities
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: provider-capabilities
@@ -88,7 +88,7 @@ compact references and bounded spans only.
 
 ## VFS-005 Build an exhaustive Git-aware multi-repository corpus inventory
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -108,7 +108,7 @@ compact references and bounded spans only.
 
 ## VFS-006 Adapt TypeScript, TSX, and JavaScript evidence into canonical AST blob records
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -128,7 +128,7 @@ compact references and bounded spans only.
 
 ## VFS-007 Adapt Python, JSON/Schema, Markdown, and manifest evidence into the same index
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -188,7 +188,7 @@ compact references and bounded spans only.
 
 ## VFS-010 Add a strict DAG-JSON/CIDv1/multihash identity bridge
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: content-addressing
@@ -268,7 +268,7 @@ compact references and bounded spans only.
 
 ## VFS-014 Define a versioned expected/observed program contract IR
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
