@@ -1563,6 +1563,20 @@ def test_sealed_autoformal_repair_validator_is_dependency_neutral() -> None:
         "cd child && test -s artifact.txt",
     ],
 )
+def test_sealed_autoformal_repair_validator_is_dependency_neutral() -> None:
+    digest = "a" * 64
+    command = (
+        "python3 scripts/ops/legal_ir/validate_autoformal_repair.py "
+        f"--packet /tmp/packets/{digest}.json --sha256 {digest}"
+    )
+    assert validation_command_dependency_scope(command) is (
+        ValidationDependencyScope.DEPENDENCY_NEUTRAL
+    )
+    assert validation_command_dependency_scope(
+        "python3 scripts/ops/legal_ir/validate_autoformal_repair.py --packet /tmp/other.json --sha256 " + digest
+    ) is ValidationDependencyScope.PROJECT_REQUIRED
+
+
 def test_literal_file_predicates_are_dependency_neutral(command) -> None:
     assert validation_command_dependency_scope(command) is (
         ValidationDependencyScope.DEPENDENCY_NEUTRAL
