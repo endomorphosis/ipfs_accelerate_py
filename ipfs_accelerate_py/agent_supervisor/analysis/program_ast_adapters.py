@@ -3257,8 +3257,15 @@ def adapt_program_source(
     generated: bool = False,
     max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
     max_facts: int = DEFAULT_MAX_FACTS,
+    mirror: bool = True,
 ) -> ProgramASTAdapterResult:
     """Dispatch one input and return success, malformed, or unsupported."""
+
+    if type(mirror) is not bool:
+        raise TypeError("program metadata mirroring must be an exact boolean")
+
+    def finish(result):
+        return _mirror_program_ast(result) if mirror else result
 
     if not isinstance(source, str):
         raise TypeError("program adapter source must be text")
@@ -3269,7 +3276,7 @@ def adapt_program_source(
     detected = detect_program_language(path, language)
     byte_count = len(source.encode("utf-8", errors="surrogatepass"))
     if byte_count > max_source_bytes:
-        return _mirror_program_ast(ProgramASTAdapterResult(
+        return finish(ProgramASTAdapterResult(
             path=path,
             language=detected,
             status="unsupported",
@@ -3324,7 +3331,7 @@ def adapt_program_source(
             generated=generated,
         )
     else:
-        return _mirror_program_ast(ProgramASTAdapterResult(
+        return finish(ProgramASTAdapterResult(
             path=path,
             language=detected,
             status="unsupported",
@@ -3341,7 +3348,7 @@ def adapt_program_source(
             generated=generated,
         ))
     if len(result.facts) <= max_facts:
-        return _mirror_program_ast(result)
+        return finish(result)
     retained = result.facts[:max_facts]
     diagnostic = AdapterDiagnostic(
         code="fact_bound_exceeded",
@@ -3363,7 +3370,7 @@ def adapt_program_source(
             language=result.language,
             parse_error=result.parse_error,
         )
-    return _mirror_program_ast(replace(
+    return finish(replace(
         result,
         status="partial",
         ast_record=record,
