@@ -26,7 +26,9 @@ Call [`~PreTrainedModel.from_pretrained`] to download and load a models weights 
 ```py
 from transformers import AutoModelForCausalLM
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype="auto", device_map="auto"
+)
 ```
 
 This guide explains how models are loaded, the different ways you can load a model, how to overcome memory issues for really big models, and how to load custom models.
@@ -101,7 +103,11 @@ Easily switch between models or tasks, as long as the architecture is supported 
 For example, the same model can be used for separate tasks.
 
 ```py
-from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoModelForQuestionAnswering
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
+    AutoModelForQuestionAnswering,
+)
 
 # use the same API for 3 different tasks
 model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
@@ -210,7 +216,7 @@ The `metadata` key provides the total model size.
 
 ```py
 index["metadata"]
-{'total_size': 28966928384}
+{"total_size": 28966928384}
 ```
 
 The `weight_map` key maps each parameter to the shard it's stored in.
@@ -258,7 +264,12 @@ You can also manually assign layers to a device in `device_map`. It should map a
 Access the `hf_device_map` attribute to see how a model is distributed across devices.
 
 ```py
-device_map = {"model.layers.1": 0, "model.layers.14": 1, "model.layers.31": "cpu", "lm_head": "disk"}
+device_map = {
+    "model.layers.1": 0,
+    "model.layers.14": 1,
+    "model.layers.31": "cpu",
+    "lm_head": "disk",
+}
 model.hf_device_map
 ```
 
@@ -310,7 +321,9 @@ Set `trust_remote_code=True` in [`~PreTrainedModel.from_pretrained`] to load a c
 ```py
 from transformers import AutoModelForImageClassification
 
-model = AutoModelForImageClassification.from_pretrained("sgugger/custom-resnet50d", trust_remote_code=True)
+model = AutoModelForImageClassification.from_pretrained(
+    "sgugger/custom-resnet50d", trust_remote_code=True
+)
 ```
 
 As an extra layer of security, load a custom model from a specific revision to avoid loading model code that may have changed. The commit hash can be copied from the models [commit history](https://hf.co/sgugger/custom-resnet50d/commits/main).

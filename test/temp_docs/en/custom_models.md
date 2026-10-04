@@ -41,6 +41,7 @@ The main rules for customizing a configuration are:
 from transformers import PretrainedConfig
 from typing import List
 
+
 class ResnetConfig(PretrainedConfig):
     model_type = "resnet"
 
@@ -77,7 +78,9 @@ class ResnetConfig(PretrainedConfig):
 Save the configuration to a JSON file in your custom model folder, `custom-resnet`, with [`~PretrainedConfig.save_pretrained`].
 
 ```py
-resnet50d_config = ResnetConfig(block_type="bottleneck", stem_width=32, stem_type="deep", avg_down=True)
+resnet50d_config = ResnetConfig(
+    block_type="bottleneck", stem_width=32, stem_type="deep", avg_down=True
+)
 resnet50d_config.save_pretrained("custom-resnet")
 ```
 
@@ -105,6 +108,7 @@ from timm.models.resnet import BasicBlock, Bottleneck, ResNet
 from .configuration_resnet import ResnetConfig
 
 BLOCK_MAPPING = {"basic": BasicBlock, "bottleneck": Bottleneck}
+
 
 class ResnetModel(PreTrainedModel):
     config_class = ResnetConfig
@@ -138,6 +142,7 @@ The `forward` method needs to be rewrittten to calculate the loss for each logit
 
 ```py
 import torch
+
 
 class ResnetModelForImageClassification(PreTrainedModel):
     config_class = ResnetConfig
@@ -258,7 +263,9 @@ To map more than one task to the model, edit `auto_map` in the configuration JSO
 Create the configuration and model and load pretrained weights into it.
 
 ```py
-resnet50d_config = ResnetConfig(block_type="bottleneck", stem_width=32, stem_type="deep", avg_down=True)
+resnet50d_config = ResnetConfig(
+    block_type="bottleneck", stem_width=32, stem_type="deep", avg_down=True
+)
 resnet50d = ResnetModelForImageClassification(resnet50d_config)
 
 pretrained_model = timm.create_model("resnet50d", pretrained=True)

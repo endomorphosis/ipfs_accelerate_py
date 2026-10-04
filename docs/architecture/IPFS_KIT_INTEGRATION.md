@@ -105,16 +105,12 @@ from ipfs_accelerate_py import IPFSKitStorage
 
 # Custom configuration
 config = {
-    'enable_ipfs': True,
-    'enable_s3': False,
-    'enable_filecoin': True,
+    "enable_ipfs": True,
+    "enable_s3": False,
+    "enable_filecoin": True,
 }
 
-storage = IPFSKitStorage(
-    enable_ipfs_kit=True,
-    cache_dir="~/.custom_cache",
-    config=config
-)
+storage = IPFSKitStorage(enable_ipfs_kit=True, cache_dir="~/.custom_cache", config=config)
 ```
 
 ### CI/CD Environment (Force Fallback)
@@ -209,10 +205,10 @@ output_cid = storage.store(json.dumps(output_data).encode())
 
 # Associate input → output
 metadata = {
-    'input_cid': input_cid,
-    'output_cid': output_cid,
-    'model': 'bert-base-uncased',
-    'timestamp': time.time()
+    "input_cid": input_cid,
+    "output_cid": output_cid,
+    "model": "bert-base-uncased",
+    "timestamp": time.time(),
 }
 ```
 
@@ -225,11 +221,7 @@ for i, chunk in enumerate(dataset_chunks):
     chunk_cids.append(cid)
 
 # Create dataset manifest
-manifest = {
-    'chunks': chunk_cids,
-    'total_size': total_size,
-    'chunk_size': chunk_size
-}
+manifest = {"chunks": chunk_cids, "total_size": total_size, "chunk_size": chunk_size}
 manifest_cid = storage.store(json.dumps(manifest).encode())
 ```
 
@@ -303,11 +295,11 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 
 # Store data
 data_path = cache_dir / "data.json"
-with open(data_path, 'w') as f:
+with open(data_path, "w") as f:
     json.dump(data, f)
 
 # Retrieve data
-with open(data_path, 'r') as f:
+with open(data_path, "r") as f:
     data = json.load(f)
 ```
 
@@ -336,7 +328,7 @@ from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient
 
 client = MockIPFSClient()
 result = client.add_file(data, "file.txt")
-cid = result['Hash']
+cid = result["Hash"]
 ```
 
 **After:**
@@ -357,11 +349,9 @@ When ipfs_kit_py is available, the integration can route storage operations acro
 # This will be implemented when ipfs_kit_py is fully integrated
 # For now, it provides a consistent API that's ready for enhancement
 
-storage = get_storage(config={
-    'primary_backend': 'ipfs',
-    'fallback_backend': 'local',
-    'archive_backend': 'filecoin'
-})
+storage = get_storage(
+    config={"primary_backend": "ipfs", "fallback_backend": "local", "archive_backend": "filecoin"}
+)
 ```
 
 ### Write-Ahead Log (WAL)
@@ -379,9 +369,9 @@ When ipfs_kit_py is available, operations are logged for crash recovery:
 # Check backend health
 status = storage.get_backend_status()
 
-if not status['ipfs_kit_available']:
+if not status["ipfs_kit_available"]:
     print("Running in local mode - this is normal for CI/CD")
-elif status['using_fallback']:
+elif status["using_fallback"]:
     print("ipfs_kit_py import failed - check installation")
 ```
 
@@ -401,6 +391,7 @@ elif status['using_fallback']:
    ```python
    import sys
    from pathlib import Path
+
    ipfs_kit_path = Path("external/ipfs_kit_py")
    if ipfs_kit_path.exists():
        sys.path.insert(0, str(ipfs_kit_path))
@@ -409,6 +400,7 @@ elif status['using_fallback']:
 3. Check for import errors:
    ```python
    import logging
+
    logging.basicConfig(level=logging.DEBUG)
    # Will show detailed import errors
    ```

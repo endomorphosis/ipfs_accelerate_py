@@ -51,7 +51,9 @@ python run_database_performance_monitoring.py predictive --action analyze --hori
 ```python
 from duckdb_api.simulation_validation.db_performance_optimizer import get_db_optimizer
 from duckdb_api.simulation_validation.automated_optimization_manager import get_optimization_manager
-from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+from duckdb_api.simulation_validation.database_predictive_analytics import (
+    DatabasePredictiveAnalytics,
+)
 
 # Create database optimizer
 db_optimizer = get_db_optimizer(db_path="./benchmark_db.duckdb")
@@ -60,38 +62,29 @@ db_optimizer = get_db_optimizer(db_path="./benchmark_db.duckdb")
 auto_manager = get_optimization_manager(db_optimizer=db_optimizer)
 
 # Create predictive analytics instance
-predictive = DatabasePredictiveAnalytics(
-    automated_optimization_manager=auto_manager
-)
+predictive = DatabasePredictiveAnalytics(automated_optimization_manager=auto_manager)
 
 # Generate forecasts
 forecast_result = predictive.forecast_database_metrics(
-    horizon="medium_term",
-    specific_metrics=["query_time", "storage_size"]
+    horizon="medium_term", specific_metrics=["query_time", "storage_size"]
 )
 
 # Generate visualizations
 vis_result = predictive.generate_forecast_visualizations(
-    forecast_results=forecast_result,
-    output_format="file"
+    forecast_results=forecast_result, output_format="file"
 )
 
 # Check for predicted threshold alerts
-alert_result = predictive.check_predicted_thresholds(
-    forecast_results=forecast_result
-)
+alert_result = predictive.check_predicted_thresholds(forecast_results=forecast_result)
 
 # Get proactive recommendations
 rec_result = predictive.recommend_proactive_actions(
-    forecast_results=forecast_result,
-    threshold_alerts=alert_result
+    forecast_results=forecast_result, threshold_alerts=alert_result
 )
 
 # Run comprehensive analysis
 analysis_result = predictive.analyze_database_health_forecast(
-    horizon="medium_term",
-    generate_visualizations=True,
-    output_format="file"
+    horizon="medium_term", generate_visualizations=True, output_format="file"
 )
 ```
 

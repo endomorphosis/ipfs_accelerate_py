@@ -119,7 +119,9 @@ class PersistentTaskQueue:
     _last_save_time: float = 0.0
     _save_interval: float = 30.0  # Save at most every 30 seconds
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(
+        self, task_id: str, *, priority: str = "P2", track: str = ""
+    ) -> TaskQueueEntry:
         if task_id not in self.entries:
             self.entries[task_id] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
             self._dirty = True

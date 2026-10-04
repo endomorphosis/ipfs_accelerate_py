@@ -25,13 +25,13 @@ The parameter persistence system can be configured using the following options:
 
 ```python
 config = {
-    'parameter_persistence': {
-        'enabled': True,                      # Enable/disable parameter persistence
-        'storage_path': './param_storage',    # Directory to store parameters
-        'format': 'json',                     # Storage format ('json' or 'pickle')
-        'max_age_days': 30,                   # Maximum age of parameters in days
-        'revalidate_after_days': 7,           # Force revalidation after this many days
-        'cache_in_memory': True               # Keep parameters in memory for faster access
+    "parameter_persistence": {
+        "enabled": True,  # Enable/disable parameter persistence
+        "storage_path": "./param_storage",  # Directory to store parameters
+        "format": "json",  # Storage format ('json' or 'pickle')
+        "max_age_days": 30,  # Maximum age of parameters in days
+        "revalidate_after_days": 7,  # Force revalidation after this many days
+        "cache_in_memory": True,  # Keep parameters in memory for faster access
     }
 }
 
@@ -45,25 +45,21 @@ analyzer = DatabasePredictiveAnalytics(config=config)
 
 ```python
 import pandas as pd
-from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+from duckdb_api.simulation_validation.database_predictive_analytics import (
+    DatabasePredictiveAnalytics,
+)
 
 # Create analyzer with default configuration (persistence enabled)
 analyzer = DatabasePredictiveAnalytics()
 
 # First forecast (will tune parameters and store them)
 result1 = analyzer.forecast_time_series(
-    df,
-    metric_name='throughput_items_per_second',
-    model_type='arima',
-    forecast_days=7
+    df, metric_name="throughput_items_per_second", model_type="arima", forecast_days=7
 )
 
 # Second forecast (will reuse stored parameters)
 result2 = analyzer.forecast_time_series(
-    df,
-    metric_name='throughput_items_per_second',
-    model_type='arima',
-    forecast_days=7
+    df, metric_name="throughput_items_per_second", model_type="arima", forecast_days=7
 )
 ```
 
@@ -73,10 +69,10 @@ result2 = analyzer.forecast_time_series(
 # Force revalidation regardless of parameter age or data signature
 result = analyzer.forecast_time_series(
     df,
-    metric_name='throughput_items_per_second',
-    model_type='arima',
+    metric_name="throughput_items_per_second",
+    model_type="arima",
     forecast_days=7,
-    force_parameter_revalidation=True
+    force_parameter_revalidation=True,
 )
 ```
 
@@ -87,10 +83,11 @@ result = analyzer.forecast_time_series(
 analyzer.clean_parameter_storage()
 
 # Clean parameters for a specific model type
-analyzer.clean_parameter_storage(model_type='arima')
+analyzer.clean_parameter_storage(model_type="arima")
 
 # Clean parameters older than a specific date
 from datetime import datetime, timedelta
+
 cutoff_date = datetime.now() - timedelta(days=10)
 analyzer.clean_parameter_storage(older_than=cutoff_date)
 ```
@@ -217,6 +214,7 @@ The parameter persistence system includes detailed logging to help diagnose issu
 ```python
 # Enable debug logging
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 # Run forecast

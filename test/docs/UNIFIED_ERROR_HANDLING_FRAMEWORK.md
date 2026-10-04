@@ -16,20 +16,20 @@ The framework defines standardized error categories:
 
 ```python
 class ErrorCategories:
-    NETWORK = "network_error"         # Network and connection issues
-    TIMEOUT = "timeout_error"         # Timeouts in various operations
-    INPUT = "input_error"             # Invalid input parameters
-    RESOURCE = "resource_error"       # Memory and resource constraints
-    IO = "io_error"                   # File and I/O operations
-    DATA = "data_error"               # Data format and parsing
-    DEPENDENCY = "dependency_error"   # Missing or incompatible dependencies
-    INTERNAL = "internal_error"       # Internal system errors
-    VALIDATION = "validation_error"   # Validation failures
-    PERMISSION = "permission_error"   # Permission and access issues
-    NOT_FOUND = "not_found_error"     # Resources not found
+    NETWORK = "network_error"  # Network and connection issues
+    TIMEOUT = "timeout_error"  # Timeouts in various operations
+    INPUT = "input_error"  # Invalid input parameters
+    RESOURCE = "resource_error"  # Memory and resource constraints
+    IO = "io_error"  # File and I/O operations
+    DATA = "data_error"  # Data format and parsing
+    DEPENDENCY = "dependency_error"  # Missing or incompatible dependencies
+    INTERNAL = "internal_error"  # Internal system errors
+    VALIDATION = "validation_error"  # Validation failures
+    PERMISSION = "permission_error"  # Permission and access issues
+    NOT_FOUND = "not_found_error"  # Resources not found
     INITIALIZATION = "initialization_error"  # Initialization failures
-    HARDWARE = "hardware_error"       # Hardware-related issues
-    UNKNOWN = "unknown_error"         # Unclassified errors
+    HARDWARE = "hardware_error"  # Hardware-related issues
+    UNKNOWN = "unknown_error"  # Unclassified errors
 ```
 
 ### ErrorHandler Class
@@ -125,10 +125,9 @@ try:
 except Exception as e:
     # Handle with context
     error_response = error_handler.handle_error(
-        e, 
-        context={"operation": "data_processing", "input_size": len(data)}
+        e, context={"operation": "data_processing", "input_size": len(data)}
     )
-    
+
     # Return standardized error response
     return error_handler.create_error_response(e, context)
 ```
@@ -138,6 +137,7 @@ except Exception as e:
 ```python
 from fixed_web_platform.unified_framework.error_handling import handle_errors, handle_async_errors
 
+
 # For synchronous functions
 @handle_errors
 def process_data(data):
@@ -145,6 +145,7 @@ def process_data(data):
     # and a standardized error response will be returned
     result = complex_processing(data)
     return result
+
 
 # For asynchronous functions
 @handle_async_errors
@@ -160,6 +161,7 @@ async def fetch_data(url):
 ```python
 from fixed_web_platform.unified_framework.error_handling import with_retry
 
+
 # Add automatic retry with exponential backoff
 @with_retry(max_retries=3, initial_delay=1.0, backoff_factor=2.0)
 async def connect_to_service(service_url):
@@ -174,6 +176,7 @@ async def connect_to_service(service_url):
 ```python
 from fixed_web_platform.unified_framework.error_handling import validate_dependencies
 
+
 # Check for required dependencies
 @validate_dependencies("websockets", "selenium", "duckdb")
 def initialize_web_test_environment():
@@ -181,7 +184,7 @@ def initialize_web_test_environment():
     import websockets
     import selenium
     import duckdb
-    
+
     # Initialize environment
     # ...
 ```
@@ -190,8 +193,11 @@ def initialize_web_test_environment():
 
 ```python
 from fixed_web_platform.unified_framework.error_handling import (
-    handle_async_errors, with_retry, validate_dependencies
+    handle_async_errors,
+    with_retry,
+    validate_dependencies,
 )
+
 
 # Combine multiple decorators (applied from bottom to top)
 @handle_async_errors
@@ -203,6 +209,7 @@ async def websocket_connect(url):
     # 2. Retry up to 3 times if connection fails with recoverable error
     # 3. Handle any other errors with standardized error response
     import websockets
+
     connection = await websockets.connect(url)
     return connection
 ```

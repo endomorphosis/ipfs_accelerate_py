@@ -322,7 +322,7 @@ from ipfs_accelerate_py.mcp.unified_tools import register_unified_tools
 from ipfs_accelerate_py.mcp.server import StandaloneMCP
 
 # Create MCP server
-mcp = StandaloneMCP('test')
+mcp = StandaloneMCP("test")
 
 # Register unified tools
 register_unified_tools(mcp)
@@ -330,7 +330,7 @@ register_unified_tools(mcp)
 # Verify tools registered
 print(f"Total tools: {len(mcp.tools)}")
 for tool_name in mcp.tools.keys():
-    if 'github' in tool_name or 'docker' in tool_name or 'hardware' in tool_name:
+    if "github" in tool_name or "docker" in tool_name or "hardware" in tool_name:
         print(f"  - {tool_name}")
 ```
 
@@ -467,7 +467,7 @@ const workflows = await mcp.call_tool('runner_list_workflows', {});
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
-config = RunnerConfig(owner='myorg', max_runners=8)
+config = RunnerConfig(owner="myorg", max_runners=8)
 kit = get_runner_kit(config)
 kit.start_autoscaler(background=True)
 ```

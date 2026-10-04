@@ -35,7 +35,7 @@ response = generate_text(
     provider="openrouter",
     model_name="openai/gpt-4o-mini",
     max_tokens=256,
-    temperature=0.7
+    temperature=0.7,
 )
 ```
 
@@ -60,10 +60,12 @@ response2 = generate_text("What is 2+2?")
 ```python
 from ipfs_accelerate_py import register_llm_provider, generate_text
 
+
 # Define a custom provider
 class MyProvider:
     def generate(self, prompt, *, model_name=None, **kwargs):
         return f"Custom response to: {prompt}"
+
 
 # Register it
 register_llm_provider("my_provider", lambda: MyProvider())
@@ -107,10 +109,7 @@ export IPFS_ACCELERATE_PY_OPENROUTER_MODEL="openai/gpt-4o-mini"  # optional
 **Usage:**
 ```python
 response = generate_text(
-    "Your prompt",
-    provider="openrouter",
-    model_name="openai/gpt-4o-mini",
-    max_tokens=256
+    "Your prompt", provider="openrouter", model_name="openai/gpt-4o-mini", max_tokens=256
 )
 ```
 
@@ -124,10 +123,7 @@ export IPFS_ACCELERATE_PY_CODEX_MODEL="gpt-3.5-turbo"  # optional
 
 **Usage:**
 ```python
-response = generate_text(
-    "Write a sorting algorithm",
-    provider="codex_cli"
-)
+response = generate_text("Write a sorting algorithm", provider="codex_cli")
 ```
 
 #### 3. Copilot CLI (`copilot_cli`)
@@ -135,10 +131,7 @@ Uses existing GitHub Copilot CLI wrapper.
 
 **Usage:**
 ```python
-response = generate_text(
-    "Suggest a git command to...",
-    provider="copilot_cli"
-)
+response = generate_text("Suggest a git command to...", provider="copilot_cli")
 ```
 
 #### 4. Copilot SDK (`copilot_sdk`)
@@ -151,11 +144,7 @@ export IPFS_ACCELERATE_PY_COPILOT_SDK_MODEL="gpt-4o"  # optional
 
 **Usage:**
 ```python
-response = generate_text(
-    "Your prompt",
-    provider="copilot_sdk",
-    model_name="gpt-4o"
-)
+response = generate_text("Your prompt", provider="copilot_sdk", model_name="gpt-4o")
 ```
 
 #### 5. Gemini (`gemini_cli`)
@@ -169,11 +158,7 @@ export IPFS_ACCELERATE_PY_GEMINI_MODEL="gemini-pro"  # optional
 
 **Usage:**
 ```python
-response = generate_text(
-    "Explain quantum computing",
-    provider="gemini_cli",
-    temperature=0.7
-)
+response = generate_text("Explain quantum computing", provider="gemini_cli", temperature=0.7)
 ```
 
 #### 6. Claude (`claude_code`)
@@ -187,10 +172,7 @@ export IPFS_ACCELERATE_PY_CLAUDE_MODEL="claude-3-5-sonnet-20241022"  # optional
 
 **Usage:**
 ```python
-response = generate_text(
-    "Write a unit test for...",
-    provider="claude_code"
-)
+response = generate_text("Write a unit test for...", provider="claude_code")
 ```
 
 #### 7. Backend Manager (`backend_manager`)
@@ -208,10 +190,7 @@ export IPFS_ACCELERATE_PY_LLM_LOAD_BALANCING="round_robin"  # or least_loaded, b
 
 **Usage:**
 ```python
-response = generate_text(
-    "Your prompt",
-    provider="backend_manager"
-)
+response = generate_text("Your prompt", provider="backend_manager")
 ```
 
 **Current Limitations:**
@@ -228,11 +207,7 @@ export IPFS_ACCELERATE_PY_LLM_MODEL="gpt2"  # or any HF model
 
 **Usage:**
 ```python
-response = generate_text(
-    "Your prompt",
-    provider="local_hf",
-    model_name="gpt2"
-)
+response = generate_text("Your prompt", provider="local_hf", model_name="gpt2")
 ```
 
 ## Environment Variables
@@ -276,7 +251,7 @@ The router integrates with existing CLI wrappers without duplication:
 from ipfs_accelerate_py.cli_integrations import (
     OpenAICodexCLIIntegration,
     GeminiCLIIntegration,
-    ClaudeCodeCLIIntegration
+    ClaudeCodeCLIIntegration,
 )
 
 from ipfs_accelerate_py.copilot_cli.wrapper import CopilotCLI

@@ -31,9 +31,7 @@ def create_peer_service_bundle(
     nodes = list(bootstrap_nodes or [])
     return PeerServiceBundle(
         peer_registry=(
-            create_peer_registry(repo=repo, bootstrap_nodes=nodes)
-            if enable_peer_registry
-            else None
+            create_peer_registry(repo=repo, bootstrap_nodes=nodes) if enable_peer_registry else None
         ),
         peer_bootstrap=(
             create_peer_bootstrap(

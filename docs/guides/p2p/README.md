@@ -69,11 +69,13 @@ scheduler = P2PWorkflowScheduler(node_id="worker-01")
 await scheduler.start()
 
 # Submit high-priority task
-await scheduler.submit_workflow({
-    "name": "urgent-task",
-    "priority": 1,  # Lower = higher priority
-    "tasks": [...]
-})
+await scheduler.submit_workflow(
+    {
+        "name": "urgent-task",
+        "priority": 1,  # Lower = higher priority
+        "tasks": [...],
+    }
+)
 ```
 
 ## Quick Start
@@ -94,26 +96,26 @@ ipfs-accelerate p2p join --bootstrap /ip4/...
 ### Distributed Workflow
 
 ```python
-from ipfs_accelerate_py.p2p_workflow_scheduler import (
-    P2PWorkflowScheduler,
-    WorkflowTag
-)
+from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler, WorkflowTag
+
 
 async def main():
     # Create scheduler
     scheduler = P2PWorkflowScheduler(node_id="worker-01")
     await scheduler.start()
-    
+
     # Submit distributed workflow
-    workflow_id = await scheduler.submit_workflow({
-        "name": "batch-inference",
-        "tag": WorkflowTag.P2P_ELIGIBLE,
-        "tasks": [
-            {"model": "bert-base", "input": "text1"},
-            {"model": "bert-base", "input": "text2"}
-        ]
-    })
-    
+    workflow_id = await scheduler.submit_workflow(
+        {
+            "name": "batch-inference",
+            "tag": WorkflowTag.P2P_ELIGIBLE,
+            "tasks": [
+                {"model": "bert-base", "input": "text1"},
+                {"model": "bert-base", "input": "text2"},
+            ],
+        }
+    )
+
     # Monitor progress
     status = await scheduler.get_workflow_status(workflow_id)
     print(f"Progress: {status['completed']}/{status['total']}")

@@ -78,7 +78,7 @@ cache = configure_cache(
     cache_dir="/custom/cache/dir",
     default_ttl=600,  # 10 minutes
     max_cache_size=2000,  # Store up to 2000 entries
-    enable_persistence=True
+    enable_persistence=True,
 )
 
 # Use custom cache instance
@@ -150,10 +150,10 @@ This ensures different parameter combinations get separate cache entries.
 
 ```python
 gh = GitHubCLI(
-    gh_path="gh",              # Path to gh executable
-    enable_cache=True,         # Enable caching
-    cache=None,                # Custom cache instance (or None for global)
-    cache_ttl=300              # Default TTL in seconds
+    gh_path="gh",  # Path to gh executable
+    enable_cache=True,  # Enable caching
+    cache=None,  # Custom cache instance (or None for global)
+    cache_ttl=300,  # Default TTL in seconds
 )
 ```
 
@@ -163,10 +163,10 @@ gh = GitHubCLI(
 from ipfs_accelerate_py.github_cli import configure_cache
 
 cache = configure_cache(
-    cache_dir=None,            # Cache directory (default: ~/.cache/github_cli)
-    default_ttl=300,           # Default TTL in seconds (5 minutes)
-    max_cache_size=1000,       # Max entries in memory
-    enable_persistence=True    # Save to disk
+    cache_dir=None,  # Cache directory (default: ~/.cache/github_cli)
+    default_ttl=300,  # Default TTL in seconds (5 minutes)
+    max_cache_size=1000,  # Max entries in memory
+    enable_persistence=True,  # Save to disk
 )
 ```
 

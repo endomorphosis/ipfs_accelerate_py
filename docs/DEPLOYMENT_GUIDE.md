@@ -93,18 +93,15 @@ config = InferenceServiceConfig(
     enable_hf_server=True,
     enable_websocket=True,
     enable_libp2p=False,  # Enable if using P2P
-    
     # Server settings
     hf_server_host="0.0.0.0",
     hf_server_port=8000,
-    
     # Backend manager
     backend_health_checks=True,
     backend_health_check_interval=60,
     load_balancing_strategy="round_robin",
-    
     # Logging
-    log_level="INFO"
+    log_level="INFO",
 )
 ```
 
@@ -142,8 +139,10 @@ For basic HTTP inference without P2P or advanced features:
 # run_local_server.py
 import asyncio
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
+
 
 async def main():
     config = InferenceServiceConfig(
@@ -154,18 +153,16 @@ async def main():
         enable_api_backends=False,
         enable_cli_backends=False,
         hf_server_host="127.0.0.1",
-        hf_server_port=8000
+        hf_server_port=8000,
     )
-    
+
     service = await start_unified_service(config)
-    
+
     # Run server
     import uvicorn
-    uvicorn.run(
-        service.get_hf_server().app,
-        host=config.hf_server_host,
-        port=config.hf_server_port
-    )
+
+    uvicorn.run(service.get_hf_server().app, host=config.hf_server_host, port=config.hf_server_port)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -190,8 +187,10 @@ For real-time inference with streaming support:
 # run_websocket_server.py
 import asyncio
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
+
 
 async def main():
     config = InferenceServiceConfig(
@@ -200,17 +199,15 @@ async def main():
         enable_websocket=True,  # Enable WebSocket
         enable_libp2p=False,
         hf_server_host="0.0.0.0",
-        hf_server_port=8000
+        hf_server_port=8000,
     )
-    
+
     service = await start_unified_service(config)
-    
+
     import uvicorn
-    uvicorn.run(
-        service.get_hf_server().app,
-        host=config.hf_server_host,
-        port=config.hf_server_port
-    )
+
+    uvicorn.run(service.get_hf_server().app, host=config.hf_server_host, port=config.hf_server_port)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -249,8 +246,10 @@ For production with multiple backends and failover:
 # run_multi_backend.py
 import asyncio
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
+
 
 async def main():
     config = InferenceServiceConfig(
@@ -259,29 +258,19 @@ async def main():
         enable_websocket=True,
         enable_libp2p=False,
         enable_api_backends=True,  # Enable API backends
-        api_backends=[
-            "hf_tgi",
-            "hf_tei",
-            "ollama",
-            "openai_api"
-        ],
+        api_backends=["hf_tgi", "hf_tei", "ollama", "openai_api"],
         enable_cli_backends=True,  # Enable CLI backends
-        cli_backends=[
-            "claude_cli",
-            "openai_cli"
-        ],
+        cli_backends=["claude_cli", "openai_cli"],
         load_balancing_strategy="best_performance",
-        backend_health_checks=True
+        backend_health_checks=True,
     )
-    
+
     service = await start_unified_service(config)
-    
+
     import uvicorn
-    uvicorn.run(
-        service.get_hf_server().app,
-        host=config.hf_server_host,
-        port=config.hf_server_port
-    )
+
+    uvicorn.run(service.get_hf_server().app, host=config.hf_server_host, port=config.hf_server_port)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -295,8 +284,10 @@ For peer-to-peer distributed inference:
 # run_p2p_node.py
 import asyncio
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
+
 
 async def main():
     config = InferenceServiceConfig(
@@ -308,24 +299,23 @@ async def main():
             "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
         ],
         libp2p_enable_mdns=True,
-        libp2p_discovery_interval=60
+        libp2p_discovery_interval=60,
     )
-    
+
     service = await start_unified_service(config)
-    
+
     # Register capabilities on P2P node
     p2p_node = service.get_p2p_node()
     if p2p_node:
         from ipfs_accelerate_py.libp2p_inference import PeerCapability
+
         p2p_node.register_capability(PeerCapability.TEXT_GENERATION)
         p2p_node.register_model("gpt2")
-    
+
     import uvicorn
-    uvicorn.run(
-        service.get_hf_server().app,
-        host=config.hf_server_host,
-        port=config.hf_server_port
-    )
+
+    uvicorn.run(service.get_hf_server().app, host=config.hf_server_host, port=config.hf_server_port)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -435,33 +425,36 @@ import asyncio
 import websockets
 import json
 
+
 async def websocket_client():
     uri = "ws://localhost:8000/ws/my_client"
-    
+
     async with websockets.connect(uri) as websocket:
         # Subscribe to topics
-        await websocket.send(json.dumps({
-            "type": "subscribe",
-            "topics": ["inference"]
-        }))
-        
+        await websocket.send(json.dumps({"type": "subscribe", "topics": ["inference"]}))
+
         # Send inference request
-        await websocket.send(json.dumps({
-            "type": "inference",
-            "request_id": "req_001",
-            "model": "gpt2",
-            "task": "text-generation",
-            "inputs": "Hello, world!",
-            "stream": True
-        }))
-        
+        await websocket.send(
+            json.dumps(
+                {
+                    "type": "inference",
+                    "request_id": "req_001",
+                    "model": "gpt2",
+                    "task": "text-generation",
+                    "inputs": "Hello, world!",
+                    "stream": True,
+                }
+            )
+        )
+
         # Receive responses
         async for message in websocket:
             data = json.loads(message)
             print(f"Received: {data}")
-            
+
             if data["type"] == "inference_complete":
                 break
+
 
 asyncio.run(websocket_client())
 ```
@@ -474,7 +467,7 @@ asyncio.run(websocket_client())
 bootstrap_peers = [
     "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
-    "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
+    "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
 ]
 
 config.libp2p_bootstrap_peers = bootstrap_peers
@@ -534,7 +527,7 @@ curl http://localhost:8000/status
 from ipfs_accelerate_py.mcp.tools.backend_management import (
     list_inference_backends,
     get_backend_status,
-    select_backend_for_inference
+    select_backend_for_inference,
 )
 
 # List all backends
@@ -544,10 +537,7 @@ backends = list_inference_backends()
 status = get_backend_status()
 
 # Select backend for task
-backend = select_backend_for_inference(
-    task="text-generation",
-    model="gpt2"
-)
+backend = select_backend_for_inference(task="text-generation", model="gpt2")
 ```
 
 ## Troubleshooting
@@ -603,8 +593,7 @@ Enable debug logging:
 import logging
 
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 ```
 

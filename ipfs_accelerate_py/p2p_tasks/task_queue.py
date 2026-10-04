@@ -36,7 +36,9 @@ def default_queue_path() -> str:
         "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
         os.environ.get(
             "IPFS_DATASETS_PY_TASK_QUEUE_PATH",
-            os.path.join(os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"),
+            os.path.join(
+                os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"
+            ),
         ),
     )
 
@@ -142,7 +144,9 @@ class TaskQueue:
                         )
                         """
                     )
-                    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)"
+                    )
                     return
                 except Exception as exc:
                     last_exc = exc
@@ -1082,7 +1086,13 @@ class TaskQueue:
             return False
 
         status_norm = str(status).strip().lower() if status is not None else ""
-        if status_norm and status_norm not in {"queued", "running", "completed", "failed", "cancelled"}:
+        if status_norm and status_norm not in {
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+        }:
             status_norm = ""
 
         def _json_dict(value: Any) -> Dict[str, Any]:

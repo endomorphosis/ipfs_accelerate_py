@@ -129,14 +129,12 @@ task_data = {
     "resource_pool": True,
     "model_type": "text_embedding",
     "model_name": "bert-base-uncased",
-    "hardware_preferences": {
-        "priority_list": ["webgpu", "cpu"]
-    },
+    "hardware_preferences": {"priority_list": ["webgpu", "cpu"]},
     "fault_tolerance": {
         "recovery_timeout": 30,
         "state_persistence": True,
-        "failover_strategy": "immediate"
-    }
+        "failover_strategy": "immediate",
+    },
 }
 ```
 
@@ -147,18 +145,14 @@ The Resource Pool Integration Plugin supports the following configuration option
 ```python
 plugin_config = {
     "max_connections": 4,
-    "browser_preferences": {
-        "audio": "firefox",
-        "vision": "chrome", 
-        "text_embedding": "edge"
-    },
+    "browser_preferences": {"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
     "adaptive_scaling": True,
     "enable_fault_tolerance": True,
     "recovery_strategy": "progressive",
     "state_sync_interval": 5,
     "redundancy_factor": 2,
     "metrics_collection_interval": 30,
-    "auto_optimization": True
+    "auto_optimization": True,
 }
 ```
 

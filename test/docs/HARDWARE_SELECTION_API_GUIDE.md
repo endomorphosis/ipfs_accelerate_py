@@ -396,9 +396,7 @@ print(f"Available Hardware: {hardware}")
 
 # Select hardware for a model
 recommendation = client.select_hardware(
-    model_name="bert-base-uncased",
-    batch_size=16,
-    mode="inference"
+    model_name="bert-base-uncased", batch_size=16, mode="inference"
 )
 print(f"Recommended Hardware: {recommendation['primary_recommendation']}")
 ```
@@ -414,6 +412,7 @@ print(f"PyTorch Device: {device}")
 
 # Use the device in PyTorch
 import torch
+
 model = torch.load("model.pt", map_location=device)
 ```
 
@@ -422,9 +421,7 @@ model = torch.load("model.pt", map_location=device)
 ```python
 # Predict performance
 performance = client.predict_performance(
-    model_name="bert-base-uncased",
-    hardware=["cuda", "cpu"],
-    batch_size=16
+    model_name="bert-base-uncased", hardware=["cuda", "cpu"], batch_size=16
 )
 
 # Print predictions
@@ -440,10 +437,7 @@ for hw, pred in performance["predictions"].items():
 ```python
 # Get distributed training configuration
 config = client.get_distributed_training_config(
-    model_name="gpt2",
-    gpu_count=8,
-    batch_size=16,
-    max_memory_gb=16
+    model_name="gpt2", gpu_count=8, batch_size=16, max_memory_gb=16
 )
 
 # Print configuration
@@ -458,7 +452,7 @@ print(f"Total Batch Size: {config['global_batch_size']}")
 models = [
     {"name": "bert-base-uncased", "family": "embedding"},
     {"name": "gpt2", "family": "text_generation"},
-    {"name": "t5-small", "family": "text_generation"}
+    {"name": "t5-small", "family": "text_generation"},
 ]
 
 results = client.select_hardware_for_models(models)
@@ -569,6 +563,7 @@ device = client.get_optimal_device(model_name)
 
 # Create model
 from transformers import AutoModel
+
 model = AutoModel.from_pretrained(model_name).to(device)
 
 # Get performance prediction
@@ -588,9 +583,7 @@ client = HardwareSelectionClient()
 # Get distributed training configuration
 model_name = "gpt2"
 config = client.get_distributed_training_config(
-    model_name=model_name,
-    gpu_count=torch.cuda.device_count(),
-    batch_size=8
+    model_name=model_name, gpu_count=torch.cuda.device_count(), batch_size=8
 )
 
 # Setup distributed training based on configuration
@@ -599,19 +592,19 @@ if config["distributed_strategy"] == "DDP":
     import torch.distributed as dist
     import torch.multiprocessing as mp
     from torch.nn.parallel import DistributedDataParallel
-    
+
     # ... DDP setup code
-    
+
 elif config["distributed_strategy"] == "FSDP":
     # Initialize FSDP
     from torch.distributed.fsdp import FullyShardedDataParallel
-    
+
     # ... FSDP setup code
-    
+
 # Apply memory optimizations
 if "gradient_checkpointing" in config and config["gradient_checkpointing"]:
     model.gradient_checkpointing_enable()
-    
+
 if "gradient_accumulation_steps" in config:
     gradient_accumulation_steps = config["gradient_accumulation_steps"]
     # Use in training loop

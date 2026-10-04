@@ -62,20 +62,23 @@ This document outlines the implementation plan for integrating `ipfs_kit_py` dis
 # Current approach (lines 200+)
 def _save_data(self, data, filename):
     path = self.cache_dir / filename
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         json.dump(data, f)
+
 
 # New approach with integration
 from ipfs_accelerate_py import get_storage
+
 
 def _save_data(self, data, filename):
     storage = get_storage()
     data_bytes = json.dumps(data).encode()
     cid = storage.store(data_bytes, filename=filename, pin=True)
-    
+
     # Store CID mapping for retrieval
     self._cid_map[filename] = cid
     return cid
+
 
 def _load_data(self, filename):
     storage = get_storage()
@@ -84,7 +87,7 @@ def _load_data(self, filename):
         data_bytes = storage.retrieve(cid)
         if data_bytes:
             return json.loads(data_bytes.decode())
-    
+
     # Fallback to legacy filesystem
     return self._load_from_json(filename)
 ```
@@ -139,16 +142,17 @@ class BaseAPICache:
 def store_to_ipfs(self, data):
     # Old: Generate mock CID
     # mock_cid = f"Qm{hashlib.sha256(data).hexdigest()[:44]}"
-    
+
     # New: Use real storage
     storage = get_storage()
     cid = storage.store(data, pin=True)
     return cid
 
+
 def query_ipfs(self, cid):
     # Old: Return mock data
     # return {"data": "mocked"}
-    
+
     # New: Retrieve real data
     storage = get_storage()
     data = storage.retrieve(cid)
@@ -171,11 +175,12 @@ def query_ipfs(self, cid):
 ```python
 def find_providers(self, model_name):
     storage = get_storage()
-    
+
     # Check if ipfs_kit_py is available
     if storage.is_available():
         # Use real provider discovery from ipfs_kit_py
         from ipfs_kit_py.mcp.models.mcp_discovery_model import MCPDiscoveryModel
+
         discovery = MCPDiscoveryModel()
         providers = discovery.find_providers(model_name)
         return providers
@@ -245,21 +250,21 @@ Create comprehensive integration tests:
 ```python
 # test/test_ipfs_kit_integration_e2e.py
 
+
 def test_model_storage_with_ipfs_kit():
     """Test full model storage/retrieval cycle."""
     # Store model
     model_manager = ModelManager()
     storage = get_storage()
-    
+
     # Store model metadata with CID
     metadata = model_manager.get_model_metadata("bert-base-uncased")
-    cid = storage.store(json.dumps(metadata).encode(), 
-                        filename="bert-base-uncased.json",
-                        pin=True)
-    
+    cid = storage.store(json.dumps(metadata).encode(), filename="bert-base-uncased.json", pin=True)
+
     # Retrieve and verify
     retrieved = storage.retrieve(cid)
     assert json.loads(retrieved.decode()) == metadata
+
 
 def test_inference_caching_with_ipfs_kit():
     """Test inference result caching."""
@@ -267,6 +272,7 @@ def test_inference_caching_with_ipfs_kit():
     # Cache results with CID
     # Verify cache hit on subsequent call
     pass
+
 
 def test_distributed_dataset_sharing():
     """Test dataset distribution across IPFS."""
@@ -283,6 +289,7 @@ Benchmark integration impact:
 ```python
 # benchmarks/benchmark_ipfs_kit_integration.py
 
+
 def benchmark_storage_operations():
     """Benchmark storage vs. direct filesystem."""
     # Measure:
@@ -291,6 +298,7 @@ def benchmark_storage_operations():
     # - List operation latency
     # - Memory overhead
     pass
+
 
 def benchmark_with_without_ipfs_kit():
     """Compare performance with and without ipfs_kit_py."""
@@ -357,23 +365,22 @@ from ipfs_accelerate_py import get_storage, ipfs_accelerate_py
 storage = get_storage()
 accelerator = ipfs_accelerate_py({}, {})
 
+
 # Cache inference results
 def cached_inference(model, input_data):
     # Generate cache key
     cache_key = f"{model}_{hash(str(input_data))}"
-    
+
     # Check cache
     if storage.exists(cache_key):
         return storage.retrieve(cache_key)
-    
+
     # Run inference
     result = accelerator.process(model, input_data)
-    
+
     # Store result
-    storage.store(json.dumps(result).encode(), 
-                  filename=cache_key,
-                  pin=False)
-    
+    storage.store(json.dumps(result).encode(), filename=cache_key, pin=False)
+
     return result
 ```
 
@@ -451,21 +458,22 @@ Track integration health:
 ```python
 # ipfs_accelerate_py/ipfs_kit_metrics.py
 
+
 class IPFSKitMetrics:
     def __init__(self):
         self.storage = get_storage()
-    
+
     def collect_metrics(self):
         return {
-            'ipfs_kit_available': self.storage.is_available(),
-            'using_fallback': self.storage.using_fallback,
-            'storage_operations': {
-                'store': self._count_stores,
-                'retrieve': self._count_retrieves,
-                'cache_hits': self._count_cache_hits,
-                'cache_misses': self._count_cache_misses,
+            "ipfs_kit_available": self.storage.is_available(),
+            "using_fallback": self.storage.using_fallback,
+            "storage_operations": {
+                "store": self._count_stores,
+                "retrieve": self._count_retrieves,
+                "cache_hits": self._count_cache_hits,
+                "cache_misses": self._count_cache_misses,
             },
-            'backend_health': self.storage.get_backend_status()
+            "backend_health": self.storage.get_backend_status(),
         }
 ```
 

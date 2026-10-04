@@ -75,7 +75,7 @@ config = DockerExecutionConfig(
     cpu_limit=1.0,
     timeout=60,
     environment={"VAR": "value"},
-    network_mode="none"
+    network_mode="none",
 )
 ```
 
@@ -105,7 +105,7 @@ config = GitHubDockerConfig(
     repo_url="https://github.com/user/repo",
     branch="main",
     dockerfile_path="Dockerfile",
-    build_args={"PYTHON_VERSION": "3.9"}
+    build_args={"PYTHON_VERSION": "3.9"},
 )
 ```
 
@@ -136,21 +136,17 @@ success = executor.stop_container("container_id")
 ```python
 from ipfs_accelerate_py.docker_executor import (
     execute_docker_hub_container,
-    build_and_execute_from_github
+    build_and_execute_from_github,
 )
 
 # Quick execution
 result = execute_docker_hub_container(
-    image="python:3.9",
-    command=["python", "-c", "print('test')"],
-    timeout=60
+    image="python:3.9", command=["python", "-c", "print('test')"], timeout=60
 )
 
 # Build and run from GitHub
 result = build_and_execute_from_github(
-    repo_url="https://github.com/user/repo",
-    branch="main",
-    command=["python", "app.py"]
+    repo_url="https://github.com/user/repo", branch="main", command=["python", "app.py"]
 )
 ```
 
@@ -303,7 +299,7 @@ result = execute_docker_container(
     image="python:3.9",
     command="python -c 'import sys; print(sys.version)'",
     memory_limit="512m",
-    timeout=30
+    timeout=30,
 )
 
 print(f"Exit code: {result['exit_code']}")
@@ -321,10 +317,10 @@ result = build_and_execute_github_repo(
     dockerfile_path="Dockerfile",
     command="python main.py",
     environment={"DATABASE_URL": "sqlite:///data.db"},
-    build_args={"PYTHON_VERSION": "3.9"}
+    build_args={"PYTHON_VERSION": "3.9"},
 )
 
-if result['success']:
+if result["success"]:
     print(f"Application output: {result['stdout']}")
 else:
     print(f"Error: {result['error_message']}")
@@ -345,28 +341,25 @@ result = execute_with_payload(
     image="ubuntu:20.04",
     payload=script,
     payload_path="/tmp/process.sh",
-    entrypoint="bash /tmp/process.sh"
+    entrypoint="bash /tmp/process.sh",
 )
 
-print(result['stdout'])
+print(result["stdout"])
 ```
 
 ### Example 4: Container Management
 
 ```python
-from ipfs_accelerate_py.mcp.tools.docker_tools import (
-    list_running_containers,
-    stop_container
-)
+from ipfs_accelerate_py.mcp.tools.docker_tools import list_running_containers, stop_container
 
 # List containers
 containers_result = list_running_containers()
-for container in containers_result['containers']:
+for container in containers_result["containers"]:
     print(f"Container: {container['Names']} - {container['Status']}")
-    
+
     # Stop container if needed
-    if 'old' in container['Names']:
-        stop_result = stop_container(container_id=container['ID'])
+    if "old" in container["Names"]:
+        stop_result = stop_container(container_id=container["ID"])
         print(f"Stopped: {stop_result['success']}")
 ```
 
@@ -403,7 +396,7 @@ secure_config = DockerExecutionConfig(
     network_mode="none",
     read_only=True,
     no_new_privileges=True,
-    user="1000:1000"  # Non-root user
+    user="1000:1000",  # Non-root user
 )
 ```
 
@@ -480,7 +473,7 @@ pull_docker_image(image="python:3.9")
 result = execute_docker_container(
     image="python:3.9",
     command="python long_script.py",
-    timeout=600  # 10 minutes
+    timeout=600,  # 10 minutes
 )
 ```
 

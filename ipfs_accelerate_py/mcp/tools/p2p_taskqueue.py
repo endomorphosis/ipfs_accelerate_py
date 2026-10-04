@@ -72,7 +72,9 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import request_status
 
             remote = _remote_queue(peer_id=peer_id, multiaddr=remote_multiaddr)
-            resp = await _run_in_trio(request_status, remote=remote, timeout_s=float(timeout_s), detail=bool(detail))
+            resp = await _run_in_trio(
+                request_status, remote=remote, timeout_s=float(timeout_s), detail=bool(detail)
+            )
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
         except Exception as exc:
             logger.exception("p2p_taskqueue_status failed")
@@ -135,7 +137,9 @@ def register_tools(mcp: Any) -> None:
                 claim_next,
                 remote=remote,
                 worker_id=str(worker_id),
-                supported_task_types=[str(x) for x in (supported_task_types or []) if str(x).strip()],
+                supported_task_types=[
+                    str(x) for x in (supported_task_types or []) if str(x).strip()
+                ],
                 peer_id=str(peer_id) if peer_id else None,
                 clock=(clock if isinstance(clock, dict) else None),
             )
@@ -314,7 +318,9 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import cache_get
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await _run_in_trio(cache_get, remote=remote, key=str(key), timeout_s=float(timeout_s))
+            resp = await _run_in_trio(
+                cache_get, remote=remote, key=str(key), timeout_s=float(timeout_s)
+            )
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
         except Exception as exc:
             logger.exception("p2p_taskqueue_cache_get failed")
@@ -443,7 +449,10 @@ def register_tools(mcp: Any) -> None:
         """
 
         try:
-            from ipfs_accelerate_py.p2p_tasks.service import get_local_service_state, list_known_peers
+            from ipfs_accelerate_py.p2p_tasks.service import (
+                get_local_service_state,
+                list_known_peers,
+            )
 
             from ipfs_accelerate_py.p2p_tasks.client import (
                 RemoteQueue,
@@ -458,15 +467,13 @@ def register_tools(mcp: Any) -> None:
                 return {"ok": False, "error": "p2p_service_not_running"}
 
             self_peer_id = str(state.get("peer_id") or "").strip()
-            peers = list_known_peers(alive_only=True, limit=int(limit), exclude_peer_id=self_peer_id)
+            peers = list_known_peers(
+                alive_only=True, limit=int(limit), exclude_peer_id=self_peer_id
+            )
 
             if not peers and bool(discover):
                 raw_methods = discovery_methods or ["mdns", "rendezvous", "dht"]
-                methods = [
-                    str(x).strip().lower()
-                    for x in raw_methods
-                    if str(x).strip()
-                ]
+                methods = [str(x).strip().lower() for x in raw_methods if str(x).strip()]
                 timeout_s = max(0.1, float(discovery_timeout_s))
                 discovered: list[Dict[str, Any]] = []
 
@@ -481,7 +488,9 @@ def register_tools(mcp: Any) -> None:
                             continue
                         if not pid and not ma:
                             continue
-                        discovered.append({"peer_id": pid, "multiaddr": ma, "discovered": True, "method": method})
+                        discovered.append(
+                            {"peer_id": pid, "multiaddr": ma, "discovered": True, "method": method}
+                        )
 
                 for method in methods:
                     try:
@@ -540,7 +549,9 @@ def register_tools(mcp: Any) -> None:
                     try:
                         caps = await _run_in_trio(
                             get_capabilities,
-                            remote=RemoteQueue(peer_id=pid, multiaddr=str(row.get("multiaddr") or "")),
+                            remote=RemoteQueue(
+                                peer_id=pid, multiaddr=str(row.get("multiaddr") or "")
+                            ),
                             timeout_s=float(capabilities_timeout_s),
                             detail=bool(capabilities_detail),
                         )

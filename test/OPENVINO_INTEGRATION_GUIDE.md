@@ -46,34 +46,32 @@ if backend.is_available():
     # Get available devices
     devices = backend.get_all_devices()
     print(f"Available devices: {devices}")
-    
+
     # Load a model
     result = backend.load_model(
         "bert-base-uncased",
         {
             "device": "CPU",  # or "GPU", "MYRIAD", "AUTO", etc.
             "model_type": "text",
-            "precision": "FP32"  # or "FP16", "INT8"
-        }
+            "precision": "FP32",  # or "FP16", "INT8"
+        },
     )
-    
+
     # Run inference
     inputs = {
         "input_ids": [101, 2054, 2154, 2003, 2026, 3793, 2080, 2339, 1029, 102],
-        "attention_mask": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        "attention_mask": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }
-    
+
     inference_result = backend.run_inference(
-        "bert-base-uncased",
-        inputs,
-        {"device": "CPU", "model_type": "text"}
+        "bert-base-uncased", inputs, {"device": "CPU", "model_type": "text"}
     )
-    
+
     # Print inference metrics
     print(f"Latency: {inference_result.get('latency_ms', 0):.2f} ms")
     print(f"Throughput: {inference_result.get('throughput_items_per_sec', 0):.2f} items/sec")
     print(f"Memory usage: {inference_result.get('memory_usage_mb', 0):.2f} MB")
-    
+
     # Unload the model
     backend.unload_model("bert-base-uncased", "CPU")
 ```
@@ -94,7 +92,7 @@ available_hardware = detector.get_available_hardware()
 if available_hardware.get("openvino", False):
     profile = HardwareProfile(
         preferred_hardware=["openvino", "cpu"],
-        device_map={"openvino": "CPU"}  # or "GPU", "AUTO", etc.
+        device_map={"openvino": "CPU"},  # or "GPU", "AUTO", etc.
     )
 else:
     # Fallback to CPU
@@ -124,21 +122,14 @@ from ipfs_accelerate_py.hardware.backends.openvino_backend import OpenVINOBacken
 backend = OpenVINOBackend()
 
 # Create a PyTorch model
-model = torch.nn.Sequential(
-    torch.nn.Linear(10, 10),
-    torch.nn.ReLU(),
-    torch.nn.Linear(10, 1)
-)
+model = torch.nn.Sequential(torch.nn.Linear(10, 10), torch.nn.ReLU(), torch.nn.Linear(10, 1))
 
 # Create example inputs
 example_inputs = torch.zeros(1, 10)
 
 # Convert to OpenVINO format
 result = backend.convert_from_pytorch(
-    model,
-    example_inputs,
-    "converted_model.xml",
-    {"precision": "FP16"}
+    model, example_inputs, "converted_model.xml", {"precision": "FP16"}
 )
 
 print(f"Conversion result: {result}")
@@ -153,11 +144,7 @@ from ipfs_accelerate_py.hardware.backends.openvino_backend import OpenVINOBacken
 backend = OpenVINOBackend()
 
 # Convert ONNX model to OpenVINO format
-result = backend.convert_from_onnx(
-    "model.onnx",
-    "converted_model.xml",
-    {"precision": "FP16"}
-)
+result = backend.convert_from_onnx("model.onnx", "converted_model.xml", {"precision": "FP16"})
 
 print(f"Conversion result: {result}")
 ```
@@ -179,9 +166,11 @@ optimum_info = backend.get_optimum_integration()
 
 if optimum_info.get("available", False):
     print(f"optimum.intel is available (version: {optimum_info.get('version', 'Unknown')})")
-    
+
     # Check for specific model type support
-    print(f"Sequence Classification: {optimum_info.get('sequence_classification_available', False)}")
+    print(
+        f"Sequence Classification: {optimum_info.get('sequence_classification_available', False)}"
+    )
     print(f"Causal LM: {optimum_info.get('causal_lm_available', False)}")
     print(f"Seq2Seq LM: {optimum_info.get('seq2seq_lm_available', False)}")
 ```
@@ -260,9 +249,11 @@ You can verify your OpenVINO installation with:
 
 ```python
 import openvino
+
 print(f"OpenVINO version: {openvino.__version__}")
 
 from openvino.runtime import Core
+
 core = Core()
 print(f"Available devices: {core.available_devices}")
 ```

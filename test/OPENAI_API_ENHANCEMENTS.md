@@ -29,16 +29,16 @@ client = openai_api(api_key="your-api-key")
 response = client.chat_completion(
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello, how are you?"}
+        {"role": "user", "content": "Hello, how are you?"},
     ],
     model="gpt-4o-mini",  # Cost-effective alternative to gpt-4o
-    temperature=0.7
+    temperature=0.7,
 )
 
 # Embeddings with latest models
 embeddings = client.embeddings(
     text="Sample text for embedding",
-    model="text-embedding-3-large"  # Higher quality embeddings
+    model="text-embedding-3-large",  # Higher quality embeddings
 )
 ```
 
@@ -61,7 +61,7 @@ audio_data = client.text_to_speech(
     voice=VoiceType.NOVA,
     model="tts-1-hd",
     response_format=AudioFormat.MP3,
-    speed=1.1
+    speed=1.1,
 )
 
 # Save the audio data
@@ -76,7 +76,7 @@ with open("input.mp3", "rb") as audio_file:
         audio_file=audio_file,
         model="whisper-1",
         response_format=TranscriptionFormat.VERBOSE_JSON,
-        timestamp_granularities=["word"]
+        timestamp_granularities=["word"],
     )
 
 # Access word-level timestamps
@@ -86,10 +86,7 @@ if transcription.get("words"):
 
 # Audio Translation
 with open("non_english.mp3", "rb") as audio_file:
-    translation = client.translate_audio(
-        audio_file=audio_file,
-        model="whisper-1"
-    )
+    translation = client.translate_audio(audio_file=audio_file, model="whisper-1")
 ```
 
 ### Voice Agent
@@ -102,12 +99,9 @@ voice_agent = client.create_voice_agent(
         "voice": VoiceType.NOVA,
         "model": "tts-1-hd",
         "speed": 1.1,
-        "format": AudioFormat.MP3
+        "format": AudioFormat.MP3,
     },
-    chat_settings={
-        "model": "gpt-4o-mini",
-        "temperature": 0.7
-    }
+    chat_settings={"model": "gpt-4o-mini", "temperature": 0.7},
 )
 
 # Process text input and get spoken response
@@ -139,23 +133,27 @@ voice_agent.reset("You are a technical support agent specializing in programming
 def get_weather(location, unit="celsius"):
     # In a real implementation, this would call a weather API
     import time
+
     time.sleep(0.5)  # Simulate API delay
     return {
         "location": location,
         "temperature": 22 if unit == "celsius" else 72,
-        "conditions": "sunny"
+        "conditions": "sunny",
     }
+
 
 def get_news(location, category="general"):
     # In a real implementation, this would call a news API
     import time
+
     time.sleep(0.8)  # Simulate API delay
     return {
         "location": location,
         "headline": f"Major development announced in {location}",
         "source": "News API",
-        "category": category
+        "category": category,
     }
+
 
 # Define message
 messages = [
@@ -163,18 +161,11 @@ messages = [
 ]
 
 # Register functions
-functions = {
-    "get_weather": get_weather,
-    "get_news": get_news
-}
+functions = {"get_weather": get_weather, "get_news": get_news}
 
 # Execute chat with functions in parallel
 response = client.chat_with_functions(
-    messages=messages,
-    functions=functions,
-    model="gpt-4o",
-    max_rounds=3,
-    function_timeout=5.0
+    messages=messages, functions=functions, model="gpt-4o", max_rounds=3, function_timeout=5.0
 )
 
 print("Final response:", response.content)
@@ -208,6 +199,7 @@ print(f"Number of tracked requests: {len(metrics)}")
 # Metrics are automatically reported to the distributed testing framework
 # Export metrics to JSON
 import json
+
 with open("openai_metrics.json", "w") as f:
     json.dump(metrics, f, indent=2)
 ```

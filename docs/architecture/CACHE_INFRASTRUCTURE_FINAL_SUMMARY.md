@@ -244,9 +244,9 @@ from ipfs_accelerate_py.cli_integrations import get_all_cli_integrations
 clis = get_all_cli_integrations()
 
 # All CLI calls are automatically cached
-repos = clis['github'].list_repos(owner="endomorphosis")  # Cached
-models = clis['huggingface'].list_models(search="llama")  # Cached
-offers = clis['vastai'].search_offers(gpu="RTX4090")     # Cached
+repos = clis["github"].list_repos(owner="endomorphosis")  # Cached
+models = clis["huggingface"].list_models(search="llama")  # Cached
+offers = clis["vastai"].search_offers(gpu="RTX4090")  # Cached
 ```
 
 ## Installation

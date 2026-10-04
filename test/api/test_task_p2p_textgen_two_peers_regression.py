@@ -23,7 +23,9 @@ def _have_textgen_deps() -> bool:
     try:
         import importlib.util
 
-        return (importlib.util.find_spec("transformers") is not None) and (importlib.util.find_spec("torch") is not None)
+        return (importlib.util.find_spec("transformers") is not None) and (
+            importlib.util.find_spec("torch") is not None
+        )
     except Exception:
         return False
 
@@ -82,7 +84,9 @@ def _run_textgen_worker_with_service(
     # Deterministic local-only behavior.
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host)
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "auto" if str(listen_host).strip() == "0.0.0.0" else str(listen_host)
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = (
+        "auto" if str(listen_host).strip() == "0.0.0.0" else str(listen_host)
+    )
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
@@ -135,7 +139,9 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
     """
 
     if os.environ.get("IPFS_ACCELERATE_PY_RUN_GPT2_P2P_REGRESSION", "0") != "1":
-        pytest.skip("set IPFS_ACCELERATE_PY_RUN_GPT2_P2P_REGRESSION=1 to run two-peer GPT-2 regression")
+        pytest.skip(
+            "set IPFS_ACCELERATE_PY_RUN_GPT2_P2P_REGRESSION=1 to run two-peer GPT-2 regression"
+        )
 
     # Keep the regression deterministic for local/CI execution by constraining
     # all peers to loopback addressing.
@@ -236,35 +242,37 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         # Run the load driver in-process to avoid import shadowing issues
         # (the repo contains similarly-named modules under test/).
         mod = runpy.run_path(str(script))
-        rc = int(mod["main"](
-            [
-                "--multiaddr",
-                ma_a,
-                "--multiaddr",
-                ma_b,
-                "--count",
-                "50",
-                "--concurrency",
-                "1",
-                "--wait",
-                "--timeout-s",
-                "900",
-                "--collect-results",
-                "--suffix-index",
-                "--max-new-tokens",
-                "16",
-                "--temperature",
-                "0.2",
-                "--prompt",
-                "The quick brown fox",
-                "--submit-retries",
-                "6",
-                "--submit-retry-sleep-s",
-                "1.0",
-                "--output",
-                report_path,
-            ]
-        ))
+        rc = int(
+            mod["main"](
+                [
+                    "--multiaddr",
+                    ma_a,
+                    "--multiaddr",
+                    ma_b,
+                    "--count",
+                    "50",
+                    "--concurrency",
+                    "1",
+                    "--wait",
+                    "--timeout-s",
+                    "900",
+                    "--collect-results",
+                    "--suffix-index",
+                    "--max-new-tokens",
+                    "16",
+                    "--temperature",
+                    "0.2",
+                    "--prompt",
+                    "The quick brown fox",
+                    "--submit-retries",
+                    "6",
+                    "--submit-retry-sleep-s",
+                    "1.0",
+                    "--output",
+                    report_path,
+                ]
+            )
+        )
         assert rc == 0
 
         assert os.path.exists(report_path) and os.path.getsize(report_path) > 0

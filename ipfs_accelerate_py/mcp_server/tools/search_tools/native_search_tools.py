@@ -23,6 +23,7 @@ def _load_search_api() -> Dict[str, Any]:
             "faceted": faceted_search_from_parameters,
         }
     except Exception:
+
         async def _semantic_fallback(
             *,
             vector_service: Any,
@@ -118,7 +119,9 @@ def _load_search_api() -> Dict[str, Any]:
                 "total_found": len(results),
             }
 
-        logger.warning("Source search_tools_api import unavailable, using fallback search functions")
+        logger.warning(
+            "Source search_tools_api import unavailable, using fallback search functions"
+        )
         return {
             "semantic": _semantic_fallback,
             "similarity": _similarity_fallback,
@@ -281,7 +284,9 @@ async def faceted_search(
     normalized_aggregations: List[str] = []
     if aggregations is not None:
         if not isinstance(aggregations, list):
-            return _error_result("aggregations must be an array when provided", aggregations=aggregations)
+            return _error_result(
+                "aggregations must be an array when provided", aggregations=aggregations
+            )
         if not all(isinstance(item, str) and item.strip() for item in aggregations):
             return _error_result(
                 "aggregations must contain only non-empty strings",

@@ -3,6 +3,7 @@
 
 import os
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Make sure model_list directory exists
@@ -82,5 +83,15 @@ except ImportError as e:
 
 # List of all backend classes
 __all__ = [
-    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei", "llvm", "opea", "ovms", "s3_kit"
+    "claude",
+    "openai_api",
+    "groq",
+    "gemini",
+    "ollama",
+    "hf_tgi",
+    "hf_tei",
+    "llvm",
+    "opea",
+    "ovms",
+    "s3_kit",
 ]

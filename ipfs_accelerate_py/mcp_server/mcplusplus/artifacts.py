@@ -16,7 +16,9 @@ from typing import Any, Dict, Iterable, Optional
 
 def canonicalize_artifact(payload: Dict[str, Any]) -> bytes:
     """Return deterministic bytes for artifact content."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def compute_artifact_cid(payload: Dict[str, Any]) -> str:

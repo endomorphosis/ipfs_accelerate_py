@@ -111,7 +111,7 @@ firefox_audio_prefs = {
     "browser_optimized": True,
     "compute_shaders": True,
     "firefox_optimization": True,
-    "workgroup_size": "256x1x1"
+    "workgroup_size": "256x1x1",
 }
 
 # Load Whisper model with Firefox optimizations
@@ -119,7 +119,7 @@ whisper_model = pool.get_model(
     "audio",
     "openai/whisper-tiny",
     constructor=lambda: create_whisper_model(),
-    hardware_preferences=firefox_audio_prefs
+    hardware_preferences=firefox_audio_prefs,
 )
 
 # Use the optimized model
@@ -139,7 +139,7 @@ audio_config = {
     "browser": "firefox",
     "workgroup_size": "256x1x1",  # Firefox-optimized configuration (vs Chrome's 128x2x1)
     "enable_advanced_compute": True,
-    "detect_browser": True  # Automatically detect Firefox
+    "detect_browser": True,  # Automatically detect Firefox
 }
 
 # Create Firefox-optimized processor
@@ -149,7 +149,7 @@ firefox_processor = optimize_for_firefox(audio_config)
 if firefox_processor["is_available"]():
     # Process audio with Firefox-optimized compute shaders
     features = firefox_processor["extract_features"]("audio.mp3")
-    
+
     # Get performance metrics
     metrics = firefox_processor["get_performance_metrics"]()
     print(f"Firefox advantage: {metrics.get('firefox_advantage_over_chrome', '0')}%")

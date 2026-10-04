@@ -42,7 +42,13 @@ class TaskQueueP2PServiceRuntime:
     def last_error(self) -> str:
         return str(self._last_error) if self._last_error else ""
 
-    def start(self, *, queue_path: str, listen_port: Optional[int] = None, accelerate_instance: object | None = None) -> TaskQueueP2PServiceHandle:
+    def start(
+        self,
+        *,
+        queue_path: str,
+        listen_port: Optional[int] = None,
+        accelerate_instance: object | None = None,
+    ) -> TaskQueueP2PServiceHandle:
         """Start the TaskQueue p2p service in a background thread.
 
         Safe to call multiple times; subsequent calls return the existing handle.

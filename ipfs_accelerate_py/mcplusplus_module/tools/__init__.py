@@ -15,11 +15,11 @@ from .workflow_tools import register_p2p_workflow_tools
 
 def register_all_p2p_tools(mcp: Any) -> None:
     """Register all P2P tools with the MCP server.
-    
+
     This includes:
     - P2P TaskQueue tools (14 tools for task management)
     - P2P Workflow tools (6 tools for workflow scheduling)
-    
+
     Args:
         mcp: MCP server instance to register tools with
     """

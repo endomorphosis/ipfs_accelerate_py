@@ -51,17 +51,27 @@ from .wrapper_utils import AgentSupervisorNamespacePaths
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.backlog_refinery")
 
-DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS", "5"))
-DEFAULT_CODEBASE_SCAN_MAX_FINDINGS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FINDINGS", "5"))
+DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS", "5")
+)
+DEFAULT_CODEBASE_SCAN_MAX_FINDINGS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FINDINGS", "5")
+)
 DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_COOLDOWN_SECONDS", "21600")
 )
-DEFAULT_OBJECTIVE_SCAN_MIN_OPEN_TASKS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "5"))
-DEFAULT_OBJECTIVE_SCAN_MAX_FINDINGS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MAX_FINDINGS", "5"))
+DEFAULT_OBJECTIVE_SCAN_MIN_OPEN_TASKS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "5")
+)
+DEFAULT_OBJECTIVE_SCAN_MAX_FINDINGS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MAX_FINDINGS", "5")
+)
 DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_COOLDOWN_SECONDS", "21600")
 )
-DEFAULT_VALIDATION_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_VALIDATION_RETRY_BUDGET", "3"))
+DEFAULT_VALIDATION_RETRY_BUDGET = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_VALIDATION_RETRY_BUDGET", "3")
+)
 DEFAULT_MERGE_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_RETRY_BUDGET", "3"))
 DEFAULT_IMPLEMENTATION_RETRY_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_RETRY_BUDGET", "3")
@@ -75,10 +85,9 @@ DEFAULT_GENERATED_DIRTY_HARD_PATH_CAP = int(
 DEFAULT_GENERATED_DIRTY_MAX_DELETE_PATHS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_MAX_DELETE_PATHS", "0")
 )
-DEFAULT_GENERATED_DIRTY_ALLOW_DELETIONS = (
-    os.environ.get("IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_ALLOW_DELETIONS", "0").strip().lower()
-    in {"1", "true", "yes", "on"}
-)
+DEFAULT_GENERATED_DIRTY_ALLOW_DELETIONS = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_GENERATED_DIRTY_ALLOW_DELETIONS", "0"
+).strip().lower() in {"1", "true", "yes", "on"}
 DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS", "5")
 )
@@ -87,7 +96,9 @@ DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
 )
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
-CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
+CODEBASE_SCAN_MAX_FILE_BYTES = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144")
+)
 CODEBASE_SCAN_SUFFIXES = {
     ".cjs",
     ".css",
@@ -192,7 +203,9 @@ def split_csv(values: Iterable[str] | str) -> list[str]:
     return items
 
 
-def task_ids_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> list[str]:
+def task_ids_from_todo_text(
+    todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX
+) -> list[str]:
     prefix = task_id_prefix(task_prefix)
     ids: list[str] = []
     for line in todo_text.splitlines():
@@ -230,7 +243,9 @@ def ensure_task_blocks_present(
     ]
     if not additions:
         return False
-    todo_path.write_text(todo_text.rstrip() + "\n\n" + "\n\n".join(additions) + "\n", encoding="utf-8")
+    todo_path.write_text(
+        todo_text.rstrip() + "\n\n" + "\n\n".join(additions) + "\n", encoding="utf-8"
+    )
     return True
 
 
@@ -241,7 +256,9 @@ def build_task_blocks_ensurer(
 ) -> Callable[[Path | None], bool]:
     """Build a callback that appends configured task blocks to a todo board."""
 
-    configured_blocks = dict(task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks)
+    configured_blocks = dict(
+        task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks
+    )
 
     def ensurer(todo_path: Path | None = None) -> bool:
         path = todo_path or default_todo_path
@@ -263,7 +280,9 @@ def next_task_id(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -
     return f"{prefix}{highest + 1:03d}"
 
 
-def task_statuses_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> dict[str, str]:
+def task_statuses_from_todo_text(
+    todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX
+) -> dict[str, str]:
     prefix = task_id_prefix(task_prefix)
     statuses: dict[str, str] = {}
     current_task_id = ""
@@ -297,7 +316,10 @@ def state_statuses_match_todo_statuses(
     for task_id, todo_status in todo_statuses.items():
         normalized_todo = str(todo_status or "").lower()
         normalized_state = str(state_statuses.get(task_id) or "").lower()
-        if normalized_todo not in {"blocked", "completed"} and normalized_state in {"blocked", "completed"}:
+        if normalized_todo not in {"blocked", "completed"} and normalized_state in {
+            "blocked",
+            "completed",
+        }:
             continue
         allowed = compatible_state_statuses.get(normalized_todo, {normalized_todo})
         if normalized_state not in allowed:
@@ -315,11 +337,7 @@ def mark_task_statuses_in_todo_text(
     """Return todo text with selected task status lines rewritten."""
 
     prefix = task_id_prefix(task_prefix)
-    target_task_ids = {
-        str(task_id).strip()
-        for task_id in task_ids
-        if str(task_id).strip()
-    }
+    target_task_ids = {str(task_id).strip() for task_id in task_ids if str(task_id).strip()}
     if not target_task_ids:
         return todo_text, []
 
@@ -417,7 +435,9 @@ def effective_open_task_count(
     todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
     task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
-    if set(normalized) != task_ids or not state_statuses_match_todo_statuses(todo_statuses, normalized):
+    if set(normalized) != task_ids or not state_statuses_match_todo_statuses(
+        todo_statuses, normalized
+    ):
         return open_task_count(todo_text, task_prefix=task_prefix)
     try:
         state_task_count = int(payload.get("task_count") or 0)
@@ -498,16 +518,25 @@ def should_refill_backlog(
     cooldown_seconds: int,
     force: bool = False,
 ) -> tuple[bool, str, int, int]:
-    current_open = effective_open_task_count(todo_text, state_path=state_path, task_prefix=task_prefix)
+    current_open = effective_open_task_count(
+        todo_text, state_path=state_path, task_prefix=task_prefix
+    )
     task_count = len(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
     state_counts = refill_state_counts(todo_text, state_path=state_path, task_prefix=task_prefix)
-    eligible_ready_for_refill = int(state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0)
-    ready_for_refill = int(state_counts.get("selectable_ready_count", eligible_ready_for_refill) or 0)
+    eligible_ready_for_refill = int(
+        state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0
+    )
+    ready_for_refill = int(
+        state_counts.get("selectable_ready_count", eligible_ready_for_refill) or 0
+    )
     no_ready_existing_work = (
         bool(state_counts)
         and ready_for_refill == 0
         and int(state_counts.get("completed_count") or 0) > 0
-        and (int(state_counts.get("waiting_count") or 0) > 0 or int(state_counts.get("blocked_count") or 0) > 0)
+        and (
+            int(state_counts.get("waiting_count") or 0) > 0
+            or int(state_counts.get("blocked_count") or 0) > 0
+        )
     )
     if force:
         return True, "force", current_open, task_count
@@ -524,10 +553,20 @@ def should_refill_backlog(
         return True, "runnable_drained_exhaustive", current_open, task_count
     last_scan_at = parse_iso_timestamp(str(strategy.get(last_scan_key) or ""))
     if last_scan_at is None:
-        return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
+        return (
+            True,
+            "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog",
+            current_open,
+            task_count,
+        )
     elapsed = (datetime.now(timezone.utc) - last_scan_at).total_seconds()
     if elapsed >= cooldown_seconds:
-        return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
+        return (
+            True,
+            "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog",
+            current_open,
+            task_count,
+        )
     return False, "cooldown", current_open, task_count
 
 
@@ -586,7 +625,9 @@ def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str
     status = path_status(repo, relative)
     if not status:
         return {"committed": False, "reason": "no_changes", "repo": str(repo), "path": relative}
-    add = subprocess.run(["git", "add", "--", relative], cwd=repo, text=True, capture_output=True, check=False)
+    add = subprocess.run(
+        ["git", "add", "--", relative], cwd=repo, text=True, capture_output=True, check=False
+    )
     if add.returncode != 0:
         return {
             "committed": False,
@@ -597,9 +638,16 @@ def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str
             "stdout": add.stdout[-4000:],
             "stderr": add.stderr[-4000:],
         }
-    staged = subprocess.run(["git", "diff", "--cached", "--quiet", "--", relative], cwd=repo, check=False)
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", relative], cwd=repo, check=False
+    )
     if staged.returncode == 0:
-        return {"committed": False, "reason": "no_staged_changes", "repo": str(repo), "path": relative}
+        return {
+            "committed": False,
+            "reason": "no_staged_changes",
+            "repo": str(repo),
+            "path": relative,
+        }
     commit = subprocess.run(
         [
             "git",
@@ -628,8 +676,16 @@ def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
         }
-    ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
-    return {"committed": True, "repo": str(repo), "path": relative, "commit": ref.stdout.strip(), "status": status}
+    ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False
+    )
+    return {
+        "committed": True,
+        "repo": str(repo),
+        "path": relative,
+        "commit": ref.stdout.strip(),
+        "status": status,
+    }
 
 
 def parent_git_toplevel_for_repo(repo: Path) -> Path | None:
@@ -643,7 +699,9 @@ def parent_git_toplevel_for_repo(repo: Path) -> Path | None:
     return parent
 
 
-def commit_parent_gitlink_updates(child_repo: Path, *, repo_root: Path, subject: str) -> list[dict[str, Any]]:
+def commit_parent_gitlink_updates(
+    child_repo: Path, *, repo_root: Path, subject: str
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     current = child_repo.resolve()
     root = repo_root.resolve()
@@ -659,7 +717,9 @@ def commit_parent_gitlink_updates(child_repo: Path, *, repo_root: Path, subject:
     return results
 
 
-def commit_generated_outputs(paths: Sequence[Path], *, repo_root: Path, subject: str) -> list[dict[str, Any]]:
+def commit_generated_outputs(
+    paths: Sequence[Path], *, repo_root: Path, subject: str
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for path in paths:
         repo = git_toplevel_for_path(path.parent)
@@ -668,11 +728,20 @@ def commit_generated_outputs(paths: Sequence[Path], *, repo_root: Path, subject:
             continue
         relative = repo_relative_path(repo, path)
         if not relative:
-            results.append({"committed": False, "reason": "path_outside_repo", "path": str(path), "repo": str(repo)})
+            results.append(
+                {
+                    "committed": False,
+                    "reason": "path_outside_repo",
+                    "path": str(path),
+                    "repo": str(repo),
+                }
+            )
             continue
         result = commit_specific_path(repo, relative, subject=subject)
         if result.get("committed"):
-            parent_results = commit_parent_gitlink_updates(repo, repo_root=repo_root, subject=subject)
+            parent_results = commit_parent_gitlink_updates(
+                repo, repo_root=repo_root, subject=subject
+            )
             if parent_results:
                 result["parent_gitlink_commits"] = parent_results
         results.append(result)
@@ -828,7 +897,12 @@ def repair_stale_git_index_lock(
     if lock_path is None:
         return {"attempted": False, "repo": str(repo), "reason": "not_git_repo"}
     if not lock_path.exists():
-        return {"attempted": False, "repo": str(repo), "lock_path": str(lock_path), "reason": "no_lock"}
+        return {
+            "attempted": False,
+            "repo": str(repo),
+            "lock_path": str(lock_path),
+            "reason": "no_lock",
+        }
     try:
         stat = lock_path.stat()
     except OSError as exc:
@@ -925,8 +999,16 @@ def generated_status_filters_for_git_root(
 
     if git_root.resolve() == repo_root.resolve():
         return (
-            [normalize_status_path(path) for path in generated_paths if normalize_status_path(path)],
-            [normalize_status_path(path) for path in generated_prefixes if normalize_status_path(path)],
+            [
+                normalize_status_path(path)
+                for path in generated_paths
+                if normalize_status_path(path)
+            ],
+            [
+                normalize_status_path(path)
+                for path in generated_prefixes
+                if normalize_status_path(path)
+            ],
         )
     return (
         list(
@@ -1047,7 +1129,9 @@ def _status_line_is_clean_gitlink_update(repo: Path, line: str) -> tuple[bool, s
     return bool(child_root), child_root
 
 
-def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: str) -> dict[str, Any]:
+def _commit_selected_dirty_paths(
+    repo: Path, paths: Sequence[str], *, subject: str
+) -> dict[str, Any]:
     selected_paths = [path for path in dict.fromkeys(paths) if repo_relative_path_safe(path)]
     if not selected_paths:
         return {
@@ -1113,7 +1197,9 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
         }
-    ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
+    ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False
+    )
     return {
         "committed": True,
         "repo": str(repo),
@@ -1230,9 +1316,7 @@ def commit_generated_dirty_outputs(
                     selected_reasons[relative] = f"clean_submodule_gitlink:{child_root}"
                     remaining_budget -= 1
         selected_deletions = [
-            relative
-            for relative in selected
-            if "D" in str(status_codes.get(relative) or "")
+            relative for relative in selected if "D" in str(status_codes.get(relative) or "")
         ]
         if selected_deletions and not allow_generated_deletions:
             skipped.append(
@@ -1345,7 +1429,9 @@ def codebase_scan_path_skipped(
         relative = path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
         relative = path.as_posix()
-    if any(relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in skip_prefixes):
+    if any(
+        relative == prefix.rstrip("/") or relative.startswith(prefix) for prefix in skip_prefixes
+    ):
         return True
     return any(part in CODEBASE_SCAN_SKIP_PARTS for part in path.parts)
 
@@ -1377,7 +1463,9 @@ def discover_git_worktrees(
             dirname
             for dirname in dirnames
             if dirname not in CODEBASE_SCAN_SKIP_PARTS
-            and not codebase_scan_path_skipped(current_path / dirname, repo_root=repo_root, skip_prefixes=skip_prefixes)
+            and not codebase_scan_path_skipped(
+                current_path / dirname, repo_root=repo_root, skip_prefixes=skip_prefixes
+            )
         ]
         if current_path != repo_root and (current_path / ".git").exists():
             add_if_worktree(current_path)
@@ -1389,7 +1477,9 @@ def tracked_files(repo: Path) -> list[Path]:
     if not repo.is_dir():
         return []
     try:
-        result = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=False)
+        result = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=False
+        )
     except (FileNotFoundError, OSError):
         logger.debug("Skipping vanished git root during codebase scan: %s", repo)
         return []
@@ -1500,7 +1590,11 @@ def annotation_followup_marker(line: str) -> str:
     text = annotation_scan_text(line)
     for match in ANNOTATION_FOLLOWUP_RE.finditer(text):
         marker = str(match.group("line_marker") or match.group("comment_marker") or "").lower()
-        start = match.start("line_marker") if match.group("line_marker") else match.start("comment_prefix")
+        start = (
+            match.start("line_marker")
+            if match.group("line_marker")
+            else match.start("comment_prefix")
+        )
         if _position_in_simple_quoted_string(text, start):
             continue
         return marker
@@ -1532,7 +1626,9 @@ def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFindin
             kind = "annotated_followup"
             priority = "P2" if annotation_marker in {"fixme", "hack", "xxx"} else "P3"
             summary = f"Resolve code annotation in {root_relative}:{index}"
-        elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(r"\bexcept\s+Exception\b", stripped):
+        elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(
+            r"\bexcept\s+Exception\b", stripped
+        ):
             window = "\n".join(lines[index : min(len(lines), index + 3)]).lower()
             if "pass" in window or "return none" in window:
                 kind = "swallowed_exception"
@@ -1709,9 +1805,7 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
     }
     dependency_graph = {
         str(task.task_id): [
-            str(dep)
-            for dep in task.depends_on
-            if str(dep).strip() and str(dep) in open_task_ids
+            str(dep) for dep in task.depends_on if str(dep).strip() and str(dep) in open_task_ids
         ]
         for task in tasks
         if str(task.task_id) in open_task_ids
@@ -1777,13 +1871,23 @@ def write_dependency_guardrail_discovery(
     date = datetime.now(timezone.utc).date().isoformat()
     path = discovery_dir / f"{date}-{task_id.lower()}-dependency-guardrail.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    missing = ", ".join(str(item) for item in record.get("missing_dependencies", []) or []) or "none"
-    self_references = ", ".join(str(item) for item in record.get("self_references", []) or []) or "none"
-    dependency_cycle = " -> ".join(str(item) for item in record.get("dependency_cycle", []) or []) or "none"
+    missing = (
+        ", ".join(str(item) for item in record.get("missing_dependencies", []) or []) or "none"
+    )
+    self_references = (
+        ", ".join(str(item) for item in record.get("self_references", []) or []) or "none"
+    )
+    dependency_cycle = (
+        " -> ".join(str(item) for item in record.get("dependency_cycle", []) or []) or "none"
+    )
     duplicate_task_id = str(record.get("duplicate_task_id") or "") or "none"
-    duplicate_lines = ", ".join(str(item) for item in record.get("duplicate_task_lines", []) or []) or "none"
+    duplicate_lines = (
+        ", ".join(str(item) for item in record.get("duplicate_task_lines", []) or []) or "none"
+    )
     duplicate_titles = "\n".join(
-        f"- {title}" for title in record.get("duplicate_task_titles", []) or [] if str(title).strip()
+        f"- {title}"
+        for title in record.get("duplicate_task_titles", []) or []
+        if str(title).strip()
     )
     duplicate_titles = duplicate_titles or "- none"
     content = f"""# Dependency Guardrail: {record.get("source_task_id")}
@@ -1858,7 +1962,11 @@ def reconciliation_guardrail_records(
     if reconciliation.get("attempted") and reconciliation.get("main_checkout_dirty"):
         candidate_count = int(reconciliation.get("candidate_count") or 0)
         if candidate_count > 0:
-            status_short = [str(item) for item in reconciliation.get("main_status_short", []) if str(item).strip()]
+            status_short = [
+                str(item)
+                for item in reconciliation.get("main_status_short", [])
+                if str(item).strip()
+            ]
             main_dirty_evidence = (
                 dict(reconciliation.get("main_dirty_evidence") or {})
                 if isinstance(reconciliation.get("main_dirty_evidence"), Mapping)
@@ -1875,7 +1983,9 @@ def reconciliation_guardrail_records(
                     {
                         "branch": str(item.get("branch") or ""),
                         "path": str(item.get("path") or ""),
-                        "target_ref": str(item.get("target_ref") or reconciliation.get("target_ref") or ""),
+                        "target_ref": str(
+                            item.get("target_ref") or reconciliation.get("target_ref") or ""
+                        ),
                     }
                     for item in reconciliation.get("candidates", [])
                     if isinstance(item, Mapping)
@@ -1927,7 +2037,9 @@ def reconciliation_guardrail_records(
             {
                 "branch": str(item.get("branch") or preflight_result.get("branch") or ""),
                 "path": str(item.get("path") or ""),
-                "target_ref": str(item.get("target_ref") or preflight_result.get("target_ref") or ""),
+                "target_ref": str(
+                    item.get("target_ref") or preflight_result.get("target_ref") or ""
+                ),
                 "conflict_paths": conflict_paths[:20],
                 "reason": str(preflight_result.get("reason") or "preflight_merge_conflict"),
             }
@@ -1970,7 +2082,9 @@ def reconciliation_guardrail_records(
                 continue
             dirty_groups[str(dirty_reason)] = {
                 "count": int(payload.get("count") or 0),
-                "samples": [dict(item) for item in payload.get("samples", []) if isinstance(item, Mapping)],
+                "samples": [
+                    dict(item) for item in payload.get("samples", []) if isinstance(item, Mapping)
+                ],
             }
     else:
         for item in cleanup.get("skipped", []):
@@ -1989,7 +2103,9 @@ def reconciliation_guardrail_records(
                     {
                         "branch": str(item.get("branch") or ""),
                         "path": str(item.get("path") or ""),
-                        "status_short": [str(line) for line in item.get("status_short", []) if str(line).strip()],
+                        "status_short": [
+                            str(line) for line in item.get("status_short", []) if str(line).strip()
+                        ],
                         "dirty_reason": dirty_reason,
                         "dirty_evidence": dict(item.get("dirty_evidence") or {}),
                     }
@@ -2379,8 +2495,12 @@ def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
         "fingerprint": str(record.get("fingerprint") or ""),
         "candidate_count": int(record.get("candidate_count") or 0),
         "sample_count": len(samples),
-        "sample_branches": [str(item.get("branch") or "") for item in samples[:20] if str(item.get("branch") or "")],
-        "sample_worktrees": [str(item.get("path") or "") for item in samples[:20] if str(item.get("path") or "")],
+        "sample_branches": [
+            str(item.get("branch") or "") for item in samples[:20] if str(item.get("branch") or "")
+        ],
+        "sample_worktrees": [
+            str(item.get("path") or "") for item in samples[:20] if str(item.get("path") or "")
+        ],
         "sample_status_paths": sample_status_paths[:40],
         "conflict_path_counts": conflict_path_counts,
         "top_conflict_paths": top_conflict_paths[:20],
@@ -2450,7 +2570,9 @@ def reconciliation_evidence_markdown(evidence: Mapping[str, Any] | None) -> str:
             continue
         lines.append(f"- {label}:")
         lines.extend(f"  - `{line}`" for line in value.splitlines()[:20])
-    untracked_paths = [str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()]
+    untracked_paths = [
+        str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()
+    ]
     if untracked_paths:
         lines.append("- Untracked paths:")
         lines.extend(f"  - `{item}`" for item in untracked_paths[:20])
@@ -2466,7 +2588,9 @@ def write_reconciliation_guardrail_discovery(
     date = datetime.now(timezone.utc).date().isoformat()
     fingerprint = str(record.get("fingerprint") or "")
     path = discovery_dir / f"{date}-{task_id.lower()}-reconciliation-{fingerprint[:12]}.md"
-    write_reconciliation_guardrail_discovery_path(path=path, task_id=task_id, record=record, date=date)
+    write_reconciliation_guardrail_discovery_path(
+        path=path, task_id=task_id, record=record, date=date
+    )
     return path
 
 
@@ -2474,7 +2598,9 @@ def preserved_reconciliation_discovery_sections(existing_text: str) -> list[str]
     """Return manual resolution sections to carry across guardrail refreshes."""
 
     preserved: list[str] = []
-    for match in re.finditer(r"^##\s+([^\n]+)\n.*?(?=^##\s+|\Z)", existing_text, flags=re.MULTILINE | re.DOTALL):
+    for match in re.finditer(
+        r"^##\s+([^\n]+)\n.*?(?=^##\s+|\Z)", existing_text, flags=re.MULTILINE | re.DOTALL
+    ):
         title = " ".join(match.group(1).strip().lower().split())
         if title == "resolution" or title.startswith("resolution "):
             section = match.group(0).strip()
@@ -2498,7 +2624,9 @@ def write_reconciliation_guardrail_discovery_path(
     except OSError:
         existing_text = ""
     preserved_sections = preserved_reconciliation_discovery_sections(existing_text)
-    status_lines = "\n".join(f"- `{line}`" for line in record.get("status_short", []) or []) or "- none"
+    status_lines = (
+        "\n".join(f"- `{line}`" for line in record.get("status_short", []) or []) or "- none"
+    )
     main_checkout_evidence = reconciliation_evidence_markdown(
         record.get("main_dirty_evidence")
         if isinstance(record.get("main_dirty_evidence"), Mapping)
@@ -2513,7 +2641,11 @@ def write_reconciliation_guardrail_discovery_path(
         status = "; ".join(str(line) for line in sample.get("status_short", []) or [])
         suffix = f" status: `{status}`" if status else ""
         sample_lines.append(f"- `{branch}` at `{path_text}`{suffix}")
-        conflict_paths = [str(path).strip() for path in sample.get("conflict_paths", []) or [] if str(path).strip()]
+        conflict_paths = [
+            str(path).strip()
+            for path in sample.get("conflict_paths", []) or []
+            if str(path).strip()
+        ]
         if conflict_paths:
             sample_lines.append("  - Conflict paths:")
             sample_lines.extend(f"    - `{path}`" for path in conflict_paths[:12])
@@ -2521,7 +2653,9 @@ def write_reconciliation_guardrail_discovery_path(
         if isinstance(evidence, Mapping):
             diff_stat = str(evidence.get("diff_stat") or "").strip()
             name_status = str(evidence.get("name_status") or "").strip()
-            untracked_paths = [str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()]
+            untracked_paths = [
+                str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()
+            ]
             if name_status:
                 sample_lines.append("  - Name status:")
                 sample_lines.extend(f"    - `{line}`" for line in name_status.splitlines()[:12])
@@ -2694,15 +2828,29 @@ def refresh_reconciliation_guardrail_block(
     fingerprint = str(record.get("fingerprint") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     if fingerprint and re.search(r"^- Fingerprint:", block, flags=re.MULTILINE):
-        updated = re.sub(r"^- Fingerprint:.*$", f"- Fingerprint: {fingerprint}", block, count=1, flags=re.MULTILINE)
+        updated = re.sub(
+            r"^- Fingerprint:.*$",
+            f"- Fingerprint: {fingerprint}",
+            block,
+            count=1,
+            flags=re.MULTILINE,
+        )
         changed = changed or updated != block
         block = updated
     elif fingerprint:
-        updated = re.sub(r"^- Track:.*$", lambda match: f"{match.group(0)}\n- Fingerprint: {fingerprint}", block, count=1, flags=re.MULTILINE)
+        updated = re.sub(
+            r"^- Track:.*$",
+            lambda match: f"{match.group(0)}\n- Fingerprint: {fingerprint}",
+            block,
+            count=1,
+            flags=re.MULTILINE,
+        )
         changed = changed or updated != block
         block = updated
     if dedupe_key and re.search(r"^- Dedupe key:", block, flags=re.MULTILINE):
-        updated = re.sub(r"^- Dedupe key:.*$", f"- Dedupe key: {dedupe_key}", block, count=1, flags=re.MULTILINE)
+        updated = re.sub(
+            r"^- Dedupe key:.*$", f"- Dedupe key: {dedupe_key}", block, count=1, flags=re.MULTILINE
+        )
         changed = changed or updated != block
         block = updated
     elif dedupe_key:
@@ -2748,7 +2896,9 @@ def refresh_existing_reconciliation_guardrails(
                 continue
             if reconciliation_guardrail_refresh_is_noise(block, record):
                 break
-            refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(block, record)
+            refreshed_block, task_id, validation_path, changed = (
+                refresh_reconciliation_guardrail_block(block, record)
+            )
             discovery_changed = False
             if validation_path is not None and task_id:
                 try:
@@ -2811,7 +2961,9 @@ def event_merge_result(event: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
+def consecutive_validation_failures(
+    events: Sequence[Mapping[str, Any]], task_id: str
+) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
         if str(event.get("type") or "") != "implementation_finished":
@@ -2828,7 +2980,9 @@ def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id
     return failures
 
 
-def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
+def consecutive_merge_failures(
+    events: Sequence[Mapping[str, Any]], task_id: str
+) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
         event_type = str(event.get("type") or "")
@@ -2847,7 +3001,11 @@ def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str
             break
         if event_type == "implementation_finished":
             validation = event.get("validation_result") or {}
-            if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+            if (
+                isinstance(validation, Mapping)
+                and validation.get("attempted")
+                and not validation.get("passed", False)
+            ):
                 break
             if merge_result.get("merged", False):
                 break
@@ -2878,7 +3036,9 @@ def implementation_failure_label(event: Mapping[str, Any]) -> str:
     return f"implementation_command_returncode:{returncode}"
 
 
-def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
+def consecutive_implementation_failures(
+    events: Sequence[Mapping[str, Any]], task_id: str
+) -> list[dict[str, Any]]:
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
         if str(event.get("type") or "") != "implementation_finished":
@@ -2887,7 +3047,11 @@ def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], tas
             continue
 
         validation = event.get("validation_result") or {}
-        if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+        if (
+            isinstance(validation, Mapping)
+            and validation.get("attempted")
+            and not validation.get("passed", False)
+        ):
             break
 
         merge_result = event_merge_result(event)
@@ -2930,12 +3094,18 @@ def write_retry_budget_discovery(
     path = discovery_dir / f"{date}-{task_id.lower()}-{source_task_id.lower()}-{suffix}.md"
     discovery_dir.mkdir(parents=True, exist_ok=True)
     log_paths = [str(event.get("log_path") or "") for event in failures if event.get("log_path")]
-    attempt_numbers = [str(event.get("attempt") or "") for event in failures if event.get("attempt")]
+    attempt_numbers = [
+        str(event.get("attempt") or "") for event in failures if event.get("attempt")
+    ]
     merge_result = event_merge_result(failures[-1]) if failures and failure_kind == "merge" else {}
     merge_evidence = ""
     if merge_result:
         dirty_paths = merge_result.get("dirty_paths") or []
-        dirty_paths_text = ", ".join(str(path) for path in dirty_paths) if isinstance(dirty_paths, list) else str(dirty_paths)
+        dirty_paths_text = (
+            ", ".join(str(path) for path in dirty_paths)
+            if isinstance(dirty_paths, list)
+            else str(dirty_paths)
+        )
         merge_evidence = "\n".join(
             [
                 f"- Merge reason: `{str(merge_result.get('reason') or 'not recorded')}`",
@@ -3005,7 +3175,9 @@ def validation_retry_task_block(
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
-    validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
+    validation_command = safe_retry_validation_command(
+        failed_command, discovery_path=discovery_path
+    )
     launch_gate_acceptance = (
         f" For launch tasks, this repair validation preserves the {LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE}."
         if launch_playwright_validation_gate
@@ -3170,9 +3342,7 @@ def record_retry_budget_findings(
     task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
     completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
     retry_budget_repair_task_ids = {
-        task.task_id
-        for task in tasks
-        if is_retry_budget_repair_task(task)
+        task.task_id for task in tasks if is_retry_budget_repair_task(task)
     }
     events = iter_jsonl(events_path)
     strategy = load_strategy(strategy_path)
@@ -3253,7 +3423,9 @@ def record_retry_budget_findings(
                 retry_budget=validation_retry_budget,
             )
             generated_paths.append(discovery_path)
-            depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
+            depends_on = (
+                list(validation_depends_on) if validation_depends_on else list(task.depends_on)
+            )
             validation_command = (
                 validation_task_command_transform(failed_command)
                 if validation_task_command_transform is not None
@@ -3384,7 +3556,11 @@ def record_dependency_guardrail_findings(
     todo_text = todo_path.read_text(encoding="utf-8")
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
-    seen = {str(item) for item in strategy.get("dependency_guardrail_seen_fingerprints", []) if str(item).strip()}
+    seen = {
+        str(item)
+        for item in strategy.get("dependency_guardrail_seen_fingerprints", [])
+        if str(item).strip()
+    }
     records = [
         record
         for record in dependency_guardrail_records(tasks)
@@ -3397,7 +3573,9 @@ def record_dependency_guardrail_findings(
     findings: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
     try:
-        todo_output_path = todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+        todo_output_path = (
+            todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+        )
     except ValueError:
         todo_output_path = todo_path.as_posix()
     for record in records:
@@ -3436,7 +3614,8 @@ def record_dependency_guardrail_findings(
     todo_path.write_text(todo_text, encoding="utf-8")
     strategy["blocked_tasks"] = blocked_tasks
     strategy["dependency_guardrail_seen_fingerprints"] = sorted(
-        seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
+        seen
+        | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
     )
     strategy["last_dependency_guardrail_at"] = utc_now()
     strategy["dependency_guardrail_findings"] = findings
@@ -3493,9 +3672,15 @@ def record_reconciliation_guardrail_findings(
         reason = str(record.get("reason") or "")
         if kind == "main_checkout_dirty" and "Resolve dirty main checkout blocking" in todo_text:
             return True
-        if kind == "dirty_backlogged_worktree" and f"dirty backlogged worktrees blocked by {reason}" in todo_text:
+        if (
+            kind == "dirty_backlogged_worktree"
+            and f"dirty backlogged worktrees blocked by {reason}" in todo_text
+        ):
             return True
-        if kind == "preflight_merge_conflict" and "preflight-conflicting backlogged worktree merges" in todo_text:
+        if (
+            kind == "preflight_merge_conflict"
+            and "preflight-conflicting backlogged worktree merges" in todo_text
+        ):
             return True
         return False
 
@@ -3523,14 +3708,15 @@ def record_reconciliation_guardrail_findings(
     records = [
         record
         for record in all_records
-        if str(record.get("fingerprint") or "") not in seen
-        and not already_present(record)
+        if str(record.get("fingerprint") or "") not in seen and not already_present(record)
     ][:max_findings]
     if not records and not refreshes:
         return []
 
     try:
-        todo_output_path = todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+        todo_output_path = (
+            todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+        )
     except ValueError:
         todo_output_path = todo_path.as_posix()
     findings: list[dict[str, Any]] = []
@@ -3565,7 +3751,8 @@ def record_reconciliation_guardrail_findings(
 
     todo_path.write_text(todo_text, encoding="utf-8")
     strategy["reconciliation_guardrail_seen_fingerprints"] = sorted(
-        seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
+        seen
+        | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
     )
     strategy["last_reconciliation_guardrail_at"] = utc_now()
     strategy["reconciliation_guardrail_findings"] = [*refreshes, *findings]
@@ -3622,12 +3809,14 @@ def release_completed_guardrail_blocks(
     tasks = parse_task_file(todo_path, task_header_prefix(task_prefix))
     completed_retry_repairs = completed_retry_budget_repairs_by_source(tasks)
     retry_budget_repair_sources_by_task_id = {
-        str(getattr(task, "task_id", "") or ""): retry_budget_repair_source(task)
-        for task in tasks
+        str(getattr(task, "task_id", "") or ""): retry_budget_repair_source(task) for task in tasks
     }
     retry_budget_repair_task_ids = {
         task_id
-        for task_id, (source_task_id, _failure_kind) in retry_budget_repair_sources_by_task_id.items()
+        for task_id, (
+            source_task_id,
+            _failure_kind,
+        ) in retry_budget_repair_sources_by_task_id.items()
         if source_task_id
     }
     pending_retry_repair_sources = {
@@ -3644,11 +3833,7 @@ def release_completed_guardrail_blocks(
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
     if len(deduplicated_blocked_tasks) != len(blocked_tasks):
         duplicate_ids = sorted(
-            {
-                task_id
-                for task_id in blocked_tasks
-                if blocked_tasks.count(task_id) > 1
-            }
+            {task_id for task_id in blocked_tasks if blocked_tasks.count(task_id) > 1}
         )
         releases.extend(
             {
@@ -3692,7 +3877,9 @@ def release_completed_guardrail_blocks(
                 pruned_dependency_findings = True
                 if source_task_id:
                     if source_task_id in blocked_tasks:
-                        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+                        blocked_tasks = [
+                            task_id for task_id in blocked_tasks if task_id != source_task_id
+                        ]
                     releases.append(
                         {
                             "source_task_id": source_task_id,
@@ -3780,7 +3967,10 @@ def release_completed_guardrail_blocks(
             continue
         if source_task_id not in retry_budget_repair_task_ids:
             continue
-        if source_task_id in active_guardrail_sources or source_task_id in active_dependency_sources:
+        if (
+            source_task_id in active_guardrail_sources
+            or source_task_id in active_dependency_sources
+        ):
             continue
         if source_task_id in pending_retry_repair_sources:
             continue
@@ -3828,9 +4018,11 @@ def release_completed_guardrail_blocks(
             continue
         if source_task_id not in retry_budget_repair_task_ids:
             continue
-        original_source_task_id, _original_failure_kind = retry_budget_repair_sources_by_task_id.get(
-            source_task_id,
-            ("", ""),
+        original_source_task_id, _original_failure_kind = (
+            retry_budget_repair_sources_by_task_id.get(
+                source_task_id,
+                ("", ""),
+            )
         )
         recursive_retry_repair_task_ids.append(task_id)
         releases.append(
@@ -3904,7 +4096,11 @@ def record_codebase_scan_findings(
     if not should_scan:
         return []
 
-    seen = {str(item) for item in strategy.get("codebase_scan_seen_fingerprints", []) if str(item).strip()}
+    seen = {
+        str(item)
+        for item in strategy.get("codebase_scan_seen_fingerprints", [])
+        if str(item).strip()
+    }
     findings = scan_codebase_findings(
         repo_root,
         max_findings=max_findings,
@@ -3916,7 +4112,9 @@ def record_codebase_scan_findings(
     strategy["last_codebase_scan_mode"] = mode
     if current_open == 0 or mode.endswith("drained_exhaustive"):
         strategy["last_drained_codebase_scan_task_count"] = task_count
-    strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
+    strategy["codebase_scan_seen_fingerprints"] = sorted(
+        seen | {finding.fingerprint for finding in findings}
+    )
     if not findings:
         strategy["last_codebase_scan_findings"] = []
         write_json(strategy_path, strategy)
@@ -4012,7 +4210,11 @@ def record_objective_backlog_findings(
     if not should_scan:
         return []
 
-    seen = {str(item) for item in strategy.get("objective_goal_seen_fingerprints", []) if str(item).strip()}
+    seen = {
+        str(item)
+        for item in strategy.get("objective_goal_seen_fingerprints", [])
+        if str(item).strip()
+    }
     records = generate_objective_todos(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -4048,7 +4250,9 @@ def record_objective_backlog_findings(
             "goal_id": record.finding.goal_id,
             "missing_evidence": record.finding.missing_evidence,
             "bundle_key": record.finding.bundle_key,
-            "bundle_shard": repo_relative_path(repo_root, bundle_dir / f"{safe_bundle_key(record.finding.bundle_key)}.todo.md"),
+            "bundle_shard": repo_relative_path(
+                repo_root, bundle_dir / f"{safe_bundle_key(record.finding.bundle_key)}.todo.md"
+            ),
             "bundle_strategy": record.finding.bundle_strategy,
             "graph_depth": record.finding.graph_depth,
             "parent_goal_ids": record.finding.parent_goal_ids,
@@ -4056,7 +4260,8 @@ def record_objective_backlog_findings(
             "merge_key": record.finding.merge_key,
             "merge_family": record.finding.merge_family or record.finding.surplus_group,
             "merge_role": record.finding.merge_role or record.finding.candidate_kind,
-            "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+            "work_item_count": record.finding.work_item_count
+            or len(record.finding.missing_evidence),
             "work_scope": record.finding.work_scope,
             "goal_packet_key": record.finding.goal_packet_key,
             "goal_packet_role": record.finding.goal_packet_role,
@@ -4079,7 +4284,9 @@ def record_objective_backlog_findings(
         generated_paths = [todo_path]
         generated_paths.extend(record.discovery_path for record in records)
         generated_paths.append(bundle_dir / "index.json")
-        generated_paths.extend(bundle_path(bundle_dir, record.finding.bundle_key) for record in records)
+        generated_paths.extend(
+            bundle_path(bundle_dir, record.finding.bundle_key) for record in records
+        )
         commit_results = commit_generated_outputs(
             generated_paths,
             repo_root=repo_root,
@@ -4154,7 +4361,9 @@ def record_configured_objective_backlog_findings(
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path
-        or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        or discovery_output_path_for(
+            repo_root, discovery_dir, default=discovery_output_path_default
+        ),
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
     )
@@ -4198,7 +4407,9 @@ def record_configured_codebase_scan_findings(
         cooldown_seconds=cooldown_seconds,
         force=force,
         discovery_output_path=discovery_output_path
-        or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        or discovery_output_path_for(
+            repo_root, discovery_dir, default=discovery_output_path_default
+        ),
         skip_prefixes=skip_prefixes,
         commit_outputs=commit_outputs,
         commit_subject=commit_subject,
@@ -4404,7 +4615,9 @@ class ConfiguredRetryBudgetRecorder:
 
 
 ConfiguredBacklogRecordCallback = Callable[..., list[dict[str, Any]]]
-ConfiguredBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+ConfiguredBootstrapExtraKwargsFactory = Callable[
+    [Mapping[str, Path | str]], Mapping[str, Any] | None
+]
 
 
 @dataclass(frozen=True)
@@ -4483,7 +4696,9 @@ class ConfiguredBacklogRecorderBundle:
     ) -> Callable[[Mapping[str, Path | str]], tuple[Any, ...]]:
         """Build supervisor refill hooks from this bundle without repo-local wiring."""
 
-        from .implementation_supervisor_runner import build_supervisor_refill_hooks_factory_from_recorders
+        from .implementation_supervisor_runner import (
+            build_supervisor_refill_hooks_factory_from_recorders,
+        )
 
         return build_supervisor_refill_hooks_factory_from_recorders(
             discovery_dir_key=discovery_dir_key,
@@ -4689,10 +4904,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--min-open-tasks", type=int, default=DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS)
     parser.add_argument("--max-findings", type=int, default=DEFAULT_CODEBASE_SCAN_MAX_FINDINGS)
-    parser.add_argument("--cooldown-seconds", type=int, default=DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS)
-    parser.add_argument("--validation-retry-budget", type=int, default=DEFAULT_VALIDATION_RETRY_BUDGET)
+    parser.add_argument(
+        "--cooldown-seconds", type=int, default=DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS
+    )
+    parser.add_argument(
+        "--validation-retry-budget", type=int, default=DEFAULT_VALIDATION_RETRY_BUDGET
+    )
     parser.add_argument("--merge-retry-budget", type=int, default=DEFAULT_MERGE_RETRY_BUDGET)
-    parser.add_argument("--implementation-retry-budget", type=int, default=DEFAULT_IMPLEMENTATION_RETRY_BUDGET)
+    parser.add_argument(
+        "--implementation-retry-budget", type=int, default=DEFAULT_IMPLEMENTATION_RETRY_BUDGET
+    )
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument("--no-objective-todo-vector-index", action="store_true")
     parser.add_argument("--objective-todo-vector-index-path", type=Path, default=None)
@@ -4723,7 +4944,9 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     validation_depends_on = split_csv(args.validation_depends_on)
     skip_prefixes = tuple(args.skip_prefix) if args.skip_prefix else CODEBASE_SCAN_SKIP_PREFIXES
 
-    run_all = not (args.objective_scan or args.codebase_scan or args.retry_budget or args.dependency_guardrail)
+    run_all = not (
+        args.objective_scan or args.codebase_scan or args.retry_budget or args.dependency_guardrail
+    )
     objective_findings: list[dict[str, Any]] = []
     codebase_findings: list[dict[str, Any]] = []
     retry_findings: list[dict[str, Any]] = []

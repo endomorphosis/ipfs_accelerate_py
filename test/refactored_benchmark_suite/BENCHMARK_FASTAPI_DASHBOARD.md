@@ -102,19 +102,17 @@ client = BenchmarkAPIClient("http://localhost:8000")
 
 # Start a benchmark
 run_data = client.start_benchmark(
-    priority="high",
-    hardware=["cpu"],
-    models=["bert", "gpt2"],
-    batch_sizes=[1, 8],
-    precision="fp32"
+    priority="high", hardware=["cpu"], models=["bert", "gpt2"], batch_sizes=[1, 8], precision="fp32"
 )
 
 run_id = run_data["run_id"]
+
 
 # Monitor progress
 def progress_callback(status):
     print(f"Progress: {status['progress']:.1%}")
     print(f"Step: {status['current_step']}")
+
 
 client.monitor_progress(run_id, progress_callback)
 
@@ -220,15 +218,16 @@ The benchmark system uses WebSockets for real-time progress updates:
 import websocket
 import json
 
+
 def on_message(ws, message):
     data = json.loads(message)
     print(f"Progress: {data['progress']:.1%}")
     print(f"Current step: {data['current_step']}")
     print(f"Models: {data['completed_models']}/{data['total_models']}")
 
+
 ws = websocket.WebSocketApp(
-    "ws://localhost:8000/api/benchmark/ws/YOUR_RUN_ID",
-    on_message=on_message
+    "ws://localhost:8000/api/benchmark/ws/YOUR_RUN_ID", on_message=on_message
 )
 ws.run_forever()
 ```
@@ -252,7 +251,7 @@ run_data = client.start_benchmark(
     models=["bert", "gpt2"],
     batch_sizes=[1, 8, 16, 32, 64],
     precision="fp32",
-    progressive_mode=True
+    progressive_mode=True,
 )
 ```
 

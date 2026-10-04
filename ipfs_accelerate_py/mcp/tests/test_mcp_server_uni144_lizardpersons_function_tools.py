@@ -67,11 +67,14 @@ class TestMCPServerUNI144LizardpersonsFunctionTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
                 mock_api.__getitem__.return_value = _impl
-                result = await get_current_time(format_type="human", check_if_within_working_hours=True)
+                result = await get_current_time(
+                    format_type="human", check_if_within_working_hours=True
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("success"), True)
@@ -86,6 +89,7 @@ class TestMCPServerUNI144LizardpersonsFunctionTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "clock unavailable"}
 
@@ -102,6 +106,7 @@ class TestMCPServerUNI144LizardpersonsFunctionTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success", "success": False, "error": "delegate failure"}
 

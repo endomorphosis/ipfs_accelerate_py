@@ -182,14 +182,14 @@ audio_config = optimize_audio_model(
     model_path="models/whisper-tiny",
     browser="firefox",  # Optimal for audio models
     config={
-        "precision": "int8",             # Higher precision for audio quality
-        "temporal_chunking": True,       # Process long audio in chunks
-        "chunk_duration_seconds": 15,    # 15-second chunks
-        "workgroup_size": [256, 1, 1],   # Firefox-optimized workgroup
-        "compute_shaders": True,         # Enable compute shader optimization
+        "precision": "int8",  # Higher precision for audio quality
+        "temporal_chunking": True,  # Process long audio in chunks
+        "chunk_duration_seconds": 15,  # 15-second chunks
+        "workgroup_size": [256, 1, 1],  # Firefox-optimized workgroup
+        "compute_shaders": True,  # Enable compute shader optimization
         "use_spectrogram_optimization": True,  # Audio-specific optimizations
-        "fallback_to_webgl": True        # Fallback for Safari
-    }
+        "fallback_to_webgl": True,  # Fallback for Safari
+    },
 )
 
 # Run inference
@@ -206,22 +206,22 @@ from fixed_web_platform.model_sharding import configure_model_sharding
 llm_config = setup_llm_inference(
     model_path="models/llama-3-8b",
     config={
-        "bits": 4,                     # 4-bit quantization
-        "kv_cache_optimization": True, # Memory-efficient KV cache
-        "sliding_window_size": 2048,   # Use sliding window attention
+        "bits": 4,  # 4-bit quantization
+        "kv_cache_optimization": True,  # Memory-efficient KV cache
+        "sliding_window_size": 2048,  # Use sliding window attention
         "per_layer_precision": {
-            "embeddings.weight": 8,    # 8-bit for embeddings
-            "lm_head.weight": 8        # 8-bit for output projection
-        }
-    }
+            "embeddings.weight": 8,  # 8-bit for embeddings
+            "lm_head.weight": 8,  # 8-bit for output projection
+        },
+    },
 )
 
 # Configure model sharding for very large models (>10B)
 if model_size > 10:
     sharding_config = configure_model_sharding(
-        num_shards=3,                  # Split across 3 browser tabs
-        shard_type="layer",            # Layer-based sharding
-        communication="broadcast_channel"  # Browser tab communication
+        num_shards=3,  # Split across 3 browser tabs
+        shard_type="layer",  # Layer-based sharding
+        communication="broadcast_channel",  # Browser tab communication
     )
     llm_config.enable_sharding(sharding_config)
 
@@ -238,14 +238,14 @@ from fixed_web_platform.progressive_model_loader import MultimodalModelLoader
 multimodal_config = MultimodalModelLoader(
     model_path="models/llava-7b",
     config={
-        "parallel_loading": True,      # Load components in parallel
+        "parallel_loading": True,  # Load components in parallel
         "component_precision": {
             "vision_encoder": "int8",  # Higher precision for vision
-            "text_decoder": "int4"     # Lower precision for text
+            "text_decoder": "int4",  # Lower precision for text
         },
-        "progressive_loading": True,   # Memory-efficient loading
-        "offload_inactive": True       # Offload unused components
-    }
+        "progressive_loading": True,  # Memory-efficient loading
+        "offload_inactive": True,  # Offload unused components
+    },
 )
 
 # Run inference
@@ -261,14 +261,14 @@ from fixed_web_platform.webgpu_compute_shaders import optimize_detection_model
 detection_config = optimize_detection_model(
     model_path="models/detr-resnet-50",
     config={
-        "precision": "int8",           # Precision for accuracy
-        "simplified_nms": True,        # Client-side post-processing
-        "max_detections": 50,          # Limit for performance
+        "precision": "int8",  # Precision for accuracy
+        "simplified_nms": True,  # Client-side post-processing
+        "max_detections": 50,  # Limit for performance
         "detection_thresholds": {
-            "score": 0.5,              # Confidence threshold
-            "iou": 0.45                # Overlap threshold
-        }
-    }
+            "score": 0.5,  # Confidence threshold
+            "iou": 0.45,  # Overlap threshold
+        },
+    },
 )
 
 # Run inference
@@ -283,16 +283,16 @@ To implement memory-efficient KV-cache:
    ```python
    # Enable memory-efficient KV-cache
    os.environ["WEBGPU_EFFICIENT_KV_CACHE"] = "1"
-   
+
    # Initialize WebGPU with KV-cache optimization
    from fixed_web_platform import init_webgpu
-   
+
    webgpu_config = init_webgpu(
        self,
        model_name="llama-3-8b",
        model_type="text",
        web_api_mode="simulation",
-       optimize_kv_cache=True
+       optimize_kv_cache=True,
    )
    ```
 
@@ -300,13 +300,13 @@ To implement memory-efficient KV-cache:
    ```python
    # Configure specific KV-cache optimizations
    kv_cache_config = {
-       "sliding_window_size": 2048,       # 2K sliding window
-       "quantize_kv_cache": True,         # Use 8-bit KV-cache
-       "prune_low_relevance": True,       # Enable cache pruning
-       "attention_threshold": 0.01,       # Pruning threshold
-       "progressive_loading": True        # Enable streaming for long docs
+       "sliding_window_size": 2048,  # 2K sliding window
+       "quantize_kv_cache": True,  # Use 8-bit KV-cache
+       "prune_low_relevance": True,  # Enable cache pruning
+       "attention_threshold": 0.01,  # Pruning threshold
+       "progressive_loading": True,  # Enable streaming for long docs
    }
-   
+
    # Use in initialization
    webgpu_config = init_webgpu(
        self,
@@ -314,7 +314,7 @@ To implement memory-efficient KV-cache:
        model_type="text",
        web_api_mode="simulation",
        optimize_kv_cache=True,
-       kv_cache_config=kv_cache_config
+       kv_cache_config=kv_cache_config,
    )
    ```
 
@@ -481,24 +481,21 @@ streaming_config = {
     "buffer_size": 10,
     "show_progress": True,
     "memory_adaptive": True,
-    "low_latency_mode": True
+    "low_latency_mode": True,
 }
 
 # Initialize streaming pipeline
-streaming_pipeline = setup_streaming_pipeline(
-    model_name="llama-7b",
-    config=streaming_config
-)
+streaming_pipeline = setup_streaming_pipeline(model_name="llama-7b", config=streaming_config)
 
 # Generate with streaming
 async for token in streaming_pipeline.generate_stream("Tell me about machine learning"):
     # Process each token as it's generated
     display_token(token)
-    
+
     # Get generation progress
     progress = streaming_pipeline.get_progress()
     update_progress_bar(progress["percentage"])
-    
+
     # Check if should stop
     if user_requested_stop():
         await streaming_pipeline.stop_generation()

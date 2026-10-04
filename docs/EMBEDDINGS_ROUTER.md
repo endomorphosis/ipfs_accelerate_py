@@ -36,9 +36,7 @@ from ipfs_accelerate_py import embed_texts
 
 # Use OpenRouter
 embeddings = embed_texts(
-    ["Text 1", "Text 2", "Text 3"],
-    provider="openrouter",
-    model_name="text-embedding-3-small"
+    ["Text 1", "Text 2", "Text 3"], provider="openrouter", model_name="text-embedding-3-small"
 )
 
 # Use HuggingFace locally
@@ -46,7 +44,7 @@ embeddings = embed_texts(
     ["Text 1", "Text 2"],
     provider="huggingface",
     model_name="sentence-transformers/all-MiniLM-L6-v2",
-    device="cpu"
+    device="cpu",
 )
 ```
 
@@ -71,11 +69,13 @@ embeddings2 = embed_texts(["Machine learning", "Deep learning"])
 ```python
 from ipfs_accelerate_py import register_embeddings_provider, embed_texts
 
+
 # Define a custom provider
 class MyEmbeddingsProvider:
     def embed_texts(self, texts, *, model_name=None, device=None, **kwargs):
         # Your embedding logic here
         return [[1.0, 2.0, 3.0] for _ in texts]
+
 
 # Register it
 register_embeddings_provider("my_provider", lambda: MyEmbeddingsProvider())
@@ -118,11 +118,7 @@ export IPFS_ACCELERATE_PY_OPENROUTER_EMBEDDINGS_MODEL="text-embedding-3-small"  
 
 **Usage:**
 ```python
-embeddings = embed_texts(
-    ["Your texts"],
-    provider="openrouter",
-    model_name="text-embedding-3-small"
-)
+embeddings = embed_texts(["Your texts"], provider="openrouter", model_name="text-embedding-3-small")
 ```
 
 #### 2. Gemini CLI (`gemini_cli`)
@@ -136,10 +132,7 @@ export IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL="embedding-001"  # optional
 
 **Usage:**
 ```python
-embeddings = embed_texts(
-    ["Your texts"],
-    provider="gemini_cli"
-)
+embeddings = embed_texts(["Your texts"], provider="gemini_cli")
 ```
 
 #### 3. HuggingFace (`huggingface` or `local_hf`)
@@ -157,7 +150,7 @@ embeddings = embed_texts(
     ["Your texts"],
     provider="huggingface",
     model_name="sentence-transformers/all-MiniLM-L6-v2",
-    device="cpu"
+    device="cpu",
 )
 ```
 
@@ -176,10 +169,7 @@ export IPFS_ACCELERATE_PY_EMBEDDINGS_LOAD_BALANCING="round_robin"  # or least_lo
 
 **Usage:**
 ```python
-embeddings = embed_texts(
-    ["Your texts"],
-    provider="backend_manager"
-)
+embeddings = embed_texts(["Your texts"], provider="backend_manager")
 ```
 
 ## Environment Variables
@@ -218,9 +208,7 @@ The router integrates with existing CLI wrappers without duplication:
 
 ```python
 # These are already available and used by the router
-from ipfs_accelerate_py.cli_integrations import (
-    GeminiCLIIntegration
-)
+from ipfs_accelerate_py.cli_integrations import GeminiCLIIntegration
 ```
 
 ### Backend Manager
@@ -290,7 +278,7 @@ import numpy as np
 corpus = [
     "Machine learning with IPFS",
     "Distributed computing networks",
-    "Neural network architectures"
+    "Neural network architectures",
 ]
 corpus_embeddings = embed_texts(corpus)
 

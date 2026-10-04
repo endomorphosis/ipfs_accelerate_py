@@ -34,19 +34,16 @@ The API Metrics Validation module provides comprehensive tools for validating th
 ### Usage Example
 
 ```python
-from duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator
+from duckdb_api.simulation_validation.api_metrics import (
+    DuckDBAPIMetricsRepository,
+    APIMetricsValidator,
+)
 
 # Create repository instance
-repository = DuckDBAPIMetricsRepository(
-    db_path="api_metrics.duckdb",
-    create_if_missing=True
-)
+repository = DuckDBAPIMetricsRepository(db_path="api_metrics.duckdb", create_if_missing=True)
 
 # Generate sample data (for testing)
-repository.generate_sample_data(
-    num_records=1000,
-    days_back=30
-)
+repository.generate_sample_data(num_records=1000, days_back=30)
 
 # Create validator instance
 validator = APIMetricsValidator(repository=repository)
@@ -54,20 +51,20 @@ validator = APIMetricsValidator(repository=repository)
 # Generate comprehensive validation report
 report = validator.generate_validation_report(
     start_time=None,  # Default: 30 days ago
-    end_time=None,    # Default: current time
-    endpoint=None,    # Optional filter by endpoint
-    model=None        # Optional filter by model
+    end_time=None,  # Default: current time
+    endpoint=None,  # Optional filter by endpoint
+    model=None,  # Optional filter by model
 )
 
 # Access validation results
-overall_score = report['overall_score']
-data_quality = report['data_quality']['overall_quality']
-prediction_accuracy = report['prediction_accuracy']['accuracy']
-anomaly_effectiveness = report['anomaly_detection']['effectiveness']
-recommendation_quality = report['recommendation_relevance']['overall_quality']
+overall_score = report["overall_score"]
+data_quality = report["data_quality"]["overall_quality"]
+prediction_accuracy = report["prediction_accuracy"]["accuracy"]
+anomaly_effectiveness = report["anomaly_detection"]["effectiveness"]
+recommendation_quality = report["recommendation_relevance"]["overall_quality"]
 
 # Get recommendations
-recommendations = report['all_recommendations']
+recommendations = report["all_recommendations"]
 ```
 
 ### Command-Line Interface

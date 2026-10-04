@@ -41,7 +41,9 @@ def _resolve_cli_command():
 CLI_COMMAND = _resolve_cli_command()
 
 
-def wait_for_http_ready(base_url: str, process: subprocess.Popen, timeout: float = 30.0) -> tuple[bool, Optional[str]]:
+def wait_for_http_ready(
+    base_url: str, process: subprocess.Popen, timeout: float = 30.0
+) -> tuple[bool, Optional[str]]:
     """Poll the MCP HTTP surface until it is ready or the process exits."""
     deadline = time.time() + timeout
     urls = [f"{base_url}/", f"{base_url}/health", f"{base_url}/dashboard"]
@@ -126,7 +128,7 @@ def test_mcp_server():
     # Find available port
     port = 9010
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        while s.connect_ex(('127.0.0.1', port)) == 0:
+        while s.connect_ex(("127.0.0.1", port)) == 0:
             port += 1
 
     print(f"   Starting MCP server on port {port}...")
@@ -136,10 +138,16 @@ def test_mcp_server():
 
     # Start MCP server in background without blocking on verbose startup logs.
     process = subprocess.Popen(
-        CLI_COMMAND + [
-            "mcp", "start",
-            "--dashboard", "--host", "127.0.0.1",
-            "--port", str(port), "--keep-running",
+        CLI_COMMAND
+        + [
+            "mcp",
+            "start",
+            "--dashboard",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--keep-running",
         ],
         stdout=stdout_log,
         stderr=stderr_log,
@@ -207,8 +215,15 @@ def test_docker_functionality():
     print("   Testing Docker build...")
     success, stdout, stderr = run_command(
         [
-            "docker", "build", "--platform", "linux/arm64", "--target", "minimal",
-            "-t", "ipfs-accelerate-py:setup-test", ".",
+            "docker",
+            "build",
+            "--platform",
+            "linux/arm64",
+            "--target",
+            "minimal",
+            "-t",
+            "ipfs-accelerate-py:setup-test",
+            ".",
         ],
         timeout=120,
     )
@@ -220,8 +235,14 @@ def test_docker_functionality():
         print("   Testing container execution...")
         success, stdout, stderr = run_command(
             [
-                "docker", "run", "--platform", "linux/arm64", "--rm",
-                "ipfs-accelerate-py:setup-test", "ipfs-accelerate", "--help",
+                "docker",
+                "run",
+                "--platform",
+                "linux/arm64",
+                "--rm",
+                "ipfs-accelerate-py:setup-test",
+                "ipfs-accelerate",
+                "--help",
             ],
             timeout=30,
         )
@@ -259,7 +280,9 @@ def test_github_actions_readiness():
     # Test GitHub Actions runner service
     success, stdout, stderr = run_command(
         [
-            "sudo", "systemctl", "is-active",
+            "sudo",
+            "systemctl",
+            "is-active",
             "actions.runner.endomorphosis-ipfs_accelerate_py.arm64-dgx-spark-gb10-ipfs.service",
         ]
     )

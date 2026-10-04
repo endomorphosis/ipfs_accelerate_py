@@ -229,16 +229,13 @@ config = ServerConfig(
     # Server
     host="0.0.0.0",
     port=8000,
-    
     # Performance
     enable_batching=True,
     enable_caching=True,
     enable_circuit_breaker=True,
-    
     # Monitoring
     enable_metrics=True,
     enable_health_checks=True,
-    
     # Security
     api_key="your-api-key",
     enable_cors=True,

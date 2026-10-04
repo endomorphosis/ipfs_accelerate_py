@@ -161,15 +161,14 @@ from coordinator_client import CoordinatorClient
 # Initialize components
 coordinator_client = CoordinatorClient("http://localhost:8080")
 generator = TestGeneratorIntegration(
-    template_db_path="./templates.duckdb",
-    coordinator_client=coordinator_client
+    template_db_path="./templates.duckdb", coordinator_client=coordinator_client
 )
 
 # Generate and submit tests
 success, tests = generator.generate_and_submit_tests(
     model_name="bert-base-uncased",
     hardware_types=["cpu", "cuda", "rocm"],
-    batch_sizes=[1, 4, 8, 16]
+    batch_sizes=[1, 4, 8, 16],
 )
 
 # Print results

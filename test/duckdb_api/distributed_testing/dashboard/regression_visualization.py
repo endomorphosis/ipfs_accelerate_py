@@ -19,14 +19,14 @@ from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("regression_visualization")
 
 # Try to import optional dependencies with graceful fallbacks
 try:
     import pandas as pd
+
     PANDAS_AVAILABLE = True
 except ImportError:
     logger.warning("Pandas not available. Some regression visualization features will be limited.")
@@ -36,6 +36,7 @@ try:
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     import plotly.express as px
+
     PLOTLY_AVAILABLE = True
 except ImportError:
     logger.warning("Plotly not available. Visualization features will be limited.")
@@ -43,6 +44,7 @@ except ImportError:
 
 try:
     from scipy import stats
+
     SCIPY_AVAILABLE = True
 except ImportError:
     logger.warning("SciPy not available. Statistical analysis features will be limited.")
@@ -51,18 +53,18 @@ except ImportError:
 
 class RegressionVisualization:
     """Advanced visualization tools for regression detection results."""
-    
+
     def __init__(self, output_dir: str = "./visualizations/regression"):
         """Initialize the regression visualization engine.
-        
+
         Args:
             output_dir: Directory to save visualizations
         """
         self.output_dir = output_dir
-        
+
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Theme configuration
         self.theme = "dark"
         self.color_scheme = {
@@ -74,7 +76,7 @@ class RegressionVisualization:
                 "success": "#00bc8c",
                 "warning": "#f39c12",
                 "danger": "#e74c3c",
-                "info": "#3498db"
+                "info": "#3498db",
             },
             "light": {
                 "background": "#ffffff",
@@ -83,16 +85,16 @@ class RegressionVisualization:
                 "secondary": "#6c757d",
                 "success": "#28a745",
                 "warning": "#ffc107",
-                "danger": "#dc3545", 
-                "info": "#17a2b8"
-            }
+                "danger": "#dc3545",
+                "info": "#17a2b8",
+            },
         }
-        
+
         logger.info("Regression visualization engine initialized")
-    
+
     def set_theme(self, theme: str):
         """Set the visualization theme (light or dark).
-        
+
         Args:
             theme: Theme name (light or dark)
         """
@@ -101,17 +103,19 @@ class RegressionVisualization:
             logger.info(f"Set visualization theme to {theme}")
         else:
             logger.warning(f"Invalid theme: {theme}. Using default theme.")
-    
-    def create_interactive_regression_figure(self, 
-                                           time_series_data: Dict[str, Any], 
-                                           regressions: List[Dict[str, Any]],
-                                           metric: str,
-                                           title: Optional[str] = None,
-                                           include_annotations: bool = True,
-                                           include_confidence_intervals: bool = True,
-                                           include_trend_lines: bool = True) -> Optional[Dict[str, Any]]:
+
+    def create_interactive_regression_figure(
+        self,
+        time_series_data: Dict[str, Any],
+        regressions: List[Dict[str, Any]],
+        metric: str,
+        title: Optional[str] = None,
+        include_annotations: bool = True,
+        include_confidence_intervals: bool = True,
+        include_trend_lines: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         """Create an enhanced interactive regression visualization with additional features.
-        
+
         Args:
             time_series_data: Dictionary containing timestamps and values
             regressions: List of detected regressions
@@ -120,28 +124,28 @@ class RegressionVisualization:
             include_annotations: Whether to include regression annotations
             include_confidence_intervals: Whether to include confidence intervals
             include_trend_lines: Whether to include trend lines
-            
+
         Returns:
             Plotly figure as dictionary if Plotly is available, None otherwise
         """
         if not PLOTLY_AVAILABLE:
             logger.warning("Plotly not available. Cannot create regression visualization.")
             return None
-            
+
         # Get color scheme based on theme
         colors = self.color_scheme[self.theme]
-        
+
         # Extract data from time series
         timestamps = time_series_data.get("timestamps", [])
         values = time_series_data.get("values", [])
-        
+
         if not timestamps or not values or len(timestamps) != len(values):
             logger.warning("Invalid time series data format")
             return None
-        
+
         # Create figure with secondary y-axis for p-values
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        
+
         # Add original values
         fig.add_trace(
             go.Scatter(
@@ -153,23 +157,23 @@ class RegressionVisualization:
                 marker=dict(size=4),
                 customdata=np.arange(len(timestamps)),  # Add index as custom data
                 hovertemplate=(
-                    f"<b>{metric}</b><br>" +
-                    "Date: %{x}<br>" +
-                    "Value: %{y:.2f}<br>" +
-                    "Index: %{customdata}<extra></extra>"
-                )
+                    f"<b>{metric}</b><br>"
+                    + "Date: %{x}<br>"
+                    + "Value: %{y:.2f}<br>"
+                    + "Index: %{customdata}<extra></extra>"
+                ),
             ),
-            secondary_y=False
+            secondary_y=False,
         )
-        
+
         # Apply smoothing if there's enough data
         if len(values) > 5:
             # Apply exponential smoothing
             alpha = 0.2  # Smoothing factor
             smoothed = [values[0]]
             for i in range(1, len(values)):
-                smoothed.append(alpha * values[i] + (1 - alpha) * smoothed[i-1])
-            
+                smoothed.append(alpha * values[i] + (1 - alpha) * smoothed[i - 1])
+
             # Add smoothed line
             fig.add_trace(
                 go.Scatter(
@@ -178,42 +182,42 @@ class RegressionVisualization:
                     mode="lines",
                     name=f"{metric} (Smoothed)",
                     line=dict(width=2, color=colors["info"]),
-                    hoverinfo="skip"
+                    hoverinfo="skip",
                 ),
-                secondary_y=False
+                secondary_y=False,
             )
-        
+
         # If there are regressions, add visualizations for them
         shapes = []
         annotations = []
-        
+
         # If trend lines are requested and there are regressions
         if include_trend_lines and regressions:
             for regression in regressions:
                 if not regression.get("is_significant", False):
                     continue
-                
+
                 change_point_time = regression.get("change_point_time")
                 if change_point_time not in timestamps:
                     continue
-                
+
                 # Find index of change point
                 change_idx = timestamps.index(change_point_time)
-                
+
                 # Calculate segment ranges with padding
                 window_size = min(10, len(timestamps) // 5)  # Adaptive window size
                 before_start = max(0, change_idx - window_size)
                 before_end = change_idx
                 after_start = change_idx
                 after_end = min(len(timestamps), change_idx + window_size)
-                
+
                 # Before segment trend line
                 before_x = np.array(range(before_start, before_end))
                 before_y = np.array(values[before_start:before_end])
                 if len(before_x) > 1:
                     slope, intercept, _, _, _ = stats.linregress(before_x, before_y)
                     before_fit = slope * before_x + intercept
-                    
+
                     fig.add_trace(
                         go.Scatter(
                             x=[timestamps[i] for i in before_x],
@@ -221,18 +225,18 @@ class RegressionVisualization:
                             mode="lines",
                             name="Before Trend",
                             line=dict(width=2, color=colors["success"], dash="dash"),
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-                
+
                 # After segment trend line
                 after_x = np.array(range(after_start, after_end))
                 after_y = np.array(values[after_start:after_end])
                 if len(after_x) > 1:
                     slope, intercept, _, _, _ = stats.linregress(after_x, after_y)
                     after_fit = slope * after_x + intercept
-                    
+
                     fig.add_trace(
                         go.Scatter(
                             x=[timestamps[i] for i in after_x],
@@ -240,34 +244,39 @@ class RegressionVisualization:
                             mode="lines",
                             name="After Trend",
                             line=dict(width=2, color=colors["danger"], dash="dash"),
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-        
+
         # If confidence intervals are requested and there are regressions
         if include_confidence_intervals and regressions and SCIPY_AVAILABLE:
             for regression in regressions:
                 if not regression.get("is_significant", False):
                     continue
-                
+
                 change_point_time = regression.get("change_point_time")
                 if change_point_time not in timestamps:
                     continue
-                
+
                 # Find index of change point
                 change_idx = timestamps.index(change_point_time)
-                
+
                 # Calculate confidence intervals for before segment
                 window_size = min(10, len(timestamps) // 5)  # Adaptive window size
                 before_start = max(0, change_idx - window_size)
                 before_end = change_idx
                 before_values = values[before_start:before_end]
-                
+
                 if len(before_values) >= 3:  # Need at least 3 points for confidence interval
                     before_mean = np.mean(before_values)
-                    before_ci = stats.t.interval(0.95, len(before_values)-1, loc=before_mean, scale=stats.sem(before_values))
-                    
+                    before_ci = stats.t.interval(
+                        0.95,
+                        len(before_values) - 1,
+                        loc=before_mean,
+                        scale=stats.sem(before_values),
+                    )
+
                     # Add confidence interval for before segment
                     fig.add_trace(
                         go.Scatter(
@@ -278,11 +287,11 @@ class RegressionVisualization:
                             line=dict(width=0),
                             marker=dict(color=colors["info"]),
                             showlegend=False,
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-                    
+
                     fig.add_trace(
                         go.Scatter(
                             x=timestamps[before_start:before_end],
@@ -294,20 +303,22 @@ class RegressionVisualization:
                             line=dict(width=0),
                             marker=dict(color=colors["info"]),
                             showlegend=False,
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-                
+
                 # Calculate confidence intervals for after segment
                 after_start = change_idx
                 after_end = min(len(timestamps), change_idx + window_size)
                 after_values = values[after_start:after_end]
-                
+
                 if len(after_values) >= 3:  # Need at least 3 points for confidence interval
                     after_mean = np.mean(after_values)
-                    after_ci = stats.t.interval(0.95, len(after_values)-1, loc=after_mean, scale=stats.sem(after_values))
-                    
+                    after_ci = stats.t.interval(
+                        0.95, len(after_values) - 1, loc=after_mean, scale=stats.sem(after_values)
+                    )
+
                     # Add confidence interval for after segment
                     fig.add_trace(
                         go.Scatter(
@@ -318,11 +329,11 @@ class RegressionVisualization:
                             line=dict(width=0),
                             marker=dict(color=colors["danger"]),
                             showlegend=False,
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-                    
+
                     fig.add_trace(
                         go.Scatter(
                             x=timestamps[after_start:after_end],
@@ -334,18 +345,18 @@ class RegressionVisualization:
                             line=dict(width=0),
                             marker=dict(color=colors["danger"]),
                             showlegend=False,
-                            hoverinfo="skip"
+                            hoverinfo="skip",
                         ),
-                        secondary_y=False
+                        secondary_y=False,
                     )
-        
+
         # Add p-value trace if available
         has_p_values = False
         for regression in regressions:
             if "p_value" in regression:
                 has_p_values = True
                 break
-                
+
         if has_p_values:
             # Create a trace for p-values at change points
             p_values = [None] * len(timestamps)
@@ -355,7 +366,7 @@ class RegressionVisualization:
                     if change_point_time in timestamps:
                         idx = timestamps.index(change_point_time)
                         p_values[idx] = regression["p_value"]
-            
+
             # Add p-value trace
             fig.add_trace(
                 go.Scatter(
@@ -363,39 +374,39 @@ class RegressionVisualization:
                     y=p_values,
                     mode="markers",
                     name="p-value",
-                    marker=dict(
-                        size=10,
-                        color=colors["warning"],
-                        symbol="diamond"
-                    ),
-                    hovertemplate="p-value: %{y:.4f}<extra></extra>"
+                    marker=dict(size=10, color=colors["warning"], symbol="diamond"),
+                    hovertemplate="p-value: %{y:.4f}<extra></extra>",
                 ),
-                secondary_y=True
+                secondary_y=True,
             )
-            
+
             # Configure secondary y-axis for p-values
             fig.update_yaxes(
                 title_text="p-value",
                 range=[0, 0.1],  # Focus on the significant range of p-values
                 showgrid=False,
-                secondary_y=True
+                secondary_y=True,
             )
-        
+
         # Add annotations and shapes for change points
         if include_annotations:
             for regression in regressions:
                 if not regression.get("is_significant", False):
                     continue
-                
+
                 change_point_time = regression.get("change_point_time")
                 if change_point_time not in timestamps:
                     continue
-                
+
                 # Find index of change point
                 change_idx = timestamps.index(change_point_time)
-                
+
                 # Add vertical line at change point
-                shape_color = colors["danger"] if regression.get("is_regression", False) else colors["success"]
+                shape_color = (
+                    colors["danger"]
+                    if regression.get("is_regression", False)
+                    else colors["success"]
+                )
                 shapes.append(
                     dict(
                         type="line",
@@ -407,25 +418,29 @@ class RegressionVisualization:
                             color=shape_color,
                             width=2,
                             dash="dash",
-                        )
+                        ),
                     )
                 )
-                
+
                 # Add annotation
                 direction = "▲" if regression.get("direction") == "increase" else "▼"
-                color = colors["danger"] if regression.get("is_regression", False) else colors["success"]
-                
+                color = (
+                    colors["danger"]
+                    if regression.get("is_regression", False)
+                    else colors["success"]
+                )
+
                 # Format percentage change with proper sign
-                pct_change = regression.get('percentage_change', 0)
+                pct_change = regression.get("percentage_change", 0)
                 pct_text = f"{direction} {abs(pct_change):.1f}%"
-                
+
                 # Add p-value if available
-                p_value = regression.get('p_value', None)
+                p_value = regression.get("p_value", None)
                 if p_value is not None:
                     significance = 1.0 - p_value if p_value < 1.0 else 0.0
                     pct_text += f"<br>p: {p_value:.4f}"
                     pct_text += f"<br>sig: {significance:.1%}"
-                
+
                 annotations.append(
                     dict(
                         x=change_point_time,
@@ -438,24 +453,18 @@ class RegressionVisualization:
                         arrowsize=1,
                         arrowwidth=2,
                         arrowcolor=color,
-                        font=dict(
-                            size=12,
-                            color=color
-                        ),
+                        font=dict(size=12, color=color),
                         bordercolor=color,
                         borderwidth=2,
                         borderpad=4,
-                        bgcolor=f"rgba{tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + (0.2,)}",
-                        opacity=0.8
+                        bgcolor=f"rgba{tuple(int(color.lstrip('#')[i : i + 2], 16) for i in (0, 2, 4)) + (0.2,)}",
+                        opacity=0.8,
                     )
                 )
-        
+
         # Update figure with shapes and annotations
-        fig.update_layout(
-            shapes=shapes,
-            annotations=annotations
-        )
-        
+        fig.update_layout(shapes=shapes, annotations=annotations)
+
         # Add horizontal line at mean value
         mean_value = np.mean(values)
         fig.add_shape(
@@ -468,9 +477,9 @@ class RegressionVisualization:
                 color=colors["secondary"],
                 width=1,
                 dash="dot",
-            )
+            ),
         )
-        
+
         # Update layout
         title = title or f"{metric} with Regression Detection"
         fig.update_layout(
@@ -485,67 +494,66 @@ class RegressionVisualization:
             margin=dict(l=50, r=50, t=80, b=50),
             plot_bgcolor=colors["background"],
             paper_bgcolor=colors["background"],
-            font=dict(color=colors["text"])
+            font=dict(color=colors["text"]),
         )
-        
+
         # Add range slider
-        fig.update_xaxes(
-            rangeslider_visible=True,
-            rangeslider_thickness=0.05
-        )
-        
+        fig.update_xaxes(rangeslider_visible=True, rangeslider_thickness=0.05)
+
         return fig.to_dict()
-    
+
     def _dict_to_figure(self, fig_dict: Dict[str, Any]):
         """Convert a figure dictionary back to a plotly.graph_objects.Figure object.
-        
+
         This helper method is primarily for testing and export functionality.
-        
+
         Args:
             fig_dict: Dictionary representation of a Plotly figure
-            
+
         Returns:
             plotly.graph_objects.Figure object
         """
         if not PLOTLY_AVAILABLE:
             logger.warning("Plotly not available. Cannot convert dict to Figure.")
             return None
-            
+
         return go.Figure(fig_dict)
-    
-    def create_comparative_regression_visualization(self,
-                                                 metrics_data: Dict[str, Dict[str, Any]],
-                                                 regressions_by_metric: Dict[str, List[Dict[str, Any]]],
-                                                 title: Optional[str] = None) -> Optional[Dict[str, Any]]:
+
+    def create_comparative_regression_visualization(
+        self,
+        metrics_data: Dict[str, Dict[str, Any]],
+        regressions_by_metric: Dict[str, List[Dict[str, Any]]],
+        title: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Create a comparative visualization showing multiple metrics with regressions.
-        
+
         Args:
             metrics_data: Dictionary of time series data by metric
             regressions_by_metric: Dictionary of detected regressions by metric
             title: Optional title for the visualization
-            
+
         Returns:
             Plotly figure as dictionary if Plotly is available, None otherwise
         """
         if not PLOTLY_AVAILABLE:
             logger.warning("Plotly not available. Cannot create comparative visualization.")
             return None
-        
+
         if not metrics_data or not regressions_by_metric:
             logger.warning("No metrics data or regressions provided.")
             return None
-        
+
         # Get color scheme based on theme
         colors = self.color_scheme[self.theme]
-        
+
         # Create figure with subplots
         metrics = list(metrics_data.keys())
         num_metrics = len(metrics)
-        
+
         if num_metrics == 0:
             logger.warning("No metrics to visualize.")
             return None
-        
+
         # Create subplot grid layout
         if num_metrics == 1:
             rows, cols = 1, 1
@@ -557,25 +565,21 @@ class RegressionVisualization:
             # For more metrics, use 3 columns
             rows = (num_metrics + 2) // 3
             cols = 3
-            
-        fig = make_subplots(
-            rows=rows, 
-            cols=cols,
-            subplot_titles=[metric for metric in metrics]
-        )
-        
+
+        fig = make_subplots(rows=rows, cols=cols, subplot_titles=[metric for metric in metrics])
+
         # Add traces for each metric
         for i, metric in enumerate(metrics):
             row = (i // cols) + 1
             col = (i % cols) + 1
-            
+
             # Extract data
             timestamps = metrics_data[metric].get("timestamps", [])
             values = metrics_data[metric].get("values", [])
-            
+
             if not timestamps or not values:
                 continue
-                
+
             # Add trace for this metric
             fig.add_trace(
                 go.Scatter(
@@ -584,51 +588,53 @@ class RegressionVisualization:
                     mode="lines+markers",
                     name=metric,
                     line=dict(width=1),
-                    marker=dict(size=3)
+                    marker=dict(size=3),
                 ),
-                row=row, col=col
+                row=row,
+                col=col,
             )
-            
+
             # Add regression markers and annotations
             regressions = regressions_by_metric.get(metric, [])
-            
+
             for regression in regressions:
                 if not regression.get("is_significant", False):
                     continue
-                
+
                 change_point_time = regression.get("change_point_time")
                 if change_point_time not in timestamps:
                     continue
-                
+
                 # Find index of change point
                 change_idx = timestamps.index(change_point_time)
-                
+
                 # Add marker for regression
-                marker_color = colors["danger"] if regression.get("is_regression", False) else colors["success"]
-                
+                marker_color = (
+                    colors["danger"]
+                    if regression.get("is_regression", False)
+                    else colors["success"]
+                )
+
                 fig.add_trace(
                     go.Scatter(
                         x=[change_point_time],
                         y=[values[change_idx]],
                         mode="markers",
-                        marker=dict(
-                            size=10,
-                            color=marker_color,
-                            symbol="star"
-                        ),
+                        marker=dict(size=10, color=marker_color, symbol="star"),
                         name=f"Regression - {metric}",
                         showlegend=False,
                         hovertemplate=(
-                            f"<b>{metric}</b><br>" +
-                            "Date: %{x}<br>" +
-                            "Value: %{y:.2f}<br>" +
-                            f"Change: {regression.get('percentage_change', 0):.1f}%<br>" +
-                            f"p-value: {regression.get('p_value', 'N/A')}<extra></extra>"
-                        )
+                            f"<b>{metric}</b><br>"
+                            + "Date: %{x}<br>"
+                            + "Value: %{y:.2f}<br>"
+                            + f"Change: {regression.get('percentage_change', 0):.1f}%<br>"
+                            + f"p-value: {regression.get('p_value', 'N/A')}<extra></extra>"
+                        ),
                     ),
-                    row=row, col=col
+                    row=row,
+                    col=col,
                 )
-                
+
                 # Add vertical line at change point
                 fig.add_shape(
                     type="line",
@@ -641,9 +647,10 @@ class RegressionVisualization:
                         width=1,
                         dash="dash",
                     ),
-                    row=row, col=col
+                    row=row,
+                    col=col,
                 )
-        
+
         # Update layout
         title = title or "Comparative Regression Analysis"
         fig.update_layout(
@@ -655,79 +662,83 @@ class RegressionVisualization:
             margin=dict(l=50, r=50, t=100, b=50),
             plot_bgcolor=colors["background"],
             paper_bgcolor=colors["background"],
-            font=dict(color=colors["text"])
+            font=dict(color=colors["text"]),
         )
-        
+
         return fig.to_dict()
-    
-    def create_regression_heatmap(self,
-                               time_ranges: List[str],
-                               metrics: List[str],
-                               regression_data: Dict[str, Dict[str, float]],
-                               title: Optional[str] = None) -> Optional[Dict[str, Any]]:
+
+    def create_regression_heatmap(
+        self,
+        time_ranges: List[str],
+        metrics: List[str],
+        regression_data: Dict[str, Dict[str, float]],
+        title: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Create a heatmap visualization of regressions across time ranges and metrics.
-        
+
         Args:
             time_ranges: List of time range labels
             metrics: List of metric names
             regression_data: Nested dictionary mapping time ranges to metrics to percentage changes
             title: Optional title for the visualization
-            
+
         Returns:
             Plotly figure as dictionary if Plotly is available, None otherwise
         """
         if not PLOTLY_AVAILABLE:
             logger.warning("Plotly not available. Cannot create heatmap visualization.")
             return None
-        
+
         if not time_ranges or not metrics or not regression_data:
             logger.warning("Insufficient data for heatmap visualization.")
             return None
-        
+
         # Get color scheme based on theme
         colors = self.color_scheme[self.theme]
-        
+
         # Create matrix of values for heatmap
         z = []
         hover_texts = []
-        
+
         for time_range in time_ranges:
             row = []
             hover_row = []
-            
+
             for metric in metrics:
                 # Get percentage change if available
                 metric_data = regression_data.get(time_range, {}).get(metric, None)
-                
+
                 if metric_data is None:
                     value = 0
                     hover_text = "No data"
                 else:
                     value = metric_data
                     hover_text = f"Change: {value:.1f}%"
-                    
+
                     # Add significance if available
                     p_value = regression_data.get(time_range, {}).get(f"{metric}_p_value", None)
                     if p_value is not None:
                         hover_text += f"<br>p-value: {p_value:.4f}"
-                
+
                 row.append(value)
                 hover_row.append(hover_text)
-            
+
             z.append(row)
             hover_texts.append(hover_row)
-        
+
         # Create heatmap
-        fig = go.Figure(data=go.Heatmap(
-            z=z,
-            x=metrics,
-            y=time_ranges,
-            colorscale='RdBu_r',  # Red for negative, blue for positive
-            zmid=0,  # Center the colorscale at 0
-            text=hover_texts,
-            hovertemplate="Time: %{y}<br>Metric: %{x}<br>%{text}<extra></extra>"
-        ))
-        
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=z,
+                x=metrics,
+                y=time_ranges,
+                colorscale="RdBu_r",  # Red for negative, blue for positive
+                zmid=0,  # Center the colorscale at 0
+                text=hover_texts,
+                hovertemplate="Time: %{y}<br>Metric: %{x}<br>%{text}<extra></extra>",
+            )
+        )
+
         # Update layout
         title = title or "Regression Heatmap"
         fig.update_layout(
@@ -738,42 +749,44 @@ class RegressionVisualization:
             margin=dict(l=50, r=50, t=80, b=50),
             plot_bgcolor=colors["background"],
             paper_bgcolor=colors["background"],
-            font=dict(color=colors["text"])
+            font=dict(color=colors["text"]),
         )
-        
+
         return fig.to_dict()
-    
-    def create_regression_summary_report(self,
-                                      metrics_data: Dict[str, Dict[str, Any]],
-                                      regressions_by_metric: Dict[str, List[Dict[str, Any]]],
-                                      output_path: Optional[str] = None,
-                                      include_plots: bool = True) -> str:
+
+    def create_regression_summary_report(
+        self,
+        metrics_data: Dict[str, Dict[str, Any]],
+        regressions_by_metric: Dict[str, List[Dict[str, Any]]],
+        output_path: Optional[str] = None,
+        include_plots: bool = True,
+    ) -> str:
         """Generate a comprehensive HTML report of regression analysis results.
-        
+
         Args:
             metrics_data: Dictionary of time series data by metric
             regressions_by_metric: Dictionary of detected regressions by metric
             output_path: Optional path to save the report
             include_plots: Whether to include interactive plots in the report
-            
+
         Returns:
             Path to the generated report
         """
         if not metrics_data or not regressions_by_metric:
             logger.warning("No metrics data or regressions provided.")
             return None
-        
+
         # Generate default output path if not provided
         if output_path is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = os.path.join(self.output_dir, f"regression_report_{timestamp}.html")
-        
+
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         # Get color scheme based on theme
         colors = self.color_scheme[self.theme]
-        
+
         # Prepare HTML content
         html_content = f"""
         <!DOCTYPE html>
@@ -873,16 +886,16 @@ class RegressionVisualization:
                             <p>{len(metrics_data)} metrics analyzed</p>
                             <ul>
         """
-        
+
         # Add metric names to summary
         for metric in metrics_data.keys():
             html_content += f"<li>{metric}</li>\n"
-        
+
         # Count regressions by severity
         total_regressions = 0
         significant_regressions = 0
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "none": 0}
-        
+
         for metric, regressions in regressions_by_metric.items():
             for regression in regressions:
                 total_regressions += 1
@@ -890,7 +903,7 @@ class RegressionVisualization:
                     significant_regressions += 1
                     severity = regression.get("severity", "none")
                     severity_counts[severity] += 1
-        
+
         # Continue with HTML content
         html_content += f"""
                             </ul>
@@ -909,63 +922,60 @@ class RegressionVisualization:
                     </div>
                 </div>
         """
-        
+
         # Add detailed regression section
         html_content += """
                 <div class="section">
                     <h2>Detailed Regression Analysis</h2>
         """
-        
+
         # Add comparative visualization if plots are requested
         if include_plots and PLOTLY_AVAILABLE and len(metrics_data) > 1:
             comparative_fig = self.create_comparative_regression_visualization(
-                metrics_data, 
-                regressions_by_metric,
-                title="Comparative Regression Analysis"
+                metrics_data, regressions_by_metric, title="Comparative Regression Analysis"
             )
-            
+
             if comparative_fig:
                 import plotly.io as pio
+
                 comparative_html = pio.to_html(comparative_fig, full_html=False)
-                
+
                 html_content += f"""
                     <div class="plot-container">
                         {comparative_html}
                     </div>
                 """
-        
+
         # Add individual metric sections
         for metric, metric_data in metrics_data.items():
             regressions = regressions_by_metric.get(metric, [])
-            
+
             # Skip metrics with no regressions
             if not regressions:
                 continue
-                
+
             html_content += f"""
                     <div class="subsection mt-4">
                         <h3>{metric}</h3>
             """
-            
+
             # Add interactive visualization if requested
             if include_plots and PLOTLY_AVAILABLE:
                 regression_fig = self.create_interactive_regression_figure(
-                    metric_data,
-                    regressions,
-                    metric,
-                    title=f"{metric} Analysis"
+                    metric_data, regressions, metric, title=f"{metric} Analysis"
                 )
-                
+
                 if regression_fig:
                     import plotly.io as pio
+
                     regression_html = pio.to_html(regression_fig, full_html=False)
-                    
+
                     html_content += f"""
                         <div class="plot-container">
                             {regression_html}
                         </div>
                     """
-            
+
             # Add regression details table
             html_content += """
                         <table>
@@ -982,12 +992,12 @@ class RegressionVisualization:
                             </thead>
                             <tbody>
             """
-            
+
             # Add rows for each regression
             for regression in regressions:
                 if not regression.get("is_significant", False):
                     continue
-                    
+
                 # Format date
                 change_point_time = regression.get("change_point_time", "Unknown")
                 if isinstance(change_point_time, str):
@@ -998,7 +1008,7 @@ class RegressionVisualization:
                         date_str = str(change_point_time)
                     except:
                         date_str = "Unknown"
-                
+
                 # Get regression details
                 pct_change = regression.get("percentage_change", 0)
                 before_mean = regression.get("before_mean", 0)
@@ -1006,14 +1016,14 @@ class RegressionVisualization:
                 p_value = regression.get("p_value", 1.0)
                 severity = regression.get("severity", "none")
                 is_regression = regression.get("is_regression", False)
-                
+
                 # Format values
                 pct_change_str = f"{pct_change:.2f}%"
                 before_str = f"{before_mean:.2f}"
                 after_str = f"{after_mean:.2f}"
                 p_value_str = f"{p_value:.4f}"
                 type_str = "Regression" if is_regression else "Improvement"
-                
+
                 # Add table row
                 html_content += f"""
                                 <tr>
@@ -1026,19 +1036,19 @@ class RegressionVisualization:
                                     <td>{"Regression" if is_regression else "Improvement"}</td>
                                 </tr>
                 """
-            
+
             # Close table and section
             html_content += """
                             </tbody>
                         </table>
                     </div>
             """
-        
+
         # Close the detailed section
         html_content += """
                 </div>
         """
-        
+
         # Add correlation analysis section if applicable
         if len(metrics_data) > 1 and PANDAS_AVAILABLE and PLOTLY_AVAILABLE:
             # Create correlation matrix
@@ -1047,15 +1057,16 @@ class RegressionVisualization:
                 values = metric_data.get("values", [])
                 if values:
                     metric_values[metric] = values
-            
+
             if metric_values and len(metric_values) > 1:
                 # Convert to DataFrame
                 import pandas as pd
+
                 df = pd.DataFrame(metric_values)
-                
+
                 # Calculate correlation matrix
                 corr_matrix = df.corr()
-                
+
                 # Create heatmap visualization
                 corr_fig = go.Figure(
                     data=go.Heatmap(
@@ -1066,10 +1077,10 @@ class RegressionVisualization:
                         zmid=0,
                         text=[[f"{x:.2f}" for x in row] for row in corr_matrix.values],
                         texttemplate="%{text}",
-                        hovertemplate="Correlation between %{y} and %{x}: %{z:.3f}<extra></extra>"
+                        hovertemplate="Correlation between %{y} and %{x}: %{z:.3f}<extra></extra>",
                     )
                 )
-                
+
                 # Update layout
                 corr_fig.update_layout(
                     title="Metric Correlation Analysis",
@@ -1079,13 +1090,14 @@ class RegressionVisualization:
                     margin=dict(l=50, r=50, t=100, b=50),
                     plot_bgcolor=colors["background"],
                     paper_bgcolor=colors["background"],
-                    font=dict(color=colors["text"])
+                    font=dict(color=colors["text"]),
                 )
-                
+
                 # Convert to HTML
                 import plotly.io as pio
+
                 corr_html = pio.to_html(corr_fig, full_html=False)
-                
+
                 # Add correlation section
                 html_content += f"""
                 <div class="section">
@@ -1098,22 +1110,22 @@ class RegressionVisualization:
                             <h4>Correlation Insights</h4>
                             <ul>
                 """
-                
+
                 # Add correlation insights
                 for i in range(len(corr_matrix.columns)):
-                    for j in range(i+1, len(corr_matrix.columns)):
+                    for j in range(i + 1, len(corr_matrix.columns)):
                         col1 = corr_matrix.columns[i]
                         col2 = corr_matrix.columns[j]
                         corr = corr_matrix.iloc[i, j]
-                        
+
                         if abs(corr) > 0.5:
                             corr_type = "positive" if corr > 0 else "negative"
                             strength = "strong" if abs(corr) > 0.7 else "moderate"
-                            
+
                             html_content += f"""
                                 <li>{strength.title()} {corr_type} correlation ({corr:.2f}) between {col1} and {col2}</li>
                             """
-                
+
                 # Close correlation section
                 html_content += """
                             </ul>
@@ -1121,54 +1133,53 @@ class RegressionVisualization:
                     </div>
                 </div>
                 """
-        
+
         # Close HTML content
         html_content += """
             </div>
         </body>
         </html>
         """
-        
+
         # Write to file
         with open(output_path, "w") as f:
             f.write(html_content)
-            
+
         logger.info(f"Regression summary report created: {output_path}")
         return output_path
-    
-    def export_regression_visualization(self,
-                                     figure_dict: Dict[str, Any],
-                                     output_path: Optional[str] = None,
-                                     format: str = "html") -> str:
+
+    def export_regression_visualization(
+        self, figure_dict: Dict[str, Any], output_path: Optional[str] = None, format: str = "html"
+    ) -> str:
         """Export a regression visualization to file.
-        
+
         Args:
             figure_dict: Plotly figure dictionary
             output_path: Optional path to save the export
             format: Export format (html, png, svg, pdf, json)
-            
+
         Returns:
             Path to the exported visualization
         """
         if not PLOTLY_AVAILABLE:
             logger.warning("Plotly not available. Cannot export visualization.")
             return None
-        
+
         if not figure_dict:
             logger.warning("No figure provided for export.")
             return None
-        
+
         # Generate default output path if not provided
         if output_path is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = os.path.join(self.output_dir, f"regression_viz_{timestamp}.{format}")
-        
+
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         # Convert figure dictionary to Figure object
         fig = go.Figure(figure_dict)
-        
+
         # Export based on format
         if format == "html":
             fig.write_html(output_path)
@@ -1181,10 +1192,11 @@ class RegressionVisualization:
         elif format == "json":
             with open(output_path, "w") as f:
                 import json
+
                 json.dump(figure_dict, f)
         else:
             logger.warning(f"Unsupported export format: {format}")
             return None
-        
+
         logger.info(f"Visualization exported to: {output_path}")
         return output_path

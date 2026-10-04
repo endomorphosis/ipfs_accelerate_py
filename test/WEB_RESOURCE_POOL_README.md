@@ -48,7 +48,9 @@ The completed system delivers significant performance improvements:
 
 ```python
 # Import the enhanced resource pool
-from fixed_web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+from fixed_web_platform.resource_pool_bridge_integration_enhanced import (
+    ResourcePoolBridgeIntegrationEnhanced,
+)
 
 # Create enhanced pool with all features enabled
 pool = ResourcePoolBridgeIntegrationEnhanced(
@@ -56,7 +58,7 @@ pool = ResourcePoolBridgeIntegrationEnhanced(
     enable_circuit_breaker=True,
     enable_performance_history=True,
     enable_performance_trend_analysis=True,
-    db_path="./benchmark_db.duckdb"
+    db_path="./benchmark_db.duckdb",
 )
 
 # Initialize

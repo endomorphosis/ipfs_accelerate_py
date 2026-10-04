@@ -52,6 +52,7 @@ python3 -m ipfs_accelerate_py.mcp_dashboard --port 8899
 ### Test User Info
 ```python
 from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+
 print(get_user_info())
 # Expected: {'authenticated': True, 'username': 'endomorphosis', ...}
 ```
@@ -59,6 +60,7 @@ print(get_user_info())
 ### Test Cache Stats
 ```python
 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
 print(get_global_cache().get_stats())
 # Shows: total entries, hit rate, P2P status
 ```
@@ -66,6 +68,7 @@ print(get_global_cache().get_stats())
 ### Test Runner Info
 ```python
 from ipfs_accelerate_py.github_cli import RunnerManager
+
 mgr = RunnerManager()
 print(f"Architecture: {mgr.get_system_architecture()}")
 print(f"Labels: {mgr.get_runner_labels()}")

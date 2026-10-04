@@ -103,7 +103,9 @@ def _load_legal_dataset_tools_api() -> Dict[str, Any]:
                 expansions.append(f"{base_query} compliance")
             if include_acronyms:
                 expansions.append(f"{base_query} regulation")
-            unique_expansions = [item for idx, item in enumerate(expansions) if item and item not in expansions[:idx]]
+            unique_expansions = [
+                item for idx, item in enumerate(expansions) if item and item not in expansions[:idx]
+            ]
             return {
                 "status": "success",
                 "original_query": base_query,
@@ -273,11 +275,17 @@ async def scrape_state_laws(
             output_format=output_format,
         )
     if not isinstance(include_metadata, bool):
-        return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
+        return _error_result(
+            "include_metadata must be a boolean", include_metadata=include_metadata
+        )
     if not isinstance(rate_limit_delay, (int, float)) or rate_limit_delay < 0:
-        return _error_result("rate_limit_delay must be a number >= 0", rate_limit_delay=rate_limit_delay)
+        return _error_result(
+            "rate_limit_delay must be a number >= 0", rate_limit_delay=rate_limit_delay
+        )
     if max_statutes is not None and (not isinstance(max_statutes, int) or max_statutes < 1):
-        return _error_result("max_statutes must be null or an integer >= 1", max_statutes=max_statutes)
+        return _error_result(
+            "max_statutes must be null or an integer >= 1", max_statutes=max_statutes
+        )
     if not isinstance(use_state_specific_scrapers, bool):
         return _error_result(
             "use_state_specific_scrapers must be a boolean",
@@ -288,7 +296,9 @@ async def scrape_state_laws(
     if not isinstance(write_jsonld, bool):
         return _error_result("write_jsonld must be a boolean", write_jsonld=write_jsonld)
     if not isinstance(strict_full_text, bool):
-        return _error_result("strict_full_text must be a boolean", strict_full_text=strict_full_text)
+        return _error_result(
+            "strict_full_text must be a boolean", strict_full_text=strict_full_text
+        )
     if not isinstance(min_full_text_chars, int) or min_full_text_chars < 1:
         return _error_result(
             "min_full_text_chars must be an integer >= 1",
@@ -375,11 +385,15 @@ async def expand_legal_query(
             max_expansions=max_expansions,
         )
     if not isinstance(include_synonyms, bool):
-        return _error_result("include_synonyms must be a boolean", include_synonyms=include_synonyms)
+        return _error_result(
+            "include_synonyms must be a boolean", include_synonyms=include_synonyms
+        )
     if not isinstance(include_related, bool):
         return _error_result("include_related must be a boolean", include_related=include_related)
     if not isinstance(include_acronyms, bool):
-        return _error_result("include_acronyms must be a boolean", include_acronyms=include_acronyms)
+        return _error_result(
+            "include_acronyms must be a boolean", include_acronyms=include_acronyms
+        )
     if domains is not None and (
         not isinstance(domains, list)
         or not all(isinstance(domain, str) and domain.strip() for domain in domains)
@@ -391,7 +405,9 @@ async def expand_legal_query(
             min_confidence=min_confidence,
         )
 
-    normalized_domains = [domain.strip().lower() for domain in domains] if domains is not None else None
+    normalized_domains = (
+        [domain.strip().lower() for domain in domains] if domains is not None else None
+    )
     valid_domains = {"administrative", "criminal", "civil", "environmental", "labor"}
     if normalized_domains is not None:
         invalid_domains = [domain for domain in normalized_domains if domain not in valid_domains]
@@ -482,7 +498,10 @@ async def get_legal_relationships(
         str(relationship_type).strip().lower() if relationship_type is not None else None
     )
     valid_relationship_types = {"hierarchical", "procedural", "domain"}
-    if relationship_type is not None and normalized_relationship_type not in valid_relationship_types:
+    if (
+        relationship_type is not None
+        and normalized_relationship_type not in valid_relationship_types
+    ):
         return _error_result(
             "relationship_type must be null or one of: hierarchical, procedural, domain",
             relationship_type=relationship_type,
@@ -575,7 +594,12 @@ def register_native_legal_dataset_tools(manager: Any) -> None:
                 "include_related": {"type": "boolean", "default": True},
                 "include_acronyms": {"type": "boolean", "default": True},
                 "domains": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                "min_confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.5},
+                "min_confidence": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.5,
+                },
             },
             "required": ["query"],
         },

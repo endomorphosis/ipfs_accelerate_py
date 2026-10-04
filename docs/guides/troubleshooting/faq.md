@@ -176,6 +176,7 @@ See [WebNN/WebGPU Guide](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md) for
 ```python
 # 1. Python API (most flexible)
 from ipfs_accelerate_py import IPFSAccelerator
+
 accelerator = IPFSAccelerator()
 
 # 2. CLI (for scripting)

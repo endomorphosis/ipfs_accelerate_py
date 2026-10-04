@@ -11,7 +11,7 @@ from templates.base_pipeline import BasePipelineTemplate
 
 class VisionPipelineTemplate(BasePipelineTemplate):
     """Vision pipeline template implementation."""
-    
+
     def __init__(self):
         """Initialize the vision pipeline template."""
         super().__init__()
@@ -22,7 +22,7 @@ class VisionPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 16
-    
+
     def get_import_statements(self) -> str:
         """Get vision-specific import statements."""
         return """
@@ -35,7 +35,7 @@ from PIL import Image
 import torch
 from typing import List, Dict, Union, Any
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get vision-specific preprocessing code."""
         if task_type == "image_classification":
@@ -179,7 +179,7 @@ else:
 # Move to device
 inputs = {{k: v.to(device) for k, v in inputs.items()}}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get vision-specific postprocessing code."""
         if task_type == "image_classification":
@@ -315,7 +315,7 @@ if not result_data:
         if hasattr(value, 'cpu'):
             result_data[key] = value.cpu().numpy().tolist()
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get vision-specific result formatting code."""
         if task_type == "image_classification":
@@ -384,7 +384,7 @@ for key, value in result_data.items():
 
 return result
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get vision-specific mock input code."""
         return """
@@ -403,7 +403,7 @@ def create_mock_image(width=224, height=224):
 
 mock_input = create_mock_image()
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get vision-specific mock output code."""
         return """
@@ -473,15 +473,12 @@ def draw_detection_boxes(image, detections):
     
     return draw_image
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check vision pipeline compatibility with architecture type."""
         # Vision pipeline is compatible with vision-based architectures
-        return arch_type in [
-            "vision",
-            "vision-encoder"
-        ]
-    
+        return arch_type in ["vision", "vision-encoder"]
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check vision pipeline compatibility with task type."""
         # Vision pipeline is compatible with vision-based tasks
@@ -491,5 +488,5 @@ def draw_detection_boxes(image, detections):
             "object_detection",
             "instance_segmentation",
             "semantic_segmentation",
-            "panoptic_segmentation"
+            "panoptic_segmentation",
         ]

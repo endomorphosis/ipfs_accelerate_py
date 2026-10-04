@@ -264,14 +264,19 @@ The input ids should just be an array of integers like `input_ids = [0, 4, 4, 3,
 Layer outputs often consist of multi-dimensional float arrays.
 
 ```py
-[[
- [-0.1465, -0.6501,  0.1993,  ...,  0.1451,  0.3430,  0.6024],
- [-0.4417, -0.5920,  0.3450,  ..., -0.3062,  0.6182,  0.7132],
- [-0.5009, -0.7122,  0.4548,  ..., -0.3662,  0.6091,  0.7648],
- ...,
- [-0.5613, -0.6332,  0.4324,  ..., -0.3792,  0.7372,  0.9288],
- [-0.5416, -0.6345,  0.4180,  ..., -0.3564,  0.6992,  0.9191],
- [-0.5334, -0.6403,  0.4271,  ..., -0.3339,  0.6533,  0.8694]]],
+(
+    [
+        [
+            [-0.1465, -0.6501, 0.1993, ..., 0.1451, 0.3430, 0.6024],
+            [-0.4417, -0.5920, 0.3450, ..., -0.3062, 0.6182, 0.7132],
+            [-0.5009, -0.7122, 0.4548, ..., -0.3662, 0.6091, 0.7648],
+            ...,
+            [-0.5613, -0.6332, 0.4324, ..., -0.3792, 0.7372, 0.9288],
+            [-0.5416, -0.6345, 0.4180, ..., -0.3564, 0.6992, 0.9191],
+            [-0.5334, -0.6403, 0.4271, ..., -0.3339, 0.6533, 0.8694],
+        ]
+    ],
+)
 ```
 
 Every Transformers model output should have a precision or error tolerance of *1e-3*. This accounts for any output differences that arise from using a different library framework. Compare the intermediate outputs of the original model with the Transformers implementation to ensure they're nearly identical. Having an *efficient* debugging environment is crucial for this step.
@@ -305,6 +310,7 @@ At this point, your code doesn't have to be clean or even fully correct, It is m
 
 ```py
 from transformers import BrandNewLlama, BrandNewLlamaConfig
+
 model = BrandNewLlama(BrandNewLlamaConfig())
 ```
 
@@ -373,6 +379,7 @@ It is helpful to create a basic PyTorch model to understand how layer names are 
 ```py
 from torch import nn
 
+
 class SimpleModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -433,9 +440,9 @@ model_pointer.weight.data = torch.from_numpy(pretrained_weight)
 Verify the randomly initialized weights and their corresponding pretrained checkpoint weights have the identical **shape** and **name**. Add assert statements for the shape and print out the checkpoint weight names.
 
 ```py
-assert (
-    model_pointer.weight.shape == pretrained_weight.shape
-), f"Pointer shape of random weight {model_pointer.shape} and array shape of checkpoint weight {pretrained_weight.shape} mismatched"
+assert model_pointer.weight.shape == pretrained_weight.shape, (
+    f"Pointer shape of random weight {model_pointer.shape} and array shape of checkpoint weight {pretrained_weight.shape} mismatched"
+)
 
 logger.info(f"Initialize PyTorch weight {layer_name} from {pretrained_weight.name}")
 ```
@@ -575,8 +582,7 @@ def __call__(
     audio=None,
     videos=None,
     **kwargs: Unpack[YourModelProcessorKwargs],
-) -> BatchFeature:
-    ...
+) -> BatchFeature: ...
 ```
 
 `YourModelProcessorKwargs` is a `TypedDict` that includes all the typical processing arguments and any extra arguments a specific processor may require.

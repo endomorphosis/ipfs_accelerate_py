@@ -28,9 +28,7 @@ from .objective_graph import (
 from .validation_commands import split_validation_commands
 
 
-DEFAULT_ULTIMATE_GOAL = (
-    "Make this repository satisfy its stated objective with verifiable code, tests, docs, and runtime evidence."
-)
+DEFAULT_ULTIMATE_GOAL = "Make this repository satisfy its stated objective with verifiable code, tests, docs, and runtime evidence."
 DEFAULT_ROOT_EVIDENCE = (
     "objective goal graph",
     "bundle-local todo shards",
@@ -39,8 +37,12 @@ DEFAULT_ROOT_EVIDENCE = (
     "LLM merge conflict resolver",
 )
 DEFAULT_GOAL_PREFIX = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_GOAL_PREFIX", "OBJ-G")
-DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap")
-DEFAULT_ROOT_GOAL_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome")
+DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap"
+)
+DEFAULT_ROOT_GOAL_TITLE = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome"
+)
 OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION = {"todo", "ready", "in_progress"}
 TASK_GOAL_METADATA_KEYS = (
     "goal id",
@@ -119,7 +121,9 @@ def fibonacci_priority(depth: int, sibling_index: int = 0) -> int:
     return fibonacci_number(max(1, depth + 2)) * 1000 + max(0, sibling_index)
 
 
-def infer_goal_prefix(goals: Sequence[ObjectiveGoal], *, fallback: str = DEFAULT_GOAL_PREFIX) -> str:
+def infer_goal_prefix(
+    goals: Sequence[ObjectiveGoal], *, fallback: str = DEFAULT_GOAL_PREFIX
+) -> str:
     """Infer a numeric goal-id prefix from existing goals."""
 
     prefixes: dict[str, int] = {}
@@ -173,7 +177,9 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
             block = []
             return
 
-        normalized_updates = {normalize_field_key(key): (key, value) for key, value in goal_updates.items()}
+        normalized_updates = {
+            normalize_field_key(key): (key, value) for key, value in goal_updates.items()
+        }
         seen_keys: set[str] = set()
         output: list[str] = []
         last_field_index = 0
@@ -182,7 +188,9 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
                 key, _value = line[2:].split(":", 1)
                 normalized = normalize_field_key(key)
                 if normalized in normalized_updates:
-                    output.append(f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}")
+                    output.append(
+                        f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}"
+                    )
                     seen_keys.add(normalized)
                 else:
                     output.append(line)
@@ -432,7 +440,9 @@ def ensure_objective_tracking_document(
     """Create the objective tracking document if it does not exist."""
 
     if objective_path.exists():
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     root_goal_id = root_goal_id or f"{goal_prefix}000"
     objective_path.parent.mkdir(parents=True, exist_ok=True)
@@ -467,7 +477,9 @@ def ensure_objective_tracking_document(
         ]
     )
     objective_path.write_text(text, encoding="utf-8")
-    return ObjectiveTrackingResult(objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id])
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id]
+    )
 
 
 COMPONENT_SCAN_SKIP_DIRS = {
@@ -631,7 +643,9 @@ def _component_path_safe_for_component(path: Path) -> bool:
     return True
 
 
-def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files: int = 256) -> dict[str, list[str]]:
+def _scan_component_metadata(
+    repo_root: Path, component_path: str, *, max_files: int = 256
+) -> dict[str, list[str]]:
     root = repo_root / component_path
     metadata = {
         "manifests": [],
@@ -648,7 +662,8 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
         dirnames[:] = [
             name
             for name in dirnames
-            if _component_scan_dirname_allowed(name) and _component_scan_path_usable(Path(current_root) / name)
+            if _component_scan_dirname_allowed(name)
+            and _component_scan_path_usable(Path(current_root) / name)
         ]
         current = Path(current_root)
         try:
@@ -681,11 +696,15 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
                     text = path.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
-                for match in re.finditer(r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_\.]*)", text, flags=re.MULTILINE):
+                for match in re.finditer(
+                    r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_\.]*)", text, flags=re.MULTILINE
+                ):
                     import_roots.add(match.group(1).split(".", 1)[0])
 
     metadata["manifests"] = sorted(dict.fromkeys(metadata["manifests"]))[:40]
-    metadata["interface_descriptors"] = sorted(dict.fromkeys(metadata["interface_descriptors"]))[:80]
+    metadata["interface_descriptors"] = sorted(dict.fromkeys(metadata["interface_descriptors"]))[
+        :80
+    ]
     metadata["mcp_descriptors"] = sorted(dict.fromkeys(metadata["mcp_descriptors"]))[:80]
     metadata["python_import_roots"] = sorted(import_roots)[:80]
     return metadata
@@ -735,7 +754,9 @@ def discover_repository_components(
     return components
 
 
-def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = ()) -> list[tuple[str, str]]:
+def interoperability_pairs(
+    submodules: Sequence[str], *, focus: Sequence[str] = ()
+) -> list[tuple[str, str]]:
     paths = [path for path in dict.fromkeys(str(item).strip() for item in submodules) if path]
     focus_paths = [path for path in dict.fromkeys(str(item).strip() for item in focus) if path]
     pairs: list[tuple[str, str]] = []
@@ -767,10 +788,7 @@ def interoperability_pair_key(value: str | Sequence[str]) -> str:
     else:
         terms = [str(item).strip() for item in value if str(item).strip()]
     canonical_terms = [
-        key
-        for term in terms
-        for key in [canonical_interoperability_component(term)]
-        if key
+        key for term in terms for key in [canonical_interoperability_component(term)] if key
     ]
     return "\0".join(sorted(canonical_terms))
 
@@ -824,9 +842,15 @@ def _component_pair_metadata(
 ) -> dict[str, Any]:
     components = [component for component in (left, right) if component is not None]
     manifests = sorted({path for component in components for path in component.manifests})
-    interface_descriptors = sorted({path for component in components for path in component.interface_descriptors})
-    mcp_descriptors = sorted({path for component in components for path in component.mcp_descriptors})
-    python_import_roots = sorted({root for component in components for root in component.python_import_roots})
+    interface_descriptors = sorted(
+        {path for component in components for path in component.interface_descriptors}
+    )
+    mcp_descriptors = sorted(
+        {path for component in components for path in component.mcp_descriptors}
+    )
+    python_import_roots = sorted(
+        {root for component in components for root in component.python_import_roots}
+    )
     sources = sorted({source for component in components for source in component.sources})
     score = 1
     score += len(components)
@@ -861,14 +885,18 @@ def append_interoperability_goals(
     """Seed graph goals for cross-submodule integration and interoperability tests."""
 
     if not objective_path.exists() or max_goals <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     components = discover_repository_components(repo_root, component_paths=component_paths)
     component_by_path = {component.path: component for component in components}
     submodules = [component.path for component in components]
     pairs = interoperability_pairs(submodules, focus=focus)
     if not pairs:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -896,7 +924,9 @@ def append_interoperability_goals(
         if pair_key in existing_pairs:
             continue
         goal_id = allocate_goal_id()
-        metadata = _component_pair_metadata(component_by_path.get(left), component_by_path.get(right))
+        metadata = _component_pair_metadata(
+            component_by_path.get(left), component_by_path.get(right)
+        )
         safe_left = safe_bundle_key(left).replace("-", "_")
         safe_right = safe_bundle_key(right).replace("-", "_")
         test_path = f"tests/integration/test_{safe_left}_{safe_right}_interop.py"
@@ -955,15 +985,24 @@ def append_interoperability_goals(
                 "including a test, a contract note, and any adapter code needed by the objective."
             ),
         }
-        appended_blocks.append(render_goal_block(goal_id=goal_id, title=f"Interoperate {left} with {right}", fields=fields))
+        appended_blocks.append(
+            render_goal_block(
+                goal_id=goal_id, title=f"Interoperate {left} with {right}", fields=fields
+            )
+        )
         appended_goal_ids.append(goal_id)
         existing_pairs.add(pair_key)
         if len(appended_goal_ids) >= max_goals:
             break
 
     if appended_blocks:
-        objective_path.write_text(text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n", encoding="utf-8")
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+        objective_path.write_text(
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n",
+            encoding="utf-8",
+        )
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
@@ -1183,9 +1222,7 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
             "objective heap fibonacci priority supervisor active management failed validation "
             "repair Playwright VAI MGW HAO production readiness"
         ),
-        "ast_query": (
-            "objective heap, supervisor, validation repair, Playwright, VAI, MGW, HAO"
-        ),
+        "ast_query": ("objective heap, supervisor, validation repair, Playwright, VAI, MGW, HAO"),
         "gap_task": (
             "Extend the supervisor loop so failed validation and stale idle lanes generate "
             "mission-aligned follow-up tasks and subgoals instead of generic reconciliation churn."
@@ -1209,7 +1246,9 @@ def append_launch_readiness_goals(
 
     _ = repo_root
     if not objective_path.exists() or max_goals <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -1268,7 +1307,9 @@ def append_launch_readiness_goals(
             ),
             "Gap task": str(template["gap_task"]),
         }
-        appended_blocks.append(render_goal_block(goal_id=goal_id, title=str(template["title"]), fields=fields))
+        appended_blocks.append(
+            render_goal_block(goal_id=goal_id, title=str(template["title"]), fields=fields)
+        )
         appended_goal_ids.append(goal_id)
         existing_keys.add(launch_key)
         if len(appended_goal_ids) >= max_goals:
@@ -1279,7 +1320,9 @@ def append_launch_readiness_goals(
             text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n",
             encoding="utf-8",
         )
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 def existing_refinement_keys(goals: Sequence[ObjectiveGoal]) -> set[tuple[str, str]]:
@@ -1302,8 +1345,14 @@ def refinement_title(parent_title: str, evidence: str) -> str:
     return f"Prove {compact} for {parent_title}"
 
 
-def refinement_fields(finding: ObjectiveFinding, *, evidence: str, depth: int, sibling_index: int) -> dict[str, str]:
-    outputs = ", ".join(finding.outputs) if finding.outputs else "ipfs_accelerate_py/agent_supervisor, docs, tests"
+def refinement_fields(
+    finding: ObjectiveFinding, *, evidence: str, depth: int, sibling_index: int
+) -> dict[str, str]:
+    outputs = (
+        ", ".join(finding.outputs)
+        if finding.outputs
+        else "ipfs_accelerate_py/agent_supervisor, docs, tests"
+    )
     return {
         "Status": "active",
         "Parent": finding.goal_id,
@@ -1335,7 +1384,9 @@ def append_refinement_goals(
     """Append child goals for missing evidence terms that are still too broad."""
 
     if not objective_path.exists() or max_children_per_finding <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -1384,8 +1435,13 @@ def append_refinement_goals(
                 break
 
     if appended_blocks:
-        objective_path.write_text(text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n", encoding="utf-8")
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+        objective_path.write_text(
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n",
+            encoding="utf-8",
+        )
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 def thought_node_id(kind: str, *parts: str) -> str:
@@ -1461,7 +1517,9 @@ def build_objective_thought_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, A
             add_edge(goal_node, surface_node, "touches_surface")
         if interop_pair or submodules:
             pair_values = interop_pair or submodules
-            interop_node = thought_node_id("interoperability_pair", goal.goal_id, ",".join(pair_values))
+            interop_node = thought_node_id(
+                "interoperability_pair", goal.goal_id, ",".join(pair_values)
+            )
             add_node(
                 interop_node,
                 kind="interoperability_pair",
@@ -1526,7 +1584,11 @@ def write_objective_graph_artifact(
 ) -> dict[str, Any]:
     """Write a JSON graph artifact for the current objective heap."""
 
-    goals = parse_goal_heap(objective_path.read_text(encoding="utf-8")) if objective_path.exists() else []
+    goals = (
+        parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        if objective_path.exists()
+        else []
+    )
     graph = goal_graph(goals)
     payload = {
         "schema": "ipfs_accelerate_py.agent_supervisor.objective_graph",
@@ -1547,7 +1609,9 @@ def write_objective_graph_artifact(
                 "evidence": goal.required_evidence,
                 "track": goal.fields.get("track", "ops"),
                 "bundle": goal.fields.get("bundle", ""),
-                "refinement_depth": goal.fields.get("refinement_depth", str(graph["depths"].get(goal.goal_id, 0))),
+                "refinement_depth": goal.fields.get(
+                    "refinement_depth", str(graph["depths"].get(goal.goal_id, 0))
+                ),
             }
             for goal in sorted(goals, key=lambda item: item.priority)
         ],
