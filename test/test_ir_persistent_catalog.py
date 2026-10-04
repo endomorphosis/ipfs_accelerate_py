@@ -18,6 +18,7 @@ from ipfs_accelerate_py.model_catalog.sources.ir_persistent import (
     IRPersistentCatalogSource,
 )
 from ipfs_accelerate_py.model_catalog.sources.static import StaticCatalogSource
+from ipfs_accelerate_py.model_catalog.sources import ir_persistent as ir_source
 
 
 def _raw(value):
@@ -327,6 +328,55 @@ def test_store_replacement_at_read_boundary_refuses(tmp_path, monkeypatch):
     monkeypatch.setattr(source, "_witness", witness)
     with pytest.raises(IRPersistentCatalogError, match="changed"):
         source.load()
+
+
+def test_private_fifo_replacement_before_open_refuses_without_blocking(tmp_path, monkeypatch):
+    path = _store(tmp_path, [_record()])
+    source = IRPersistentCatalogSource(path=path)
+    genuine = ir_source.os.open
+    opened = []
+    def swapped(target, flags, *args, **kwargs):
+        if Path(target) == path:
+            path.unlink()
+            ir_source.os.mkfifo(path)
+            assert flags & ir_source.os.O_NOFOLLOW
+            assert flags & ir_source.os.O_NONBLOCK
+            opened.append(True)
+        return genuine(target, flags, *args, **kwargs)
+    monkeypatch.setattr(ir_source.os, "open", swapped)
+    with pytest.raises(IRPersistentCatalogError, match="descriptor changed"):
+        source.load()
+    assert opened == [True]
+
+
+def test_json_growth_is_capped_before_body_allocation(tmp_path, monkeypatch):
+    path = _store(tmp_path, [_record()])
+    bound = path.stat().st_size + 64
+    monkeypatch.setattr(ir_source, "MAX_CONFIG_BYTES", bound)
+    source = IRPersistentCatalogSource(path=path, max_config_bytes=bound)
+    genuine_open, genuine_read = ir_source.os.open, ir_source.os.read
+    selected = []
+    observed = {"grown": False, "bytes": 0, "requests": []}
+    def tracked_open(target, flags, *args, **kwargs):
+        fd = genuine_open(target, flags, *args, **kwargs)
+        if Path(target) == path: selected.append(fd)
+        return fd
+    def grow(fd, count):
+        if fd in selected:
+            if not observed["grown"]:
+                with path.open("ab") as handle: handle.write(b" " * 1024)
+                observed["grown"] = True
+            observed["requests"].append(count)
+        result = genuine_read(fd, count)
+        if fd in selected: observed["bytes"] += len(result)
+        return result
+    monkeypatch.setattr(ir_source.os, "open", tracked_open)
+    monkeypatch.setattr(ir_source.os, "read", grow)
+    with pytest.raises(IRPersistentCatalogError, match="byte bound during read"):
+        source.load()
+    assert observed["grown"]
+    assert observed["bytes"] <= bound + 1
+    assert max(observed["requests"]) <= min(65536, bound + 1)
 
 
 def test_no_model_manager_decoder_or_tensor_module_is_imported(tmp_path):
