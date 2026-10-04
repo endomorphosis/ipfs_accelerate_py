@@ -75,7 +75,10 @@ keyword rename and an imported alias call repair. For example, an existing
 `transform(value)` call to `normalize(value)`. The latter route requires a signed,
 flat local donor, an unambiguous alias, inert function bodies and arguments,
 compatible signatures, no shadowing, no unresolved calls or call cycles, and no
-import-time effects. It does not insert dependencies or guess missing imports.
+import-time effects. The grammar admits at most 16 bindings per module and
+64-character identifiers. Separate native theorem and prover-argument limits
+return an explicit residual on overflow, before proof state is created.
+It does not insert dependencies or guess missing imports.
 The source-derived finite binding map is projected to real Lean/Z3 checks for
 alias resolution, the original name's absence, and argument preservation. Local
 module resolution is an explicit assumption, not a theorem about Python's loader.
@@ -118,6 +121,30 @@ shadowing controls, native runtime construction, lifecycle doubles, and frozen
 checkpoint inference with initial-index replay. The AST-seal plugin remained
 enabled. This is local qualification, not a new Terminal-Bench score or full
 live supervisor execution.
+
+The [follow-up qualification](evidence/terminal-symbolic-followup-20261004/qualification.json)
+records **352 distinct passing tests, zero skips** across focused runs (374
+executions including repeated cases). It includes five passing integration
+checks on code commit `e6cd2df9519f92d2e1c9eae6d01964de31d4079d` after incorporating
+concurrent upstream changes. Commands, source pins, log/XML digests, and the
+earlier corrected failures are retained. The AST-seal plugin remained enabled.
+
+The repair integration uses an explicitly authored IntentIR contract and lexical
+vector-index ablation. It traverses actual prompt preparation, initial indexing,
+symbolic planning, task-bound context, Doctor proof and candidate commit, worker
+materialization and structural smoke for both operators. It makes no trained
+intent-interpretation, task-completion or full daemon START claim.
+
+Separately, genuine CPU GTE/Source384 inference through initial-context preparation
+loaded the pinned checkpoint once, inferred one program file, and retained all
+four signed inputs including three support files. Replay did not load the model
+again. Its decoded candidate remained `fail_open_source_contract_unsupported`;
+checkpoint consumption does not establish source correctness. Tests used datasets
+revision `d5aaf256618c53b009695e8d5618436fba1c0419`. All 187 observed Source384
+pin-import paths have identical Git blobs at the newer preserved publication
+revision `aa586a9b91b583a2ac5d867bd107ba0c5a4762d5`; this comparison is not a claim
+that the full tests ran on that newer revision. No paid model calls, new Docker
+START or new Terminal-Bench score were produced by this qualification.
 
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
