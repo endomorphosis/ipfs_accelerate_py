@@ -10,7 +10,7 @@ Protected paths (never claim as Outputs):
 
 ## ASREF-001 Create branch and freeze inventory move map
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -27,7 +27,7 @@ Protected paths (never claim as Outputs):
 
 ## ASREF-002 Seed multi-lane launch recipe for Grok 4.6
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -46,7 +46,7 @@ Protected paths (never claim as Outputs):
 
 ## ASREF-009 Close objective gap: Branch bootstrap inventory and frozen move map
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
