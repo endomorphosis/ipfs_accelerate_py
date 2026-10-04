@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import shlex
 
-from .benchmark_resource_profile import SOURCE384_PROFILE, SOURCE384_ENVIRONMENT
+from .benchmark_resource_profile import PROFILES, resource_environment, execution_budget, admission_environment
 
 MIB = 1024 * 1024
 MAX_RESULT_BYTES = 1024 * 1024
@@ -33,13 +33,17 @@ print(json.dumps(dict(schema='terminal-source384-cgroup-observation@1',
 
 CONTEXT_PROBE = r'''
 from contextlib import redirect_stdout
-import hashlib,json,pathlib,signal,sys,time
+import hashlib,json,os,pathlib,signal,sys,time
+from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import execution_budget
+profile=os.environ.get("IPFS_SUPERVISOR_BENCHMARK_PROFILE")
+budget=execution_budget(profile)
 started=time.monotonic(); phase='runtime_load';phase_started=started
 result=dict(schema='terminal-source384-original-container-qualification@1',qualified=False,
  provider_calls=0,official_verifier_executed=False,benchmark_result=False,
- source_qualified_proof_claimed=False,training_steps=0,download_calls=0)
+ source_qualified_proof_claimed=False,training_steps=0,download_calls=0,
+ resource_profile=profile,execution_budget=budget)
 def expired(*args): raise TimeoutError('bounded Source384 container qualification expired')
-signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,270)
+signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,budget["qualification_seconds"])
 try:
  with redirect_stdout(sys.stderr):
   from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
@@ -48,11 +52,12 @@ try:
   config_path=pathlib.Path('/opt/ipfs-supervisor/models/source384/config.json')
   result['producer']=_pins()
   phase='prepare';phase_started=before=time.monotonic()
-  prepared=prep.prepare(repository=root,instruction=pathlib.Path('/opt/ipfs-supervisor/source384-public-instruction.md'),state=state,
+  prepared=prep.prepare(repository=root,instruction=pathlib.Path('/opt/ipfs-supervisor/source384-public-instruction.md'),state=state,resource_profile=profile,
    **({"intent_requirement_contract":pathlib.Path(sys.argv[1])} if len(sys.argv)>1 else {}))
   result['prepare_seconds']=time.monotonic()-before
   phase='initial_context';phase_started=before=time.monotonic()
-  context=prep.initial_context(state=state,source384_config=config_path,train_autoencoder=False)
+  context=prep.initial_context(state=state,source384_config=config_path,train_autoencoder=False,
+   source384_timeout_seconds=budget["source384_seconds"])
   result['initial_context_seconds']=time.monotonic()-before
   receipt=context['source384_context']
   if len(sys.argv)>1:
@@ -118,14 +123,15 @@ raise SystemExit(0 if result['qualified'] else 1)
 def resource_options(profile):
     if profile is None:
         return {}
-    if profile != SOURCE384_PROFILE:
+    if profile not in PROFILES:
         raise ValueError("unknown benchmark resource profile")
-    return dict(SOURCE384_ENVIRONMENT)
+    return resource_environment(profile)
 
 
 def validate_resource_observation(value, profile):
-    if profile != SOURCE384_PROFILE or type(value) is not dict:
+    if profile not in PROFILES or type(value) is not dict:
         raise ValueError("explicit named Source384 resource observation required")
+    expected = resource_environment(profile)
     fields = {"schema", "cgroup_path", "cpu_max", "memory_max", "detected_cpu_slots",
               "detected_total_memory_mb", "available_memory_mb"}
     if set(value) != fields or value["schema"] != "terminal-source384-cgroup-observation@1":
@@ -133,13 +139,13 @@ def validate_resource_observation(value, profile):
     try:
         quota, period = value["cpu_max"].split()
         exact_cpu = int(period) > 0 and int(quota) == 5 * int(period)
-        exact_memory = int(value["memory_max"]) == SOURCE384_ENVIRONMENT["override_memory_mb"] * MIB
+        exact_memory = int(value["memory_max"]) == expected["override_memory_mb"] * MIB
     except (AttributeError, TypeError, ValueError):
         raise ValueError("finite enforced CPU and memory limits required") from None
     if (not exact_cpu or not exact_memory or type(value["detected_cpu_slots"]) is not int
             or value["detected_cpu_slots"] != 5 or type(value["detected_total_memory_mb"]) is not int
-            or value["detected_total_memory_mb"] != SOURCE384_ENVIRONMENT["override_memory_mb"]
-            or type(value["available_memory_mb"]) is not int or not 0 <= value["available_memory_mb"] <= SOURCE384_ENVIRONMENT["override_memory_mb"]):
+            or value["detected_total_memory_mb"] != expected["override_memory_mb"]
+            or type(value["available_memory_mb"]) is not int or not 0 <= value["available_memory_mb"] <= expected["override_memory_mb"]):
         raise ValueError("actual cgroup limits differ from the named common profile")
     return value
 
@@ -168,7 +174,7 @@ async def observe_resources(environment, *, output, profile):
 async def qualify_context(environment, *, task_dir, output, manifest, profile, intent_requirement_contract=None):
     from .terminal_deployment import ROOT, PYTHON, runtime_environment, validate_source384_binding
     from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import _regular_bytes
-    if profile != SOURCE384_PROFILE or validate_source384_binding(manifest) is None:
+    if profile not in PROFILES or validate_source384_binding(manifest) is None:
         raise ValueError("Source384 qualification requires pinned assets and the explicit common profile")
     output = Path(output)
     raw = _regular_bytes(Path(task_dir).resolve(strict=True) / "instruction.md", 32768)
@@ -193,7 +199,9 @@ async def qualify_context(environment, *, task_dir, output, manifest, profile, i
     instruction.write_bytes(raw)
     await environment.upload_file(instruction, ROOT + "/source384-public-instruction.md")
     response = await environment.exec(command=PYTHON + " -P -c " + shlex.quote(CONTEXT_PROBE) + extra,
-        cwd="/app", user="supervisor", env=runtime_environment(), timeout_sec=300)
+        cwd="/app", user="supervisor",
+        env={**runtime_environment(), **admission_environment(profile), "IPFS_SUPERVISOR_BENCHMARK_PROFILE": profile},
+        timeout_sec=execution_budget(profile)["qualification_exec_seconds"])
     (output / "source384-probe.stdout").write_text(response.stdout or "")
     (output / "source384-probe.stderr").write_text(response.stderr or "")
     (output / "source384-probe-status.json").write_text(json.dumps({"return_code": response.return_code}) + "\n")

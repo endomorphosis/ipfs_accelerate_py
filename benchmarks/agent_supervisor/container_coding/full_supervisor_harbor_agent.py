@@ -1,6 +1,6 @@
 """Harbor adapter for the isolated admitted native supervisor, one task per container.
 
-Cold planning, index construction, and coding share the original agent budget.
+Cold planning, index construction, and coding share the selected agent budget.
 Installation is setup time, measured by Harbor separately for both harnesses.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .terminal_deployment import (
     INTENT_PROJECTION_REQUEST_PATH, INTENT_ACTION_384_CONFIG, validate_intent_action_384_binding,
     SOURCE384_CONFIG, validate_source384_binding,
 )
-from .benchmark_resource_profile import SOURCE384_PROFILE
+from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
@@ -211,8 +211,8 @@ def source384_asset_arguments(manifest, arm, resource_profile=None):
         raise ValueError("unknown Source384 ablation")
     binding = validate_source384_binding(manifest)
     enabled = binding is not None and arm == "full"
-    if enabled and resource_profile != SOURCE384_PROFILE:
-        raise ValueError("Source384 requires the explicit common source384-5cpu-12gib@1 profile")
+    if enabled and resource_profile not in PROFILES:
+        raise ValueError("Source384 requires an explicit common resource profile")
     return (["--source384-config", ROOT + "/" + SOURCE384_CONFIG] if enabled else []), {
         "selected": binding is not None, "enabled": enabled,
         "disabled_reason": "no_index_ablation" if binding is not None and not enabled else None,
@@ -234,7 +234,7 @@ class FullSupervisorAgent(BaseAgent):
         self.auth_json = Path(auth_json or Path.home() / ".codex/auth.json")
         self.arm = arm
         self.model_revision = model_revision
-        if resource_profile not in (None, SOURCE384_PROFILE):
+        if resource_profile not in (None, *PROFILES):
             raise ValueError("unknown benchmark resource profile")
         self.resource_profile = resource_profile
         from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
@@ -280,7 +280,8 @@ class FullSupervisorAgent(BaseAgent):
         if selection is not None:
             self.setup_cache_receipt = await apply_setup_cache_advice(environment,
                 archive_dir=self.runtime_archive, expected=selection,
-                boundary_output=boundary, output=self.logs_dir / "setup-cache")
+                boundary_output=boundary, output=self.logs_dir / "setup-cache",
+                resource_profile=getattr(self, "resource_profile", None))
 
     async def run(self, instruction: str, environment, context: AgentContext):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
@@ -296,9 +297,13 @@ class FullSupervisorAgent(BaseAgent):
         # result and bounded process diagnostics; never download the state tree.
         state = ROOT + "/state/benchmark"
         report_path = state + "-result.json"
+        profile = getattr(self, "resource_profile", None)
+        budget = execution_budget(profile)
         argv = [PYTHON, "-P", "-m", "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor",
                 "--instruction", instruction_path, "--state", state,
-                "--arm", self.arm, "--timeout-seconds", "285"]
+                "--arm", self.arm, "--timeout-seconds", str(budget["driver_seconds"])]
+        if profile is not None:
+            argv += ["--resource-profile", profile]
         requirement_contract = getattr(self, "intent_requirement_contract", None)
         if requirement_contract is not None:
             artifact = self.logs_dir / "intent-requirements.json"
@@ -324,7 +329,8 @@ class FullSupervisorAgent(BaseAgent):
                             "security_model_assets": asset_observation,
                             "intent_model_assets": intent_observation,
                             "source384_assets": source384_observation,
-                            "resource_profile": getattr(self, "resource_profile", None),
+                            "resource_profile": profile, "execution_budget": budget,
+                            "admission_environment": admission_environment(profile),
                             **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
                             "planning_and_cold_index_charged_to_agent_time": True}
         try:
@@ -335,7 +341,8 @@ class FullSupervisorAgent(BaseAgent):
         error = None
         try:
             result = await environment.exec(command=shlex.join(argv), cwd="/app", user="supervisor",
-                                            env=runtime_environment(), timeout_sec=295)
+                                            env={**runtime_environment(), **admission_environment(profile)},
+                                            timeout_sec=budget["exec_seconds"])
             (self.logs_dir / "supervisor.stdout").write_text(result.stdout or "")
             (self.logs_dir / "supervisor.stderr").write_text(result.stderr or "")
             context.metadata["driver_returncode"] = result.return_code

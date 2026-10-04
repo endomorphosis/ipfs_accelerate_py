@@ -188,26 +188,34 @@ def test_manifest_rejects_all_legacy_security_bindings_even_empty(tmp_path, sele
 
 
 @pytest.mark.parametrize('arm', ['full','no-index'])
-def test_actual_harbor_adapter_forwards_only_full_selection(tmp_path, selected, monkeypatch, arm):
+@pytest.mark.parametrize('profile', ['source384-5cpu-12gib@1', 'source384-5cpu-16gib-extended@1'])
+def test_actual_harbor_adapter_forwards_only_full_selection(tmp_path, selected, monkeypatch, arm, profile):
     build(tmp_path, selected)
     from harbor.models.agent.context import AgentContext
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
     monkeypatch.setattr(adapter,'capture_public_inputs',AsyncMock(return_value={}))
     monkeypatch.setattr(adapter,'export_public_outputs',AsyncMock(return_value={}))
+    from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import execution_budget, admission_environment
+    budget = execution_budget(profile)
     commands=[]
     class Environment:
         async def upload_file(self,*args): pass
         async def exec(self,**kwargs):
+            assert kwargs['timeout_sec'] == budget['exec_seconds']
+            for key, value in admission_environment(profile).items():
+                assert kwargs['env'][key] == value
             commands.append(shlex.split(kwargs['command']))
             return SimpleNamespace(stdout='',stderr='',return_code=0)
         async def download_file(self,*args): raise FileNotFoundError
     agent = FullSupervisorAgent(logs_dir=tmp_path/'logs',model_name=benchmark.MODEL,
-        runtime_archive=str(tmp_path/'bundle'),arm=arm,resource_profile=SOURCE384_PROFILE)
+        runtime_archive=str(tmp_path/'bundle'),arm=arm,resource_profile=profile)
     context = AgentContext()
     asyncio.run(agent.run('Public instruction.',Environment(),context))
     assert ('--source384-config' in commands[0]) == (arm == 'full')
     assert context.metadata['source384_assets']['enabled'] == (arm == 'full')
-    assert context.metadata['resource_profile'] == SOURCE384_PROFILE
+    assert context.metadata['resource_profile'] == profile
+    assert commands[0][commands[0].index('--resource-profile') + 1] == profile
+    assert commands[0][commands[0].index('--timeout-seconds') + 1] == str(budget['driver_seconds'])
 
 
 def test_preparation_rejects_implicit_resources_and_binds_exact_config(tmp_path, selected, monkeypatch):

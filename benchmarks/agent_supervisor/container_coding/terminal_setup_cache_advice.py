@@ -18,6 +18,8 @@ import stat
 POLICY = "source384-native-aarch64-dontneed@1"
 POLICIES = (POLICY,)
 ROOT = "/opt/ipfs-supervisor"
+# Keep this helper self-contained: it also runs under an isolated file loader.
+RESOURCE_PROFILES = ("source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1")
 PROFILE = "source384-5cpu-12gib@1"
 MAX_MANIFEST = 8 * 1024**2
 MAX_HELPER = 65536
@@ -175,7 +177,7 @@ def validate_setup_cache_prerequisites(expected, *, install_codex, auth_json,
     if expected is None:
         return
     _selection_shape(expected)
-    if (install_codex is not True or arm != "full" or resource_profile != PROFILE
+    if (install_codex is not True or arm != "full" or resource_profile not in RESOURCE_PROFILES
             or platform.machine() != "aarch64"):
         raise ValueError("selected cache policy requires full Source384, aarch64 Codex and common resources")
     if auth_json is None:
@@ -224,11 +226,14 @@ for name,path,body in compiled:
 '''
 
 
-async def apply_setup_cache_advice(environment, *, archive_dir, expected, boundary_output, output):
+async def apply_setup_cache_advice(environment, *, archive_dir, expected, boundary_output, output,
+                                   resource_profile=PROFILE):
     """After worker-boundary setup, advise three closed public populations."""
     manifest, binding = validate_setup_cache_selection(archive_dir, expected)
     if binding is None:
         return None
+    if resource_profile not in RESOURCE_PROFILES:
+        raise ValueError("unknown setup cache resource profile")
     from .terminal_setup_cache_codex import require_receipt
     from .terminal_deployment import PYTHON
     receipt_path = Path(boundary_output) / "installation/native-codex-binary.log"
@@ -326,7 +331,7 @@ async def apply_setup_cache_advice(environment, *, archive_dir, expected, bounda
         report["native_libraries"] = libraries
         report["phase"] = "resource_observation"
         from .terminal_source384_qualification import observe_resources
-        report["resources"] = await observe_resources(environment, output=output, profile=PROFILE)
+        report["resources"] = await observe_resources(environment, output=output, profile=resource_profile)
         report.update(completed=True, phase="complete")
         return report
     except BaseException as exc:

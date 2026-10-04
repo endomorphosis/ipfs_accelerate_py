@@ -176,7 +176,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             security_checkpoint_hub: dict | None = None,
                             formula_decoder: dict | None = None,
                             header_protocol: dict | None = None,
-                            source384_config: Path | None = None) -> dict:
+                            source384_config: Path | None = None, source384_timeout_seconds: float = 90.) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
@@ -244,6 +244,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         source384 = prepare_source384_context(repository=root,
             source_hashes={name: source["sha256"] for name, source in manifest["sources"].items()},
             output=state / "source384-context", config_path=source384_config,
+            timeout_seconds=source384_timeout_seconds,
             **({"intent_binding": {"contract": prepared["intent_requirement_contract"],
                 "manifest_cid": content_identity(prepared["manifest"])}} if header_intent else {}))
         timings["source384_capture_and_inference"] = time.monotonic() - stage

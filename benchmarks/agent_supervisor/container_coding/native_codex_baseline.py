@@ -68,7 +68,8 @@ def _task_hashes(task: Path) -> dict:
 
 
 def config_for(dataset: Path, output: Path, *, resource_profile=None) -> dict:
-    from .benchmark_resource_profile import apply_resource_profile
+    from .benchmark_resource_profile import apply_resource_profile, execution_budget
+    budget = execution_budget(resource_profile)
     return apply_resource_profile({
         "job_name": "native-codex-" + TASK,
         "jobs_dir": str(output / "jobs"),
@@ -82,8 +83,8 @@ def config_for(dataset: Path, output: Path, *, resource_profile=None) -> dict:
             {
                 "name": "codex",
                 "model_name": MODEL,
-                "override_timeout_sec": 300.0,
-                "max_timeout_sec": 300.0,
+                "override_timeout_sec": float(budget["harbor_seconds"]),
+                "max_timeout_sec": float(budget["harbor_seconds"]),
                 "override_setup_timeout_sec": 1800.0,
                 "kwargs": {"version": CLI_VERSION, "reasoning_effort": REASONING},
                 "env": {"CODEX_AUTH_JSON_PATH": str(Path.home() / ".codex/auth.json")},
@@ -161,7 +162,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         "model": MODEL,
         "reasoning_effort": REASONING,
         "cli_version": CLI_VERSION,
-        "agent_timeout_seconds": 300,
+        "agent_timeout_seconds": wire["agents"][0]["override_timeout_sec"],
         "attempts": 1,
         "max_retries": 0,
         "concurrency": 1,
@@ -180,7 +181,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         "usage": {name: None for name in TOKEN_FIELDS},
         "official_codex_config_reference": "https://learn.chatgpt.com/docs/config-file/config-reference",
         "notes": [
-            "300 seconds bounds the native agent execution phase; environment build, CLI install, and original verifier are measured separately.",
+            f"{wire['agents'][0]['override_timeout_sec']:g} seconds bounds the native agent execution phase; environment build, CLI install, and original verifier are measured separately.",
             "Container installation uses Harbor's native version pin and is not exercised by dry-run.",
             "This is one selected task and one trial, not a Terminal-Bench score or an advantage measurement.",
         ],
@@ -335,6 +336,8 @@ def _elapsed(record) -> float | None:
 
 def collect(output: Path) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
+    from .benchmark_resource_profile import execution_budget
+    budget = execution_budget(prepared.get("resource_profile"))
     recovered = _historical_redaction_literal(output, prepared)
     job = output / "jobs" / ("native-codex-" + TASK)
     rows = []
@@ -349,8 +352,8 @@ def collect(output: Path) -> dict:
             and not agent.get("import_path")
             and agent.get("model_name") == MODEL
             and agent.get("kwargs") == {"version": CLI_VERSION, "reasoning_effort": REASONING}
-            and agent.get("override_timeout_sec") == 300
-            and agent.get("max_timeout_sec") == 300
+            and agent.get("override_timeout_sec") == budget["harbor_seconds"]
+            and agent.get("max_timeout_sec") == budget["harbor_seconds"]
             and not (config.get("verifier") or {}).get("disable", True)
         )
         rows.append(

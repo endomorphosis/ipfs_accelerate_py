@@ -1185,14 +1185,14 @@ async def qualify_original_container(
     from harbor.models.task.task import Task
     from harbor.models.trial.paths import TrialPaths
     from .terminal_source384_qualification import resource_options, observe_resources, qualify_context
-    from .benchmark_resource_profile import SOURCE384_PROFILE
+    from .benchmark_resource_profile import PROFILES
 
     options = resource_options(resource_profile)
     if type(source384_context) is not bool:
         raise ValueError("Source384 context qualification switch must be boolean")
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
     verify_torch_cpu_wheel_archive(Path(archive_dir) / "runtime.tar.gz", manifest)
-    if source384_context and (resource_profile != SOURCE384_PROFILE or validate_source384_binding(manifest) is None):
+    if source384_context and (resource_profile not in PROFILES or validate_source384_binding(manifest) is None):
         raise ValueError("Source384 qualification requires pinned assets and the explicit common profile")
 
     from .full_supervisor_benchmark import (
@@ -1248,7 +1248,7 @@ async def qualify_original_container(
             await deploy_worker_boundary(environment, output=boundary)
             report["setup_cache"] = await apply_setup_cache_advice(environment,
                 archive_dir=archive_dir, expected=setup_cache_selection,
-                boundary_output=boundary, output=output / "setup-cache")
+                boundary_output=boundary, output=output / "setup-cache", resource_profile=resource_profile)
         if not selected:
             return deployment
         report["deployment"] = deployment

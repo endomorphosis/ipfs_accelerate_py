@@ -66,9 +66,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             validate_resource_profile(config, kwargs["resource_profile"])
         if "setup_cache_selection" in kwargs:
             from .terminal_setup_cache_advice import _selection_shape
-            from .benchmark_resource_profile import SOURCE384_PROFILE
+            from .benchmark_resource_profile import PROFILES
             _selection_shape(kwargs["setup_cache_selection"])
-            if kwargs.get("arm") != "full" or kwargs.get("resource_profile") != SOURCE384_PROFILE:
+            if kwargs.get("arm") != "full" or kwargs.get("resource_profile") not in PROFILES:
                 raise ValueError("setup cache selection requires the full arm and supported resource profile")
             # The complete configuration digest below binds this adapter-specific
             # selection. Common-control equality does not prove equal setup work.
