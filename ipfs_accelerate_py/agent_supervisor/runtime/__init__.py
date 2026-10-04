@@ -43,6 +43,7 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "learning_checkpoint",
     "operational_campaign",
     "multi_supervisor_runner",
+    "operational_campaign",
     "provider_batch_scheduler",
     "provider_command_binding",
     "provider_command_environment",
