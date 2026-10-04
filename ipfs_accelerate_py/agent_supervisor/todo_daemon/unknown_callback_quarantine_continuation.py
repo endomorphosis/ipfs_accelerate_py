@@ -80,6 +80,21 @@ def admits_owner_continuation(task: Any) -> bool:
     )
 
 
+def is_successor_admitted_unknown_retrying(task: Any) -> bool:
+    """True when a continuation already preserved UNKNOWN and is retrying."""
+
+    receipt = _receipt(task)
+    if receipt is None or _status(task) != "retrying":
+        return False
+    return bool(
+        receipt.get("operation") == OPERATION
+        and receipt.get("successor_attempt_admitted") is True
+        and receipt.get("unknown_preserved") is True
+        and receipt.get("completion_authoritative") is False
+        and receipt.get("history_rewritten") is False
+    )
+
+
 def dual_identity_observation(task: Any) -> dict[str, Any]:
     return {
         "task_cid": str(getattr(task, "task_cid", "") or ""),

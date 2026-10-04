@@ -3510,7 +3510,55 @@ class TypedDatabaseTaskSource:
                 )
                 continue
             try:
-                if row is not None and int(row["attempt"]) > int(payload["attempt_number"]):
+                control = (
+                    task.body.get("completion_receipt")
+                    if isinstance(task.body, Mapping)
+                    else None
+                )
+                continuation_retrying = bool(
+                    isinstance(control, Mapping)
+                    and control.get("operation")
+                    == "database_unknown_callback_quarantine_continuation"
+                    and control.get("successor_attempt_admitted") is True
+                    and control.get("unknown_preserved") is True
+                    and control.get("completion_authoritative") is False
+                )
+                prior_attempt = 0
+                if row is not None:
+                    try:
+                        prior_attempt = int(row["attempt"])
+                    except (TypeError, ValueError):
+                        prior_attempt = 0
+                if continuation_retrying and prior_attempt >= int(
+                    payload["attempt_number"]
+                ):
+                    bumped = dict(control)
+                    bumped["attempt_number"] = prior_attempt + 1
+                    bumped["control_expected_revision"] = int(task.revision)
+                    bumped["backoff_ms"] = 0
+                    cas = self.compare_and_set_status(
+                        task.task_cid,
+                        int(task.revision),
+                        "retrying",
+                        bumped,
+                        expected_control_receipt=control,
+                    )
+                    updated = getattr(cas, "task", None) or self.get(task.task_cid)
+                    if updated is None:
+                        raise TaskSourceIntegrityError(
+                            "continuation cooldown bump did not persist"
+                        )
+                    task = updated
+                    payload = self._retrying_cooldown_repair_payload(task)
+                    if payload is None:
+                        raise TaskSourceIntegrityError(
+                            "continuation cooldown bump is not a typed retry payload"
+                        )
+                elif (
+                    not continuation_retrying
+                    and row is not None
+                    and int(row["attempt"]) > int(payload["attempt_number"])
+                ):
                     from .retained_callback_cooldown import (
                         build_binding,
                         payload_from_binding,
