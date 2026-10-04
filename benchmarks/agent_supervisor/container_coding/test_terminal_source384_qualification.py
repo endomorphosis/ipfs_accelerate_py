@@ -1,6 +1,7 @@
 """Qualification orchestration controls; Docker execution is explicitly mocked."""
 import asyncio
 from copy import deepcopy
+from pathlib import Path
 import json
 import hashlib
 from types import SimpleNamespace
@@ -164,3 +165,60 @@ def test_probe_receipt_matches_relocated_assets_and_actual_archive_producers(tmp
     assert env['IPFS_SUPERVISOR_BENCHMARK_PROFILE']==profile
     for key,value in admission_environment(profile).items(): assert env[key]==value
     assert environment.exec.call_args.kwargs['user']=='supervisor'
+
+
+@pytest.mark.parametrize('selection', ['no_source384', 'ordinary_profile', 'explicit'])
+def test_warm_recovery_selection_at_canonical_caller(docker_boundary, selection):
+    from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import EXTENDED_SOURCE384_PROFILE
+    from benchmarks.agent_supervisor.container_coding.terminal_source384_warm_recovery import POLICY
+    args, calls, env, _ = docker_boundary
+    options = dict(resource_profile=EXTENDED_SOURCE384_PROFILE, source384_context=True,
+        source384_warm_recovery=POLICY)
+    if selection == 'no_source384': options['source384_context'] = False
+    elif selection == 'ordinary_profile': options['resource_profile'] = SOURCE384_PROFILE
+    else:
+        record = observation()
+        record.update(memory_max=str(16384*1024*1024), detected_total_memory_mb=16384)
+        qualify.observe_resources.return_value = record
+    if selection == 'explicit':
+        asyncio.run(deploy.qualify_original_container(**args, **options))
+        assert qualify.qualify_context.call_args.kwargs['source384_warm_recovery'] == POLICY
+        env.stop.assert_awaited_once_with(delete=True)
+    else:
+        with pytest.raises(ValueError):
+            asyncio.run(deploy.qualify_original_container(**args, **options))
+        assert not calls and not args['output'].exists()
+
+
+@pytest.mark.parametrize('mutation', [None, 'policy', 'producer', 'status', 'missing'])
+def test_canonical_probe_checks_selected_warm_policy_and_producer(tmp_path, selected, mutation):
+    from benchmarks.agent_supervisor.container_coding import terminal_source384_warm_recovery as warm
+    from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import EXTENDED_SOURCE384_PROFILE
+    manifest = build(tmp_path, selected)
+    task = tmp_path/'task'; task.mkdir(); (task/'instruction.md').write_text('Public input only.')
+    output = tmp_path/'output'; output.mkdir()
+    digest = hashlib.sha256(Path(warm.__file__).read_bytes()).hexdigest()
+    manifest['files'].append(dict(path='source/benchmarks/agent_supervisor/container_coding/terminal_source384_warm_recovery.py', sha256=digest))
+    receipt = dict(schema=warm.SCHEMA, policy=warm.POLICY, resource_profile=EXTENDED_SOURCE384_PROFILE,
+        policy_source_sha256=digest, selected_seconds=180., effective_seconds=180., max_attempts=2,
+        per_attempt_max_seconds=90., backoff_max_seconds=5., backoff_seconds=0., backoff_requested_seconds=0.,
+        attempts=[dict(attempt=1, timeout_seconds=90., elapsed_seconds=1., status='validated')],
+        status='validated', elapsed_seconds=1., timing_scope='complete_validation_calls_and_explicit_backoff',
+        admission_execution_split_measured=False, inference_replayed=False)
+    if mutation == 'policy': receipt['policy'] = None
+    elif mutation == 'producer': receipt['policy_source_sha256'] = '0'*64
+    elif mutation == 'status': receipt['status'] = 'failed'
+    result = dict(qualified=True, warm_observation=receipt)
+    if mutation == 'missing': result.pop('warm_observation')
+    async def download(source, destination):
+        assert source == qualify.RESULT_PATH
+        destination.write_text(json.dumps(result))
+    environment = SimpleNamespace(download_file=download, upload_file=AsyncMock(),
+        exec=AsyncMock(return_value=SimpleNamespace(stdout='', stderr='', return_code=0)))
+    # A valid warm receipt reaches the independent identity check; malformed warm
+    # receipts must be rejected before that later check, not accepted as success.
+    with pytest.raises(ValueError, match='identity or scope differs' if mutation is None else
+            'warm|Source384|producer'):
+        asyncio.run(qualify.qualify_context(environment, task_dir=task, output=output,
+            manifest=manifest, profile=EXTENDED_SOURCE384_PROFILE, source384_warm_recovery=warm.POLICY))
+    assert environment.exec.call_args.kwargs['env'][warm.ENVIRONMENT_KEY] == warm.POLICY

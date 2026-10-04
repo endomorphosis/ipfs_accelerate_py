@@ -80,7 +80,10 @@ try:
   inference_key=inference['report']['key']
   del raw,inference
   phase='warm_observation';phase_started=before=time.monotonic()
-  validate_source384_context(repository=root,expected_receipt=receipt)
+  from benchmarks.agent_supervisor.container_coding.terminal_source384_warm_recovery import observe_warm_context, ENVIRONMENT_KEY
+  warm_policy=os.environ.get(ENVIRONMENT_KEY,'none')
+  result['warm_observation']=observe_warm_context(repository=root,expected_receipt=receipt,profile=profile,
+   policy=None if warm_policy=='none' else warm_policy,deadline_monotonic=started+budget['qualification_seconds'])
   result['warm_observation_seconds']=time.monotonic()-before
   result.update(qualified=True,checkpoint_sha256=receipt['checkpoint_sha256'],
    config_sha256=receipt['config_sha256'],config_path=receipt['config_path'],
@@ -96,6 +99,8 @@ except BaseException as exc:
  import traceback
  traceback.print_exc(file=sys.stderr,limit=20)
  result.update(error_type=type(exc).__name__,error=str(exc)[:2048],error_phase=phase,phase_seconds=time.monotonic()-phase_started)
+ if phase=='warm_observation' and hasattr(exc,'source384_warm_observation'):
+  result['warm_observation']=exc.source384_warm_observation
  try:
   from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
   from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import project_failure_resources
@@ -171,8 +176,11 @@ async def observe_resources(environment, *, output, profile):
     return observed
 
 
-async def qualify_context(environment, *, task_dir, output, manifest, profile, intent_requirement_contract=None):
+async def qualify_context(environment, *, task_dir, output, manifest, profile, intent_requirement_contract=None,
+                          source384_warm_recovery=None):
     from .terminal_deployment import ROOT, PYTHON, runtime_environment, validate_source384_binding
+    from .terminal_source384_warm_recovery import validate_selection, ENVIRONMENT_KEY
+    validate_selection(profile, source384_warm_recovery)
     from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import _regular_bytes
     if profile not in PROFILES or validate_source384_binding(manifest) is None:
         raise ValueError("Source384 qualification requires pinned assets and the explicit common profile")
@@ -200,7 +208,8 @@ async def qualify_context(environment, *, task_dir, output, manifest, profile, i
     await environment.upload_file(instruction, ROOT + "/source384-public-instruction.md")
     response = await environment.exec(command=PYTHON + " -P -c " + shlex.quote(CONTEXT_PROBE) + extra,
         cwd="/app", user="supervisor",
-        env={**runtime_environment(), **admission_environment(profile), "IPFS_SUPERVISOR_BENCHMARK_PROFILE": profile},
+        env={**runtime_environment(), **admission_environment(profile), "IPFS_SUPERVISOR_BENCHMARK_PROFILE": profile,
+             ENVIRONMENT_KEY: source384_warm_recovery or "none"},
         timeout_sec=execution_budget(profile)["qualification_exec_seconds"])
     (output / "source384-probe.stdout").write_text(response.stdout or "")
     (output / "source384-probe.stderr").write_text(response.stderr or "")
@@ -209,6 +218,14 @@ async def qualify_context(environment, *, task_dir, output, manifest, profile, i
     await environment.download_file(RESULT_PATH, report_path)
     result = json.loads(_regular_bytes(report_path.resolve(strict=True), MAX_RESULT_BYTES))
     (output / "source384-context.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    if "warm_observation" in result or (source384_warm_recovery is not None and result.get("qualified") is True):
+        from .terminal_source384_warm_recovery import validate_observation
+        producer = "source/benchmarks/agent_supervisor/container_coding/terminal_source384_warm_recovery.py"
+        pinned = {row["path"]: row["sha256"] for row in manifest["files"]}.get(producer)
+        validate_observation(result.get("warm_observation"), profile=profile,
+            policy=source384_warm_recovery, producer_sha256=pinned)
+        if result.get("qualified") is True and result["warm_observation"]["status"] != "validated":
+            raise ValueError("qualified context requires successful warm observation")
     if response.return_code or result.get("qualified") is not True:
         raise ValueError("original-container Source384 qualification failed; see retained receipt")
     if (type(result.get("provider_calls")) is not int or result["provider_calls"] != 0

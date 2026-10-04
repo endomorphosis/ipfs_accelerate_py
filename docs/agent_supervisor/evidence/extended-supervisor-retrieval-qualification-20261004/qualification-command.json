@@ -1,0 +1,47 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-B",
+    "<EVIDENCE_ROOT>/run_qualification.py"
+  ],
+  "cwd": "<ACCELERATE_CHECKOUT>",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>:<WORKSPACE>/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:<HOME>/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "excluded_environment_entries": 0,
+  "metadata": {
+    "admission_sha256": "a9e21ce07868a26bc8fd5c942994007156971921a36668982052375299e8a9fe",
+    "benchmark_result": false,
+    "build_audit_sha256": "a38715cd3909f6eabdfaf72dbac7aa0b605ca6becb682cb913cd7859cf9b7331",
+    "cache_policy": "source384-native-aarch64-dontneed@1",
+    "credential_contents_recorded": false,
+    "diagnostic_only": false,
+    "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+    "later_full_harbor_setup_seconds": 1800,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualification_aggregate_setup_timeout": null,
+    "qualification_exec_seconds": 630,
+    "qualification_inner_seconds": 600,
+    "qualification_outer_seconds": 2600,
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "reviewed_input_receipt_sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded",
+    "runtime_hooks_installed": false,
+    "script_sha256": "8cc408f6144e416f7e4655260dfa6fb7c0bc0aedb86b6fa56cfc99146340a2c6",
+    "selected_archive_sha256": "26e301c0194ba291413b8a9add97d35919644eb61c2f5a2daf7a7ec8457653cf",
+    "selected_manifest_sha256": "e0718430a29d58fd1dd9355532f255ade774dd87a3f348dc6a119f0a6750b17a",
+    "setup_operation_timeouts_unchanged": true,
+    "solver_discovery_sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42",
+    "source384_native_seconds": 180
+  },
+  "original_record_bytes_exported": false,
+  "schema": "bounded-command-projection@1"
+}

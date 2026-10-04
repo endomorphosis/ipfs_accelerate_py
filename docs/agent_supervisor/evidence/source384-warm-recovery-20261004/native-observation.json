@@ -1,0 +1,74 @@
+{
+  "actual_host_pressure_induced": false,
+  "initial_model_loads": 1,
+  "initial_preparation_seconds": 9.935961376002524,
+  "leases_after": 0,
+  "telemetry": "authored_memory_stall_11_percent_then_zero",
+  "waiting_after": 0,
+  "warm_model_loads": 0,
+  "warm_observation": {
+    "admission_execution_split_measured": false,
+    "attempts": [
+      {
+        "admission": {
+          "causal_proof": false,
+          "complete_admission_decision": false,
+          "last_sample": {
+            "additional_request_memory_mb": 6144,
+            "host": {
+              "available_memory_mb": 16384,
+              "cpu_stall_percent": 0.0,
+              "io_stall_percent": 0.0,
+              "memory_stall_percent": 11.0
+            },
+            "observed_at": 1791125718.2079117,
+            "reason": "proof_memory_stall",
+            "reserved_root_memory_mb": 0,
+            "thresholds": {
+              "cpu_stall_percent": 50.0,
+              "io_stall_percent": 10.0,
+              "memory_headroom_mb": 3277,
+              "memory_stall_percent": 10.0
+            }
+          },
+          "observation_boundary": "request_primary_gate",
+          "primary_gate": {
+            "backoff_until": 1791125720.2079117,
+            "observed_at": 1791125720.1844687,
+            "reason": "proof_memory_stall",
+            "status": "backoff"
+          },
+          "schema": "terminal-admission-failure-observation@1",
+          "status": "observed",
+          "terminal": "timeout"
+        },
+        "attempt": 1,
+        "elapsed_seconds": 90.00814299698686,
+        "error_type": "LeaseTimeoutError",
+        "status": "memory_admission_timeout",
+        "timeout_seconds": 90.0
+      },
+      {
+        "attempt": 2,
+        "elapsed_seconds": 1.1138802790082991,
+        "status": "validated",
+        "timeout_seconds": 84.99149029797991
+      }
+    ],
+    "backoff_max_seconds": 5.0,
+    "backoff_requested_seconds": 5.0,
+    "backoff_seconds": 5.000091625988716,
+    "effective_seconds": 179.99998668799526,
+    "elapsed_seconds": 96.12238103701384,
+    "inference_replayed": false,
+    "max_attempts": 2,
+    "per_attempt_max_seconds": 90.0,
+    "policy": "source384-warm-admission-recovery@1",
+    "policy_source_sha256": "1eb0e8527dc8189286de65a678ef37f8d980c40fecb38dac37bd1091050fedc9",
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "schema": "source384-qualification-warm-observation@1",
+    "selected_seconds": 180.0,
+    "status": "validated",
+    "timing_scope": "complete_validation_calls_and_explicit_backoff"
+  }
+}

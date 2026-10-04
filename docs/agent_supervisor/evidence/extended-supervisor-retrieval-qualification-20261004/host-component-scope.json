@@ -1,0 +1,29 @@
+{
+  "all_required_current_selected_host_controls_passed": true,
+  "all_selected_test_invocations_passed": true,
+  "current_checkpoint_flow_requires_actual_docker_qualification": true,
+  "current_component_review_sha256": "fdb2176b9e8922ece45d20fcb0b6f33afc68f995a8843be4cd3780b4677d0ea6",
+  "current_control_limitations": [
+    "Current33 is the distinct union of four passing invocations (35 executions), not a rerun of the historical203 scope.",
+    "The new full-model post-publication refresh case uses lexical retrieval. Existing actual MiniLM tests do not establish the new historical learned full-model path.",
+    "Source384 successor remains advice only, with no inherited nomination, proof, planning, dispatch, execution or completion authority.",
+    "No new Docker qualification, task score, token or throughput advantage is inferred from these controls."
+  ],
+  "current_distinct_passing_cases": 33,
+  "current_skipped_cases": [],
+  "full_task_score_claimed": false,
+  "historical_baseline_failures_retained": true,
+  "historical_component_scopes": [
+    "U 203 distinct affected controls remain historical and are not added to current 33. Unchanged historical owner pins are checked; changed runtime, retrieval owners and native test are superseded explicitly.",
+    "V official reward1/completed task remains tied to its unchanged U archive; post-publication refresh was unavailable with ValueError.",
+    "The actual pre-fix lexical failure and the phase-field baseline failure remain retained in the sealed component packages."
+  ],
+  "historical_outcomes_counted_as_current": false,
+  "passed_scopes": [
+    "14 historical retrieval selector/pin/tamper controls plus one actual pinned checkpoint/GTE, Z3, native publication/completion and lexical successor case.",
+    "13 existing lexical/learned retrieval controls, including actual offline MiniLM; two identities overlap the 14-case scope and count once.",
+    "Seven bounded refresh failure-phase controls; authored boundary failures exercise the actual runtime observation routing without neural inference."
+  ],
+  "resource_blocked_scopes": [],
+  "unresolved_code_or_test_packaging_failures": []
+}

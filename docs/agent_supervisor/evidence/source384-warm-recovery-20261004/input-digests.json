@@ -1,0 +1,64 @@
+{
+  "exporter_sha256": "020ba6960bfdd6ca53989b8ede4b60934a636472deba340ade914ff9e24d9173",
+  "inputs": {
+    "fast-01": {
+      "command.json": {
+        "bytes": 6591,
+        "sha256": "1062075f124e309df5d0a0aed109e2b94fe2ea158838902035c40731c2ed33ec"
+      },
+      "exit.json": {
+        "bytes": 4591,
+        "sha256": "2f103062e252a829a984d03f2d8f9e010612405bf24c0088d5b3b9619cc2641f"
+      },
+      "results.xml": {
+        "bytes": 12668,
+        "sha256": "da356ad556ec3c52cf9f68f5a61e4dcbf646677a0ba3a8f8e872c3f5a43c342c"
+      }
+    },
+    "final-caller-01": {
+      "command.json": {
+        "bytes": 6330,
+        "sha256": "7bd88997a15f99351bce0da20def4cca2f7b5d4f705580551f6b99b25c5a3c82"
+      },
+      "exit.json": {
+        "bytes": 4421,
+        "sha256": "b54dbd372b1051121e7683f5ea334590835c556a724738dc02a5f05bc2f5cd30"
+      },
+      "results.xml": {
+        "bytes": 10857,
+        "sha256": "c6638742e52f34daaeea49f2316fa811a276dfae3c787c2a88ca6258608ae895"
+      }
+    },
+    "final-fast-01": {
+      "command.json": {
+        "bytes": 6933,
+        "sha256": "1e8bb4ab1b7b55c6577fd4d6c3ec6273cd43cb01f228e1a3ac8613d13f0453ee"
+      },
+      "exit.json": {
+        "bytes": 4897,
+        "sha256": "dfc2ed8c34bd8d33b98132e2846df7b1f162567848dc60c71371933ac489a947"
+      },
+      "results.xml": {
+        "bytes": 8845,
+        "sha256": "3f2d02f3fcbabf3aab7c8df58ef30962ba8416b719986b5491351c4e01d1528d"
+      }
+    },
+    "native-01": {
+      "command.json": {
+        "bytes": 6180,
+        "sha256": "ef4110059507e7a1a727ba91be1effd76293763b1ebee189ce3e624cef64b7ac"
+      },
+      "exit.json": {
+        "bytes": 4421,
+        "sha256": "de96fc5d9c0f80220d96958643b720566c236783a0fc6a1648648c193c8d0740"
+      },
+      "results.xml": {
+        "bytes": 3276,
+        "sha256": "51776132bdc944c122384dca59d3f9bb65b6c8f7ac4fafbf47a67b859e523259"
+      }
+    }
+  },
+  "raw_xml_bodies_exported": false,
+  "schema": "bounded-test-evidence-inputs@1",
+  "stdout_exported": false
+}

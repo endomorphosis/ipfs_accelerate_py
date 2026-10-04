@@ -1291,3 +1291,83 @@ pass 13 cases, including actual offline MiniLM inference. Two lexical cases over
 the primary group, leaving 26 distinct retrieval controls and seven phase controls
 for this correction. These qualify the changed runtime/retrieval owners; the
 earlier 203-case generation remains historical with those pins superseded.
+
+The [fresh corrected-generation qualification](../../../docs/agent_supervisor/evidence/extended-supervisor-retrieval-qualification-20261004/README.md)
+verifies all 27,214 archive members and 12,013 repository pins, but fails before
+an official trial. Deployment qualifies in 160.977 seconds and initial context
+completes in 123.797 seconds. The separate warm observation then reaches its
+90-second deadline waiting for a child resource lease, before AST reads. Its
+attached primary diagnostic records memory-pressure backoff: host pressure is
+10.70%, above the unchanged 10% gate, while visible cgroup pressure is zero and
+sampled memory capacity is sufficient. This identifies the final admission
+refusal; it does not identify the external source of pressure or every earlier
+wait cause. The after-unwind sample is kept separate.
+
+Qualification takes 448.553 seconds (controller 449.799). Source and public-input
+pins are unchanged, container cleanup is verified, and Leanstral is restored
+with model readiness. The 138-sample pressure summary is observational. There
+is no new official score and no Docker qualification of the successor correction.
+
+An explicit qualification-only recovery selection is now available with
+`--source384-context`, the extended 16-GiB profile, and
+`--source384-warm-recovery source384-warm-admission-recovery@1`.
+It permits at most two read-only warm observations, each capped at 90 seconds,
+within one 180-second envelope shortened by the original 600-second probe deadline.
+A requested delay of at most five seconds is charged to that same envelope.
+Only an exact native lease timeout with a valid attached memory-pressure refusal
+above the unchanged 10% limit is eligible. Source errors, cancellation and other
+refusals propagate. Normal qualification retains one 90-second observation.
+
+The selected receipt is copied independently before the first attempt. Each
+attempt revalidates its immutable assets and current source; context preparation
+and model inference are not retried. A closed receipt retains the first refusal,
+both call durations, requested and observed backoff, and the helper's archive
+identity. It does not pretend to separate admission time from validation work.
+This option does not extend the supervisor's 840-second work cutoff or add
+runtime retry authority. A fresh scored run remains necessary.
+
+[Recovery controls](../../../docs/agent_supervisor/evidence/source384-warm-recovery-20261004/README.md)
+pass 97 distinct cases: 46 helper/probe/report cases, 50 canonical caller controls
+with mocked Docker boundaries, and one real checkpoint/native scheduler control.
+The native control presents authored 11% pressure for 91 real seconds, observes
+the first 90-second admission timeout, then completes validation without another
+neural worker. Leases and waiters are zero afterward. It demonstrates elapsed
+recovery under controlled telemetry, not recovery from observed host pressure.
+The original fixture-identity failure and a metadata-export alphabet correction
+remain retained. No new Docker outcome is inferred from these component passes.
+
+The [fresh full-supervisor result](../../../docs/agent_supervisor/evidence/extended-supervisor-pressure-recovery-20261004/README.md)
+now joins successful official execution and successor preparation. Archive
+`d2df28070b67f9781d2e4ae6f85ea01fee0f9184c7f826ac7856f5b3763eb333`
+uses accelerate `06374d16ff31de087f8393943b8fda5dcce97fa4` and deliberately
+retains the earlier datasets revision. Its audit covers 27,215 members and
+12,014 repository pins. The current gate binds 130 distinct cases from the
+97 recovery and 33 retrieval/phase controls on unchanged owners; this does
+not rerun or promote the historical 203-case generation.
+
+Qualification succeeds in 398.961 seconds. Warm validation takes 8.898 seconds
+on its first attempt, so the selected recovery policy does not retry on this
+host run. The original pressure gates and source-validation deadlines remain
+unchanged. Trial `fix-code-vulnerability__SprAG9j` scores **1.0**, reports
+`task_completed=true` and native completed revision 4, and leaves zero managed
+processes after successful START/STOP. Official agent execution takes
+610.634 seconds, including 160.933 seconds of post-publication context refresh.
+Initial context contains 426 indexed symbols and 531 capsules. Symbolic
+planning produces two goals and one task; one Doctor invocation yields a
+checked local `reject-control-preserve-safe` contract.
+
+The refreshed Source384 successor executes a fresh native inference worker
+with one model load and returns `current_advice` for the new source head.
+It preserves 220 indexed paths and records one declared output outside that
+scope. The predecessor nomination is not inherited: an independent manifest
+is still required for successor admission, and all advice authority remains
+false. The vector retrieval lane remains lexical. Neural source semantics,
+all SecurityIR obligations and whole-program correctness are not proved.
+
+There are zero recorded provider invocations, but preparation/review token
+costs are unavailable. No matched native Codex or no-index trial accompanies
+this result. The earlier run with failed refresh performed less work and is
+not a matched speed baseline. Leanstral is restored active/running with HTTP
+readiness; 305 pressure samples are retained. The exact source commit's Docs
+Gates job did not start because GitHub reported a billing lock. RPI-019/020
+remain open for the broader acceptance matrix and matched comparisons.
