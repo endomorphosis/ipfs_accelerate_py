@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextvars import ContextVar
 import base64
 import fcntl
 import fnmatch
@@ -3805,6 +3806,9 @@ class ImplementationDiagnosticReceipt:
         return result
 
 
+_source384_callback_deadline = ContextVar("source384_callback_deadline", default=None)
+
+
 class ImplementationRetryDeferred(RuntimeError):
     """A typed retry lifecycle stop raised before provider dispatch."""
 
@@ -3812,6 +3816,18 @@ class ImplementationRetryDeferred(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.backoff_seconds = backoff_seconds
+
+
+class Source384ResourceDeferred(ImplementationRetryDeferred):
+    """Native resource refusal before a nominated context can be dispatched."""
+
+    def __init__(self, *, admission, task_id, task_cid, context_sha256):
+        from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        super().__init__(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5)
+        self.receipt = _source384_deferral(dict(schema="source384-context-no-dispatch@1",
+            phase="prompt_context", task_id=task_id, task_cid=task_cid,
+            context_sha256=context_sha256, admission=admission))
+        self.admission = self.receipt["admission"]
 
 
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
@@ -20696,20 +20712,32 @@ class PortalImplementationDaemon:
                 result["active_task_cleared"] = owns_idle_projection
                 self._record_event("implementation_retry_deferred", result)
             finally:
-                self._release_implementation_resource_claims(
+                resource_paths = [path for path, _metadata in acquired_resource_claims]
+                resources_released = self._release_implementation_resource_claims(
                     acquired_resource_claims
                 )
                 acquired_resource_claims = []
-                if not self._release_implementation_task_claim(
+                task_released = self._release_implementation_task_claim(
                     task_claim_path,
                     task_claim_metadata,
-                ):
+                )
+                if not task_released:
                     logger.warning(
                         "Refusing to remove implementation task claim no "
                         "longer owned by this attempt: %s",
                         task_claim_path,
                     )
                 acquired_task_claim = False
+                if type(exc) is Source384ResourceDeferred:
+                    # A retained protected fence or foreign claim is not a
+                    # completed no-effect cleanup, even if release returned True.
+                    if (resources_released is not True or task_released is not True
+                            or task_claim_path.exists() or task_claim_path.is_symlink()
+                            or any(path.exists() or path.is_symlink() for path in resource_paths)):
+                        raise RuntimeError("Source384 no-dispatch cleanup was not completed") from exc
+            if type(exc) is Source384ResourceDeferred:
+                result.update(deferred=True, provider_call_allowed=False,
+                              source384_resource_deferral=dict(exc.receipt))
             return result
         except BaseException:
             try:
@@ -61817,12 +61845,38 @@ class PortalImplementationDaemon:
         bundle = getattr(self, "_task_context_nomination_bundle", None)
         if include_context and bundle is not None:
             from ..runtime.task_context_bundle import load_task_context_nomination
-
-            nominations = load_task_context_nomination(
-                repository=self.repo_root, artifact=bundle["artifact"],
-                expected_sha256=bundle["sha256"], task_id=task.task_id,
-                task_cid=normalized.get("database task cid") or task.canonical_task_cid,
-            )
+            from .database_portal_bridge import _source384_admission
+            deadline = _source384_callback_deadline.get()
+            options = {}
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Source384 original callback deadline expired")
+                options["source384_timeout_seconds"] = min(90.0, remaining)
+            task_cid = normalized.get("database task cid") or task.canonical_task_cid
+            try:
+                nominations = load_task_context_nomination(
+                    repository=self.repo_root, artifact=bundle["artifact"],
+                    expected_sha256=bundle["sha256"], task_id=task.task_id,
+                    task_cid=task_cid, **options,
+                )
+            except Exception as exc:
+                try:
+                    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+                except ImportError:
+                    raise exc
+                if (deadline is None or type(exc) is not LeaseTimeoutError
+                        or deadline is not None and time.monotonic() >= deadline
+                        or getattr(self, "implementation_cancelled", None) is not None and self._implementation_cancel_requested()):
+                    raise
+                try:
+                    admission = _source384_admission(getattr(exc, "admission_observation", None))
+                except (ValueError, TypeError, KeyError):
+                    raise exc
+                raise Source384ResourceDeferred(admission=admission, task_id=task.task_id,
+                    task_cid=task_cid, context_sha256=bundle["sha256"]) from exc
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("Source384 original callback deadline expired")
             if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
                 raise ValueError("launch context nomination conflicts with task metadata")
             normalized.update(nominations)
@@ -69810,6 +69864,8 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError("close_task_source must be boolean")
         self.process_instance_id = process_instance_id or _database_daemon_new_id("process")
         self._typed_quack_authority_binding = None
+        self._source384_retry_deadline_ms = None
+        self._source384_retry_deadline_monotonic = None
         from ..task_sources.typed_database_task_source import TypedDatabaseTaskSource
 
         if state_owner_bootstrap_credentials is not None or type(task_source) is TypedDatabaseTaskSource:
@@ -69830,6 +69886,14 @@ class DatabaseImplementationDaemon:
                 ))
             except Exception as exc:
                 raise DatabaseImplementationAuthorityError("typed owner bootstrap binding mismatch") from exc
+            # This exact connection was just verified by the typed source.
+            # Capture its initial signed grant expiry; renewal cannot widen it.
+            connection = getattr(getattr(getattr(task_source, "_client", None), "_adapter", None), "raw", None)
+            grant = getattr(connection, "grant", None)
+            expiry = grant.get("expires_at") if isinstance(grant, Mapping) else None
+            if type(expiry) is int and expiry > 0:
+                self._source384_retry_deadline_ms = expiry
+                self._source384_retry_deadline_monotonic = time.monotonic() + max(0.0, expiry / 1000 - time.time())
             self.coordination_path, self.execution_path = _database_daemon_quack_sidecar_paths(
                 self.database_path, coordination_path=coordination_path,
                 execution_path=self.execution_path,
@@ -73344,20 +73408,97 @@ class DatabaseImplementationDaemon:
             attempt, idempotency_key=idempotency_key, provider_fn=provider_fn,
         )
 
-    def _run_provider_impl(
-        self,
-        attempt: DatabaseTaskAttempt,
-        *,
-        idempotency_key: str = "",
-        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
-    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
-        """Run provider work once per attempt idempotency key.
+    @staticmethod
+    def _source384_retry_identity(attempt: DatabaseTaskAttempt) -> dict[str, Any]:
+        return {name: getattr(attempt, name) for name in (
+            "attempt_id", "task_cid", "owner_session_id", "claim_id", "lease_id", "fencing_token", "fence_epoch")}
 
-        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
-        when a prior committed provider invocation was replayed.
-        """
+    def _source384_remaining_seconds(self, attempt: DatabaseTaskAttempt) -> float:
+        self._shutdown_boundary()
+        attempt = self._owned_running_attempt(attempt)
+        expiry = getattr(self, "_source384_retry_deadline_ms", None)
+        monotonic_expiry = getattr(self, "_source384_retry_deadline_monotonic", None)
+        if (self._typed_quack_authority_binding is None or type(expiry) is not int
+                or type(monotonic_expiry) not in (int, float) or not math.isfinite(monotonic_expiry)):
+            raise DatabaseImplementationAuthorityError("Source384 retry lacks its original native grant expiry")
+        remaining = min((min(expiry, attempt.started_at_ms + self.lease_ms) - self._now_ms()) / 1000,
+                        monotonic_expiry - time.monotonic())
+        if remaining <= 0:
+            raise TimeoutError("Source384 original attempt or run deadline expired")
+        return remaining
 
+    def _require_source384_retry_state(self, attempt, receipt, key, *, ready=True):
+        from .database_portal_bridge import DatabasePortalBridgeDeferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        attempt = self._owned_running_attempt(attempt)
         self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
+        self._source384_remaining_seconds(attempt)
+        identity = self._source384_retry_identity(attempt)
+        fields = {*identity, "schema", "callback_state", "provider_effect_state", "reason", "process_instance_id",
+                  "retry_deadline_ms", "retry_not_before_ms", "retry_count", "context", "execution_phase", "execution_revision"}
+        deadline = min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms)
+        if (type(receipt) is not dict or set(receipt) != fields
+                or receipt["schema"] != "database-source384-no-dispatch-retry@1"
+                or receipt["callback_state"] != "not_dispatched" or receipt["provider_effect_state"] != "not_started"
+                or receipt["reason"] != SOURCE384_RESOURCE_DEFERRAL_REASON
+                or receipt["process_instance_id"] != self.process_instance_id
+                or key != f"provider:{attempt.attempt_id}"
+                or any(type(receipt[name]) is not type(value) or receipt[name] != value for name, value in identity.items())
+                or type(receipt["retry_deadline_ms"]) is not int or receipt["retry_deadline_ms"] != deadline
+                or type(receipt["retry_not_before_ms"]) is not int or not 0 <= receipt["retry_not_before_ms"] < deadline
+                or type(receipt["retry_count"]) is not int or not 1 <= receipt["retry_count"] <= 16
+                or (attempt.committed_phase, attempt.revision) not in {(ATTEMPT_PHASE_CLAIMED, 1), (ATTEMPT_PHASE_CONTEXT, 2)}
+                or receipt["execution_phase"] != attempt.committed_phase
+                or type(receipt["execution_revision"]) is not int or receipt["execution_revision"] != attempt.revision
+                or self.effect_claim_recorded(attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}") is not None):
+            raise DatabaseImplementationAuthorityError("Source384 no-dispatch retry binding differs")
+        context = _source384_deferral(receipt["context"])
+        if context["task_id"] != attempt.task_alias or context["task_cid"] != attempt.task_cid:
+            raise DatabaseImplementationAuthorityError("Source384 retry context belongs to another task")
+        if ready and self._now_ms() < receipt["retry_not_before_ms"]:
+            raise DatabasePortalBridgeDeferred(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5,
+                                              result={"source384_resource_retry": receipt})
+
+    def _settle_source384_resource_deferral(self, attempt, *, failure, idempotency_key, previous=None):
+        from .database_portal_bridge import DatabasePortalSource384Deferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        attempt = self._owned_running_attempt(attempt)
+        self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
+        remaining = self._source384_remaining_seconds(attempt)
+        identity = self._source384_retry_identity(attempt)
+        context = _source384_deferral(getattr(failure, "no_dispatch", {}).get("context"))
+        if (type(failure) is not DatabasePortalSource384Deferred or failure.attempt_consumed is not False
+                or failure.provider_dispatched is not False or failure.backoff_seconds != 5
+                or failure.no_dispatch.get("identity") != identity
+                or context["task_cid"] != attempt.task_cid or context["task_id"] != attempt.task_alias
+                or idempotency_key != f"provider:{attempt.attempt_id}"
+                or remaining <= 5):
+            raise DatabaseImplementationAuthorityError("Source384 deferral lacks exact live no-dispatch custody")
+        if previous is not None:
+            self._require_source384_retry_state(attempt, previous, idempotency_key, ready=False)
+            if previous["context"]["context_sha256"] != context["context_sha256"]:
+                raise DatabaseImplementationAuthorityError("Source384 retry context nomination changed")
+        count = 1 if previous is None else previous["retry_count"] + 1
+        receipt = dict(schema="database-source384-no-dispatch-retry@1", **identity,
+            callback_state="not_dispatched", provider_effect_state="not_started",
+            reason=SOURCE384_RESOURCE_DEFERRAL_REASON, process_instance_id=self.process_instance_id,
+            retry_deadline_ms=min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms),
+            retry_not_before_ms=self._now_ms() + 5000, retry_count=count, context=context,
+            execution_phase=attempt.committed_phase, execution_revision=attempt.revision)
+        self._require_source384_retry_state(attempt, receipt, idempotency_key, ready=False)
+        expected = dict(schema="database-portal-callback-intent@1", callback_state="started_outcome_unknown",
+                        provider_effect_state="unknown_may_have_started",
+                        **{key: value for key, value in identity.items() if key != "owner_session_id"})
+        changed = self._require_connection().execute(
+            "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+            [_database_daemon_json(receipt), self._now_ms(), attempt.attempt_id, idempotency_key,
+             _database_daemon_json(expected), self.owner_session_id, attempt.task_cid]).fetchone()
+        if changed is None:
+            raise DatabaseImplementationAuthorityError("Source384 callback intent changed before no-dispatch settlement")
+        self._record_event("source384_resource_retry_deferred", attempt_id=attempt.attempt_id,
+                           task_cid=attempt.task_cid, body=receipt)
+
+    def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
@@ -73379,10 +73520,30 @@ class DatabaseImplementationDaemon:
                 or binding != self._control_claim_binding(claim, task)
             ):
                 raise DatabaseImplementationAuthorityError("provider requires exact owner-admitted task and control binding")
+
+    def _run_provider_impl(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Run provider work once per attempt idempotency key.
+
+        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
+        when a prior committed provider invocation was replayed.
+        """
+
+        self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
         )
+        retry_prior = None
+        if prior is not None and prior.get("schema") == "database-source384-no-dispatch-retry@1":
+            self._require_source384_retry_state(attempt, prior, key)
+            retry_prior, prior = prior, None
         if prior is not None:
             if prior.get("callback_state") == "started_outcome_unknown":
                 from .database_portal_bridge import DatabasePortalBridgeDeferred
@@ -73417,6 +73578,8 @@ class DatabaseImplementationDaemon:
         from .native_doctor_callback import require_declared_callback
 
         require_declared_callback(self, attempt, callback)
+        if retry_prior is not None and callback != self._provider_fn:
+            raise DatabaseImplementationAuthorityError("Source384 retry cannot replace its declared callback")
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -73436,29 +73599,46 @@ class DatabaseImplementationDaemon:
                 # Commit dispatch intent before entering the native bridge.
                 # A candidate refusal is diagnostic evidence, not proof that
                 # this callback's external effects have settled.
-                self._require_connection().execute(
-                    """INSERT INTO provider_invocations(
-                        invocation_id, attempt_id, task_cid, idempotency_key,
-                        owner_session_id, recorded_at_ms, result_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    [_database_daemon_new_id("provider"), attempt.attempt_id,
-                     attempt.task_cid, key, self.owner_session_id, self._now_ms(),
-                     _database_daemon_json({
-                         "schema": "database-portal-callback-intent@1",
-                         "callback_state": "started_outcome_unknown",
-                         "provider_effect_state": "unknown_may_have_started",
-                         "attempt_id": attempt.attempt_id, "task_cid": attempt.task_cid,
-                         "claim_id": attempt.claim_id, "lease_id": attempt.lease_id,
-                         "fencing_token": int(attempt.fencing_token),
-                         "fence_epoch": int(attempt.fence_epoch),
-                     })],
-                )
-            result = dict(
-                self._run_with_attempt_heartbeat(
-                    attempt,
-                    lambda: callback(attempt),
-                )
-            )
+                intent = {
+                    "schema": "database-portal-callback-intent@1",
+                    "callback_state": "started_outcome_unknown",
+                    "provider_effect_state": "unknown_may_have_started",
+                    **{name: value for name, value in self._source384_retry_identity(attempt).items()
+                       if name != "owner_session_id"},
+                }
+                if retry_prior is not None:
+                    changed = self._require_connection().execute(
+                        "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+                        [_database_daemon_json(intent), self._now_ms(), attempt.attempt_id, key,
+                         _database_daemon_json(retry_prior), self.owner_session_id, attempt.task_cid]).fetchone()
+                    if changed is None:
+                        raise DatabaseImplementationAuthorityError("Source384 retry callback changed")
+                else:
+                    self._require_connection().execute(
+                        """INSERT INTO provider_invocations(
+                            invocation_id, attempt_id, task_cid, idempotency_key,
+                            owner_session_id, recorded_at_ms, result_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        [_database_daemon_new_id("provider"), attempt.attempt_id,
+                         attempt.task_cid, key, self.owner_session_id, self._now_ms(),
+                         _database_daemon_json(intent)],
+                    )
+            elif retry_prior is not None:
+                raise DatabaseImplementationAuthorityError("Source384 retry requires the native Portal bridge")
+            token = None
+            if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge and self._source384_retry_deadline_ms is not None:
+                remaining = self._source384_remaining_seconds(attempt)
+                token = _source384_callback_deadline.set(time.monotonic() + remaining)
+            try:
+                result = dict(self._run_with_attempt_heartbeat(attempt, lambda: callback(attempt)))
+            except Exception as exc:
+                from .database_portal_bridge import DatabasePortalSource384Deferred
+                if type(exc) is DatabasePortalSource384Deferred and type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
+                    self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
+                raise
+            finally:
+                if token is not None:
+                    _source384_callback_deadline.reset(token)
         if self.require_real_execution and not _unapplied_router_proposal(result) and (
             str(result.get("status") or "").strip().lower() in {"", "noop"}
             or result.get("accepted") is not True
@@ -75744,6 +75924,16 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
+                from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON
+                if reason == SOURCE384_RESOURCE_DEFERRAL_REASON:
+                    key = f"provider:{attempt.attempt_id}"
+                    receipt = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
+                    self._require_source384_retry_state(attempt, receipt, key, ready=False)
+                    self._renew_attempt_lease(attempt)
+                    return {"resumed": True, "deferred": True, "reason": reason,
+                            "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
+                            "status": "running", "attempt_consumed": False, "provider_dispatched": False,
+                            "backoff_seconds": 5, "source384_resource_retry": receipt}
                 if reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                     # Grok/Codex is still in flight. Keep the exact running
                     # attempt so the next pass can accept the same projection

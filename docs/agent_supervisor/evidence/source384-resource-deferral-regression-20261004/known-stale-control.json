@@ -1,0 +1,35 @@
+{
+  "production_fix_scope": false,
+  "qualification": false,
+  "runs": [
+    {
+      "failures": [
+        {
+          "body_exported": false,
+          "exception_type": "AttributeError",
+          "kind": "failure",
+          "missing_api": "QuackStateServer.revoke_typed_client_grant",
+          "test": "test_typed_daemon_promotes_local_attempt_before_provider"
+        }
+      ],
+      "label": "regression-01",
+      "raw_xml_exported": false,
+      "raw_xml_sha256": "6e850b2a00af779014bc33a7a4e9cf8e527fd221df372db630b8ba509f7a68a4"
+    },
+    {
+      "failures": [
+        {
+          "body_exported": false,
+          "exception_type": "AttributeError",
+          "kind": "failure",
+          "missing_api": "QuackStateServer.revoke_typed_client_grant",
+          "test": "test_typed_daemon_promotes_local_attempt_before_provider"
+        }
+      ],
+      "label": "baseline-stale-01",
+      "raw_xml_exported": false,
+      "raw_xml_sha256": "93506d3f9a8842d5c75dd839e4a0583eb0b8b8be2edd72a5783c71b430e9d290"
+    }
+  ],
+  "schema": "source384-deferral-stale-control@1"
+}

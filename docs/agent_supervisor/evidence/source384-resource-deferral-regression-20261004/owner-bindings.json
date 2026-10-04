@@ -1,0 +1,15 @@
+{
+  "final": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "e4c0d5dcc1ad8f9b4d20c09f0197d807e37bf0ff758010de3c43b890120e6adb",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "08d91530724bc04f9b62ce79dc457850968eeb5a7454cf440c97d11e15e311fc"
+  },
+  "original": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "f88ea305c0d6992de34c9314779c047ba86e89a79053577ff2e18aa682de3f1a",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "0721431b4bae97649af43bb5110cc848e52b844de8448039359e1d211d2f9bca",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "dd78fd74af2cdce97bc2b92ea30a132f6f54a22354d760a337a312c956ba711e"
+  },
+  "original_snapshots_exported": false,
+  "schema": "source384-deferral-owner-bindings@1",
+  "scope": "Three exact runtime owners; other consumed pins appear in each command and exit receipt"
+}

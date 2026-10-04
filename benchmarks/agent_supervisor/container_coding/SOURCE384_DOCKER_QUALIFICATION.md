@@ -1143,3 +1143,25 @@ Pre-dispatch admission recovery must settle exact no-effect callback custody
 before retry; dropping the attestation guard would be unsafe. The completion RPC
 also retains its ordinary replay limit. RPI-019/020 remain open and the backlog
 stays 18/32 closed. Leanstral was restored with HTTP model readiness.
+
+The next source change adds an explicit native Source384 admission deferral
+before workspace/provider launch. Exact local claims must be released with no
+retained protected fence; the Portal bridge then returns a task/context-bound
+no-dispatch receipt. The native owner atomically settles only the matching
+callback intent and retries the same admitted attempt/process after five seconds.
+Each reentry rechecks source and owner/process authority. Recovery is limited to
+16 deferrals and the original signed run/attempt expiry; renewed coordination
+leases cannot widen it. The driver's separate 840-second work cutoff remains
+active. Unknown, expired, cancelled, foreign or possibly dispatched work cannot
+use this path, and standalone Portal calls without the native scope preserve
+the original refusal.
+
+Source384 nomination reads and validation share the remaining deadline. Normal
+90-second validation and ordinary callback behavior are unchanged. The final
+isolated component run passes 38 controls; 249 affected existing regressions
+also pass. One older teardown test still calls an absent typed-grant revocation
+API and reproduces against the original owners. Earlier AST-seal cache skips
+are retained separately from the fresh 38-case execution. The native control
+uses real typed RPC/grants and admission leases with authored pressure, followed
+by an authored accepted response; it is not a completed benchmark task or model
+execution. A fresh archive and official outcome remain required.

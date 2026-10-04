@@ -1,0 +1,51 @@
+{
+  "owner_override": "Three exact pre-fix source snapshots compiled at their canonical original paths by baseline_overlay.py",
+  "override_harness_sha256": "81b49a85142ec20eec24bf7b2ed362204a0b6c65e5070d3ff7c0bca2d9f63ed3",
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding/artifacts/source384-resource-deferral-20261004/baseline_overlay.py",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=/tmp/srd-baseline-stale-01",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-resource-deferral-20261004/baseline-stale-01/results.xml",
+    "test/api/causal_federation/test_admitted_executor.py::test_typed_daemon_promotes_local_attempt_before_provider"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/source384-resource-deferral-20261004/baseline-stale-01/fallback-scheduler.json",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/srd-baseline-stale-01-private/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/srd-baseline-stale-01-private/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/tmp/srd-baseline-stale-01-private/keys.db",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_revisions": {
+    "source": "c8cecf38443344c971d97a7bb9f308bdce7d79f8",
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419"
+  },
+  "source_pins": {
+    "original_owner/database_portal_bridge.py": "0721431b4bae97649af43bb5110cc848e52b844de8448039359e1d211d2f9bca",
+    "original_owner/task_context_bundle.py": "f88ea305c0d6992de34c9314779c047ba86e89a79053577ff2e18aa682de3f1a",
+    "original_owner/implementation_daemon.py": "dd78fd74af2cdce97bc2b92ea30a132f6f54a22354d760a337a312c956ba711e",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "661f9feb9a830d38ac936626adaa1c691f8af93d2b69f389ea9de989147079dd",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "e4c0d5dcc1ad8f9b4d20c09f0197d807e37bf0ff758010de3c43b890120e6adb",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "08d91530724bc04f9b62ce79dc457850968eeb5a7454cf440c97d11e15e311fc",
+    "source/test/api/causal_federation/test_admitted_executor.py": "b3c8524f18834940bb10515942bff49b4ec1b07c0ec6849b46de2d91b16bfd05",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a"
+  },
+  "selected_source_pins_complete_repository": false,
+  "harness_sha256": "a170bca765625f1d3ef7d31eb47153d5751b98509af60b375c09244fbd80447f"
+}

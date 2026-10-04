@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 
@@ -148,21 +149,36 @@ def write_task_context_bundle(*, repository: Path, prepared: list[dict], output:
 
 
 def load_task_context_nomination(*, repository: Path, artifact: str, expected_sha256: str,
-                                task_cid: str, task_id: str) -> dict[str, str]:
+                                task_cid: str, task_id: str, source384_timeout_seconds: float | None = None) -> dict[str, str]:
     return load_task_context_selection(repository=repository, artifact=artifact,
-        expected_sha256=expected_sha256, task_cid=task_cid, task_id=task_id)["metadata"]
+        expected_sha256=expected_sha256, task_cid=task_cid, task_id=task_id,
+        **({"source384_timeout_seconds": source384_timeout_seconds} if source384_timeout_seconds is not None else {}))["metadata"]
 
 
 def load_task_context_selection(*, repository: Path, artifact: str, expected_sha256: str,
-                               task_cid: str, task_id: str) -> dict:
+                               task_cid: str, task_id: str, source384_timeout_seconds: float | None = None) -> dict:
     """Revalidate task-bound nominations and any explicitly selected Source384 receipt."""
+    deadline = None
+    if source384_timeout_seconds is not None:
+        import math
+        if (type(source384_timeout_seconds) not in (int, float) or not math.isfinite(source384_timeout_seconds)
+                or not 0 < source384_timeout_seconds <= 90):
+            raise ValueError("Source384 nomination timeout must be finite and in (0, 90]")
+        deadline = time.monotonic() + source384_timeout_seconds
     result = read_task_context_historical_selection(repository=repository, artifact=artifact,
         expected_sha256=expected_sha256, task_cid=task_cid, task_id=task_id)
     if "source384_context" in result:
         from .source384_repository_context import validate_source384_context
-
+        options = {}
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Source384 nomination deadline expired")
+            options["timeout_seconds"] = remaining
         validate_source384_context(repository=Path(repository).resolve(strict=True),
-                                   expected_receipt=result["source384_context"])
+                                   expected_receipt=result["source384_context"], **options)
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("Source384 nomination deadline expired")
     return result
 
 

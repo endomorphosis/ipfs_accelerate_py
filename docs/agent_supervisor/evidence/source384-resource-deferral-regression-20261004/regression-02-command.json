@@ -1,0 +1,62 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=/tmp/srd-regression-02",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-resource-deferral-20261004/regression-02/results.xml",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+    "test/api/test_database_portal_attempt_budget.py",
+    "test/api/test_database_bounded_pre_effect_retry.py",
+    "test/api/semantic_state/test_source384_task_context_bundle.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py::test_crash_restart_resumes_without_duplicating_provider_or_effect",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py::test_implicit_embedded_owner_is_store_scoped_and_restart_stable",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py::test_provider_heartbeat_renews_exact_task_claim",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py::test_provider_result_is_rejected_after_fenced_takeover",
+    "test/api/causal_federation/test_admitted_executor.py::test_typed_daemon_promotes_local_attempt_before_provider",
+    "-k",
+    "not test_typed_daemon_promotes_local_attempt_before_provider"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/source384-resource-deferral-20261004/regression-02/fallback-scheduler.json",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/srd-regression-02-private/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/srd-regression-02-private/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/tmp/srd-regression-02-private/keys.db",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_revisions": {
+    "source": "c8cecf38443344c971d97a7bb9f308bdce7d79f8",
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419"
+  },
+  "source_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "661f9feb9a830d38ac936626adaa1c691f8af93d2b69f389ea9de989147079dd",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "e4c0d5dcc1ad8f9b4d20c09f0197d807e37bf0ff758010de3c43b890120e6adb",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "08d91530724bc04f9b62ce79dc457850968eeb5a7454cf440c97d11e15e311fc",
+    "source/test/api/causal_federation/test_admitted_executor.py": "b3c8524f18834940bb10515942bff49b4ec1b07c0ec6849b46de2d91b16bfd05",
+    "source/test/api/semantic_state/test_source384_task_context_bundle.py": "44729aca196ac16ecc3214b1ad80a627fc6fde897a128853d6b57f2834917470",
+    "source/test/api/test_agent_supervisor_database_implementation_daemon.py": "57511c0ecb16bd9319531d4031cee737d89c4cba20de0fa6c02f9adf8816c0d3",
+    "source/test/api/test_agent_supervisor_database_portal_bridge.py": "89b741bd9cd1c16dcd38bab6138aa66c27f8f0cd4adebd2308808513098d8b54",
+    "source/test/api/test_database_bounded_pre_effect_retry.py": "cc30d61278406fe5759a852d1c99b328c29b57af7be89ba5726fd7e75fc278fb",
+    "source/test/api/test_database_portal_attempt_budget.py": "a05bf917166233154c4fffda9aa3d29998381b51260b0810f74bcb658753974b",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a"
+  },
+  "selected_source_pins_complete_repository": false,
+  "harness_sha256": "f8130f734e02a5e96701c77fea8c6767e4225d03386acf1c80f12620a933daa6"
+}

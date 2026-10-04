@@ -1,0 +1,96 @@
+{
+  "runs": [
+    {
+      "category": "authored_fixture_omitted_required_recovery_grants",
+      "label": "native-child-01",
+      "returncode": 1,
+      "seconds": 4.888426588993752,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 1,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      }
+    },
+    {
+      "category": "native_child_control_passed_before_expanding_scope",
+      "label": "native-child-02",
+      "returncode": 0,
+      "seconds": 2.392822772002546,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      }
+    },
+    {
+      "category": "four_authored_fixtures_referenced_absent_guard_method",
+      "label": "focused-01",
+      "returncode": 1,
+      "seconds": 12.464994332010974,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 4,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 28
+      }
+    },
+    {
+      "category": "twenty_eight_overlapping_controls_passed_before_final_native_guard",
+      "label": "focused-02",
+      "returncode": 0,
+      "seconds": 13.298820747004356,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 28
+      }
+    },
+    {
+      "category": "one_overlapping_native_retry_control_passed_before_final_native_guard",
+      "label": "native-01",
+      "returncode": 0,
+      "seconds": 18.81478851698921,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      }
+    },
+    {
+      "category": "eight_overlapping_native_controls_passed",
+      "label": "native-denials-01",
+      "returncode": 0,
+      "seconds": 31.124730427996838,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 8
+      }
+    },
+    {
+      "category": "thirty_passes_eight_reused_ast_seal_skips_not_final_qualification",
+      "label": "final-01",
+      "returncode": 0,
+      "seconds": 23.545193140002084,
+      "source_pins_unchanged": true,
+      "xml_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 8,
+        "tests": 38
+      }
+    }
+  ],
+  "summed_into_final_count": false
+}

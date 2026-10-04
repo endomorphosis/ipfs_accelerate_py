@@ -1,0 +1,77 @@
+{
+  "files": [
+    {
+      "bytes": 2883,
+      "path": "README.md",
+      "sha256": "e11a8e301ba9fb5f103ab78b5e75113e04669303c691fe58fcd9e40a542a53a2"
+    },
+    {
+      "bytes": 3959,
+      "path": "baseline-stale-01-command.json",
+      "sha256": "4a510de15a1cdc5f77044e4de13d1bc15ce5a3c9f4537ec4cd1e1981ba0b4df4"
+    },
+    {
+      "bytes": 2073,
+      "path": "baseline-stale-01-exit.json",
+      "sha256": "f5453e55246debfdffe10fa9f0802d94f2d7499e9edca18fe9b08fcca2066d68"
+    },
+    {
+      "bytes": 1311,
+      "path": "baseline_overlay.py",
+      "sha256": "81b49a85142ec20eec24bf7b2ed362204a0b6c65e5070d3ff7c0bca2d9f63ed3"
+    },
+    {
+      "bytes": 1082,
+      "path": "known-stale-control.json",
+      "sha256": "49a53f83e352f41e334b6f620c5e4f271c92d89505d76507c867024a39e99cd7"
+    },
+    {
+      "bytes": 1111,
+      "path": "owner-bindings.json",
+      "sha256": "0c2f90ebb2cb41aee594f7b7e9c743635f40a1076dc544f8b3f5c286f500a32d"
+    },
+    {
+      "bytes": 6032,
+      "path": "package_regressions.py",
+      "sha256": "a055b314bab12c837bf7479e4e1905a6a10a59f7c78bdf63c1aeb171fdaf2deb"
+    },
+    {
+      "bytes": 4756,
+      "path": "regression-01-command.json",
+      "sha256": "0851ea5e3d1149440efa9cfe700d77bb4446420f6aabc5f4c6395a0d211ac49f"
+    },
+    {
+      "bytes": 2424,
+      "path": "regression-01-exit.json",
+      "sha256": "5d2a45c70eacf2844e89d3f6d8a5872a465a36ac5d4418d602cb929bc13b730f"
+    },
+    {
+      "bytes": 4834,
+      "path": "regression-02-command.json",
+      "sha256": "749cabc85106cc47b164e4fcefc7d2fd0fc74edc80711068112c2d30faa1dbb3"
+    },
+    {
+      "bytes": 2424,
+      "path": "regression-02-exit.json",
+      "sha256": "b99e35c63c81eaed53cb73c4add02305f32fb5cdb9be0b780786d488988dc20e"
+    },
+    {
+      "bytes": 40354,
+      "path": "regression-02.xml",
+      "sha256": "fa0447ed60af3ff9f4115e684ebb8afe1b2f83e3ce9ffa1dbaaffc4b0bac6010"
+    },
+    {
+      "bytes": 5234,
+      "path": "run_regressions.py",
+      "sha256": "f8130f734e02a5e96701c77fea8c6767e4225d03386acf1c80f12620a933daa6"
+    },
+    {
+      "bytes": 4821,
+      "path": "run_stale_baseline.py",
+      "sha256": "a170bca765625f1d3ef7d31eb47153d5751b98509af60b375c09244fbd80447f"
+    }
+  ],
+  "member_bytes": 83298,
+  "member_count": 14,
+  "schema": "bounded-evidence-package@1"
+}
