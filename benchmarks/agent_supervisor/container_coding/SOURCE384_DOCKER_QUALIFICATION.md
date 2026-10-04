@@ -831,3 +831,34 @@ cannot attribute it to either scope. A source review found no units or stale-sam
 defect. Future diagnosis needs separate pressure scope and memory-composition
 observations under the same gates; the failure alone does not justify reducing
 reservations or raising pressure thresholds. The backlog stays **18/32 closed**.
+
+
+## Pressure attribution and fresh AST validation
+
+The [current component generation](../../../docs/agent_supervisor/evidence/pressure-replay-components-20261004/README.md)
+passes **212 supervisor controls and 308 unique datasets controls**, including
+seven actual checkpoint/GTE inference/replay cases. Every selected run has zero
+failures/errors/skips and unchanged producer pins. Earlier failed or source-drift
+runs remain separate, nonqualifying evidence.
+
+Primary-gate errors now retain anonymous host/cgroup PSI readings from the
+existing samples. Missing and malformed readings differ from an observed zero;
+all ancestors still contribute to the unchanged scalar maxima even when the
+bounded attribution list omits them. Thresholds, reservations, deadlines and the
+scheduler ledger remain unchanged. The supervisor validates optional attribution
+within its existing 4096-byte bound and preserves the separate six-field
+post-unwind resource report.
+
+Native current AST observation joins fully reconstructed fresh SQL projections
+to freshly read, canonical/CID-checked, byte-identical CAS payloads. It avoids
+reconstructing a second ASTRecord that was discarded. Historical/custom readers,
+source/provenance checks, active identity fences and final source/head checks
+remain. Reader replacement or unsupported ownership retains the historical path.
+The public Bottle diagnostic preserves exact output/CIDs and reduces AST
+reconstruction from two to one. Two alternating untraced samples per mode show
+17.7 percent lower local component CPU; the small host diagnostic establishes
+neither RSS reduction nor admission recovery or a general speedup.
+
+These changes still require fresh ordinary Docker qualification. Checkpoint
+weights and proof authority are unchanged, and no completed token score or
+matched-arm advantage is claimed. The backlog remains **18/32 closed**.

@@ -1,0 +1,1 @@
+{"elapsed_seconds": 34.21691499199369, "observations": 6, "ast_units": 1, "counts": [2, 1]}

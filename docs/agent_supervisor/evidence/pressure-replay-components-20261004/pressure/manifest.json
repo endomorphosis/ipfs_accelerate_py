@@ -1,0 +1,81 @@
+{
+  "schema": "component-evidence-manifest@1",
+  "files": [
+    {
+      "path": "README.txt",
+      "size_bytes": 1247,
+      "sha256": "17b01b6478e7066c1e45de04dd2e820f2f2172c121419c8a5e2430f219ff6724"
+    },
+    {
+      "path": "before-source-pins.json",
+      "size_bytes": 498,
+      "sha256": "d4c3a6b2ac3d8b52d9e717784a96dfd52a80fdfa456e1a2417035c14d9448e9f"
+    },
+    {
+      "path": "focused-01-command.json",
+      "size_bytes": 1902,
+      "sha256": "02544af047a1389b33b4a280fb9b3d1d9b8d0444daaa9aff1b4f7c03c979a41b"
+    },
+    {
+      "path": "focused-01-exit.json",
+      "size_bytes": 1031,
+      "sha256": "9cf1338fa5b2283f6c43cffeae1c171e565498228107c0e0c40c8763b74d674d"
+    },
+    {
+      "path": "focused-01.log",
+      "size_bytes": 1665,
+      "sha256": "27754ba8a70868123144149f63953e31a2a41859c6aee5b09c1cfa67ed0f3e3a"
+    },
+    {
+      "path": "focused-01.xml",
+      "size_bytes": 14988,
+      "sha256": "cffa75adeaed7f6a1bb8cba8eac00fc79f53274d4f104a227a5c121d5ec44afa"
+    },
+    {
+      "path": "review.json",
+      "size_bytes": 1150,
+      "sha256": "6b08a18fb50e88ea368e0604ec2982cdb28c717eea59332b0247a61bbaa04c35"
+    },
+    {
+      "path": "sources/before/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "size_bytes": 4534,
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+    },
+    {
+      "path": "sources/before/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "size_bytes": 92662,
+      "sha256": "8879ed5a881dc799e99ccb06073a2014fd65c2a5d4d8cf279de0d42e3e5057ad"
+    },
+    {
+      "path": "sources/final/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "size_bytes": 10534,
+      "sha256": "418675922a06b0645bd065a0936aa869142f1fa433af1a564acf4d221451a3dd"
+    },
+    {
+      "path": "sources/final/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "size_bytes": 93328,
+      "sha256": "9e5895d76e7b125926665967faa7e619a7288e4961b695426e67fb846d1d5b20"
+    },
+    {
+      "path": "sources/final/tests/unit/optimizers/logic_theorem_optimizer/test_admission_observation.py",
+      "size_bytes": 5909,
+      "sha256": "5c1c6c37b33afc97f084417003526712b2f9a5b9edc71d66de60fc2af8b583be"
+    },
+    {
+      "path": "sources/final/tests/unit/optimizers/logic_theorem_optimizer/test_global_resource_scheduler.py",
+      "size_bytes": 12868,
+      "sha256": "f792a512bd757f5a1ce32cdcb7bdd541a2b27d115cf10cff610c0f9b9f224eca"
+    },
+    {
+      "path": "sources/final/tests/unit/optimizers/logic_theorem_optimizer/test_pressure_source_attribution.py",
+      "size_bytes": 12214,
+      "sha256": "91f6a537c6edb125364989b85f30279dfade5dc17f68d5b23519e3ecfab30e38"
+    },
+    {
+      "path": "sources/final/tests/unit/optimizers/logic_theorem_optimizer/test_proof_resource_safety.py",
+      "size_bytes": 11686,
+      "sha256": "1ce5b627c6bdcf9d8848ef150da2daa8a55d40e869606b302fdf9aca3acb40ad"
+    }
+  ],
+  "total_bytes": 266216
+}

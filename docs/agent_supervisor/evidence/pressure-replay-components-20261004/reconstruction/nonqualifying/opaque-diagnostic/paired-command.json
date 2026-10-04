@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/ast-observation-reconstruction-20261004/profile_observation.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "timeout_seconds": 75
+}

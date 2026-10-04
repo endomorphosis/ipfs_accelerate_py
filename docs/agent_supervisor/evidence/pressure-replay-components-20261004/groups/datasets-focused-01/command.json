@@ -1,0 +1,28 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_pressure_source_attribution.py",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_proof_resource_safety.py",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_admission_observation.py",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_global_resource_scheduler.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/pressure-attribution-controls-20261004/focused-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/pressure-attribution-controls-20261004/focused-01-private-scheduler.json"
+  },
+  "source_sha256": {
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "418675922a06b0645bd065a0936aa869142f1fa433af1a564acf4d221451a3dd",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "9e5895d76e7b125926665967faa7e619a7288e4961b695426e67fb846d1d5b20",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_pressure_source_attribution.py": "91f6a537c6edb125364989b85f30279dfade5dc17f68d5b23519e3ecfab30e38",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_proof_resource_safety.py": "1ce5b627c6bdcf9d8848ef150da2daa8a55d40e869606b302fdf9aca3acb40ad",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_admission_observation.py": "5c1c6c37b33afc97f084417003526712b2f9a5b9edc71d66de60fc2af8b583be",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_global_resource_scheduler.py": "f792a512bd757f5a1ce32cdcb7bdd541a2b27d115cf10cff610c0f9b9f224eca"
+  }
+}

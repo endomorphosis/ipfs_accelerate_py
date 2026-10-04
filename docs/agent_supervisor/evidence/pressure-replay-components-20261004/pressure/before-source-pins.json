@@ -1,0 +1,15 @@
+{
+  "revision": "1b6461e65f15635b89d04609dae01a4196cd3ea5",
+  "files": [
+    {
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5",
+      "bytes": 4534
+    },
+    {
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "8879ed5a881dc799e99ccb06073a2014fd65c2a5d4d8cf279de0d42e3e5057ad",
+      "bytes": 92662
+    }
+  ]
+}

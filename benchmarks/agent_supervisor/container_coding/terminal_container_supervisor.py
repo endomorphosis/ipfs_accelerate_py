@@ -124,11 +124,9 @@ def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
     except Exception as diagnostic_error:
         result["failure_traceback_error"] = type(diagnostic_error).__name__[:128]
     try:
-        from dataclasses import asdict
-        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import (
-            collect_proof_host_resources,
-        )
-        result["failure_resources"] = asdict(collect_proof_host_resources())
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
+        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import project_failure_resources
+        result["failure_resources"] = project_failure_resources(collect_proof_host_resources())
     except Exception as diagnostic_error:
         result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
     try:

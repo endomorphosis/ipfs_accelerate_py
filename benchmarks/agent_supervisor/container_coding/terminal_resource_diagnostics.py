@@ -40,6 +40,77 @@ def _number(value, *, integer=False, nullable=False):
     return value
 
 
+def project_failure_resources(sample):
+    """Keep the post-unwind scalar schema independent of sampler metadata."""
+    integers = {"cpu_slots", "total_memory_mb", "available_memory_mb"}
+    return {key: _number(getattr(sample, key), integer=key in integers) for key in (
+        "cpu_slots", "total_memory_mb", "available_memory_mb",
+        "memory_stall_percent", "cpu_stall_percent", "io_stall_percent")}
+
+
+def _pressure_sources(value, host):
+    """Project path-free PSI attribution from the same admission sample.
+
+    Missing telemetry is distinct from an observed zero. Omitted ancestor
+    maxima preserve the aggregate even when the attribution inventory is full.
+    This is observational metadata; it does not confer admission authority.
+    """
+    if (type(value) is not dict or set(value) != {
+            "schema", "samples", "omitted_cgroup_scopes", "omitted_maxima"}
+            or type(value["schema"]) is not str
+            or value["schema"] != "proof-pressure-sources@1" or host is None):
+        raise ValueError("invalid pressure attribution")
+    samples = value["samples"]
+    if type(samples) is not list or not 1 <= len(samples) <= 9:
+        raise ValueError("bounded pressure source inventory required")
+    metrics = ("memory", "cpu", "io")
+    maxima = dict.fromkeys(metrics, 0.)
+    rows = []
+    for position, row in enumerate(samples):
+        if type(row) is not dict or set(row) != {"scope", "depth", *metrics}:
+            raise ValueError("invalid pressure source")
+        scope, depth = row["scope"], row["depth"]
+        if type(scope) is not str:
+            raise ValueError("exact pressure scope required")
+        if position == 0:
+            if scope != "host" or depth is not None:
+                raise ValueError("host pressure sample must be first")
+        elif scope != "cgroup" or type(depth) is not int or depth != position - 1:
+            raise ValueError("ordered cgroup pressure depth required")
+        projected = dict(scope=scope, depth=depth)
+        for metric in metrics:
+            item = row[metric]
+            if type(item) is not dict or set(item) != {"avg10", "status"}:
+                raise ValueError("invalid pressure metric")
+            status, observed = item["status"], item["avg10"]
+            if type(status) is not str or status not in {"observed", "unavailable", "malformed"}:
+                raise ValueError("invalid pressure status")
+            if status == "observed":
+                observed = _number(observed)
+                if observed > 100:
+                    raise ValueError("invalid PSI percentage")
+                maxima[metric] = max(maxima[metric], observed)
+            elif observed is not None:
+                raise ValueError("missing pressure observation must be null")
+            projected[metric] = dict(avg10=observed, status=status)
+        rows.append(projected)
+    omitted = _number(value["omitted_cgroup_scopes"], integer=True)
+    tail = value["omitted_maxima"]
+    if (type(tail) is not dict or set(tail) != set(metrics)
+            or omitted and len(rows) != 9):
+        raise ValueError("invalid omitted pressure inventory")
+    tail = {key: _number(tail[key], nullable=True) for key in metrics}
+    for metric, observed in tail.items():
+        if observed is not None:
+            if not omitted or observed > 100:
+                raise ValueError("invalid omitted PSI percentage")
+            maxima[metric] = max(maxima[metric], observed)
+        if maxima[metric] != host[metric + "_stall_percent"]:
+            raise ValueError("pressure attribution differs from admitted sample")
+    return dict(schema=value["schema"], samples=rows,
+        omitted_cgroup_scopes=omitted, omitted_maxima=tail)
+
+
 def collect_failure_admission(error):
     """Read the failed request's attached primary-gate observation, without I/O.
 
@@ -80,9 +151,10 @@ def collect_failure_admission(error):
             gate = dict(status=gate["status"], observed_at=_number(gate["observed_at"]),
                 reason=reason(gate["reason"]), backoff_until=_number(gate["backoff_until"], nullable=True))
         if sample is not None:
-            if type(sample) is not dict or set(sample) != {
-                    "observed_at", "host", "reserved_root_memory_mb", "additional_request_memory_mb",
-                    "thresholds", "reason"}:
+            required = {"observed_at", "host", "reserved_root_memory_mb",
+                "additional_request_memory_mb", "thresholds", "reason"}
+            if type(sample) is not dict or set(sample) not in (
+                    required, required | {"pressure_sources"}):
                 raise ValueError("invalid primary sample")
             host, thresholds = sample["host"], sample["thresholds"]
             stalls = {"memory_stall_percent", "cpu_stall_percent", "io_stall_percent"}
@@ -92,11 +164,15 @@ def collect_failure_admission(error):
                 host = {k: _number(v, integer=k == "available_memory_mb") for k, v in host.items()}
             if type(thresholds) is not dict or set(thresholds) != stalls | {"memory_headroom_mb"}:
                 raise ValueError("invalid primary thresholds")
+            pressure = (_pressure_sources(sample["pressure_sources"], host)
+                if "pressure_sources" in sample else None)
             sample = dict(observed_at=_number(sample["observed_at"]), host=host,
                 reserved_root_memory_mb=_number(sample["reserved_root_memory_mb"], integer=True, nullable=True),
                 additional_request_memory_mb=_number(sample["additional_request_memory_mb"], integer=True, nullable=True),
                 thresholds={k: _number(v, integer=k == "memory_headroom_mb") for k, v in thresholds.items()},
                 reason=reason(sample["reason"]))
+            if pressure is not None:
+                sample["pressure_sources"] = pressure
         result = dict(base, status="observed", terminal=value["terminal"], primary_gate=gate, last_sample=sample)
         if len(json.dumps(result, allow_nan=False).encode()) > MAX_BYTES:
             raise ValueError("oversized admission observation")

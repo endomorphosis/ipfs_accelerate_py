@@ -92,9 +92,9 @@ except BaseException as exc:
  traceback.print_exc(file=sys.stderr,limit=20)
  result.update(error_type=type(exc).__name__,error=str(exc)[:2048],error_phase=phase,phase_seconds=time.monotonic()-phase_started)
  try:
-  from dataclasses import asdict
   from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
-  result['failure_resources']=asdict(collect_proof_host_resources())
+  from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import project_failure_resources
+  result['failure_resources']=project_failure_resources(collect_proof_host_resources())
  except Exception as diagnostic_error: result['failure_resource_error']=type(diagnostic_error).__name__
  try:
   from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
