@@ -123,13 +123,8 @@ def test_required_fields_and_references_survive_effective_provider_budget() -> N
     assert result.capsule.budget.max_input_tokens == 220
     assert result.capsule.input_tokens <= 220
     assert result.receipt.evidence is not None
-    assert (
-        result.receipt.evidence.requirement_id
-        == REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
-    )
-    assert result.receipt.evidence_claim_references == (
-        REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
-    )
+    assert result.receipt.evidence.requirement_id == REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID
+    assert result.receipt.evidence_claim_references == (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
     assert result.receipt.evidence.required_reference_ids == ("required",)
     assert result.receipt.evidence.artifact_digest.startswith("sha256:")
 
@@ -197,16 +192,12 @@ def test_required_context_fails_closed_instead_of_truncating() -> None:
         _budget(max_input_tokens=1),
         tokenizer=lambda text: len(text),
     )
-    with pytest.raises(
-        RequiredContextOverflowError, match="goal/authority/scope/acceptance"
-    ):
+    with pytest.raises(RequiredContextOverflowError, match="goal/authority/scope/acceptance"):
         tiny.compile(**BINDING, **CORE)
 
     base = _compile().capsule.input_tokens
     required = _reference("too-large", base + 500, required=True)
-    with pytest.raises(
-        RequiredContextOverflowError, match="required evidence"
-    ):
+    with pytest.raises(RequiredContextOverflowError, match="required evidence"):
         _compile(evidence=(required,))
 
 
@@ -232,13 +223,11 @@ def test_provider_input_byte_limit_defers_optional_content_as_reference() -> Non
 
     result = compiler.compile(**BINDING, **CORE, evidence=(optional,))
 
-    assert len(render_context_capsule(result.capsule).encode("utf-8")) <= (
-        base_bytes + 256
-    )
+    assert len(render_context_capsule(result.capsule).encode("utf-8")) <= (base_bytes + 256)
     assert result.capsule.evidence == ()
-    assert tuple(
-        item.reference_id for item in result.capsule.expansion_references
-    ) == ("large-optional",)
+    assert tuple(item.reference_id for item in result.capsule.expansion_references) == (
+        "large-optional",
+    )
     assert result.decisions[0].reason is ExclusionReason.TOKEN_BUDGET
     assert result.capsule.expansion_references[0].referenced_content_id == (
         optional.referenced_content_id
@@ -257,9 +246,7 @@ def test_canonical_provider_input_defeats_forged_reference_token_count() -> None
         summary="x" * 8_000,
     )
 
-    with pytest.raises(
-        RequiredContextOverflowError, match="required evidence"
-    ):
+    with pytest.raises(RequiredContextOverflowError, match="required evidence"):
         compiler.compile(**BINDING, **CORE, evidence=(understated,))
 
     valid = ContextCompiler(
@@ -274,9 +261,7 @@ def test_canonical_provider_input_defeats_forged_reference_token_count() -> None
         _budget(max_input_tokens=500),
         tokenizer=_tokenizer,
     )
-    assert verifier.estimate_capsule_input(valid.capsule) == (
-        valid.capsule.input_tokens
-    )
+    assert verifier.estimate_capsule_input(valid.capsule) == (valid.capsule.input_tokens)
     assert dict(valid.capsule.provider_input_payload)["evidence"]
 
 
@@ -306,9 +291,7 @@ def test_provider_verifier_rejects_rebuilt_understated_base_context() -> None:
         input_tokens=1,
         artifact_digest=(
             "sha256:"
-            + hashlib.sha256(
-                canonical_context_json_bytes(capsule.to_record())
-            ).hexdigest()
+            + hashlib.sha256(canonical_context_json_bytes(capsule.to_record())).hexdigest()
         ),
     )
     receipt = replace(
@@ -352,30 +335,15 @@ def test_optional_evidence_has_deterministic_ranking_and_decisions() -> None:
     assert forward.capsule == reverse.capsule
     assert forward.receipt == reverse.receipt
     assert forward.decisions == reverse.decisions
-    included = {
-        item.reference_id: item
-        for item in forward.decisions
-        if item.included
-    }
+    included = {item.reference_id: item for item in forward.decisions if item.included}
     assert included["high-a"].reason is InclusionReason.RANKED_FIT
     assert included["high-b"].reason is InclusionReason.RANKED_FIT
-    omitted = {
-        item.reference_id: item
-        for item in forward.decisions
-        if not item.included
-    }
+    omitted = {item.reference_id: item for item in forward.decisions if not item.included}
     assert omitted
-    assert set(item.reason for item in omitted.values()) == {
-        ExclusionReason.TOKEN_BUDGET
-    }
+    assert set(item.reason for item in omitted.values()) == {ExclusionReason.TOKEN_BUDGET}
     assert forward.capsule.truncated
-    assert {
-        item.reference_id for item in forward.capsule.expansion_references
-    } == set(omitted)
-    assert all(
-        item.tier is ContextTier.EXPANSION
-        for item in forward.capsule.expansion_references
-    )
+    assert {item.reference_id for item in forward.capsule.expansion_references} == set(omitted)
+    assert all(item.tier is ContextTier.EXPANSION for item in forward.capsule.expansion_references)
 
 
 def test_compilation_receipt_is_canonical_bounded_and_tamper_evident() -> None:
@@ -493,9 +461,7 @@ def test_required_evidence_cannot_be_deferred_as_expansion_handle() -> None:
     )
     capsule = _compile().capsule
 
-    with pytest.raises(
-        ContextContractError, match="required evidence cannot be deferred"
-    ):
+    with pytest.raises(ContextContractError, match="required evidence cannot be deferred"):
         replace(
             capsule,
             expansion_references=(required_expansion,),
@@ -547,10 +513,7 @@ def test_top_level_compiler_wrapper_preserves_contract_and_rejects_bad_inputs() 
 
 
 def test_text_artifact_chunks_are_complete_content_addressed_expansion_units() -> None:
-    text = "\n\n".join(
-        f"Section {index}: " + ("evidence " * 12)
-        for index in range(8)
-    )
+    text = "\n\n".join(f"Section {index}: " + ("evidence " * 12) for index in range(8))
     references = build_text_context_references(
         text,
         reference_prefix="roadmap",
@@ -567,13 +530,12 @@ def test_text_artifact_chunks_are_complete_content_addressed_expansion_units() -
     assert all(item.byte_count <= 96 for item in references)
     assert all(
         item.referenced_content_id
-        == "sha256:"
-        + hashlib.sha256(item.summary.encode("utf-8")).hexdigest()
+        == "sha256:" + hashlib.sha256(item.summary.encode("utf-8")).hexdigest()
         for item in references
     )
-    assert {
-        item.metadata["artifact_content_id"] for item in references
-    } == {references[0].metadata["artifact_content_id"]}
+    assert {item.metadata["artifact_content_id"] for item in references} == {
+        references[0].metadata["artifact_content_id"]
+    }
 
     result = _compile(
         budget=_budget(190),
@@ -581,14 +543,8 @@ def test_text_artifact_chunks_are_complete_content_addressed_expansion_units() -
         provider_context_window=240,
     )
     assert result.capsule.expansion_references
-    assert all(
-        item.tier is ContextTier.EXPANSION
-        for item in result.capsule.expansion_references
-    )
-    assert all(
-        item.path == "docs/plan.md"
-        for item in result.capsule.expansion_references
-    )
+    assert all(item.tier is ContextTier.EXPANSION for item in result.capsule.expansion_references)
+    assert all(item.path == "docs/plan.md" for item in result.capsule.expansion_references)
     receipt = result.receipt.to_json()
     assert "Section 0" not in receipt
     assert "evidence evidence" not in receipt
@@ -650,10 +606,7 @@ def test_compiler_normalizes_core_before_measuring_provider_input() -> None:
     assert result.capsule.goal["summary"] == "goal with caller whitespace"
     assert result.capsule.authority["mode"] == "proposal"
     assert result.capsule.acceptance["criteria"] == ("complete exactly",)
-    assert (
-        compiler.estimate_capsule_input(result.capsule)
-        == result.capsule.input_tokens
-    )
+    assert compiler.estimate_capsule_input(result.capsule) == result.capsule.input_tokens
 
 
 def test_invariant_core_identity_cannot_be_described_as_truncated() -> None:
@@ -669,9 +622,7 @@ def test_invariant_core_identity_cannot_be_described_as_truncated() -> None:
     assert result.required_context_preserved
     assert capsule.truncated
     assert capsule.omitted_reference_ids == ("large-optional",)
-    assert capsule.invariant_core_id == type(capsule).from_dict(
-        capsule.to_dict()
-    ).invariant_core_id
+    assert capsule.invariant_core_id == type(capsule).from_dict(capsule.to_dict()).invariant_core_id
 
     with pytest.raises(
         ContextContractError,

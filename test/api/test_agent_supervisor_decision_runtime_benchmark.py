@@ -46,14 +46,8 @@ def test_closed_receipt_population_proves_independent_context_scaling():
             if item.identity.identity_id == baseline.identity.identity_id
             and item.scale.intervention is dimension
         )
-        assert (
-            grown.metrics.total_corpus_bytes
-            >= baseline.metrics.total_corpus_bytes * 10
-        )
-        assert (
-            grown.metrics.provider_input_tokens
-            == baseline.metrics.provider_input_tokens
-        )
+        assert grown.metrics.total_corpus_bytes >= baseline.metrics.total_corpus_bytes * 10
+        assert grown.metrics.provider_input_tokens == baseline.metrics.provider_input_tokens
         assert grown.mandatory_closure_id == baseline.mandatory_closure_id
     assert report.closure_token_correlation_millionths >= 900_000
     assert report.corpus_token_correlation_millionths <= 500_000

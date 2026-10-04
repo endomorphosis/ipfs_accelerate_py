@@ -80,7 +80,9 @@ All optimizations are encapsulated in the `OptimizedSimulationValidationDBIntegr
 ## Example Usage
 
 ```python
-from duckdb_api.simulation_validation.db_performance_optimization import get_optimized_db_integration
+from duckdb_api.simulation_validation.db_performance_optimization import (
+    get_optimized_db_integration,
+)
 
 # Get an optimized database integration instance
 db = get_optimized_db_integration(
@@ -89,7 +91,7 @@ db = get_optimized_db_integration(
     cache_ttl=300,  # 5 minutes
     batch_size=100,
     backup_dir="./backups",
-    auto_optimize=True
+    auto_optimize=True,
 )
 
 # Batch insert operations

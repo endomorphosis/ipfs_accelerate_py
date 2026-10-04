@@ -26,14 +26,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from ..proof.code_proof_obligations import CandidateDiffEntry, DiffChangeKind
 
-NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = (
-    "314133036252270790078901745919131980427"
-)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID = "314133036252270790078901745919131980427"
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID = "ASI-G100"
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION = "ASI-G100@asi-091"
-NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION = (
-    "asi-g100-objective-validation@1"
-)
+NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION = "asi-g100-objective-validation@1"
 NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION = (
     "strict-proposal-fail-fast-completion@1"
 )
@@ -48,10 +44,7 @@ NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA = (
         "fail closed with bounded typed diagnostics"
     ),
     "policy cannot widen task scope",
-    (
-        "rejected output cannot claim proof, completion, merge eligibility, "
-        "or authority"
-    ),
+    ("rejected output cannot claim proof, completion, merge eligibility, or authority"),
     (
         "the scheduler cannot be reached through the validated pipeline after "
         "preflight rejection. The exact requirement ID is emitted only by a "
@@ -70,9 +63,7 @@ PROPOSAL_VALIDATION_REQUEST_SCHEMA = (
 PROPOSAL_VALIDATION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-validation-receipt@1"
 )
-PROPOSAL_GATE_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proposal-gate-evidence@1"
-)
+PROPOSAL_GATE_EVIDENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proposal-gate-evidence@1"
 PROPOSAL_REJECTION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proposal-rejection-evidence@1"
 )
@@ -101,9 +92,7 @@ ORDERED_PROPOSAL_GATES = tuple(ProposalGate)
 # These are the completion-gate terms that proposal admission can actually
 # establish.  Impact-selected test execution, semantic/proof evaluation,
 # merge, and freshness remain downstream responsibilities.
-PROPOSAL_OWNED_GATE_GROUPS: tuple[
-    tuple[str, tuple[ProposalGate, ...]], ...
-] = (
+PROPOSAL_OWNED_GATE_GROUPS: tuple[tuple[str, tuple[ProposalGate, ...]], ...] = (
     ("schema", (ProposalGate.SCHEMA, ProposalGate.STRUCTURE)),
     ("authority", (ProposalGate.AUTHORITY,)),
     ("patch", (ProposalGate.PATCH, ProposalGate.CONTENT)),
@@ -185,9 +174,7 @@ def _canonical(value: Any) -> Any:
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _canonical(to_dict())
-    raise ProposalValidationError(
-        f"unsupported canonical value: {type(value).__name__}"
-    )
+    raise ProposalValidationError(f"unsupported canonical value: {type(value).__name__}")
 
 
 def _canonical_json(value: Any) -> str:
@@ -219,14 +206,10 @@ def _requirement_claims(
     if not isinstance(raw, (list, tuple)) or any(
         not isinstance(item, str) or not item.strip() for item in raw
     ):
-        raise ProposalValidationError(
-            "proved_requirement_ids must be a canonical string sequence"
-        )
+        raise ProposalValidationError("proved_requirement_ids must be a canonical string sequence")
     claimed = tuple(raw)
     if claimed != _strings(claimed):
-        raise ProposalValidationError(
-            "proved_requirement_ids must be sorted and unique"
-        )
+        raise ProposalValidationError("proved_requirement_ids must be sorted and unique")
     return claimed
 
 
@@ -289,9 +272,7 @@ def _output_depth(value: Any, depth: int = 0) -> int:
     """Return the maximum container depth without recursively following objects."""
 
     if isinstance(value, Mapping):
-        return max(
-            (depth + 1, *(_output_depth(item, depth + 1) for item in value.values()))
-        )
+        return max((depth + 1, *(_output_depth(item, depth + 1) for item in value.values())))
     if isinstance(value, (list, tuple, set, frozenset)):
         return max((depth + 1, *(_output_depth(item, depth + 1) for item in value)))
     return depth
@@ -366,13 +347,9 @@ def _strict_repo_path(value: Any, *, field_name: str) -> str:
     if not isinstance(value, str):
         raise ProposalValidationError(f"{field_name} must be a string")
     if value != value.strip() or "\\" in value:
-        raise ProposalValidationError(
-            f"{field_name} must be a canonical repository-relative path"
-        )
+        raise ProposalValidationError(f"{field_name} must be a canonical repository-relative path")
     if value.startswith(("/", "./", "../", "//")) or "//" in value:
-        raise ProposalValidationError(
-            f"{field_name} must be a canonical repository-relative path"
-        )
+        raise ProposalValidationError(f"{field_name} must be a canonical repository-relative path")
     pure = PurePosixPath(value)
     if (
         not value
@@ -381,9 +358,7 @@ def _strict_repo_path(value: Any, *, field_name: str) -> str:
         or any(ord(character) < 32 for character in value)
         or "\x00" in value
     ):
-        raise ProposalValidationError(
-            f"{field_name} must be a canonical repository-relative path"
-        )
+        raise ProposalValidationError(f"{field_name} must be a canonical repository-relative path")
     return value
 
 
@@ -398,8 +373,10 @@ def _strict_text(
         raise ProposalValidationError(f"{field_name} must be a string")
     if not allow_empty and not value:
         raise ProposalValidationError(f"{field_name} must not be empty")
-    if "\x00" in value or value.startswith("\ufeff") or any(
-        0xD800 <= ord(character) <= 0xDFFF for character in value
+    if (
+        "\x00" in value
+        or value.startswith("\ufeff")
+        or any(0xD800 <= ord(character) <= 0xDFFF for character in value)
     ):
         raise ProposalValidationError(f"{field_name} has an invalid encoding")
     try:
@@ -434,9 +411,7 @@ def _looks_binary(value: bytes) -> bool:
     sample = value[:8_192]
     if b"\x00" in sample:
         return True
-    controls = sum(
-        byte < 32 and byte not in {9, 10, 12, 13} for byte in sample
-    )
+    controls = sum(byte < 32 and byte not in {9, 10, 12, 13} for byte in sample)
     return controls * 20 > len(sample)
 
 
@@ -467,9 +442,7 @@ def _bounded_plain_value(
             continue
         if type(current) is int:
             if current.bit_length() > 256:
-                raise ProposalValidationError(
-                    "provider output integer exceeds the numeric bound"
-                )
+                raise ProposalValidationError("provider output integer exceeds the numeric bound")
             continue
         if type(current) is float:
             if current != current or current in (float("inf"), float("-inf")):
@@ -484,9 +457,7 @@ def _bounded_plain_value(
             )
             continue
         if type(current) not in {dict, list, tuple}:
-            raise ProposalValidationError(
-                "provider output contains an unsupported value type"
-            )
+            raise ProposalValidationError("provider output contains an unsupported value type")
         identity = id(current)
         if identity in seen:
             raise ProposalValidationError("provider output contains a container cycle")
@@ -697,12 +668,8 @@ def parse_unified_patch(
                 )
                 if match is None:
                     raise ProposalValidationError("malformed unified-diff hunk header")
-                remaining_old = (
-                    int(match.group(1)) if match.group(1) is not None else 1
-                )
-                remaining_new = (
-                    int(match.group(2)) if match.group(2) is not None else 1
-                )
+                remaining_old = int(match.group(1)) if match.group(1) is not None else 1
+                remaining_new = int(match.group(2)) if match.group(2) is not None else 1
                 index += 1
                 while index < len(lines):
                     body = lines[index]
@@ -728,12 +695,16 @@ def parse_unified_patch(
                     raise ProposalValidationError("truncated unified-diff hunk")
                 saw_content = saw_content or additions > 0 or deletions > 0
                 continue
-            elif current and not binary and not current.startswith(
-                (
-                    "index ",
-                    "similarity index ",
-                    "dissimilarity index ",
-                    r"\ No newline at end of file",
+            elif (
+                current
+                and not binary
+                and not current.startswith(
+                    (
+                        "index ",
+                        "similarity index ",
+                        "dissimilarity index ",
+                        r"\ No newline at end of file",
+                    )
                 )
             ):
                 # Only declarative Git patch metadata is accepted.  This keeps
@@ -741,10 +712,14 @@ def parse_unified_patch(
                 # of the patch envelope.
                 raise ProposalValidationError("unrecognized Git patch content")
             index += 1
-        if operation in {"add", "delete", "modify"} and not binary and not (
-            saw_old_header and saw_new_header and saw_content
+        if (
+            operation in {"add", "delete", "modify"}
+            and not binary
+            and not (saw_old_header and saw_new_header and saw_content)
         ):
-            raise ProposalValidationError("text patch section requires headers and an effectful hunk")
+            raise ProposalValidationError(
+                "text patch section requires headers and an effectful hunk"
+            )
         files.append(
             ParsedPatchFile(
                 old_path=old_path,
@@ -794,10 +769,7 @@ class ProposalOperation:
     def from_mapping(cls, value: Mapping[str, Any]) -> "ProposalOperation":
         return cls(
             operation=str(
-                value.get("operation")
-                or value.get("op")
-                or value.get("change_kind")
-                or ""
+                value.get("operation") or value.get("op") or value.get("change_kind") or ""
             ),
             path=str(value.get("path") or value.get("new_path") or ""),
             old_path=str(value.get("old_path") or ""),
@@ -832,14 +804,14 @@ class ProposalValidationStep:
         return {"command": self.command, "rationale_refs": self.rationale_refs}
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any] | str | Sequence[str]) -> "ProposalValidationStep":
+    def from_mapping(
+        cls, value: Mapping[str, Any] | str | Sequence[str]
+    ) -> "ProposalValidationStep":
         if isinstance(value, Mapping):
             return cls(
                 command=value.get("command") or value.get("argv") or (),
                 rationale_refs=tuple(
-                    value.get("rationale_refs")
-                    or value.get("rationale_references")
-                    or ()
+                    value.get("rationale_refs") or value.get("rationale_references") or ()
                 ),
             )
         return cls(command=value)  # type: ignore[arg-type]
@@ -852,9 +824,7 @@ class ProposalRisk:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "risk", " ".join(str(self.risk or "").split()))
-        object.__setattr__(
-            self, "mitigation", " ".join(str(self.mitigation or "").split())
-        )
+        object.__setattr__(self, "mitigation", " ".join(str(self.mitigation or "").split()))
         if not self.risk or not self.mitigation:
             raise ProposalValidationError("proposal risks require risk and mitigation")
 
@@ -896,9 +866,7 @@ class ProposalValidationFinding:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ProposalValidationFinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProposalValidationFinding":
         return cls(
             code=payload.get("code", ""),
             gate=payload.get("gate", ""),
@@ -1010,9 +978,7 @@ class ProposalValidationPolicy:
             if normalized and normalized not in commands:
                 commands.append(normalized)
         if not commands:
-            raise ProposalValidationError(
-                "allowed_validation_commands must not be empty"
-            )
+            raise ProposalValidationError("allowed_validation_commands must not be empty")
         object.__setattr__(self, "allowed_validation_commands", tuple(commands))
         for name in (
             "allow_binary",
@@ -1075,9 +1041,7 @@ class ProposalValidationPolicy:
     def path_is_task_owned(self, path: str) -> bool:
         """Return whether ``path`` is inside the immutable task scope."""
 
-        return any(
-            _path_matches(path, pattern) for pattern in self.task_owned_paths
-        )
+        return any(_path_matches(path, pattern) for pattern in self.task_owned_paths)
 
     def path_is_in_scope(self, path: str) -> bool:
         """Return whether both proposal authority envelopes contain ``path``."""
@@ -1143,17 +1107,13 @@ class ProposalValidationPolicy:
         return cls(
             allowed_paths=tuple(payload.get("allowed_paths") or ()),
             task_owned_paths=tuple(
-                payload.get("task_owned_paths")
-                or payload.get("allowed_paths")
-                or ()
+                payload.get("task_owned_paths") or payload.get("allowed_paths") or ()
             ),
             forbidden_paths=tuple(payload.get("forbidden_paths") or ()),
             expected_task_id=str(payload.get("expected_task_id") or ""),
             expected_plan_id=str(payload.get("expected_plan_id") or ""),
             expected_repository_id=str(payload.get("expected_repository_id") or ""),
-            expected_repository_tree_id=str(
-                payload.get("expected_repository_tree_id") or ""
-            ),
+            expected_repository_tree_id=str(payload.get("expected_repository_tree_id") or ""),
             expected_objective_id=str(payload.get("expected_objective_id") or ""),
             expected_context_id=str(payload.get("expected_context_id") or ""),
             expected_baseline_id=str(payload.get("expected_baseline_id") or ""),
@@ -1185,14 +1145,10 @@ class ProposalValidationPolicy:
             allow_test_weakening=payload.get("allow_test_weakening", False),
             allow_archives=payload.get("allow_archives", False),
             allow_hardlinks=payload.get("allow_hardlinks", False),
-            allow_validation_config_changes=payload.get(
-                "allow_validation_config_changes", False
-            ),
+            allow_validation_config_changes=payload.get("allow_validation_config_changes", False),
             require_declared_paths=payload.get("require_declared_paths", True),
             require_python_syntax=payload.get("require_python_syntax", True),
-            require_structured_details=payload.get(
-                "require_structured_details", False
-            ),
+            require_structured_details=payload.get("require_structured_details", False),
             require_patch_text=payload.get("require_patch_text", False),
             max_diff_entries=int(payload.get("max_diff_entries", 256)),
             max_patch_bytes=int(payload.get("max_patch_bytes", 2_000_000)),
@@ -1238,9 +1194,7 @@ class ProposalExpectedEffect:
             raise ProposalValidationError("add effect cannot declare before content")
         if operation == "delete" and self.after_sha256:
             raise ProposalValidationError("delete effect cannot declare after content")
-        if operation not in {"add", "delete"} and (
-            not self.before_sha256 or not self.after_sha256
-        ):
+        if operation not in {"add", "delete"} and (not self.before_sha256 or not self.after_sha256):
             raise ProposalValidationError(
                 "modified effects require before and after content identities"
             )
@@ -1317,17 +1271,13 @@ class ImplementationProposal:
             if not getattr(self, name):
                 raise ProposalValidationError(f"{name} is required")
         entries = tuple(
-            item
-            if isinstance(item, CandidateDiffEntry)
-            else CandidateDiffEntry.from_mapping(item)
+            item if isinstance(item, CandidateDiffEntry) else CandidateDiffEntry.from_mapping(item)
             for item in self.candidate_diff
         )
         object.__setattr__(self, "candidate_diff", entries)
         object.__setattr__(self, "declared_paths", _strings(self.declared_paths))
         operations = tuple(
-            item
-            if isinstance(item, ProposalOperation)
-            else ProposalOperation.from_mapping(item)
+            item if isinstance(item, ProposalOperation) else ProposalOperation.from_mapping(item)
             for item in self.operations
         )
         validations = tuple(
@@ -1337,15 +1287,11 @@ class ImplementationProposal:
             for item in self.validation_plan
         )
         risks = tuple(
-            item
-            if isinstance(item, ProposalRisk)
-            else ProposalRisk.from_mapping(item)
+            item if isinstance(item, ProposalRisk) else ProposalRisk.from_mapping(item)
             for item in self.risks
         )
         object.__setattr__(self, "operations", operations)
-        object.__setattr__(
-            self, "rationale_references", _strings(self.rationale_references)
-        )
+        object.__setattr__(self, "rationale_references", _strings(self.rationale_references))
         object.__setattr__(self, "validation_plan", validations)
         object.__setattr__(self, "risks", risks)
         effects = tuple(
@@ -1382,9 +1328,7 @@ class ImplementationProposal:
 
     @property
     def diff_digest(self) -> str:
-        return _identity(
-            [entry.to_dict(include_sources=True) for entry in self.candidate_diff]
-        )
+        return _identity([entry.to_dict(include_sources=True) for entry in self.candidate_diff])
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -1426,36 +1370,27 @@ class ImplementationProposal:
             raise ProposalValidationError(f"unsupported proposal schema: {schema}")
         result = cls(
             task_id=str(payload.get("task_id") or ""),
-            accepted_plan_id=str(
-                payload.get("accepted_plan_id") or payload.get("plan_id") or ""
-            ),
+            accepted_plan_id=str(payload.get("accepted_plan_id") or payload.get("plan_id") or ""),
             repository_id=str(payload.get("repository_id") or ""),
             repository_tree_id=str(
                 payload.get("repository_tree_id") or payload.get("tree_id") or ""
             ),
-            objective_id=str(
-                payload.get("objective_id") or payload.get("goal_id") or ""
-            ),
+            objective_id=str(payload.get("objective_id") or payload.get("goal_id") or ""),
             baseline_id=str(payload.get("baseline_id") or ""),
             context_id=str(payload.get("context_id") or ""),
             replay_nonce=str(payload.get("replay_nonce") or ""),
             declared_paths=tuple(payload.get("declared_paths") or ()),
             operations=tuple(
-                ProposalOperation.from_mapping(item)
-                for item in payload.get("operations") or ()
+                ProposalOperation.from_mapping(item) for item in payload.get("operations") or ()
             ),
             rationale_references=tuple(
-                payload.get("rationale_references")
-                or payload.get("rationale_refs")
-                or ()
+                payload.get("rationale_references") or payload.get("rationale_refs") or ()
             ),
             validation_plan=tuple(
                 ProposalValidationStep.from_mapping(item)
                 for item in payload.get("validation_plan") or ()
             ),
-            risks=tuple(
-                ProposalRisk.from_mapping(item) for item in payload.get("risks") or ()
-            ),
+            risks=tuple(ProposalRisk.from_mapping(item) for item in payload.get("risks") or ()),
             authority_claims=dict(payload.get("authority_claims") or {}),
             expected_effects=tuple(
                 ProposalExpectedEffect.from_mapping(item)
@@ -1531,9 +1466,7 @@ class ProposalRejectionEvidence:
         ):
             raise ProposalValidationError("rejection evidence binding is incomplete")
         object.__setattr__(self, "allowed_paths", _strings(self.allowed_paths))
-        object.__setattr__(
-            self, "task_owned_paths", _strings(self.task_owned_paths)
-        )
+        object.__setattr__(self, "task_owned_paths", _strings(self.task_owned_paths))
         object.__setattr__(self, "changed_paths", _strings(self.changed_paths))
         trace = tuple(str(item or "").strip() for item in self.gate_trace)
         if trace != tuple(gate.value for gate in ORDERED_PROPOSAL_GATES):
@@ -1542,9 +1475,7 @@ class ProposalRejectionEvidence:
             )
         object.__setattr__(self, "gate_trace", trace)
         if not self.allowed_paths or not self.task_owned_paths:
-            raise ProposalValidationError(
-                "rejection evidence requires policy and task-owned scope"
-            )
+            raise ProposalValidationError("rejection evidence requires policy and task-owned scope")
         codes = _strings(self.rejection_codes)
         if not set(codes).intersection(code.value for code in QUALIFYING_FAIL_FAST_CODES):
             raise ProposalValidationError(
@@ -1555,9 +1486,7 @@ class ProposalRejectionEvidence:
         if isinstance(self.expensive_checks_started, bool):
             raise ProposalValidationError("expensive_checks_started must be an integer")
         if int(self.expensive_checks_started) != 0:
-            raise ProposalValidationError(
-                "fail-fast evidence requires closed expensive dispatch"
-            )
+            raise ProposalValidationError("fail-fast evidence requires closed expensive dispatch")
         object.__setattr__(self, "expensive_checks_started", 0)
         claimed = str(self.evidence_id or "").strip()
         object.__setattr__(self, "evidence_id", "")
@@ -1599,9 +1528,7 @@ class ProposalRejectionEvidence:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProposalRejectionEvidence":
         schema = str(payload.get("schema") or PROPOSAL_REJECTION_EVIDENCE_SCHEMA)
         if schema != PROPOSAL_REJECTION_EVIDENCE_SCHEMA:
-            raise ProposalValidationError(
-                f"unsupported rejection evidence schema: {schema}"
-            )
+            raise ProposalValidationError(f"unsupported rejection evidence schema: {schema}")
         return cls(
             requirement_id=str(payload.get("requirement_id") or ""),
             task_id=str(payload.get("task_id") or ""),
@@ -1675,15 +1602,12 @@ class ProposalValidationReceipt:
             )
         object.__setattr__(self, "accepted", bool(self.accepted))
         object.__setattr__(self, "expensive_node_ids", _strings(self.expensive_node_ids))
-        if isinstance(self.expensive_checks_started, bool) or int(
-            self.expensive_checks_started
-        ) < 0:
-            raise ProposalValidationError(
-                "expensive_checks_started must be a non-negative integer"
-            )
-        object.__setattr__(
-            self, "expensive_checks_started", int(self.expensive_checks_started)
-        )
+        if (
+            isinstance(self.expensive_checks_started, bool)
+            or int(self.expensive_checks_started) < 0
+        ):
+            raise ProposalValidationError("expensive_checks_started must be a non-negative integer")
+        object.__setattr__(self, "expensive_checks_started", int(self.expensive_checks_started))
         evidence = self.rejection_evidence
         if evidence is not None and not isinstance(evidence, ProposalRejectionEvidence):
             evidence = ProposalRejectionEvidence.from_dict(evidence)
@@ -1705,8 +1629,7 @@ class ProposalValidationReceipt:
                 or evidence.diff_digest != self.diff_digest
                 or evidence.allowed_paths != self.allowed_paths
                 or evidence.changed_paths != self.changed_paths
-                or evidence.gate_trace
-                != tuple(gate.value for gate in self.gate_trace)
+                or evidence.gate_trace != tuple(gate.value for gate in self.gate_trace)
                 or evidence.expensive_node_ids != self.expensive_node_ids
                 or evidence.expensive_checks_started != self.expensive_checks_started
                 or not set(evidence.rejection_codes).issubset(
@@ -1768,9 +1691,7 @@ class ProposalValidationReceipt:
         gates: dict[str, Any] = {}
         for name, members in PROPOSAL_OWNED_GATE_GROUPS:
             codes = _strings(
-                finding.code.value
-                for finding in self.findings
-                if finding.gate in members
+                finding.code.value for finding in self.findings if finding.gate in members
             )
             gates[name] = {
                 # Findings are intentionally bounded.  A rejected receipt may
@@ -1789,9 +1710,7 @@ class ProposalValidationReceipt:
             "objective_id": self.objective_id,
             "diff_digest": self.diff_digest,
             "gates": gates,
-            "all_owned_gates_passed": all(
-                item["passed"] for item in gates.values()
-            ),
+            "all_owned_gates_passed": all(item["passed"] for item in gates.values()),
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
@@ -1819,9 +1738,7 @@ class ProposalValidationReceipt:
             **self._identity_payload(),
             "receipt_id": self.receipt_id,
             "rejection_evidence": (
-                self.rejection_evidence.to_dict()
-                if self.rejection_evidence is not None
-                else None
+                self.rejection_evidence.to_dict() if self.rejection_evidence is not None else None
             ),
             "proved_requirement_ids": self.proved_requirement_ids,
             "proof_authoritative": False,
@@ -1847,9 +1764,7 @@ class ProposalValidationReceipt:
             "freshness_authoritative",
         ):
             if payload.get(field_name) not in (None, False):
-                raise ProposalValidationError(
-                    f"proposal receipt cannot claim {field_name}"
-                )
+                raise ProposalValidationError(f"proposal receipt cannot claim {field_name}")
         receipt = cls(
             proposal_id=str(payload.get("proposal_id") or ""),
             policy_id=str(payload.get("policy_id") or ""),
@@ -1860,8 +1775,7 @@ class ProposalValidationReceipt:
             changed_paths=tuple(payload.get("changed_paths") or ()),
             accepted=payload.get("accepted", False),
             findings=tuple(
-                ProposalValidationFinding.from_dict(item)
-                for item in payload.get("findings") or ()
+                ProposalValidationFinding.from_dict(item) for item in payload.get("findings") or ()
             ),
             gate_trace=tuple(payload.get("gate_trace") or ()),
             expensive_node_ids=tuple(payload.get("expensive_node_ids") or ()),
@@ -1894,11 +1808,9 @@ class ProposalValidationReceipt:
         ):
             raise ProposalValidationError("proposal requirement claims mismatch")
         claimed_gate_evidence = payload.get("proposal_gate_evidence")
-        if (
-            not isinstance(claimed_gate_evidence, Mapping)
-            or _canonical(claimed_gate_evidence)
-            != _canonical(receipt.proposal_gate_evidence)
-        ):
+        if not isinstance(claimed_gate_evidence, Mapping) or _canonical(
+            claimed_gate_evidence
+        ) != _canonical(receipt.proposal_gate_evidence):
             raise ProposalValidationError("proposal gate evidence mismatch")
         return receipt
 
@@ -1925,9 +1837,7 @@ class ProposalValidationReceipt:
             or not isinstance(expensive_checks_started, int)
             or expensive_checks_started < 0
         ):
-            raise ProposalValidationError(
-                "expensive_checks_started must be a non-negative integer"
-            )
+            raise ProposalValidationError("expensive_checks_started must be a non-negative integer")
         started = expensive_checks_started
         base = ProposalValidationReceipt(
             proposal_id=self.proposal_id,
@@ -2001,17 +1911,11 @@ class ProposalValidationResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.proposal, ImplementationProposal):
-            object.__setattr__(
-                self, "proposal", ImplementationProposal.from_dict(self.proposal)
-            )
+            object.__setattr__(self, "proposal", ImplementationProposal.from_dict(self.proposal))
         if not isinstance(self.policy, ProposalValidationPolicy):
-            object.__setattr__(
-                self, "policy", ProposalValidationPolicy.from_dict(self.policy)
-            )
+            object.__setattr__(self, "policy", ProposalValidationPolicy.from_dict(self.policy))
         if not isinstance(self.receipt, ProposalValidationReceipt):
-            object.__setattr__(
-                self, "receipt", ProposalValidationReceipt.from_dict(self.receipt)
-            )
+            object.__setattr__(self, "receipt", ProposalValidationReceipt.from_dict(self.receipt))
         if (
             self.receipt.proposal_id != self.proposal.proposal_id
             or self.receipt.policy_id != self.policy.policy_id
@@ -2029,9 +1933,7 @@ class ProposalValidationResult:
             or rejection.baseline_id != self.proposal.baseline_id
             or rejection.task_owned_paths != self.policy.task_owned_paths
         ):
-            raise ProposalValidationError(
-                "rejection evidence is detached from proposal authority"
-            )
+            raise ProposalValidationError("rejection evidence is detached from proposal authority")
 
     @property
     def accepted(self) -> bool:
@@ -2162,9 +2064,7 @@ class ProposalValidationResult:
             "diff_digest": self.proposal.diff_digest,
         }
         mismatched = tuple(
-            name
-            for name, value in expected.items()
-            if value and value != actual[name]
+            name for name, value in expected.items() if value and value != actual[name]
         )
         if mismatched:
             raise ProposalValidationError(
@@ -2198,9 +2098,7 @@ class ProposalValidationResult:
             "freshness_authoritative",
         ):
             if payload.get(field_name) not in (None, False):
-                raise ProposalValidationError(
-                    f"proposal result cannot claim {field_name}"
-                )
+                raise ProposalValidationError(f"proposal result cannot claim {field_name}")
         result = cls(
             proposal=ImplementationProposal.from_dict(payload.get("proposal") or {}),
             policy=ProposalValidationPolicy.from_dict(payload.get("policy") or {}),
@@ -2213,9 +2111,7 @@ class ProposalValidationResult:
             claimed_requirements is not None
             and claimed_requirements != result.proved_requirement_ids
         ):
-            raise ProposalValidationError(
-                "proposal result requirement claims mismatch"
-            )
+            raise ProposalValidationError("proposal result requirement claims mismatch")
         return result
 
     def with_dispatch_outcome(
@@ -2325,11 +2221,7 @@ def _evaluate_fail_fast_objective_completion(
         ("freshness_seconds", freshness_seconds),
         ("clock_skew_seconds", clock_skew_seconds),
     ):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or float(value) < 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
             raise ValueError(f"{name} must be a non-negative number")
 
     def payload(value: Any) -> dict[str, Any]:
@@ -2350,9 +2242,7 @@ def _evaluate_fail_fast_objective_completion(
             parsed = value
         elif isinstance(value, str) and value.strip():
             try:
-                parsed = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -2380,18 +2270,15 @@ def _evaluate_fail_fast_objective_completion(
     qualifying_codes = {code.value for code in QUALIFYING_FAIL_FAST_CODES}
     operational_complete = bool(
         proposal.objective_id == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
-        and policy.expected_objective_id
-        == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+        and policy.expected_objective_id == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
         and not result.accepted
         and rejection is not None
-        and result.proved_requirement_ids
-        == (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,)
+        and result.proved_requirement_ids == (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,)
         and receipt.expensive_checks_started == 0
         and rejection.expensive_checks_started == 0
         and set(rejection.rejection_codes).intersection(qualifying_codes)
         and receipt.gate_trace == ORDERED_PROPOSAL_GATES
-        and rejection.gate_trace
-        == tuple(gate.value for gate in ORDERED_PROPOSAL_GATES)
+        and rejection.gate_trace == tuple(gate.value for gate in ORDERED_PROPOSAL_GATES)
         and rejection.task_id == proposal.task_id
         and rejection.repository_id == proposal.repository_id
         and rejection.proposal_id == proposal.proposal_id
@@ -2423,25 +2310,20 @@ def _evaluate_fail_fast_objective_completion(
     }
     producer_values = [payload(item) for item in producing_tasks]
     producer_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in producer_values
+        str(item.get("task_id", item.get("id", "")) or "").strip() for item in producer_values
     ]
     producer_population_complete = bool(
-        len(producer_ids)
-        == len(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
+        len(producer_ids) == len(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
         and len(producer_ids) == len(set(producer_ids))
-        and set(producer_ids)
-        == set(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
+        and set(producer_ids) == set(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_PRODUCING_TASK_IDS)
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in terminal_states
+            normalized(item.get("status", item.get("state", ""))) in terminal_states
             for item in producer_values
         )
     )
 
     expected_criteria = {
-        normalized(item)
-        for item in NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA
+        normalized(item) for item in NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA
     }
     evidence_values: list[dict[str, Any]] = []
     receipt_ids_by_criterion: dict[str, set[str]] = {}
@@ -2450,11 +2332,7 @@ def _evaluate_fail_fast_objective_completion(
     for item in evidence:
         record = payload(item)
         source_value = record.get("evidence", record)
-        source = (
-            dict(source_value)
-            if isinstance(source_value, Mapping)
-            else record
-        )
+        source = dict(source_value) if isinstance(source_value, Mapping) else record
         evidence_values.append(source)
         criterion = normalized(
             source.get(
@@ -2474,21 +2352,16 @@ def _evaluate_fail_fast_objective_completion(
             or ""
         ).strip()
         if criterion and receipt_id:
-            receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                receipt_id
-            )
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(receipt_id)
         validation = source.get("validation_receipt")
         validation = validation if isinstance(validation, Mapping) else {}
         evidence_bound = bool(
             evidence_bound
             and source.get("validation_passed") is True
-            and source.get("repository_tree")
-            == proposal.repository_tree_id
+            and source.get("repository_tree") == proposal.repository_tree_id
             and normalized(validation.get("status")) in {"passed", "verified"}
-            and validation.get("requirement_id")
-            == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
-            and validation.get("objective_id")
-            == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
+            and validation.get("requirement_id") == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
+            and validation.get("objective_id") == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
             and validation.get("repository_id") == proposal.repository_id
             and validation.get("tree_id") == proposal.repository_tree_id
             and validation.get("validation_policy_id") == policy.policy_id
@@ -2510,9 +2383,7 @@ def _evaluate_fail_fast_objective_completion(
     coverage_projection = getattr(coverage, "completion_gate_evidence", None)
     if callable(coverage_projection):
         try:
-            projected = coverage_projection(
-                NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
-            )
+            projected = coverage_projection(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID)
         except (TypeError, ValueError):
             projected = {}
         coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
@@ -2559,37 +2430,23 @@ def _evaluate_fail_fast_objective_completion(
         )
         if isinstance(raw, str):
             raw = (raw,)
-        if not (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in raw
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
-    row_keys = [
-        row_criterion(row) for row in rows if isinstance(row, Mapping)
-    ]
+    row_keys = [row_criterion(row) for row in rows if isinstance(row, Mapping)]
     coverage_bound = bool(
         evidence_population_complete
         and coverage_value.get("verified") is True
-        and coverage_value.get("repository_tree")
-        == proposal.repository_tree_id
-        and coverage_value.get(
-            "repository_id", proposal.repository_id
-        )
-        == proposal.repository_id
+        and coverage_value.get("repository_tree") == proposal.repository_tree_id
+        and coverage_value.get("repository_id", proposal.repository_id) == proposal.repository_id
         and len(row_keys) == len(set(row_keys)) == len(expected_criteria)
         and set(row_keys) == expected_criteria
         and all(
             isinstance(row, Mapping)
             and implementation_bound(row)
             and len(validation_ids(row)) == 1
-            and validation_ids(row)
-            == receipt_ids_by_criterion.get(row_criterion(row), set())
+            and validation_ids(row) == receipt_ids_by_criterion.get(row_criterion(row), set())
             for row in rows
         )
     )
@@ -2610,23 +2467,16 @@ def _evaluate_fail_fast_objective_completion(
     expected_binding = {
         "repository_id": proposal.repository_id,
         "tree_id": proposal.repository_tree_id,
-        "analyzer_version": (
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
-        ),
+        "analyzer_version": (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION),
         "configuration_revision": (
             NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION
         ),
-        "objective_revision": (
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION
-        ),
+        "objective_revision": (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION),
     }
     health_value = payload(analyzer_health)
     health_binding_value = health_value.get("binding")
     health_binding = (
-        {
-            key: health_binding_value.get(key)
-            for key in expected_binding
-        }
+        {key: health_binding_value.get(key) for key in expected_binding}
         if isinstance(health_binding_value, Mapping)
         else {}
     )
@@ -2646,10 +2496,7 @@ def _evaluate_fail_fast_objective_completion(
     quorum_value = payload(exhaustion_quorum)
     quorum_binding_value = quorum_value.get("binding")
     quorum_binding = (
-        {
-            key: quorum_binding_value.get(key)
-            for key in expected_binding
-        }
+        {key: quorum_binding_value.get(key) for key in expected_binding}
         if isinstance(quorum_binding_value, Mapping)
         else {}
     )
@@ -2658,22 +2505,15 @@ def _evaluate_fail_fast_objective_completion(
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
         quorum_value.get("required_members")
         == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count", len(members)) == len(members)
-        and len(members)
-        == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
+        and len(members) == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
         and quorum_value.get("quorum_met", quorum_value.get("satisfied")) is True
         and health_valid
@@ -2688,11 +2528,7 @@ def _evaluate_fail_fast_objective_completion(
             and normalized(member.get("scan_mode")) == "exhaustive"
             and fresh(member.get("finished_at"))
             and isinstance(member.get("binding"), Mapping)
-            and {
-                key: member["binding"].get(key)
-                for key in expected_binding
-            }
-            == expected_binding
+            and {key: member["binding"].get(key) for key in expected_binding} == expected_binding
             for member in members
         )
     )
@@ -2705,9 +2541,7 @@ def _evaluate_fail_fast_objective_completion(
 
     return evaluate_goal_completion(
         current_state=current_state,
-        acceptance_criteria=(
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA
-        ),
+        acceptance_criteria=(NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_ACCEPTANCE_CRITERIA),
         evidence=evidence,
         tasks_complete=bool(
             tasks_complete
@@ -2752,9 +2586,7 @@ _SHELL_OPERATOR_TOKENS = frozenset(
 # Subshell / control-character expansion remains forbidden even inside args of
 # reviewed compound commands, because validation may re-join argv for a shell.
 _SHELL_EXPANSION_RE = re.compile(r"(?:[`\r\n]|\$\()")
-_PRIVATE_KEY_CONTENT_RE = re.compile(
-    r"(?im)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
-)
+_PRIVATE_KEY_CONTENT_RE = re.compile(r"(?im)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"""(?im)(?:^|[,{;.\s])["']?"""
     r"""(?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|"""
@@ -2799,9 +2631,7 @@ _NEVER_EXPOSE_SENTINEL_RE = re.compile(
     r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
-_SECRET_CLASSIFICATION_LABEL_RE = re.compile(
-    r"""(?ix)^secret[_-]?material$"""
-)
+_SECRET_CLASSIFICATION_LABEL_RE = re.compile(r"""(?ix)^secret[_-]?material$""")
 
 
 def _introduces_secret_content(
@@ -2822,19 +2652,14 @@ def _introduces_secret_content(
     after_matches = Counter(
         match.group(0) for match in _SECRET_CONTENT_RE.finditer(after_source or "")
     )
-    return any(
-        count > before_matches.get(value, 0)
-        for value, count in after_matches.items()
-    )
+    return any(count > before_matches.get(value, 0) for value, count in after_matches.items())
 
 
 _TEST_SKIP_RE = re.compile(
     r"(?im)(?:pytest[.]mark[.](?:skip|xfail)|unittest[.]skip|"
     r"\bskipTest\s*\(|\bassert\s+True\b)"
 )
-_ASSERTION_RE = re.compile(
-    r"(?m)(?:\bassert\b|self[.]assert[A-Z]\w*\s*\(|pytest[.]raises\s*\()"
-)
+_ASSERTION_RE = re.compile(r"(?m)(?:\bassert\b|self[.]assert[A-Z]\w*\s*\(|pytest[.]raises\s*\()")
 
 
 def _path_at_boundary(path: str, boundaries: Sequence[str]) -> bool:
@@ -2862,11 +2687,7 @@ def _is_scoped_python_test_source(
     authority envelope remain subject to the sensitive-path gate.
     """
 
-    return (
-        path.endswith((".py", ".pyi"))
-        and _is_test_path(path)
-        and policy.path_is_in_scope(path)
-    )
+    return path.endswith((".py", ".pyi")) and _is_test_path(path) and policy.path_is_in_scope(path)
 
 
 def _is_inert_test_package_marker_companion(
@@ -2897,17 +2718,12 @@ def _is_inert_test_package_marker_companion(
             and normalized != path
             and not any(character in normalized for character in "*?[")
             for raw_pattern in patterns
-            if (
-                normalized := str(raw_pattern)
-                .strip()
-                .replace("\\", "/")
-                .removeprefix("./")
-            )
+            if (normalized := str(raw_pattern).strip().replace("\\", "/").removeprefix("./"))
         )
 
-    return has_declared_descendant(
-        policy.allowed_paths
-    ) and has_declared_descendant(policy.task_owned_paths)
+    return has_declared_descendant(policy.allowed_paths) and has_declared_descendant(
+        policy.task_owned_paths
+    )
 
 
 def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
@@ -2998,10 +2814,7 @@ def _entry_introduces_secret(
         value = match.group("value")
         if not _is_concrete_secret_value(value):
             continue
-        if (
-            allow_synthetic_test_canaries
-            and _is_synthetic_test_secret_canary(value)
-        ):
+        if allow_synthetic_test_canaries and _is_synthetic_test_secret_canary(value):
             continue
         return True
     return False
@@ -3032,9 +2845,7 @@ def _metadata_size(metadata: Mapping[str, Any]) -> int:
     return max(sizes)
 
 
-def _command_is_allowed(
-    command: Sequence[str], prefixes: Sequence[Sequence[str]]
-) -> bool:
+def _command_is_allowed(command: Sequence[str], prefixes: Sequence[Sequence[str]]) -> bool:
     """Return whether argv is allowed under the reviewed command prefixes.
 
     Task boards store validation as shell text and may include reviewed ``&&``
@@ -3056,9 +2867,7 @@ def _command_is_allowed(
     def clause_executable_is_safe(clause: tuple[str, ...]) -> bool:
         if not clause:
             return False
-        executable = (
-            clause[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
-        )
+        executable = clause[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
         executable = executable.removesuffix(".exe")
         if executable in {
             "bash",
@@ -3125,9 +2934,7 @@ def _entry_operation(entry: CandidateDiffEntry) -> tuple[str, str, str]:
     return (entry.change_kind.value, entry.path, entry.old_path)
 
 
-def _operation_matches_entry(
-    operation: ProposalOperation, entry: CandidateDiffEntry
-) -> bool:
+def _operation_matches_entry(operation: ProposalOperation, entry: CandidateDiffEntry) -> bool:
     if operation.operation != entry.change_kind.value or operation.path != entry.path:
         return False
     if operation.operation in {"rename", "copy"}:
@@ -3153,19 +2960,14 @@ def _patch_content_matches(
                 index
                 for index, entry in enumerate(remaining)
                 if entry.path == (parsed.new_path or parsed.old_path)
-                or (
-                    entry.old_path == parsed.old_path
-                    and entry.new_path == parsed.new_path
-                )
+                or (entry.old_path == parsed.old_path and entry.new_path == parsed.new_path)
             ),
             None,
         )
         if match_index is None:
             return False
         entry = remaining.pop(match_index)
-        if entry.binary or (
-            entry.before_source is None and entry.after_source is None
-        ):
+        if entry.binary or (entry.before_source is None and entry.after_source is None):
             continue
         before_source = entry.before_source or ""
         after_source = entry.after_source or ""
@@ -3279,10 +3081,7 @@ class ProposalValidator:
                 "unsupported implementation proposal version",
             )
         proposal_payload = proposal._identity_payload()
-        if (
-            len(_canonical_json(proposal_payload).encode("utf-8"))
-            > policy.max_output_bytes
-        ):
+        if len(_canonical_json(proposal_payload).encode("utf-8")) > policy.max_output_bytes:
             add(
                 ProposalFindingCode.OUTPUT_TOO_LARGE,
                 ProposalGate.SCHEMA,
@@ -3320,9 +3119,9 @@ class ProposalValidator:
                 )
             rationale_refs = set(proposal.rationale_references)
             for operation in proposal.operations:
-                if not operation.rationale_refs or not set(
-                    operation.rationale_refs
-                ).issubset(rationale_refs):
+                if not operation.rationale_refs or not set(operation.rationale_refs).issubset(
+                    rationale_refs
+                ):
                     add(
                         ProposalFindingCode.MISSING_REQUIRED_FIELD,
                         ProposalGate.STRUCTURE,
@@ -3330,9 +3129,7 @@ class ProposalValidator:
                         operation.path,
                     )
             for step in proposal.validation_plan:
-                if not step.rationale_refs or not set(step.rationale_refs).issubset(
-                    rationale_refs
-                ):
+                if not step.rationale_refs or not set(step.rationale_refs).issubset(rationale_refs):
                     add(
                         ProposalFindingCode.MISSING_REQUIRED_FIELD,
                         ProposalGate.STRUCTURE,
@@ -3517,10 +3314,7 @@ class ProposalValidator:
                 or (new_required and not entry.new_path)
                 or (old_forbidden and entry.old_path)
                 or (new_forbidden and entry.new_path)
-                or (
-                    entry.change_kind is DiffChangeKind.RENAME
-                    and entry.old_path == entry.new_path
-                )
+                or (entry.change_kind is DiffChangeKind.RENAME and entry.old_path == entry.new_path)
             )
             if malformed_shape:
                 add(
@@ -3583,10 +3377,7 @@ class ProposalValidator:
                     not any(
                         parsed_kind == kind
                         and parsed_path == path
-                        and (
-                            kind not in {"rename", "copy"}
-                            or parsed_old == old_path
-                        )
+                        and (kind not in {"rename", "copy"} or parsed_old == old_path)
                         for kind, path, old_path in candidate_projection
                     )
                     for parsed_kind, parsed_path, parsed_old in parsed_projection
@@ -3596,9 +3387,7 @@ class ProposalValidator:
                         ProposalGate.PATCH,
                         "patch paths or operations do not match candidate diff",
                     )
-                elif not _patch_content_matches(
-                    proposal.patch_text, parsed_patch, entries
-                ):
+                elif not _patch_content_matches(proposal.patch_text, parsed_patch, entries):
                     add(
                         ProposalFindingCode.PATCH_MISMATCH,
                         ProposalGate.PATCH,
@@ -3621,9 +3410,7 @@ class ProposalValidator:
                 "declared paths do not exactly match the normalized candidate diff",
             )
         for entry in entries:
-            inert_test_package_marker = (
-                _is_inert_test_package_marker_companion(entry, policy)
-            )
+            inert_test_package_marker = _is_inert_test_package_marker_companion(entry, policy)
             for path in (entry.old_path, entry.new_path):
                 if not path:
                     continue
@@ -3642,10 +3429,7 @@ class ProposalValidator:
                         "candidate path is forbidden by repository policy",
                         path,
                     )
-                if any(
-                    _path_matches(path, protected)
-                    for protected in policy.protected_paths
-                ):
+                if any(_path_matches(path, protected) for protected in policy.protected_paths):
                     add(
                         ProposalFindingCode.PROTECTED_PATH_FORBIDDEN,
                         ProposalGate.PATH,
@@ -3666,20 +3450,14 @@ class ProposalValidator:
                         "candidate path crosses a submodule boundary",
                         path,
                     )
-                if (
-                    not policy.path_is_allowed(path)
-                    and not inert_test_package_marker
-                ):
+                if not policy.path_is_allowed(path) and not inert_test_package_marker:
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
                         "candidate path is outside the task-owned scope",
                         path,
                     )
-                if (
-                    not policy.path_is_task_owned(path)
-                    and not inert_test_package_marker
-                ):
+                if not policy.path_is_task_owned(path) and not inert_test_package_marker:
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
@@ -3693,9 +3471,7 @@ class ProposalValidator:
                     "binary changes require explicit policy authority",
                     entry.path,
                 )
-            source_bytes = (entry.after_source or "").encode(
-                "utf-8", errors="surrogatepass"
-            )
+            source_bytes = (entry.after_source or "").encode("utf-8", errors="surrogatepass")
             if not policy.allow_binary and _looks_binary(source_bytes):
                 add(
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
@@ -3739,13 +3515,8 @@ class ProposalValidator:
                 entry,
                 allow_synthetic_test_canaries=scoped_python_test_source,
             )
-            path_requires_secret_authority = (
-                sensitive_path
-                and not scoped_python_test_source
-            )
-            if not policy.allow_secrets and (
-                path_requires_secret_authority or sensitive_content
-            ):
+            path_requires_secret_authority = sensitive_path and not scoped_python_test_source
+            if not policy.allow_secrets and (path_requires_secret_authority or sensitive_content):
                 add(
                     ProposalFindingCode.SECRET_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
@@ -3766,9 +3537,7 @@ class ProposalValidator:
                     any(
                         _path_matches(entry.path, pattern)
                         or fnmatch.fnmatchcase(entry.path, pattern)
-                        or fnmatch.fnmatchcase(
-                            entry.path.rsplit("/", 1)[-1], pattern
-                        )
+                        or fnmatch.fnmatchcase(entry.path.rsplit("/", 1)[-1], pattern)
                         for pattern in policy.generated_path_patterns
                     )
                     or _GENERATED_MARKERS_RE.search(entry.after_source or "")
@@ -3780,12 +3549,8 @@ class ProposalValidator:
                     "generated content markers require explicit policy authority",
                     entry.path,
                 )
-            if (
-                not policy.allow_validation_config_changes
-                and any(
-                    _path_matches(entry.path, config_path)
-                    for config_path in _VALIDATION_CONFIG_PATHS
-                )
+            if not policy.allow_validation_config_changes and any(
+                _path_matches(entry.path, config_path) for config_path in _VALIDATION_CONFIG_PATHS
             ):
                 add(
                     ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN,
@@ -3816,10 +3581,7 @@ class ProposalValidator:
                     entry.path,
                 )
             if not policy.allow_test_deletion and (
-                (
-                    entry.change_kind is DiffChangeKind.DELETE
-                    and _is_test_path(entry.path)
-                )
+                (entry.change_kind is DiffChangeKind.DELETE and _is_test_path(entry.path))
                 or (
                     entry.change_kind is DiffChangeKind.RENAME
                     and _is_test_path(entry.old_path)
@@ -3849,9 +3611,7 @@ class ProposalValidator:
                     )
 
         for step in proposal.validation_plan:
-            if not _command_is_allowed(
-                step.command, policy.allowed_validation_commands
-            ):
+            if not _command_is_allowed(step.command, policy.allowed_validation_commands):
                 add(
                     ProposalFindingCode.COMMAND_FORBIDDEN,
                     ProposalGate.VALIDATION,
@@ -4009,9 +3769,7 @@ def _validate_strict_provider_mapping(
         _strict_text(operation["operation"], field_name=f"operations[{index}].operation")
         _strict_repo_path(operation["path"], field_name=f"operations[{index}].path")
         if operation["old_path"]:
-            _strict_repo_path(
-                operation["old_path"], field_name=f"operations[{index}].old_path"
-            )
+            _strict_repo_path(operation["old_path"], field_name=f"operations[{index}].old_path")
         _strict_string_sequence(
             operation["rationale_refs"],
             field_name=f"operations[{index}].rationale_refs",
@@ -4045,9 +3803,7 @@ def _validate_strict_provider_mapping(
             maximum=policy.max_operations * 4,
         )
 
-    risks = _strict_sequence(
-        payload["risks"], field_name="risks", maximum=policy.max_operations
-    )
+    risks = _strict_sequence(payload["risks"], field_name="risks", maximum=policy.max_operations)
     for index, risk in enumerate(risks):
         if type(risk) is not dict or set(risk) != {"risk", "mitigation"}:
             raise ProposalValidationError(
@@ -4087,9 +3843,7 @@ def _validate_strict_provider_mapping(
         _strict_id(claims[name], field_name=f"authority_claims.{name}")
     for name in set(claims) & non_authority_claims:
         if type(claims[name]) is not bool:
-            raise ProposalValidationError(
-                f"authority_claims.{name} must be a boolean"
-            )
+            raise ProposalValidationError(f"authority_claims.{name} must be a boolean")
 
     effects = _strict_sequence(
         payload["expected_effects"],
@@ -4128,20 +3882,14 @@ def _validate_strict_provider_mapping(
         for name in ("old_path", "new_path"):
             path = entry[name]
             if type(path) is not str:
-                raise ProposalValidationError(
-                    f"candidate_diff[{index}].{name} must be a string"
-                )
+                raise ProposalValidationError(f"candidate_diff[{index}].{name} must be a string")
             if path:
-                _strict_repo_path(
-                    path, field_name=f"candidate_diff[{index}].{name}"
-                )
+                _strict_repo_path(path, field_name=f"candidate_diff[{index}].{name}")
                 if len(path.encode("utf-8")) > policy.max_path_bytes:
                     raise ProposalValidationError("candidate path exceeds the byte bound")
                 if len(PurePosixPath(path).parts) > policy.max_path_depth:
                     raise ProposalValidationError("candidate path exceeds the depth bound")
-        if entry["change_kind"] not in {
-            item.value for item in DiffChangeKind
-        } - {"unknown"}:
+        if entry["change_kind"] not in {item.value for item in DiffChangeKind} - {"unknown"}:
             raise ProposalValidationError("candidate change kind is not canonical")
         if type(entry["binary"]) is not bool:
             raise ProposalValidationError("candidate binary flag must be a boolean")
@@ -4158,9 +3906,7 @@ def _validate_strict_provider_mapping(
             "size_bytes",
         }
         if set(entry["metadata"]) - metadata_fields:
-            raise ProposalValidationError(
-                "candidate metadata contains unsupported fields"
-            )
+            raise ProposalValidationError("candidate metadata contains unsupported fields")
         for name, value in entry["metadata"].items():
             if name.endswith("_bytes") or name == "size_bytes":
                 if type(value) is not int or value < 0:
@@ -4168,9 +3914,7 @@ def _validate_strict_provider_mapping(
                         f"candidate metadata {name} must be a non-negative integer"
                     )
             elif type(value) is not str:
-                raise ProposalValidationError(
-                    f"candidate metadata {name} must be a string"
-                )
+                raise ProposalValidationError(f"candidate metadata {name} must be a string")
         for source_name in ("before_source", "after_source"):
             source = entry[source_name]
             if source is not None:
@@ -4244,9 +3988,7 @@ def _lstat_chain(root: Path, path: str) -> tuple[tuple[str, os.stat_result], ...
                 "repository path crosses a live symlink boundary",
                 path,
             )
-        if index < len(PurePosixPath(path).parts) - 1 and not stat.S_ISDIR(
-            metadata.st_mode
-        ):
+        if index < len(PurePosixPath(path).parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
             raise _RepositoryEnvelopeIssue(
                 ProposalFindingCode.REPOSITORY_CONTENT_MISMATCH,
                 "candidate parent path is not a directory",
@@ -4281,18 +4023,14 @@ def _read_repository_file(
         )
     no_follow = getattr(os, "O_NOFOLLOW", 0)
     close_on_exec = getattr(os, "O_CLOEXEC", 0)
-    directory_flags = os.O_RDONLY | close_on_exec | no_follow | getattr(
-        os, "O_DIRECTORY", 0
-    )
+    directory_flags = os.O_RDONLY | close_on_exec | no_follow | getattr(os, "O_DIRECTORY", 0)
     file_flags = os.O_RDONLY | close_on_exec | no_follow
     directory_descriptor = -1
     descriptor = -1
     try:
         root_before = os.lstat(root)
         directory_descriptor = os.open(root, directory_flags)
-        if _stat_fingerprint(root_before) != _stat_fingerprint(
-            os.fstat(directory_descriptor)
-        ):
+        if _stat_fingerprint(root_before) != _stat_fingerprint(os.fstat(directory_descriptor)):
             raise OSError("repository root identity changed")
         parts = PurePosixPath(path).parts
         for index, part in enumerate(parts[:-1]):
@@ -4303,11 +4041,9 @@ def _read_repository_file(
             )
             child_stat = os.fstat(child_descriptor)
             expected_name, expected_stat = before_chain[index]
-            if (
-                expected_name != "/".join(parts[: index + 1])
-                or _stat_fingerprint(child_stat)
-                != _stat_fingerprint(expected_stat)
-            ):
+            if expected_name != "/".join(parts[: index + 1]) or _stat_fingerprint(
+                child_stat
+            ) != _stat_fingerprint(expected_stat):
                 os.close(child_descriptor)
                 raise OSError("repository ancestor identity changed")
             os.close(directory_descriptor)
@@ -4350,10 +4086,8 @@ def _read_repository_file(
         )
     after_chain = _lstat_chain(root, path)
     if (
-        _stat_fingerprint(root_before)
-        != _stat_fingerprint(os.lstat(root))
-        or
-        _stat_fingerprint(target) != _stat_fingerprint(opened_before)
+        _stat_fingerprint(root_before) != _stat_fingerprint(os.lstat(root))
+        or _stat_fingerprint(target) != _stat_fingerprint(opened_before)
         or _stat_fingerprint(opened_before) != _stat_fingerprint(opened_after)
         or len(before_chain) != len(after_chain)
         or any(
@@ -4403,8 +4137,7 @@ def _validate_repository_envelope(
             if not candidate_path:
                 continue
             if any(
-                _path_matches(candidate_path, protected)
-                for protected in policy.protected_paths
+                _path_matches(candidate_path, protected) for protected in policy.protected_paths
             ):
                 raise _RepositoryEnvelopeIssue(
                     ProposalFindingCode.PROTECTED_PATH_FORBIDDEN,
@@ -4422,9 +4155,11 @@ def _validate_repository_envelope(
                     marker_stat = os.lstat(marker)
                 except FileNotFoundError:
                     continue
-                if stat.S_ISLNK(marker_stat.st_mode) or stat.S_ISREG(
-                    marker_stat.st_mode
-                ) or stat.S_ISDIR(marker_stat.st_mode):
+                if (
+                    stat.S_ISLNK(marker_stat.st_mode)
+                    or stat.S_ISREG(marker_stat.st_mode)
+                    or stat.S_ISDIR(marker_stat.st_mode)
+                ):
                     raise _RepositoryEnvelopeIssue(
                         ProposalFindingCode.SUBMODULE_BOUNDARY_FORBIDDEN,
                         "candidate path crosses a nested repository boundary",
@@ -4490,9 +4225,7 @@ def _validate_repository_envelope(
                 "path": path,
                 "exists": baseline is not None,
                 "sha256": _sha256_bytes(baseline) if baseline is not None else "",
-                "chain": [
-                    (name, _stat_fingerprint(metadata)) for name, metadata in chain
-                ],
+                "chain": [(name, _stat_fingerprint(metadata)) for name, metadata in chain],
             }
         )
     return _identity(
@@ -4520,9 +4253,7 @@ class UntrustedProposalAdmissionResult:
         if type(self.accepted) is not bool:
             raise ProposalValidationError("untrusted admission accepted must be boolean")
         if self.expensive_checks_started != 0:
-            raise ProposalValidationError(
-                "untrusted admission cannot start expensive checks"
-            )
+            raise ProposalValidationError("untrusted admission cannot start expensive checks")
         if self.accepted != (
             self.proposal_validation is not None
             and self.proposal_validation.accepted
@@ -4541,11 +4272,7 @@ class UntrustedProposalAdmissionResult:
 
     @property
     def proposal(self) -> ImplementationProposal | None:
-        return (
-            self.proposal_validation.proposal
-            if self.proposal_validation is not None
-            else None
-        )
+        return self.proposal_validation.proposal if self.proposal_validation is not None else None
 
     @property
     def admission_id(self) -> str:
@@ -4673,9 +4400,7 @@ def validate_untrusted_implementation_proposal(
             proposal_validation=validation,
         )
     try:
-        snapshot_id = _validate_repository_envelope(
-            proposal, policy, repository_root
-        )
+        snapshot_id = _validate_repository_envelope(proposal, policy, repository_root)
     except _RepositoryEnvelopeIssue as exc:
         return rejected(
             exc.code,

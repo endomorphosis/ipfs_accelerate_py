@@ -28,7 +28,7 @@ class TestMCPServerUNI179StorageTools(unittest.TestCase):
 
         by_name = {c["name"]: c for c in manager.calls}
         manage_schema = by_name["manage_collections"]["input_schema"]
-        actions = (manage_schema.get("properties", {}).get("action", {}).get("enum") or [])
+        actions = manage_schema.get("properties", {}).get("action", {}).get("enum") or []
         self.assertIn("lifecycle_report", actions)
 
     def test_lifecycle_report_global_shape(self) -> None:

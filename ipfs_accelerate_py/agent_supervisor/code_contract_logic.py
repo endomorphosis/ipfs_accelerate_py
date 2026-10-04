@@ -285,24 +285,22 @@ _RELATION_SIGNATURES: Final[Mapping[PredicateRelation, tuple[ArgumentSort, ...]]
     )
 )
 
-_KIND_TO_RELATION: Final[Mapping[SupportedPredicateKind, PredicateRelation]] = (
-    MappingProxyType(
-        {
-            SupportedPredicateKind.TYPE: PredicateRelation.HAS_TYPE,
-            SupportedPredicateKind.NULLABILITY: PredicateRelation.IS_NULLABLE,
-            SupportedPredicateKind.ERROR: PredicateRelation.MAY_RAISE,
-            SupportedPredicateKind.EFFECT: PredicateRelation.HAS_EFFECT,
-            SupportedPredicateKind.AUTHORIZATION: PredicateRelation.REQUIRES_AUTH,
-            SupportedPredicateKind.STATE_TRANSITION: PredicateRelation.TRANSITIONS,
-            SupportedPredicateKind.ORDERING: PredicateRelation.ORDERED_AS,
-            SupportedPredicateKind.IDEMPOTENCE: PredicateRelation.IDEMPOTENT_AS,
-            SupportedPredicateKind.BOUNDED_REACHABILITY: PredicateRelation.REACHABLE_WITHIN,
-        }
-    )
+_KIND_TO_RELATION: Final[Mapping[SupportedPredicateKind, PredicateRelation]] = MappingProxyType(
+    {
+        SupportedPredicateKind.TYPE: PredicateRelation.HAS_TYPE,
+        SupportedPredicateKind.NULLABILITY: PredicateRelation.IS_NULLABLE,
+        SupportedPredicateKind.ERROR: PredicateRelation.MAY_RAISE,
+        SupportedPredicateKind.EFFECT: PredicateRelation.HAS_EFFECT,
+        SupportedPredicateKind.AUTHORIZATION: PredicateRelation.REQUIRES_AUTH,
+        SupportedPredicateKind.STATE_TRANSITION: PredicateRelation.TRANSITIONS,
+        SupportedPredicateKind.ORDERING: PredicateRelation.ORDERED_AS,
+        SupportedPredicateKind.IDEMPOTENCE: PredicateRelation.IDEMPOTENT_AS,
+        SupportedPredicateKind.BOUNDED_REACHABILITY: PredicateRelation.REACHABLE_WITHIN,
+    }
 )
 
-_RELATION_TO_KIND: Final[Mapping[PredicateRelation, SupportedPredicateKind]] = (
-    MappingProxyType({relation: kind for kind, relation in _KIND_TO_RELATION.items()})
+_RELATION_TO_KIND: Final[Mapping[PredicateRelation, SupportedPredicateKind]] = MappingProxyType(
+    {relation: kind for kind, relation in _KIND_TO_RELATION.items()}
 )
 
 
@@ -428,12 +426,8 @@ class PredicateArgument:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _text(self.name, "argument.name"))
-        object.__setattr__(
-            self, "sort", _enum(self.sort, ArgumentSort, "argument.sort")
-        )
-        object.__setattr__(
-            self, "binder", _boolean(bool(self.binder), "argument.binder")
-        )
+        object.__setattr__(self, "sort", _enum(self.sort, ArgumentSort, "argument.sort"))
+        object.__setattr__(self, "binder", _boolean(bool(self.binder), "argument.binder"))
         value = self.value
         sort = self.sort
         if sort is ArgumentSort.BOOLEAN:
@@ -496,12 +490,8 @@ class ContractPredicate(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, SupportedPredicateKind, "kind")
-        )
-        object.__setattr__(
-            self, "relation", _enum(self.relation, PredicateRelation, "relation")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, SupportedPredicateKind, "kind"))
+        object.__setattr__(self, "relation", _enum(self.relation, PredicateRelation, "relation"))
         expected_kind = _RELATION_TO_KIND.get(self.relation)
         if expected_kind is not None and expected_kind is not self.kind:
             raise TranslationRejectedError(
@@ -533,13 +523,8 @@ class ContractPredicate(CanonicalContract):
                         ", ".join(s.value for s in actual),
                     ),
                 )
-        object.__setattr__(
-            self, "source_cid", _text(self.source_cid, "source_cid")
-        )
-        cids = tuple(
-            _text(item, "assumption_cids")
-            for item in (self.assumption_cids or ())
-        )
+        object.__setattr__(self, "source_cid", _text(self.source_cid, "source_cid"))
+        cids = tuple(_text(item, "assumption_cids") for item in (self.assumption_cids or ()))
         if len(cids) != len(set(cids)):
             raise CodeContractLogicError("assumption_cids must be unique")
         object.__setattr__(self, "assumption_cids", cids)
@@ -550,15 +535,9 @@ class ContractPredicate(CanonicalContract):
             or (self.arguments[0].value if self.arguments else ""),
         )
         object.__setattr__(self, "closed", _boolean(bool(self.closed), "closed"))
-        object.__setattr__(
-            self, "support", _enum(self.support, SupportStatus, "support")
-        )
-        object.__setattr__(
-            self, "residual", _text(self.residual, "residual", required=False)
-        )
-        object.__setattr__(
-            self, "ambiguity", _text(self.ambiguity, "ambiguity", required=False)
-        )
+        object.__setattr__(self, "support", _enum(self.support, SupportStatus, "support"))
+        object.__setattr__(self, "residual", _text(self.residual, "residual", required=False))
+        object.__setattr__(self, "ambiguity", _text(self.ambiguity, "ambiguity", required=False))
         object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     @property
@@ -603,9 +582,7 @@ class ContractPredicate(CanonicalContract):
             raise CodeContractLogicError("contract predicate must be an object")
         supplied = payload.get("schema")
         if supplied not in (None, "", cls.SCHEMA):
-            raise CodeContractLogicError(
-                f"unsupported schema {supplied!r}; expected {cls.SCHEMA}"
-            )
+            raise CodeContractLogicError(f"unsupported schema {supplied!r}; expected {cls.SCHEMA}")
         result = cls(
             kind=payload.get("kind", ""),
             relation=payload.get("relation", ""),
@@ -621,9 +598,7 @@ class ContractPredicate(CanonicalContract):
         )
         claimed = payload.get("content_id") or payload.get("predicate_id")
         if claimed and claimed != result.predicate_id:
-            raise CodeContractLogicError(
-                "predicate content identity does not match payload"
-            )
+            raise CodeContractLogicError("predicate content identity does not match payload")
         return result
 
 
@@ -653,9 +628,7 @@ class LogicAssumption(CanonicalContract):
                 or isinstance(entry, (str, bytes, bytearray))
                 or len(entry) != 2
             ):
-                raise CodeContractLogicError(
-                    "binders must be (name, ArgumentSort) pairs"
-                )
+                raise CodeContractLogicError("binders must be (name, ArgumentSort) pairs")
             name = _text(entry[0], "binder.name")
             sort = _enum(entry[1], ArgumentSort, "binder.sort")
             if name in seen:
@@ -666,12 +639,8 @@ class LogicAssumption(CanonicalContract):
             seen.add(name)
             binders.append((name, sort))
         object.__setattr__(self, "binders", tuple(binders))
-        object.__setattr__(
-            self, "source_cid", _text(self.source_cid, "source_cid", required=False)
-        )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "source_cid", _text(self.source_cid, "source_cid", required=False))
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     @property
     def assumption_cid(self) -> str:
@@ -681,15 +650,10 @@ class LogicAssumption(CanonicalContract):
         return IRAssumption(
             assumption_id=self.assumption_cid,
             statement=self.statement,
-            source_refs=tuple(
-                ref for ref in (self.source_cid,) if ref
-            ),
+            source_refs=tuple(ref for ref in (self.source_cid,) if ref),
             metadata=freeze_json(
                 {
-                    "binders": [
-                        {"name": name, "sort": sort.value}
-                        for name, sort in self.binders
-                    ],
+                    "binders": [{"name": name, "sort": sort.value} for name, sort in self.binders],
                     "logic_family": LOGIC_FAMILY,
                 }
             ),
@@ -723,9 +687,7 @@ class LogicAssumption(CanonicalContract):
         )
         claimed = payload.get("content_id") or payload.get("assumption_cid")
         if claimed and claimed != result.assumption_cid:
-            raise CodeContractLogicError(
-                "assumption content identity does not match payload"
-            )
+            raise CodeContractLogicError("assumption content identity does not match payload")
         return result
 
 
@@ -757,21 +719,15 @@ class CallSliceBinding(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "slice_cid", _text(self.slice_cid, "slice_cid")
-        )
-        nodes = tuple(
-            _text(item, "node_ids") for item in (self.node_ids or ())
-        )
+        object.__setattr__(self, "slice_cid", _text(self.slice_cid, "slice_cid"))
+        nodes = tuple(_text(item, "node_ids") for item in (self.node_ids or ()))
         if len(nodes) > MAX_SLICE_NODES:
             raise CodeContractLogicError(f"node_ids exceed {MAX_SLICE_NODES}")
         if len(nodes) != len(set(nodes)):
             raise CodeContractLogicError("node_ids must be unique")
         object.__setattr__(self, "node_ids", nodes)
         edges = tuple(
-            _text(item, "edge_ids", required=False)
-            for item in (self.edge_ids or ())
-            if item
+            _text(item, "edge_ids", required=False) for item in (self.edge_ids or ()) if item
         )
         object.__setattr__(self, "edge_ids", _unique_sorted(edges))
         for name in (
@@ -780,22 +736,14 @@ class CallSliceBinding(CanonicalContract):
             "truncated",
             "presented_as_closed",
         ):
-            object.__setattr__(
-                self, name, _boolean(bool(getattr(self, name)), name)
-            )
+            object.__setattr__(self, name, _boolean(bool(getattr(self, name)), name))
         if isinstance(self.depth_bound, bool) or not isinstance(self.depth_bound, int):
             raise CodeContractLogicError("depth_bound must be a non-negative integer")
         if self.depth_bound < 0:
             raise CodeContractLogicError("depth_bound must be a non-negative integer")
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id", required=False)
-        )
-        object.__setattr__(
-            self, "graph_id", _text(self.graph_id, "graph_id", required=False)
-        )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id", required=False))
+        object.__setattr__(self, "graph_id", _text(self.graph_id, "graph_id", required=False))
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
         # Structural closedness: truncated or incomplete slices cannot be closed.
         is_closed = (
             self.complete
@@ -861,9 +809,7 @@ class CallSliceBinding(CanonicalContract):
         depth_bound: int | None = None,
     ) -> "CallSliceBinding":
         if not isinstance(slice_, ProgramGraphSlice):
-            raise CodeContractLogicError(
-                "slice must be a ProgramGraphSlice"
-            )
+            raise CodeContractLogicError("slice must be a ProgramGraphSlice")
         closed = (
             slice_.complete
             and slice_.dependency_complete
@@ -912,12 +858,8 @@ class UnsupportedResidual(CanonicalContract):
             "reason",
             _text(self.reason, "reason", maximum=MAX_STATEMENT_BYTES),
         )
-        object.__setattr__(
-            self, "residual", _text(self.residual, "residual", required=False)
-        )
-        object.__setattr__(
-            self, "source_cid", _text(self.source_cid, "source_cid", required=False)
-        )
+        object.__setattr__(self, "residual", _text(self.residual, "residual", required=False))
+        object.__setattr__(self, "source_cid", _text(self.source_cid, "source_cid", required=False))
         object.__setattr__(
             self,
             "predicate_kind",
@@ -988,9 +930,7 @@ class ConformanceReceipt(CanonicalContract):
             "ruleset_version",
             "translator_identity",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         object.__setattr__(
             self,
             "call_slice_cid",
@@ -1008,25 +948,18 @@ class ConformanceReceipt(CanonicalContract):
             object.__setattr__(
                 self,
                 name,
-                tuple(
-                    _text(item, name)
-                    for item in (getattr(self, name) or ())
-                ),
+                tuple(_text(item, name) for item in (getattr(self, name) or ())),
             )
         object.__setattr__(
             self, "round_trip_ok", _boolean(bool(self.round_trip_ok), "round_trip_ok")
         )
-        object.__setattr__(
-            self, "status", _enum(self.status, TranslationStatus, "status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, TranslationStatus, "status"))
         object.__setattr__(
             self,
             "evidence",
             _text(self.evidence, "evidence", required=False) or LOGIC_TRANSLATION_EVIDENCE,
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
         expected = translator_identity(
             translator_id=self.translator_id,
             translator_version=self.translator_version,
@@ -1073,9 +1006,7 @@ class ConformanceReceipt(CanonicalContract):
             raise CodeContractLogicError("conformance receipt must be an object")
         supplied = payload.get("schema")
         if supplied not in (None, "", cls.SCHEMA):
-            raise CodeContractLogicError(
-                f"unsupported schema {supplied!r}; expected {cls.SCHEMA}"
-            )
+            raise CodeContractLogicError(f"unsupported schema {supplied!r}; expected {cls.SCHEMA}")
         result = cls(
             request_cid=payload.get("request_cid", ""),
             source_contract_cid=payload.get("source_contract_cid", ""),
@@ -1093,9 +1024,7 @@ class ConformanceReceipt(CanonicalContract):
             round_trip_ok=bool(payload.get("round_trip_ok", False)),
             status=payload.get("status", ""),
             evidence=payload.get("evidence", LOGIC_TRANSLATION_EVIDENCE),
-            reconstructed_predicate_cids=tuple(
-                payload.get("reconstructed_predicate_cids") or ()
-            ),
+            reconstructed_predicate_cids=tuple(payload.get("reconstructed_predicate_cids") or ()),
             rejection_codes=tuple(payload.get("rejection_codes") or ()),
             metadata=payload.get("metadata") or {},
         )
@@ -1126,12 +1055,8 @@ class TranslationResult(CanonicalContract):
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum(self.status, TranslationStatus, "status")
-        )
-        object.__setattr__(
-            self, "request_cid", _text(self.request_cid, "request_cid")
-        )
+        object.__setattr__(self, "status", _enum(self.status, TranslationStatus, "status"))
+        object.__setattr__(self, "request_cid", _text(self.request_cid, "request_cid"))
         object.__setattr__(
             self,
             "source_contract_cid",
@@ -1155,9 +1080,7 @@ class TranslationResult(CanonicalContract):
         unsupported = tuple(self.unsupported or ())
         for item in unsupported:
             if not isinstance(item, UnsupportedResidual):
-                raise CodeContractLogicError(
-                    "unsupported must be UnsupportedResidual"
-                )
+                raise CodeContractLogicError("unsupported must be UnsupportedResidual")
         object.__setattr__(self, "unsupported", unsupported)
         if not isinstance(self.receipt, ConformanceReceipt):
             raise CodeContractLogicError("receipt must be ConformanceReceipt")
@@ -1169,14 +1092,9 @@ class TranslationResult(CanonicalContract):
         object.__setattr__(
             self,
             "vocabulary_projections",
-            tuple(
-                _text(c, "vocabulary_projections")
-                for c in (self.vocabulary_projections or ())
-            ),
+            tuple(_text(c, "vocabulary_projections") for c in (self.vocabulary_projections or ())),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     @property
     def result_cid(self) -> str:
@@ -1208,31 +1126,25 @@ class TranslationResult(CanonicalContract):
             raise CodeContractLogicError("translation result must be an object")
         claims_raw = payload.get("claims") or ()
         claims = tuple(
-            item if isinstance(item, IRClaim) else IRClaim.from_dict(item)
-            for item in claims_raw
+            item if isinstance(item, IRClaim) else IRClaim.from_dict(item) for item in claims_raw
         )
         result = cls(
             status=payload.get("status", ""),
             request_cid=payload.get("request_cid", ""),
             source_contract_cid=payload.get("source_contract_cid", ""),
             predicates=tuple(
-                ContractPredicate.from_dict(item)
-                for item in (payload.get("predicates") or ())
+                ContractPredicate.from_dict(item) for item in (payload.get("predicates") or ())
             ),
             claims=claims,
             assumptions=tuple(
-                LogicAssumption.from_dict(item)
-                for item in (payload.get("assumptions") or ())
+                LogicAssumption.from_dict(item) for item in (payload.get("assumptions") or ())
             ),
             unsupported=tuple(
-                UnsupportedResidual.from_dict(item)
-                for item in (payload.get("unsupported") or ())
+                UnsupportedResidual.from_dict(item) for item in (payload.get("unsupported") or ())
             ),
             receipt=ConformanceReceipt.from_dict(payload.get("receipt") or {}),
             rejection_codes=tuple(payload.get("rejection_codes") or ()),
-            vocabulary_projections=tuple(
-                payload.get("vocabulary_projections") or ()
-            ),
+            vocabulary_projections=tuple(payload.get("vocabulary_projections") or ()),
             metadata=payload.get("metadata") or {},
         )
         claimed = payload.get("content_id") or payload.get("result_cid")
@@ -1301,9 +1213,7 @@ def extract_predicates_from_contract(
         )
     subject = contract.symbol.qualified_name
     source_cid = contract.content_id
-    assumption_cids = tuple(
-        _text(item, "assumption_cids") for item in assumption_cids
-    )
+    assumption_cids = tuple(_text(item, "assumption_cids") for item in assumption_cids)
     predicates: list[ContractPredicate] = []
     unsupported: list[UnsupportedResidual] = []
 
@@ -1354,9 +1264,7 @@ def extract_predicates_from_contract(
             (
                 PredicateArgument("symbol", ArgumentSort.SYMBOL, subject),
                 PredicateArgument("slot", ArgumentSort.STRING, f"in:{param.name}"),
-                PredicateArgument(
-                    "type", ArgumentSort.TYPE, _type_name(shape)
-                ),
+                PredicateArgument("type", ArgumentSort.TYPE, _type_name(shape)),
             ),
             support=support,
             residual="" if support is SupportStatus.SUPPORTED else "unsupported type shape",
@@ -1402,9 +1310,7 @@ def extract_predicates_from_contract(
             (
                 PredicateArgument("symbol", ArgumentSort.SYMBOL, subject),
                 PredicateArgument("slot", ArgumentSort.STRING, "return"),
-                PredicateArgument(
-                    "nullable", ArgumentSort.BOOLEAN, bool(shape.nullable)
-                ),
+                PredicateArgument("nullable", ArgumentSort.BOOLEAN, bool(shape.nullable)),
             ),
             support=support,
             source=ret.return_id,
@@ -1419,12 +1325,8 @@ def extract_predicates_from_contract(
             PredicateRelation.MAY_RAISE,
             (
                 PredicateArgument("symbol", ArgumentSort.SYMBOL, subject),
-                PredicateArgument(
-                    "error", ArgumentSort.ERROR_NAME, err.error_name
-                ),
-                PredicateArgument(
-                    "retriable", ArgumentSort.BOOLEAN, bool(err.retriable)
-                ),
+                PredicateArgument("error", ArgumentSort.ERROR_NAME, err.error_name),
+                PredicateArgument("retriable", ArgumentSort.BOOLEAN, bool(err.retriable)),
             ),
             support=err.support,
             residual="" if err.support is SupportStatus.SUPPORTED else "unsupported error",
@@ -1456,9 +1358,7 @@ def extract_predicates_from_contract(
                 ),
             ),
             support=effect.support,
-            residual=""
-            if effect.support is SupportStatus.SUPPORTED
-            else "unsupported effect",
+            residual="" if effect.support is SupportStatus.SUPPORTED else "unsupported effect",
             source=effect.effect_id,
         )
 
@@ -1474,9 +1374,7 @@ def extract_predicates_from_contract(
                 PredicateRelation.REQUIRES_AUTH,
                 (
                     PredicateArgument("symbol", ArgumentSort.SYMBOL, subject),
-                    PredicateArgument(
-                        "mode", ArgumentSort.MODE, auth.mode.value
-                    ),
+                    PredicateArgument("mode", ArgumentSort.MODE, auth.mode.value),
                     PredicateArgument("scope", ArgumentSort.SCOPE, str(scope)),
                 ),
                 support=auth.support,
@@ -1496,14 +1394,10 @@ def extract_predicates_from_contract(
             PredicateRelation.ORDERED_AS,
             (
                 PredicateArgument("symbol", ArgumentSort.SYMBOL, subject),
-                PredicateArgument(
-                    "mode", ArgumentSort.MODE, ordering.mode.value
-                ),
+                PredicateArgument("mode", ArgumentSort.MODE, ordering.mode.value),
             ),
             support=ordering.support,
-            residual=""
-            if ordering.support is SupportStatus.SUPPORTED
-            else "unsupported ordering",
+            residual="" if ordering.support is SupportStatus.SUPPORTED else "unsupported ordering",
             source=ordering.ordering_id,
         )
 
@@ -1520,9 +1414,7 @@ def extract_predicates_from_contract(
                 PredicateArgument("mode", ArgumentSort.MODE, idem.mode.value),
             ),
             support=idem.support,
-            residual=""
-            if idem.support is SupportStatus.SUPPORTED
-            else "unsupported idempotence",
+            residual="" if idem.support is SupportStatus.SUPPORTED else "unsupported idempotence",
             source=idem.idempotence_id,
         )
 
@@ -1549,9 +1441,7 @@ def extract_predicates_from_contract(
     if include_unsupported:
         for item in contract.unsupported or ():
             if not isinstance(item, UnsupportedSemantics):
-                raise CodeContractLogicError(
-                    "unsupported must be UnsupportedSemantics"
-                )
+                raise CodeContractLogicError("unsupported must be UnsupportedSemantics")
             unsupported.append(
                 UnsupportedResidual(
                     aspect=item.aspect.value,
@@ -1586,9 +1476,7 @@ def extract_reachability_predicates(
     if not isinstance(slice_binding, CallSliceBinding):
         raise CodeContractLogicError("slice_binding must be CallSliceBinding")
     source_cid = _text(source_cid, "source_cid")
-    assumption_cids = tuple(
-        _text(item, "assumption_cids") for item in assumption_cids
-    )
+    assumption_cids = tuple(_text(item, "assumption_cids") for item in assumption_cids)
     if pairs is None:
         nodes = list(slice_binding.node_ids)
         pairs = []
@@ -1596,8 +1484,10 @@ def extract_reachability_predicates(
             pairs = [(nodes[0], nodes[-1])]
     out: list[ContractPredicate] = []
     closed = slice_binding.is_structurally_closed
-    bound = slice_binding.depth_bound if slice_binding.depth_bound > 0 else max(
-        1, len(slice_binding.node_ids)
+    bound = (
+        slice_binding.depth_bound
+        if slice_binding.depth_bound > 0
+        else max(1, len(slice_binding.node_ids))
     )
     for entry, exit_ in pairs:
         out.append(
@@ -1650,11 +1540,7 @@ def _predicate_to_obligation(
         statement=statement,
         assumption_ids=tuple(assumption_ids),
         logic_family=LOGIC_FAMILY,
-        source_refs=tuple(
-            ref
-            for ref in (predicate.source_cid, predicate.predicate_id)
-            if ref
-        ),
+        source_refs=tuple(ref for ref in (predicate.source_cid, predicate.predicate_id) if ref),
         metadata=freeze_json(
             {
                 "kind": predicate.kind.value,
@@ -1680,9 +1566,7 @@ def _predicate_to_claim(
             RejectionCode.UNBOUND_AXIOM,
             "predicate references undeclared assumption(s)",
         )
-    obligation = _predicate_to_obligation(
-        predicate, assumption_ids=assumption_ids
-    )
+    obligation = _predicate_to_obligation(predicate, assumption_ids=assumption_ids)
     claim = IRClaim(
         claim_id=_cid(
             {
@@ -1696,11 +1580,7 @@ def _predicate_to_claim(
         obligations=(obligation,),
         domain=LOGIC_FAMILY,
         declaration_id=predicate.predicate_id,
-        source_refs=tuple(
-            ref
-            for ref in (predicate.source_cid, predicate.predicate_id)
-            if ref
-        ),
+        source_refs=tuple(ref for ref in (predicate.source_cid, predicate.predicate_id) if ref),
         metadata=freeze_json(
             {
                 "kind": predicate.kind.value,
@@ -2035,16 +1915,12 @@ class TranslationRequest(CanonicalContract):
         if len(assumptions) > MAX_ASSUMPTIONS:
             raise CodeContractLogicError(f"assumptions exceed {MAX_ASSUMPTIONS}")
         object.__setattr__(self, "assumptions", assumptions)
-        if self.call_slice is not None and not isinstance(
-            self.call_slice, CallSliceBinding
-        ):
+        if self.call_slice is not None and not isinstance(self.call_slice, CallSliceBinding):
             raise CodeContractLogicError("call_slice must be CallSliceBinding")
         unsupported = tuple(self.unsupported or ())
         for item in unsupported:
             if not isinstance(item, UnsupportedResidual):
-                raise CodeContractLogicError(
-                    "unsupported must be UnsupportedResidual"
-                )
+                raise CodeContractLogicError("unsupported must be UnsupportedResidual")
         object.__setattr__(self, "unsupported", unsupported)
         for name in (
             "translator_id",
@@ -2052,9 +1928,7 @@ class TranslationRequest(CanonicalContract):
             "ruleset_id",
             "ruleset_version",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         object.__setattr__(
             self,
             "allow_approximation",
@@ -2065,9 +1939,7 @@ class TranslationRequest(CanonicalContract):
             "require_round_trip",
             _boolean(bool(self.require_round_trip), "require_round_trip"),
         )
-        object.__setattr__(
-            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
-        )
+        object.__setattr__(self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata")))
 
     @property
     def request_cid(self) -> str:
@@ -2088,9 +1960,7 @@ class TranslationRequest(CanonicalContract):
             "source_contract_cid": self.source_contract_cid,
             "predicates": [p.to_dict() for p in self.predicates],
             "assumptions": [a.to_dict() for a in self.assumptions],
-            "call_slice": None
-            if self.call_slice is None
-            else self.call_slice.to_dict(),
+            "call_slice": None if self.call_slice is None else self.call_slice.to_dict(),
             "unsupported": [u.to_dict() for u in self.unsupported],
             "translator_id": self.translator_id,
             "translator_version": self.translator_version,
@@ -2106,30 +1976,21 @@ class TranslationRequest(CanonicalContract):
         if not isinstance(payload, Mapping):
             raise CodeContractLogicError("translation request must be an object")
         call_slice_raw = payload.get("call_slice")
-        call_slice = (
-            None
-            if not call_slice_raw
-            else CallSliceBinding.from_dict(call_slice_raw)
-        )
+        call_slice = None if not call_slice_raw else CallSliceBinding.from_dict(call_slice_raw)
         return cls(
             source_contract_cid=payload.get("source_contract_cid", ""),
             predicates=tuple(
-                ContractPredicate.from_dict(item)
-                for item in (payload.get("predicates") or ())
+                ContractPredicate.from_dict(item) for item in (payload.get("predicates") or ())
             ),
             assumptions=tuple(
-                LogicAssumption.from_dict(item)
-                for item in (payload.get("assumptions") or ())
+                LogicAssumption.from_dict(item) for item in (payload.get("assumptions") or ())
             ),
             call_slice=call_slice,
             unsupported=tuple(
-                UnsupportedResidual.from_dict(item)
-                for item in (payload.get("unsupported") or ())
+                UnsupportedResidual.from_dict(item) for item in (payload.get("unsupported") or ())
             ),
             translator_id=payload.get("translator_id", TRANSLATOR_ID),
-            translator_version=payload.get(
-                "translator_version", TRANSLATOR_VERSION
-            ),
+            translator_version=payload.get("translator_version", TRANSLATOR_VERSION),
             ruleset_id=payload.get("ruleset_id", RULESET_ID),
             ruleset_version=payload.get("ruleset_version", RULESET_VERSION),
             allow_approximation=bool(payload.get("allow_approximation", False)),
@@ -2165,9 +2026,7 @@ def translate_contract(
         elif isinstance(call_slice, CallSliceBinding):
             slice_binding = call_slice
         else:
-            raise CodeContractLogicError(
-                "call_slice must be CallSliceBinding or ProgramGraphSlice"
-            )
+            raise CodeContractLogicError("call_slice must be CallSliceBinding or ProgramGraphSlice")
         reach = extract_reachability_predicates(
             slice_binding,
             source_cid=contract.content_id,
@@ -2231,11 +2090,7 @@ def translate(request: TranslationRequest) -> TranslationResult:
         )
 
     # Unsupported-only: no supported predicates → explicit unsupported status.
-    supported_preds = [
-        p
-        for p in request.predicates
-        if p.support is SupportStatus.SUPPORTED
-    ]
+    supported_preds = [p for p in request.predicates if p.support is SupportStatus.SUPPORTED]
     if not supported_preds:
         if request.unsupported or any(
             p.support is SupportStatus.UNSUPPORTED for p in request.predicates
@@ -2266,9 +2121,7 @@ def translate(request: TranslationRequest) -> TranslationResult:
     except TranslationRejectedError as exc:
         return _rejected_result(request, exc.code, exc.detail)
     except ClaimValidationError as exc:
-        return _rejected_result(
-            request, RejectionCode.INVALID_INPUT, str(exc)
-        )
+        return _rejected_result(request, RejectionCode.INVALID_INPUT, str(exc))
 
     ok, reconstructed = round_trip_predicates(supported_preds, claims)
     if request.require_round_trip and not ok:
@@ -2279,21 +2132,13 @@ def translate(request: TranslationRequest) -> TranslationResult:
         )
 
     obligation_digests = tuple(
-        sorted(
-            {
-                obligation.digest
-                for claim in claims
-                for obligation in claim.obligations
-            }
-        )
+        sorted({obligation.digest for claim in claims for obligation in claim.obligations})
     )
     claim_digests = tuple(sorted(claim.digest for claim in claims))
     receipt = ConformanceReceipt(
         request_cid=request.request_cid,
         source_contract_cid=request.source_contract_cid,
-        call_slice_cid=(
-            "" if request.call_slice is None else request.call_slice.slice_cid
-        ),
+        call_slice_cid=("" if request.call_slice is None else request.call_slice.slice_cid),
         assumption_cids=tuple(a.assumption_cid for a in request.assumptions),
         claim_digests=claim_digests,
         obligation_digests=obligation_digests,
@@ -2410,20 +2255,10 @@ def _status_result(
     receipt = ConformanceReceipt(
         request_cid=request.request_cid,
         source_contract_cid=request.source_contract_cid,
-        call_slice_cid=(
-            "" if request.call_slice is None else request.call_slice.slice_cid
-        ),
+        call_slice_cid=("" if request.call_slice is None else request.call_slice.slice_cid),
         assumption_cids=tuple(a.assumption_cid for a in request.assumptions),
         claim_digests=tuple(sorted(c.digest for c in claims)),
-        obligation_digests=tuple(
-            sorted(
-                {
-                    o.digest
-                    for c in claims
-                    for o in c.obligations
-                }
-            )
-        ),
+        obligation_digests=tuple(sorted({o.digest for c in claims for o in c.obligations})),
         predicate_cids=tuple(p.predicate_id for p in predicates),
         unsupported_cids=tuple(u.content_id for u in request.unsupported),
         translator_id=request.translator_id,

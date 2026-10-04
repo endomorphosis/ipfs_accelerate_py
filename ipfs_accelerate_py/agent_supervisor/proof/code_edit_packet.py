@@ -33,21 +33,13 @@ from .formal_verification_contracts import (
 
 
 CODE_EDIT_PACKET_INTERFACE: Final = "CodeEditPacket@1"
-CODE_EDIT_PACKET_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-edit-packet@1"
-)
+CODE_EDIT_PACKET_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-edit-packet@1"
 CODE_EDIT_PACKET_VERSION: Final = "1"
 CODE_EDIT_PACKET_CONTRACT_VERSION: Final = 1
 
-CACHE_STATUS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-edit-cache-status@1"
-)
-CLAIM_STATUS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-edit-claim-status@1"
-)
-PROVER_BINDING_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-edit-prover-binding@1"
-)
+CACHE_STATUS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-edit-cache-status@1"
+CLAIM_STATUS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-edit-claim-status@1"
+PROVER_BINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-edit-prover-binding@1"
 
 # Compact status fields that must never appear (proof bodies / gold IR).
 _FORBIDDEN_BODY_KEYS: Final[frozenset[str]] = frozenset(
@@ -165,9 +157,7 @@ def _norm_mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
         lowered = key.lower().replace("-", "_")
         # Exact key match only — flags like gold_ir_excluded are allowed.
         if lowered in _FORBIDDEN_BODY_KEYS:
-            raise CodeEditPacketError(
-                f"{field_name} must not embed full proof bodies ({key})"
-            )
+            raise CodeEditPacketError(f"{field_name} must not embed full proof bodies ({key})")
         # Nested body payloads are also rejected.
         nested = value[key]
         if isinstance(nested, Mapping):
@@ -175,8 +165,7 @@ def _norm_mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
                 nested_l = str(nested_key).lower().replace("-", "_")
                 if nested_l in _FORBIDDEN_BODY_KEYS:
                     raise CodeEditPacketError(
-                        f"{field_name} must not embed full proof bodies "
-                        f"({key}.{nested_key})"
+                        f"{field_name} must not embed full proof bodies ({key}.{nested_key})"
                     )
     return MappingProxyType(dict(value))
 
@@ -197,9 +186,7 @@ def _reject_body_fields(payload: Mapping[str, Any], *, field_name: str) -> None:
     for key in payload:
         lowered = str(key).lower()
         if lowered in _FORBIDDEN_BODY_KEYS:
-            raise CodeEditPacketError(
-                f"{field_name} must not embed full proof bodies ({key})"
-            )
+            raise CodeEditPacketError(f"{field_name} must not embed full proof bodies ({key})")
 
 
 @dataclass(frozen=True)
@@ -225,15 +212,11 @@ class CacheStatusRecord:
         object.__setattr__(
             self, "cache_key_id", _norm_text(self.cache_key_id, field_name="cache_key_id")
         )
-        object.__setattr__(
-            self, "receipt_id", _norm_text(self.receipt_id, field_name="receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _norm_text(self.receipt_id, field_name="receipt_id"))
         object.__setattr__(
             self, "reason_codes", _norm_ids(self.reason_codes, field_name="reason_codes")
         )
-        object.__setattr__(
-            self, "required_assurance", _norm_assurance(self.required_assurance)
-        )
+        object.__setattr__(self, "required_assurance", _norm_assurance(self.required_assurance))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -260,9 +243,7 @@ class CacheStatusRecord:
             cache_key_id=str(payload.get("cache_key_id") or ""),
             receipt_id=str(payload.get("receipt_id") or ""),
             reason_codes=tuple(payload.get("reason_codes") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
         )
 
 
@@ -282,9 +263,7 @@ class ClaimStatusRecord:
 
     def __post_init__(self) -> None:
         for name in ("claim_id", "property_id", "obligation_id"):
-            object.__setattr__(
-                self, name, _norm_text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _norm_text(getattr(self, name), field_name=name))
         status = self.status
         if isinstance(status, ClaimStatus):
             status_s = status.value
@@ -303,12 +282,8 @@ class ClaimStatusRecord:
         object.__setattr__(
             self, "reason_codes", _norm_ids(self.reason_codes, field_name="reason_codes")
         )
-        object.__setattr__(
-            self, "required_assurance", _norm_assurance(self.required_assurance)
-        )
-        object.__setattr__(
-            self, "derived_assurance", _norm_assurance(self.derived_assurance)
-        )
+        object.__setattr__(self, "required_assurance", _norm_assurance(self.required_assurance))
+        object.__setattr__(self, "derived_assurance", _norm_assurance(self.derived_assurance))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -341,12 +316,8 @@ class ClaimStatusRecord:
             obligation_id=str(payload.get("obligation_id") or ""),
             evidence_ids=tuple(payload.get("evidence_ids") or ()),
             evidence_tiers=tuple(payload.get("evidence_tiers") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
-            derived_assurance=payload.get(
-                "derived_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
+            derived_assurance=payload.get("derived_assurance", AssuranceLevel.UNVERIFIED),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
 
@@ -363,9 +334,7 @@ class ProverBinding:
 
     def __post_init__(self) -> None:
         for name in ("prover_id", "solver_id", "kernel_id", "toolchain_id"):
-            object.__setattr__(
-                self, name, _norm_text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _norm_text(getattr(self, name), field_name=name))
         # Hard rule: prover fields never carry semantic authority.
         object.__setattr__(self, "semantic_authority", False)
 
@@ -449,7 +418,9 @@ def compute_implementable(
         reasons.append(NonImplementableReason.REFUTED.value)
     if disposition is CacheDisposition.REJECTED or _has("reject", "rejected", "cache_rejected"):
         reasons.append(NonImplementableReason.REJECT.value)
-    if disposition is CacheDisposition.TIMEOUT or _has("timeout", "timed_out", "single_flight_timeout"):
+    if disposition is CacheDisposition.TIMEOUT or _has(
+        "timeout", "timed_out", "single_flight_timeout"
+    ):
         reasons.append(NonImplementableReason.TIMEOUT.value)
 
     # Stable unique ordered reasons.
@@ -496,9 +467,7 @@ class CodeEditPacket(CanonicalContract):
             _norm_text(self.repository_tree_id, field_name="repository_tree_id"),
         )
         for name in ("repository_id", "task_id", "plateau_packet_id"):
-            object.__setattr__(
-                self, name, _norm_text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _norm_text(getattr(self, name), field_name=name))
         for name in (
             "claim_ids",
             "obligation_ids",
@@ -510,12 +479,8 @@ class CodeEditPacket(CanonicalContract):
             "non_implementable_reasons",
             "residual_ref_ids",
         ):
-            object.__setattr__(
-                self, name, _norm_ids(getattr(self, name), field_name=name)
-            )
-        object.__setattr__(
-            self, "required_assurance", _norm_assurance(self.required_assurance)
-        )
+            object.__setattr__(self, name, _norm_ids(getattr(self, name), field_name=name))
+        object.__setattr__(self, "required_assurance", _norm_assurance(self.required_assurance))
 
         cache_status = self.cache_status
         if isinstance(cache_status, Mapping):
@@ -547,17 +512,14 @@ class CodeEditPacket(CanonicalContract):
             )
         object.__setattr__(self, "prover", prover)
 
-        object.__setattr__(
-            self, "metadata", _norm_mapping(self.metadata, field_name="metadata")
-        )
+        object.__setattr__(self, "metadata", _norm_mapping(self.metadata, field_name="metadata"))
 
         # Re-derive implementability from claim/cache signals and explicit reasons.
         derived_impl, derived_reasons = compute_implementable(
             repository_tree_id=self.repository_tree_id,
             claim_status=claim_status.status,
             cache_disposition=cache_status.disposition,
-            reason_codes=tuple(claim_status.reason_codes)
-            + tuple(cache_status.reason_codes),
+            reason_codes=tuple(claim_status.reason_codes) + tuple(cache_status.reason_codes),
             explicit_reasons=self.non_implementable_reasons,
         )
         # Caller may only *restrict* implementability (never widen past derived).
@@ -648,9 +610,7 @@ class CodeEditPacket(CanonicalContract):
             )
         interface = payload.get("interface")
         if interface not in (None, "", CODE_EDIT_PACKET_INTERFACE):
-            raise CodeEditPacketError(
-                f"unsupported interface; use {CODE_EDIT_PACKET_INTERFACE}"
-            )
+            raise CodeEditPacketError(f"unsupported interface; use {CODE_EDIT_PACKET_INTERFACE}")
 
         tree = str(
             payload.get("repository_tree_id")
@@ -672,12 +632,8 @@ class CodeEditPacket(CanonicalContract):
             acceptance_ids=tuple(payload.get("acceptance_ids") or ()),
             property_ids=tuple(payload.get("property_ids") or ()),
             implementable=bool(payload.get("implementable", True)),
-            non_implementable_reasons=tuple(
-                payload.get("non_implementable_reasons") or ()
-            ),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
+            non_implementable_reasons=tuple(payload.get("non_implementable_reasons") or ()),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
             cache_status=CacheStatusRecord.from_dict(payload.get("cache_status")),
             claim_status=ClaimStatusRecord.from_dict(payload.get("claim_status")),
             prover=ProverBinding.from_dict(payload.get("prover")),
@@ -685,9 +641,7 @@ class CodeEditPacket(CanonicalContract):
             task_id=str(payload.get("task_id") or ""),
             residual_ref_ids=tuple(payload.get("residual_ref_ids") or ()),
             plateau_packet_id=str(
-                payload.get("plateau_packet_id")
-                or payload.get("plateau_codex_packet_id")
-                or ""
+                payload.get("plateau_packet_id") or payload.get("plateau_codex_packet_id") or ""
             ),
             metadata=dict(payload.get("metadata") or {}),
         )

@@ -42,38 +42,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import the generated skillset
 from generated_skillsets.hf_bert import hf_bert
 
+
 def main():
     # Initialize the model
     bert = hf_bert()
-    
+
     # Export paths
     webnn_dir = Path("web_models/webnn/bert")
     webgpu_dir = Path("web_models/webgpu/bert")
-    
+
     # Create output directories
     webnn_dir.mkdir(parents=True, exist_ok=True)
     webgpu_dir.mkdir(parents=True, exist_ok=True)
-    
+
     print("Exporting BERT for WebNN...")
     # Export for WebNN (via ONNX)
     bert.export_for_webnn(
         model_name="bert-base-uncased",
         output_dir=webnn_dir,
         precision="fp16",  # Use fp16 for better performance
-        optimize=True
+        optimize=True,
     )
-    
+
     print("Exporting BERT for WebGPU/transformers.js...")
     # Export for WebGPU/transformers.js
     bert.export_for_webgpu(
-        model_name="bert-base-uncased",
-        output_dir=webgpu_dir,
-        include_tokenizer=True
+        model_name="bert-base-uncased", output_dir=webgpu_dir, include_tokenizer=True
     )
-    
+
     print(f"Export complete. Models saved to:")
     print(f" - WebNN: {webnn_dir}")
     print(f" - WebGPU: {webgpu_dir}")
+
 
 if __name__ == "__main__":
     main()
@@ -381,28 +381,18 @@ Now you can access your application at http://localhost:8080
 1. **Quantization**: Use int8 quantization for faster inference:
    ```python
    bert.export_for_webnn(
-       model_name="bert-base-uncased",
-       output_dir=webnn_dir,
-       precision="int8",
-       optimize=True
+       model_name="bert-base-uncased", output_dir=webnn_dir, precision="int8", optimize=True
    )
    ```
 
 2. **Model Pruning**: Use smaller models like MobileBERT or TinyBERT:
    ```python
-   bert.export_for_webnn(
-       model_name="google/mobilebert-uncased",
-       output_dir=webnn_dir
-   )
+   bert.export_for_webnn(model_name="google/mobilebert-uncased", output_dir=webnn_dir)
    ```
 
 3. **Operator Fusion**: Enable operator fusion for WebNN optimization:
    ```python
-   bert.export_for_webnn(
-       model_name="bert-base-uncased",
-       output_dir=webnn_dir,
-       operator_fusion=True
-   )
+   bert.export_for_webnn(model_name="bert-base-uncased", output_dir=webnn_dir, operator_fusion=True)
    ```
 
 ### WebGPU/transformers.js Optimization

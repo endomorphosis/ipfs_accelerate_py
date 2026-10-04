@@ -35,8 +35,7 @@ from .proof.ir_constraint_compiler import (
 
 CVE_SECURITY_OBSERVABILITY_VERSION: Final[int] = 1
 CVE_SECURITY_OBSERVABILITY_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "cve-security-decision-observability-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/cve-security-decision-observability-receipt@1"
 )
 CVE_SECURITY_STREAM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cve-security-stream-evidence@1"
@@ -88,23 +87,17 @@ def _plain(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise CVESecurityReceiptError(
-            "floating point values are not canonical receipt data"
-        )
+        raise CVESecurityReceiptError("floating point values are not canonical receipt data")
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise CVESecurityReceiptError("receipt mapping keys must be strings")
         return {key: _plain(value[key]) for key in sorted(value)}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _plain(converter())
-    raise CVESecurityReceiptError(
-        f"unsupported receipt value: {type(value).__name__}"
-    )
+    raise CVESecurityReceiptError(f"unsupported receipt value: {type(value).__name__}")
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -135,13 +128,9 @@ def _identifier(value: Any, name: str, *, required: bool = True) -> str:
     if required and not value:
         raise CVESecurityReceiptError(f"{name} is required")
     if len(value.encode("utf-8")) > MAX_IDENTIFIER_UTF8_BYTES:
-        raise CVESecurityReceiptError(
-            f"{name} exceeds {MAX_IDENTIFIER_UTF8_BYTES} UTF-8 bytes"
-        )
+        raise CVESecurityReceiptError(f"{name} exceeds {MAX_IDENTIFIER_UTF8_BYTES} UTF-8 bytes")
     if value and _SENSITIVE_VALUE.search(value):
-        raise CVESecurityReceiptError(
-            f"{name} appears to contain a credential or secret"
-        )
+        raise CVESecurityReceiptError(f"{name} appears to contain a credential or secret")
     return value
 
 
@@ -161,9 +150,7 @@ def _identifiers(
         )
     result = tuple(sorted({_identifier(item, name) for item in values}))
     if len(result) > MAX_IDENTIFIERS_PER_FIELD:
-        raise CVESecurityReceiptError(
-            f"{name} exceeds its {MAX_IDENTIFIERS_PER_FIELD}-item bound"
-        )
+        raise CVESecurityReceiptError(f"{name} exceeds its {MAX_IDENTIFIERS_PER_FIELD}-item bound")
     return result
 
 
@@ -199,9 +186,7 @@ class SecurityReceiptStreamEvidence:
             "request_ids",
             "decision_ids",
         ):
-            object.__setattr__(
-                self, name, _identifiers(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifiers(getattr(self, name), name))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -217,9 +202,7 @@ class SecurityReceiptStreamEvidence:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SecurityReceiptStreamEvidence":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SecurityReceiptStreamEvidence":
         if not isinstance(value, Mapping):
             raise CVESecurityReceiptError("stream evidence must be an object")
         if value.get("schema") not in (None, CVE_SECURITY_STREAM_EVIDENCE_SCHEMA):
@@ -227,9 +210,7 @@ class SecurityReceiptStreamEvidence:
         if value.get("contains_raw_facts") not in (None, False):
             raise CVESecurityReceiptError("stream evidence cannot contain raw facts")
         if value.get("grants_execution_authority") not in (None, False):
-            raise CVESecurityReceiptError(
-                "stream evidence cannot grant execution authority"
-            )
+            raise CVESecurityReceiptError("stream evidence cannot grant execution authority")
         return cls(
             stream=value.get("stream", ""),
             mapping_ids=tuple(value.get("mapping_ids") or ()),
@@ -250,12 +231,8 @@ class SecurityReceiptCounterexample:
     code_mapping_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "finding_id", _identifier(self.finding_id, "finding_id")
-        )
-        object.__setattr__(
-            self, "reason_code", _identifier(self.reason_code, "reason_code")
-        )
+        object.__setattr__(self, "finding_id", _identifier(self.finding_id, "finding_id"))
+        object.__setattr__(self, "reason_code", _identifier(self.reason_code, "reason_code"))
         object.__setattr__(
             self,
             "intent_mapping_ids",
@@ -286,21 +263,15 @@ class SecurityReceiptCounterexample:
         return {"counterexample_id": self.counterexample_id, **self._payload()}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SecurityReceiptCounterexample":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SecurityReceiptCounterexample":
         if not isinstance(value, Mapping):
             raise CVESecurityReceiptError("counterexample must be an object")
         if value.get("schema") not in (None, CVE_SECURITY_COUNTEREXAMPLE_SCHEMA):
             raise CVESecurityReceiptError("counterexample schema mismatch")
         if value.get("details_redacted") not in (None, True):
-            raise CVESecurityReceiptError(
-                "counterexample details must remain redacted"
-            )
+            raise CVESecurityReceiptError("counterexample details must remain redacted")
         if value.get("grants_execution_authority") not in (None, False):
-            raise CVESecurityReceiptError(
-                "counterexample cannot grant execution authority"
-            )
+            raise CVESecurityReceiptError("counterexample cannot grant execution authority")
         result = cls(
             finding_id=value.get("finding_id", ""),
             reason_code=value.get("reason_code", ""),
@@ -331,14 +302,10 @@ class BoundedSecurityDecisionReceipt:
     parent_evidence_id: str = ""
     expires_at_ms: int | None = None
     intent_evidence: SecurityReceiptStreamEvidence = field(
-        default_factory=lambda: SecurityReceiptStreamEvidence(
-            SecurityFactStream.INTENT
-        )
+        default_factory=lambda: SecurityReceiptStreamEvidence(SecurityFactStream.INTENT)
     )
     code_evidence: SecurityReceiptStreamEvidence = field(
-        default_factory=lambda: SecurityReceiptStreamEvidence(
-            SecurityFactStream.CODE
-        )
+        default_factory=lambda: SecurityReceiptStreamEvidence(SecurityFactStream.CODE)
     )
     matched_policy_ids: tuple[str, ...] = ()
     cve_ids: tuple[str, ...] = ()
@@ -349,9 +316,7 @@ class BoundedSecurityDecisionReceipt:
     counterexamples: tuple[SecurityReceiptCounterexample, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "stage", CVESecurityEnforcementStage(self.stage)
-        )
+        object.__setattr__(self, "stage", CVESecurityEnforcementStage(self.stage))
         object.__setattr__(self, "outcome", CVESecurityGateOutcome(self.outcome))
         for name in (
             "repository_tree_id",
@@ -363,15 +328,11 @@ class BoundedSecurityDecisionReceipt:
             "enforcement_evidence_id",
             "evidence_authority",
         ):
-            object.__setattr__(
-                self, name, _identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(
             self,
             "parent_evidence_id",
-            _identifier(
-                self.parent_evidence_id, "parent_evidence_id", required=False
-            ),
+            _identifier(self.parent_evidence_id, "parent_evidence_id", required=False),
         )
         object.__setattr__(
             self,
@@ -383,25 +344,18 @@ class BoundedSecurityDecisionReceipt:
             "expires_at_ms",
             _integer(self.expires_at_ms, "expires_at_ms", optional=True),
         )
+        if self.expires_at_ms is not None and self.expires_at_ms < self.evaluated_at_ms:
+            raise CVESecurityReceiptError("expires_at_ms cannot precede evaluated_at_ms")
         if (
-            self.expires_at_ms is not None
-            and self.expires_at_ms < self.evaluated_at_ms
+            not isinstance(self.intent_evidence, SecurityReceiptStreamEvidence)
+            or self.intent_evidence.stream is not SecurityFactStream.INTENT
         ):
-            raise CVESecurityReceiptError(
-                "expires_at_ms cannot precede evaluated_at_ms"
-            )
-        if not isinstance(
-            self.intent_evidence, SecurityReceiptStreamEvidence
-        ) or self.intent_evidence.stream is not SecurityFactStream.INTENT:
-            raise CVESecurityReceiptError(
-                "intent_evidence must bind the intent stream"
-            )
-        if not isinstance(
-            self.code_evidence, SecurityReceiptStreamEvidence
-        ) or self.code_evidence.stream is not SecurityFactStream.CODE:
-            raise CVESecurityReceiptError(
-                "code_evidence must bind the code stream"
-            )
+            raise CVESecurityReceiptError("intent_evidence must bind the intent stream")
+        if (
+            not isinstance(self.code_evidence, SecurityReceiptStreamEvidence)
+            or self.code_evidence.stream is not SecurityFactStream.CODE
+        ):
+            raise CVESecurityReceiptError("code_evidence must bind the code stream")
         for name in (
             "matched_policy_ids",
             "cve_ids",
@@ -409,17 +363,13 @@ class BoundedSecurityDecisionReceipt:
             "source_cids",
             "reason_codes",
         ):
-            object.__setattr__(
-                self, name, _identifiers(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _identifiers(getattr(self, name), name))
         if not isinstance(self.semantic_roots, Mapping):
             raise CVESecurityReceiptError("semantic_roots must be an object")
         if len(self.semantic_roots) > MAX_IDENTIFIERS_PER_FIELD:
             raise CVESecurityReceiptError("semantic_roots exceeds its item bound")
         roots = {
-            _identifier(key, "semantic root kind"): _identifier(
-                value, "semantic root"
-            )
+            _identifier(key, "semantic root kind"): _identifier(value, "semantic root")
             for key, value in self.semantic_roots.items()
         }
         expected_security_root = _root_token(
@@ -428,9 +378,7 @@ class BoundedSecurityDecisionReceipt:
             self.security_root_supervisor_digest,
         )
         if roots.get(_SECURITY_ROOT_KIND) != expected_security_root:
-            raise CVESecurityReceiptError(
-                "semantic_roots must contain the exact security_ir root"
-            )
+            raise CVESecurityReceiptError("semantic_roots must contain the exact security_ir root")
         object.__setattr__(
             self,
             "semantic_roots",
@@ -443,9 +391,7 @@ class BoundedSecurityDecisionReceipt:
             if isinstance(item, Mapping):
                 item = SecurityReceiptCounterexample.from_dict(item)
             if not isinstance(item, SecurityReceiptCounterexample):
-                raise CVESecurityReceiptError(
-                    "counterexamples contains an invalid record"
-                )
+                raise CVESecurityReceiptError("counterexamples contains an invalid record")
             examples.append(item)
         examples = sorted(
             {item.counterexample_id: item for item in examples}.values(),
@@ -453,15 +399,11 @@ class BoundedSecurityDecisionReceipt:
         )
         object.__setattr__(self, "counterexamples", tuple(examples))
         bounded_payload = {
-            "receipt_id": (
-                "cve-security-observability-receipt:sha256:" + ("0" * 64)
-            ),
+            "receipt_id": ("cve-security-observability-receipt:sha256:" + ("0" * 64)),
             **self._payload(),
         }
         if len(_canonical_bytes(bounded_payload)) > MAX_RECEIPT_UTF8_BYTES:
-            raise CVESecurityReceiptError(
-                f"receipt exceeds {MAX_RECEIPT_UTF8_BYTES} UTF-8 bytes"
-            )
+            raise CVESecurityReceiptError(f"receipt exceeds {MAX_RECEIPT_UTF8_BYTES} UTF-8 bytes")
 
     @property
     def record_role(self) -> SecurityReceiptRole:
@@ -499,9 +441,7 @@ class BoundedSecurityDecisionReceipt:
                 "cwe_ids": list(self.cwe_ids),
                 "source_cids": list(self.source_cids),
                 "reason_codes": list(self.reason_codes),
-                "counterexample_ids": [
-                    item.counterexample_id for item in self.counterexamples
-                ],
+                "counterexample_ids": [item.counterexample_id for item in self.counterexamples],
             }
         )
 
@@ -542,9 +482,7 @@ class BoundedSecurityDecisionReceipt:
             "source_cids": list(self.source_cids),
             "semantic_roots": dict(self.semantic_roots),
             "reason_codes": list(self.reason_codes),
-            "counterexamples": [
-                item.to_dict() for item in self.counterexamples
-            ],
+            "counterexamples": [item.to_dict() for item in self.counterexamples],
             "declared_dependencies": _plain(self.declared_dependencies),
             "redacted": True,
             "redacted_fields": list(_REDACTED_FIELDS),
@@ -560,9 +498,7 @@ class BoundedSecurityDecisionReceipt:
 
     @property
     def receipt_id(self) -> str:
-        return _identity(
-            "cve-security-observability-receipt", self._payload()
-        )
+        return _identity("cve-security-observability-receipt", self._payload())
 
     def to_dict(self) -> dict[str, Any]:
         return {"receipt_id": self.receipt_id, **self._payload()}
@@ -577,9 +513,7 @@ class BoundedSecurityDecisionReceipt:
         return _canonical_bytes(self.to_dict())
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "BoundedSecurityDecisionReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "BoundedSecurityDecisionReceipt":
         if not isinstance(value, Mapping):
             raise CVESecurityReceiptError("receipt must be an object")
         fixed_fields = {
@@ -603,18 +537,14 @@ class BoundedSecurityDecisionReceipt:
                 or not isinstance(supplied_redactions, Sequence)
                 or tuple(supplied_redactions) != _REDACTED_FIELDS
             ):
-                raise CVESecurityReceiptError(
-                    "receipt redacted_fields mismatch"
-                )
+                raise CVESecurityReceiptError("receipt redacted_fields mismatch")
         result = cls(
             stage=value.get("stage", ""),
             repository_tree_id=value.get("repository_tree_id", ""),
             outcome=value.get("outcome", ""),
             security_root_artifact_id=value.get("security_root_artifact_id", ""),
             security_root_cid_v1=value.get("security_root_cid_v1", ""),
-            security_root_supervisor_digest=value.get(
-                "security_root_supervisor_digest", ""
-            ),
+            security_root_supervisor_digest=value.get("security_root_supervisor_digest", ""),
             policy_receipt_id=value.get("policy_receipt_id", ""),
             gate_result_id=value.get("gate_result_id", ""),
             enforcement_evidence_id=value.get("enforcement_evidence_id", ""),
@@ -625,9 +555,7 @@ class BoundedSecurityDecisionReceipt:
             intent_evidence=SecurityReceiptStreamEvidence.from_dict(
                 value.get("intent_evidence") or {}
             ),
-            code_evidence=SecurityReceiptStreamEvidence.from_dict(
-                value.get("code_evidence") or {}
-            ),
+            code_evidence=SecurityReceiptStreamEvidence.from_dict(value.get("code_evidence") or {}),
             matched_policy_ids=tuple(value.get("matched_policy_ids") or ()),
             cve_ids=tuple(value.get("cve_ids") or ()),
             cwe_ids=tuple(value.get("cwe_ids") or ()),
@@ -642,15 +570,11 @@ class BoundedSecurityDecisionReceipt:
         if supplied_dependencies is not None and _canonical_bytes(
             supplied_dependencies
         ) != _canonical_bytes(result.declared_dependencies):
-            raise CVESecurityReceiptError(
-                "receipt dependency manifest mismatch"
-            )
+            raise CVESecurityReceiptError("receipt dependency manifest mismatch")
         if value.get("receipt_id") not in (None, "", result.receipt_id):
             raise CVESecurityReceiptError("receipt identity mismatch")
         if len(result.canonical_bytes) > MAX_RECEIPT_UTF8_BYTES:
-            raise CVESecurityReceiptError(
-                f"receipt exceeds {MAX_RECEIPT_UTF8_BYTES} UTF-8 bytes"
-            )
+            raise CVESecurityReceiptError(f"receipt exceeds {MAX_RECEIPT_UTF8_BYTES} UTF-8 bytes")
         return result
 
 
@@ -658,31 +582,17 @@ def _stream_evidence(
     gate: CVESecurityGateResult,
     stream: SecurityFactStream,
 ) -> SecurityReceiptStreamEvidence:
-    mappings = (
-        gate.intent_mappings
-        if stream is SecurityFactStream.INTENT
-        else gate.code_mappings
-    )
+    mappings = gate.intent_mappings if stream is SecurityFactStream.INTENT else gate.code_mappings
     mapping_ids = {item.mapping_id for item in mappings}
     decisions = tuple(
-        item
-        for item in gate.decisions
-        if item.stream is stream and item.mapping_id in mapping_ids
+        item for item in gate.decisions if item.stream is stream and item.mapping_id in mapping_ids
     )
     return SecurityReceiptStreamEvidence(
         stream=stream,
         mapping_ids=tuple(item.mapping_id for item in mappings),
         source_ids=tuple(item.source_id for item in mappings),
-        evidence_ids=tuple(
-            evidence_id
-            for item in mappings
-            for evidence_id in item.evidence_ids
-        ),
-        request_ids=tuple(
-            item.request.content_id
-            for item in mappings
-            if item.request is not None
-        ),
+        evidence_ids=tuple(evidence_id for item in mappings for evidence_id in item.evidence_ids),
+        request_ids=tuple(item.request.content_id for item in mappings if item.request is not None),
         decision_ids=tuple(item.decision.content_id for item in decisions),
     )
 
@@ -703,9 +613,7 @@ def emit_cve_security_decision_receipt(
     """
 
     if not isinstance(evidence, CVESecurityEnforcementEvidence):
-        raise CVESecurityReceiptError(
-            "evidence must be CVESecurityEnforcementEvidence"
-        )
+        raise CVESecurityReceiptError("evidence must be CVESecurityEnforcementEvidence")
     gate = evidence.gate_result
     context = gate.context
     root = (
@@ -713,45 +621,30 @@ def emit_cve_security_decision_receipt(
         context.security_root_cid_v1,
         context.security_root_supervisor_digest,
     )
-    mapping_ids = {
-        item.mapping_id
-        for item in (*gate.intent_mappings, *gate.code_mappings)
-    }
+    mapping_ids = {item.mapping_id for item in (*gate.intent_mappings, *gate.code_mappings)}
     for item in gate.decisions:
         decision = item.decision
         if item.mapping_id not in mapping_ids:
-            raise CVESecurityReceiptError(
-                "decision references a mapping outside the gate result"
-            )
+            raise CVESecurityReceiptError("decision references a mapping outside the gate result")
         if decision.policy_receipt_id != gate.policy_receipt_id:
-            raise CVESecurityReceiptError(
-                "decision and gate policy receipt identities differ"
-            )
+            raise CVESecurityReceiptError("decision and gate policy receipt identities differ")
         if (
             decision.security_root_artifact_id,
             decision.security_root_cid_v1,
             decision.security_root_supervisor_digest,
         ) != root:
-            raise CVESecurityReceiptError(
-                "decision is detached from the gate Security IR root"
-            )
+            raise CVESecurityReceiptError("decision is detached from the gate Security IR root")
         if decision.evaluated_at_ms != context.evaluated_at_ms:
-            raise CVESecurityReceiptError(
-                "decision timestamp is detached from the gate context"
-            )
+            raise CVESecurityReceiptError("decision timestamp is detached from the gate context")
 
     roots = dict(semantic_roots or {})
     security_root = _root_token(*root)
     if roots.get(_SECURITY_ROOT_KIND, security_root) != security_root:
-        raise CVESecurityReceiptError(
-            "supplied security_ir root differs from gate evidence"
-        )
+        raise CVESecurityReceiptError("supplied security_ir root differs from gate evidence")
     roots[_SECURITY_ROOT_KIND] = security_root
 
     matched_policy_ids = tuple(
-        policy_id
-        for item in gate.decisions
-        for policy_id in item.decision.matched_policy_ids
+        policy_id for item in gate.decisions for policy_id in item.decision.matched_policy_ids
     )
     reasons = {
         code.value

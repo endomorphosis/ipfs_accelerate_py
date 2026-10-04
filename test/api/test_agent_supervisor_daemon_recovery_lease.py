@@ -42,9 +42,7 @@ class _CompletionRuntime:
             return None
         self.completion_routes.append(dict(payload))
         return SimpleNamespace(
-            receipt=SimpleNamespace(
-                receipt_id=f"completion-{len(self.completion_routes)}"
-            )
+            receipt=SimpleNamespace(receipt_id=f"completion-{len(self.completion_routes)}")
         )
 
 
@@ -142,9 +140,7 @@ def test_dead_daemon_recovery_lease_is_cas_adopted_on_restart(
     monkeypatch.setattr(
         daemon,
         "_commit_generated_file_update_locked",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError("crash after board write")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("crash after board write")),
     )
     with pytest.raises(RuntimeError, match="crash after board write"):
         daemon._mark_task_completed_in_todo("ACCEL-001")
@@ -184,14 +180,9 @@ def test_dead_daemon_recovery_lease_is_cas_adopted_on_restart(
     assert not checkout_mutation_lock_path(repo).exists()
     assert _git(repo, "status", "--porcelain", "--", "todo.md") == ""
     events = [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     ]
-    adopted = [
-        event
-        for event in events
-        if event["type"] == "checkout_mutation_recovery_adopted"
-    ]
+    adopted = [event for event in events if event["type"] == "checkout_mutation_recovery_adopted"]
     assert adopted
     assert adopted[-1]["prior_lease_id"] == dead_lease.lease_id
 
@@ -310,9 +301,7 @@ def test_nested_non_recovery_mutation_is_denied_by_protected_capability(
 
     assert nested_calls == []
     assert result["nested"]["merged"] is False
-    assert result["nested"]["reason"] == (
-        "checkout_mutation_nested_operation_not_allowed"
-    )
+    assert result["nested"]["reason"] == ("checkout_mutation_nested_operation_not_allowed")
 
 
 def test_completion_publication_reuses_receipt_after_journal_cas_failure(
@@ -345,10 +334,7 @@ def test_completion_publication_reuses_receipt_after_journal_cas_failure(
 
     def fail_first_publication_cas(lease, metadata, **kwargs):
         nonlocal failed_publication_cas
-        if (
-            not failed_publication_cas
-            and "completion_publication" in metadata
-        ):
+        if not failed_publication_cas and "completion_publication" in metadata:
             failed_publication_cas = True
             return None
         return original_update(lease, metadata, **kwargs)
@@ -366,9 +352,7 @@ def test_completion_publication_reuses_receipt_after_journal_cas_failure(
 
     assert first["checkout_mutation_lease_retained"] is True
     assert len(runtime.completion_routes) == 1
-    assert runtime.completion_routes[0]["completion_intent_id"] == (
-        intent["intent_id"]
-    )
+    assert runtime.completion_routes[0]["completion_intent_id"] == (intent["intent_id"])
     assert success_calls == [intent["queue_task_cid"]]
 
     recovered = daemon._recover_protected_checkout_mutation()
@@ -419,9 +403,7 @@ def test_partial_markdown_bundle_never_publishes_whole_completion(
         implementation_protected_paths=("todo.md",),
         decision_runtime=runtime,
     )
-    task = next(
-        item for item in daemon._load_tasks() if item.task_id == "FIX-001"
-    )
+    task = next(item for item in daemon._load_tasks() if item.task_id == "FIX-001")
     intent = daemon._completion_publication_intent(
         task,
         merged_tree_id=_git(repo, "rev-parse", "HEAD"),
@@ -453,12 +435,8 @@ def test_partial_markdown_bundle_never_publishes_whole_completion(
     assert failed["reason"] == "task_source_update_failed"
     assert failed["checkout_mutation_lease_retained"] is True
     assert runtime.completion_routes == []
-    assert (
-        daemon.task_source.get("FIX-001").status == "completed"
-    )
-    assert (
-        daemon.task_source.get("FIX-002").status != "completed"
-    )
+    assert daemon.task_source.get("FIX-001").status == "completed"
+    assert daemon.task_source.get("FIX-002").status != "completed"
 
     monkeypatch.setattr(
         daemon.task_source,
@@ -469,9 +447,7 @@ def test_partial_markdown_bundle_never_publishes_whole_completion(
 
     assert recovery["checkout_mutation_lease_recovered"] is True
     assert runtime.completion_routes != []
-    assert (
-        daemon.task_source.get("FIX-002").status == "completed"
-    )
+    assert daemon.task_source.get("FIX-002").status == "completed"
     assert not checkout_mutation_lock_path(repo).exists()
 
 
@@ -528,16 +504,8 @@ def test_same_process_consumer_recovers_foreign_state_and_todo_lease(
 
     assert recovered["checkout_mutation_lease_recovered"] is True
     assert not checkout_mutation_lock_path(repo).exists()
-    assert "- Status: completed" in secondary_todo.read_text(
-        encoding="utf-8"
-    )
+    assert "- Status: completed" in secondary_todo.read_text(encoding="utf-8")
     events = [
-        json.loads(line)
-        for line in primary.events_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
+        json.loads(line) for line in primary.events_path.read_text(encoding="utf-8").splitlines()
     ]
-    assert any(
-        event["type"] == "checkout_mutation_recovery_attached"
-        for event in events
-    )
+    assert any(event["type"] == "checkout_mutation_recovery_attached" for event in events)

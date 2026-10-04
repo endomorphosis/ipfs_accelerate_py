@@ -10,42 +10,48 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'create_missing_modules_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(
+            f"create_missing_modules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 TARGET_DIR = os.path.abspath("../ipfs_accelerate_js")
 
+
 def create_file(relative_path, content):
     """Create a file with given content"""
     file_path = os.path.join(TARGET_DIR, relative_path)
     directory = os.path.dirname(file_path)
-    
+
     # Create directory if it doesn't exist
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
         logger.info(f"Created directory: {directory}")
-    
+
     # Skip if file already exists
     if os.path.exists(file_path):
         logger.info(f"File already exists, skipping: {file_path}")
         return
-    
+
     # Write the file
-    with open(file_path, 'w', encoding='utf-8') as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
-    
+
     logger.info(f"Created file: {file_path}")
+
 
 def create_all_missing_files():
     """Create all missing module files"""
-    
+
     # GPU Detection
-    create_file("src/hardware/detection/gpu_detection.ts", """/**
+    create_file(
+        "src/hardware/detection/gpu_detection.ts",
+        """/**
  * GPU detection utilities
  */
 
@@ -88,10 +94,13 @@ export async function detectGPUCapabilities(): Promise<GPUCapabilities> {
     }
   };
 }
-""")
+""",
+    )
 
     # ML Detection
-    create_file("src/hardware/detection/ml_detection.ts", """/**
+    create_file(
+        "src/hardware/detection/ml_detection.ts",
+        """/**
  * Machine Learning capabilities detection
  */
 
@@ -111,10 +120,13 @@ export async function detectMLCapabilities(): Promise<MLCapabilities> {
     }
   };
 }
-""")
+""",
+    )
 
     # Tensor Sharing
-    create_file("src/tensor/tensor_sharing.ts", """/**
+    create_file(
+        "src/tensor/tensor_sharing.ts",
+        """/**
  * Tensor sharing utilities for cross-model tensor reuse
  */
 
@@ -182,18 +194,24 @@ export class TensorSharingManager {
 }
 
 export const tensorSharingManager = new TensorSharingManager();
-""")
+""",
+    )
 
     # Model Loaders
-    create_file("src/model/loaders/index.ts", """/**
+    create_file(
+        "src/model/loaders/index.ts",
+        """/**
  * Model loaders index
  */
 
 export * from './model_loader';
 export * from './onnx_loader';
-""")
+""",
+    )
 
-    create_file("src/model/loaders/model_loader.ts", """/**
+    create_file(
+        "src/model/loaders/model_loader.ts",
+        """/**
  * Base model loader
  */
 import { Model } from '../../interfaces';
@@ -217,9 +235,12 @@ export class ModelLoader {
 }
 
 export const modelLoader = new ModelLoader();
-""")
+""",
+    )
 
-    create_file("src/model/loaders/onnx_loader.ts", """/**
+    create_file(
+        "src/model/loaders/onnx_loader.ts",
+        """/**
  * ONNX model loader
  */
 import { Model } from '../../interfaces';
@@ -237,18 +258,24 @@ export class ONNXLoader {
 }
 
 export const onnxLoader = new ONNXLoader();
-""")
+""",
+    )
 
     # Model Types - create index files
-    create_file("src/model/audio/index.ts", """/**
+    create_file(
+        "src/model/audio/index.ts",
+        """/**
  * Audio models index
  */
 
 // Export any audio model-related files here
 export * from './audio_model_base';
-""")
+""",
+    )
 
-    create_file("src/model/audio/audio_model_base.ts", """/**
+    create_file(
+        "src/model/audio/audio_model_base.ts",
+        """/**
  * Base class for audio models
  */
 import { Model } from '../../interfaces';
@@ -269,17 +296,23 @@ export abstract class AudioModelBase implements Model {
     return { success: true };
   }
 }
-""")
+""",
+    )
 
-    create_file("src/model/vision/index.ts", """/**
+    create_file(
+        "src/model/vision/index.ts",
+        """/**
  * Vision models index
  */
 
 // Export any vision model-related files here
 export * from './vision_model_base';
-""")
+""",
+    )
 
-    create_file("src/model/vision/vision_model_base.ts", """/**
+    create_file(
+        "src/model/vision/vision_model_base.ts",
+        """/**
  * Base class for vision models
  */
 import { Model } from '../../interfaces';
@@ -300,17 +333,23 @@ export abstract class VisionModelBase implements Model {
     return { success: true };
   }
 }
-""")
+""",
+    )
 
-    create_file("src/model/transformers/index.ts", """/**
+    create_file(
+        "src/model/transformers/index.ts",
+        """/**
  * Transformer models index
  */
 
 // Export any transformer model-related files here
 export * from './transformer_model_base';
-""")
+""",
+    )
 
-    create_file("src/model/transformers/transformer_model_base.ts", """/**
+    create_file(
+        "src/model/transformers/transformer_model_base.ts",
+        """/**
  * Base class for transformer models
  */
 import { Model } from '../../interfaces';
@@ -331,17 +370,23 @@ export abstract class TransformerModelBase implements Model {
     return { success: true };
   }
 }
-""")
+""",
+    )
 
     # Quantization
-    create_file("src/quantization/index.ts", """/**
+    create_file(
+        "src/quantization/index.ts",
+        """/**
  * Quantization index
  */
 export * from './quantization_engine';
 export * from './techniques';
-""")
+""",
+    )
 
-    create_file("src/quantization/quantization_engine.ts", """/**
+    create_file(
+        "src/quantization/quantization_engine.ts",
+        """/**
  * Quantization engine for model compression
  */
 
@@ -377,16 +422,22 @@ export class QuantizationEngine {
 }
 
 export const quantizationEngine = new QuantizationEngine();
-""")
+""",
+    )
 
-    create_file("src/quantization/techniques/index.ts", """/**
+    create_file(
+        "src/quantization/techniques/index.ts",
+        """/**
  * Quantization techniques index
  */
 export * from './webgpu_quantization';
 export * from './ultra_low_precision';
-""")
+""",
+    )
 
-    create_file("src/quantization/techniques/webgpu_quantization.ts", """/**
+    create_file(
+        "src/quantization/techniques/webgpu_quantization.ts",
+        """/**
  * WebGPU-based quantization implementation
  */
 import { QuantizationOptions } from '../quantization_engine';
@@ -411,9 +462,12 @@ export class WebGPUQuantization {
 }
 
 export const webgpuQuantization = new WebGPUQuantization();
-""")
+""",
+    )
 
-    create_file("src/quantization/techniques/ultra_low_precision.ts", """/**
+    create_file(
+        "src/quantization/techniques/ultra_low_precision.ts",
+        """/**
  * Ultra-low precision (4-bit/2-bit) quantization
  */
 
@@ -438,23 +492,32 @@ export class UltraLowPrecision {
 }
 
 export const ultraLowPrecision = new UltraLowPrecision();
-""")
+""",
+    )
 
     # Optimization
-    create_file("src/optimization/index.ts", """/**
+    create_file(
+        "src/optimization/index.ts",
+        """/**
  * Optimization modules index
  */
 export * from './techniques';
 export * from './memory';
-""")
+""",
+    )
 
-    create_file("src/optimization/memory/index.ts", """/**
+    create_file(
+        "src/optimization/memory/index.ts",
+        """/**
  * Memory optimization index
  */
 export * from './memory_manager';
-""")
+""",
+    )
 
-    create_file("src/optimization/memory/memory_manager.ts", """/**
+    create_file(
+        "src/optimization/memory/memory_manager.ts",
+        """/**
  * Memory management for optimized tensor operations
  */
 
@@ -492,18 +555,24 @@ export class MemoryManager {
 }
 
 export const memoryManager = new MemoryManager();
-""")
+""",
+    )
 
-    create_file("src/optimization/techniques/index.ts", """/**
+    create_file(
+        "src/optimization/techniques/index.ts",
+        """/**
  * Optimization techniques index
  */
 export * from './browser_performance_optimizer';
 export * from './memory_optimization';
 export * from './webgpu_kv_cache_optimization';
 export * from './webgpu_low_latency_optimizer';
-""")
+""",
+    )
 
-    create_file("src/optimization/techniques/browser_performance_optimizer.ts", """/**
+    create_file(
+        "src/optimization/techniques/browser_performance_optimizer.ts",
+        """/**
  * Browser-specific performance optimizations
  */
 import { BrowserCapabilities } from '../../interfaces';
@@ -530,9 +599,12 @@ export class BrowserPerformanceOptimizer {
 }
 
 export const browserPerformanceOptimizer = new BrowserPerformanceOptimizer();
-""")
+""",
+    )
 
-    create_file("src/optimization/techniques/memory_optimization.ts", """/**
+    create_file(
+        "src/optimization/techniques/memory_optimization.ts",
+        """/**
  * Memory optimization techniques
  */
 
@@ -563,9 +635,12 @@ export class MemoryOptimization {
 }
 
 export const memoryOptimization = new MemoryOptimization();
-""")
+""",
+    )
 
-    create_file("src/optimization/techniques/webgpu_kv_cache_optimization.ts", """/**
+    create_file(
+        "src/optimization/techniques/webgpu_kv_cache_optimization.ts",
+        """/**
  * WebGPU KV-cache optimization for transformer models
  */
 
@@ -600,9 +675,12 @@ export class WebGPUKVCacheOptimization {
 }
 
 export const webGPUKVCacheOptimization = new WebGPUKVCacheOptimization();
-""")
+""",
+    )
 
-    create_file("src/optimization/techniques/webgpu_low_latency_optimizer.ts", """/**
+    create_file(
+        "src/optimization/techniques/webgpu_low_latency_optimizer.ts",
+        """/**
  * WebGPU low-latency optimizer for real-time applications
  */
 
@@ -629,7 +707,9 @@ export class WebGPULowLatencyOptimizer {
 }
 
 export const webGPULowLatencyOptimizer = new WebGPULowLatencyOptimizer();
-""")
+""",
+    )
+
 
 if __name__ == "__main__":
     create_all_missing_files()

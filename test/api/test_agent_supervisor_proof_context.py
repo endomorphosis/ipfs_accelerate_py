@@ -214,12 +214,8 @@ def test_capsule_partitions_trust_and_excludes_prohibited_context(
     )
 
     assert capsule.target is ProofContextTarget.LEANSTRAL
-    assert all(
-        item.trust is ContextTrust.TRUSTED_FACT for item in capsule.trusted_facts
-    )
-    assert {item.record_id for item in capsule.untrusted_suggestions} == {
-        "model-suggestion"
-    }
+    assert all(item.trust is ContextTrust.TRUSTED_FACT for item in capsule.trusted_facts)
+    assert {item.record_id for item in capsule.untrusted_suggestions} == {"model-suggestion"}
     assert capsule.unsupported_semantics
     assert capsule.required_fallback_checks == ("pytest:test_context_fallback",)
     assert len(capsule.source_excerpts) == 1

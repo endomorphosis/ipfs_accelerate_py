@@ -75,7 +75,9 @@ Let's demonstrate this process with GPT-2.
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 from accelerate.test_utils.testing import get_backend
 
-device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+device, _, _ = (
+    get_backend()
+)  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 model_id = "openai-community/gpt2-large"
 model = GPT2LMHeadModel.from_pretrained(model_id).to(device)
 tokenizer = GPT2TokenizerFast.from_pretrained(model_id)
@@ -129,7 +131,9 @@ for begin_loc in tqdm(range(0, seq_len, stride)):
     # Accumulate the total negative log-likelihood and the total number of tokens
     num_valid_tokens = (target_ids != -100).sum().item()  # number of valid tokens in target_ids
     batch_size = target_ids.size(0)
-    num_loss_tokens = num_valid_tokens - batch_size  # subtract batch_size due to internal label shift
+    num_loss_tokens = (
+        num_valid_tokens - batch_size
+    )  # subtract batch_size due to internal label shift
     nll_sum += neg_log_likelihood * num_loss_tokens
     n_tokens += num_loss_tokens
 

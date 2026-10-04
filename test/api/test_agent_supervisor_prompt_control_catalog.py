@@ -202,10 +202,7 @@ def test_prompt_control_catalog_is_closed_complete_and_exact() -> None:
         assert descriptor.bounds.timeout_ms <= 120_000
         assert descriptor.request_schema["additionalProperties"] is False
         assert (
-            descriptor.request_schema["properties"]["parameters"][
-                "additionalProperties"
-            ]
-            is False
+            descriptor.request_schema["properties"]["parameters"]["additionalProperties"] is False
         )
         assert descriptor.result_schema["additionalProperties"] is False
         assert descriptor.audit_receipt_schema == (
@@ -334,9 +331,7 @@ def test_stale_preview_and_incident_bindings_are_rejected(
     repository_root = tmp_path / "repo"
     state_root = tmp_path / "state"
     binding = _binding(repository_root, state_root)
-    materialize = _parameters(
-        Operation.WORKFLOW_MATERIALIZE, tree_id="tree:stale"
-    )
+    materialize = _parameters(Operation.WORKFLOW_MATERIALIZE, tree_id="tree:stale")
     with pytest.raises(AuthorizationBindingError, match="preview tree_id"):
         OperationRequest(
             operation=Operation.WORKFLOW_MATERIALIZE,
@@ -360,9 +355,7 @@ def test_stale_preview_and_incident_bindings_are_rejected(
                 "incident_policy_revision": "policy:1",
             },
         )
-    with pytest.raises(
-        AuthorizationBindingError, match="different incident"
-    ):
+    with pytest.raises(AuthorizationBindingError, match="different incident"):
         OperationRequest(
             operation=Operation.RESCUE,
             **binding,
@@ -396,9 +389,7 @@ def test_mutations_require_authority_and_cross_target_replay_conflicts(
         OperationRequest(
             operation=Operation.RESTART,
             **binding,
-            parameters=_parameters(
-                Operation.RESTART, tree_id="tree:current"
-            ),
+            parameters=_parameters(Operation.RESTART, tree_id="tree:current"),
             expected_effects=(_effect(Operation.RESTART),),
             idempotency=IdempotencyKey(
                 key="restart:missing-authority",

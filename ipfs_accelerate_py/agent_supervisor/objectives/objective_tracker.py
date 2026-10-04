@@ -91,9 +91,7 @@ from .scan_receipts import RepositoryTreeIdentity, scan_identity
 from ..task_sources.task_identity import canonical_content_cid, normalize_identity_text
 
 
-DEFAULT_ULTIMATE_GOAL = (
-    "Make this repository satisfy its stated objective with verifiable code, tests, docs, and runtime evidence."
-)
+DEFAULT_ULTIMATE_GOAL = "Make this repository satisfy its stated objective with verifiable code, tests, docs, and runtime evidence."
 DEFAULT_ROOT_EVIDENCE = (
     "objective goal graph",
     "bundle-local todo shards",
@@ -102,8 +100,12 @@ DEFAULT_ROOT_EVIDENCE = (
     "LLM merge conflict resolver",
 )
 DEFAULT_GOAL_PREFIX = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_GOAL_PREFIX", "OBJ-G")
-DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap")
-DEFAULT_ROOT_GOAL_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome")
+DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap"
+)
+DEFAULT_ROOT_GOAL_TITLE = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome"
+)
 OPEN_TASK_STATUSES_FOR_GOAL_COMPLETION = {"todo", "ready", "in_progress"}
 TASK_GOAL_METADATA_KEYS = (
     "goal id",
@@ -195,10 +197,7 @@ def _completion_gate_projection_is_current(
     assert reason_codes is not None
     assert actionable is not None
     assert results is not None
-    criterion_keys = [
-        " ".join(str(item or "").strip().lower().split())
-        for item in criteria
-    ]
+    criterion_keys = [" ".join(str(item or "").strip().lower().split()) for item in criteria]
     if (
         not criterion_keys
         or any(not item for item in criterion_keys)
@@ -218,10 +217,7 @@ def _completion_gate_projection_is_current(
         if not isinstance(evidence, Mapping):
             return False
         criterion = " ".join(
-            str(evidence.get("acceptance_criterion") or "")
-            .strip()
-            .lower()
-            .split()
+            str(evidence.get("acceptance_criterion") or "").strip().lower().split()
         )
         if not criterion:
             return False
@@ -249,9 +245,7 @@ def _completion_gate_projection_is_current(
     if checks is None:
         return False
     check_names = [
-        str(check.get("name") or "").strip()
-        for check in checks
-        if isinstance(check, Mapping)
+        str(check.get("name") or "").strip() for check in checks if isinstance(check, Mapping)
     ]
     if (
         len(check_names) != len(checks)
@@ -270,8 +264,7 @@ def _completion_gate_projection_is_current(
     if evaluated_criteria is None or evaluated_results is None:
         return False
     evaluated_keys = [
-        " ".join(str(item or "").strip().lower().split())
-        for item in evaluated_criteria
+        " ".join(str(item or "").strip().lower().split()) for item in evaluated_criteria
     ]
     if evaluated_keys != criterion_keys or evaluated_results != results:
         return False
@@ -300,9 +293,7 @@ def _completion_gate_projection_is_current(
             parsed = value
         elif isinstance(value, str) and value.strip():
             try:
-                parsed = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -331,14 +322,9 @@ def _completion_gate_projection_is_current(
         or float(declared_freshness) < 0
     ):
         return False
-    max_age = timedelta(
-        seconds=min(float(freshness_seconds), float(declared_freshness))
-    )
+    max_age = timedelta(seconds=min(float(freshness_seconds), float(declared_freshness)))
     skew = timedelta(seconds=float(clock_skew_seconds))
-    return bool(
-        evaluated_at <= current + skew
-        and current - evaluated_at <= max_age
-    )
+    return bool(evaluated_at <= current + skew and current - evaluated_at <= max_age)
 
 
 def completion_gate_actionable_goal_ids(
@@ -374,10 +360,7 @@ def completion_gate_actionable_goal_ids(
         raise TypeError("decision must be a GoalCompletionDecision or mapping")
     gate_value = payload.get("completion_gate", payload.get("gate"))
     gate = dict(gate_value) if isinstance(gate_value, Mapping) else {}
-    state = str(
-        payload.get("state", payload.get("next_state", ""))
-        or ""
-    ).strip().lower()
+    state = str(payload.get("state", payload.get("next_state", "")) or "").strip().lower()
     verified = bool(
         state == GoalState.VERIFIED_COMPLETE.value
         and payload.get("verified") is True
@@ -405,12 +388,8 @@ def _quality_terms(goal: ObjectiveGoal, *field_names: str) -> tuple[str, ...]:
             payload = json.loads(raw)
         except (TypeError, ValueError, json.JSONDecodeError):
             payload = None
-        if isinstance(payload, list) and all(
-            isinstance(item, str) for item in payload
-        ):
-            return tuple(
-                sorted({item.strip() for item in payload if item.strip()})
-            )
+        if isinstance(payload, list) and all(isinstance(item, str) for item in payload):
+            return tuple(sorted({item.strip() for item in payload if item.strip()}))
         return tuple(sorted(set(split_terms(raw))))
     return ()
 
@@ -424,9 +403,7 @@ def _quality_mapping(goal: ObjectiveGoal, *field_names: str) -> dict[str, Any]:
             payload = json.loads(raw)
         except (TypeError, ValueError, json.JSONDecodeError):
             return {}
-        if isinstance(payload, Mapping) and all(
-            isinstance(key, str) for key in payload
-        ):
+        if isinstance(payload, Mapping) and all(isinstance(key, str) for key in payload):
             # The quality type applies canonical-JSON validation and copying.
             return dict(payload)
         return {}
@@ -481,9 +458,7 @@ class ObjectiveGoalQualityReport:
         object.__setattr__(self, "objective_heap_id", heap_id)
         records = tuple(self.quality_records)
         if any(not isinstance(item, GoalQualityRecord) for item in records):
-            raise TypeError(
-                "quality_records must contain GoalQualityRecord values"
-            )
+            raise TypeError("quality_records must contain GoalQualityRecord values")
         if len({item.goal_id for item in records}) != len(records):
             raise ValueError("quality_records contain duplicate goal IDs")
         object.__setattr__(
@@ -494,20 +469,14 @@ class ObjectiveGoalQualityReport:
 
     @property
     def debt_records(self) -> tuple[GoalDebtRecord, ...]:
-        return tuple(
-            debt
-            for quality in self.quality_records
-            for debt in quality.debt_records
-        )
+        return tuple(debt for quality in self.quality_records for debt in quality.debt_records)
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA,
             "version": 1,
             "objective_heap_id": self.objective_heap_id,
-            "quality_records": tuple(
-                item.to_dict() for item in self.quality_records
-            ),
+            "quality_records": tuple(item.to_dict() for item in self.quality_records),
             "debt_records": tuple(item.to_dict() for item in self.debt_records),
         }
 
@@ -519,9 +488,7 @@ class ObjectiveGoalQualityReport:
         return {**self._payload(), "content_id": self.content_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ObjectiveGoalQualityReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveGoalQualityReport":
         if not isinstance(payload, Mapping):
             raise TypeError("objective goal-quality report must be an object")
         allowed = {
@@ -534,10 +501,7 @@ class ObjectiveGoalQualityReport:
         }
         unknown = sorted(set(payload) - allowed)
         if unknown:
-            raise ValueError(
-                "unknown objective goal-quality report fields: "
-                + ", ".join(unknown)
-            )
+            raise ValueError("unknown objective goal-quality report fields: " + ", ".join(unknown))
         if payload.get("schema") != OBJECTIVE_GOAL_QUALITY_REPORT_SCHEMA:
             raise ValueError("unsupported objective goal-quality report schema")
         if payload.get("version") != 1:
@@ -569,16 +533,12 @@ class ObjectiveGoalQualityReport:
             for item in debt_values
         )
         if restored_debt != result.debt_records:
-            raise ValueError(
-                "objective goal-quality debt records do not match quality records"
-            )
+            raise ValueError("objective goal-quality debt records do not match quality records")
         identity = payload.get("content_id")
         if not isinstance(identity, str) or not identity.strip():
             raise ValueError("objective goal-quality report identity is required")
         if identity != result.content_id:
-            raise ValueError(
-                "objective goal-quality report content identity does not match"
-            )
+            raise ValueError("objective goal-quality report content identity does not match")
         return result
 
 
@@ -640,9 +600,7 @@ def objective_goal_quality_record(
             "produced_by",
         )
     )
-    metadata_producer = str(
-        goal.completion_evidence_metadata.get("producer") or ""
-    ).strip()
+    metadata_producer = str(goal.completion_evidence_metadata.get("producer") or "").strip()
     if metadata_producer:
         producers.add(metadata_producer)
     validation = set(goal.validation_commands)
@@ -654,34 +612,20 @@ def objective_goal_quality_record(
             "validation_ids",
         )
     )
-    resource_envelope = _quality_mapping(
-        goal, "resource_envelope_json", "resource_envelope"
-    )
+    resource_envelope = _quality_mapping(goal, "resource_envelope_json", "resource_envelope")
     if not resource_envelope:
         resource_envelope = {
             key: value
             for key, value in {
-                "resource_class": str(
-                    goal.fields.get("resource_class") or ""
-                ).strip(),
-                "estimated_tokens": str(
-                    goal.fields.get("estimated_tokens") or ""
-                ).strip(),
-                "estimated_runtime": str(
-                    goal.fields.get("estimated_runtime") or ""
-                ).strip(),
-                "estimated_memory": str(
-                    goal.fields.get("estimated_memory") or ""
-                ).strip(),
-                "artifact_budget": str(
-                    goal.fields.get("artifact_budget") or ""
-                ).strip(),
+                "resource_class": str(goal.fields.get("resource_class") or "").strip(),
+                "estimated_tokens": str(goal.fields.get("estimated_tokens") or "").strip(),
+                "estimated_runtime": str(goal.fields.get("estimated_runtime") or "").strip(),
+                "estimated_memory": str(goal.fields.get("estimated_memory") or "").strip(),
+                "artifact_budget": str(goal.fields.get("artifact_budget") or "").strip(),
             }.items()
             if value
         }
-    refinement_budget = _quality_mapping(
-        goal, "refinement_budget_json", "refinement_budget"
-    )
+    refinement_budget = _quality_mapping(goal, "refinement_budget_json", "refinement_budget")
     if not refinement_budget:
         refinement_budget = {
             key: value
@@ -699,11 +643,11 @@ def objective_goal_quality_record(
             }.items()
             if value
         }
-    explicit_breadth = _quality_nonnegative_integer(
-        goal, "breadth", default=max(1, breadth)
-    )
+    explicit_breadth = _quality_nonnegative_integer(goal, "breadth", default=max(1, breadth))
     max_breadth = _quality_nonnegative_integer(
-        goal, "max_breadth", "refinement_breadth_limit",
+        goal,
+        "max_breadth",
+        "refinement_breadth_limit",
         default=default_max_breadth,
     )
     return GoalQualityRecord(
@@ -717,9 +661,7 @@ def objective_goal_quality_record(
             "assumption_ids",
             "assumptions",
         ),
-        non_goals=_quality_terms(
-            goal, "non_goals_json", "non_goals", "non_goal"
-        ),
+        non_goals=_quality_terms(goal, "non_goals_json", "non_goals", "non_goal"),
         acceptance_criteria=acceptance,
         evidence_producer_ids=tuple(sorted(producers)),
         validation_ids=tuple(sorted(validation)),
@@ -730,9 +672,7 @@ def objective_goal_quality_record(
         ),
         resource_envelope=resource_envelope,
         refinement_budget=refinement_budget,
-        ambiguities=_quality_terms(
-            goal, "ambiguities_json", "ambiguities", "ambiguity"
-        ),
+        ambiguities=_quality_terms(goal, "ambiguities_json", "ambiguities", "ambiguity"),
         stale_evidence_ids=_quality_terms(
             goal, "stale_evidence_ids_json", "stale_evidence", "stale_receipts"
         ),
@@ -788,13 +728,9 @@ def write_objective_goal_quality_report(
     """Atomically persist an exact-heap quality snapshot for restart reuse."""
 
     if objective_path.resolve() == report_path.resolve():
-        raise ValueError(
-            "goal-quality report path must not overwrite the objective heap"
-        )
+        raise ValueError("goal-quality report path must not overwrite the objective heap")
     text = objective_path.read_text(encoding="utf-8")
-    report = build_objective_goal_quality_report(
-        text, default_max_breadth=default_max_breadth
-    )
+    report = build_objective_goal_quality_report(text, default_max_breadth=default_max_breadth)
     _atomic_write_json(report_path, report.to_dict())
     return report
 
@@ -817,15 +753,9 @@ def load_objective_goal_quality_report(
         objective_text = objective_path.read_text(encoding="utf-8")
         current_id = objective_heap_content_id(objective_text)
         if report.objective_heap_id != current_id:
-            raise ValueError(
-                "objective goal-quality report is stale for the current heap"
-            )
-        expected_goal_ids = {
-            goal.goal_id for goal in parse_goal_heap(objective_text)
-        }
-        report_goal_ids = {
-            record.goal_id for record in report.quality_records
-        }
+            raise ValueError("objective goal-quality report is stale for the current heap")
+        expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(objective_text)}
+        report_goal_ids = {record.goal_id for record in report.quality_records}
         if report_goal_ids != expected_goal_ids:
             missing = sorted(expected_goal_ids - report_goal_ids)
             unexpected = sorted(report_goal_ids - expected_goal_ids)
@@ -897,15 +827,11 @@ def ensure_objective_goal_quality_report(
     """
 
     if objective_path.resolve() == report_path.resolve():
-        raise ValueError(
-            "goal-quality report path must not overwrite the objective heap"
-        )
+        raise ValueError("goal-quality report path must not overwrite the objective heap")
     evidence_path = _goal_quality_evidence_path_label(report_path)
     if not force and report_path.is_file():
         try:
-            report = load_objective_goal_quality_report(
-                report_path, objective_path=objective_path
-            )
+            report = load_objective_goal_quality_report(report_path, objective_path=objective_path)
         except ValueError:
             report = None
         else:
@@ -955,9 +881,7 @@ def write_objective_typed_goals(
     """Atomically persist a heap-bound typed goal sidecar."""
 
     if objective_path.resolve() == sidecar_path.resolve():
-        raise ValueError(
-            "typed goal sidecar path must not overwrite the objective heap"
-        )
+        raise ValueError("typed goal sidecar path must not overwrite the objective heap")
     text = objective_path.read_text(encoding="utf-8")
     document = build_objective_typed_goals(text, lossless=lossless)
     _atomic_write_json(sidecar_path, document.to_dict())
@@ -1041,12 +965,8 @@ class ObjectiveLaunchQualitySummary:
             if not value:
                 raise ValueError(f"{name} is required")
             object.__setattr__(self, name, value)
-        object.__setattr__(
-            self, "legacy_structure_accepted", bool(self.legacy_structure_accepted)
-        )
-        object.__setattr__(
-            self, "strict_typed_required", bool(self.strict_typed_required)
-        )
+        object.__setattr__(self, "legacy_structure_accepted", bool(self.legacy_structure_accepted))
+        object.__setattr__(self, "strict_typed_required", bool(self.strict_typed_required))
         claimed = bool(self.typed_admission_claimed)
         if claimed and (
             self.strict_typed_rejected
@@ -1057,9 +977,7 @@ class ObjectiveLaunchQualitySummary:
                 "typed admission cannot be claimed while structural or typed debt remains"
             )
         if not claimed and self.admission_path == "typed_sidecar":
-            raise ValueError(
-                "typed_sidecar admission path requires typed_admission_claimed"
-            )
+            raise ValueError("typed_sidecar admission path requires typed_admission_claimed")
         object.__setattr__(self, "typed_admission_claimed", claimed)
 
     def _payload(self) -> dict[str, Any]:
@@ -1111,8 +1029,7 @@ class ObjectiveLaunchQualitySummary:
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise ValueError(
-                "unknown objective launch quality summary fields: "
-                + ", ".join(unknown)
+                "unknown objective launch quality summary fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != OBJECTIVE_LAUNCH_QUALITY_SUMMARY_SCHEMA:
             raise ValueError("unsupported objective launch quality summary schema")
@@ -1136,9 +1053,7 @@ class ObjectiveLaunchQualitySummary:
         if not isinstance(identity, str) or not identity.strip():
             raise ValueError("objective launch quality summary identity is required")
         if identity != result.content_id:
-            raise ValueError(
-                "objective launch quality summary content identity does not match"
-            )
+            raise ValueError("objective launch quality summary content identity does not match")
         return result
 
 
@@ -1161,9 +1076,7 @@ def build_objective_launch_quality_summary(
     legacy_reports = lint_objective_markdown(objective_text, lossless=False)
     typed_document = migrate_objective_markdown(objective_text)
     if typed_document.objective_heap_id != compatibility.objective_heap_id:
-        raise ValueError(
-            "typed sidecar heap identity diverged from compatibility report"
-        )
+        raise ValueError("typed sidecar heap identity diverged from compatibility report")
     sidecar_reports = lint_objective_typed_goals(typed_document)
     sidecar_accepted = sum(1 for report in sidecar_reports if report.accepted)
     sidecar_rejected = len(sidecar_reports) - sidecar_accepted
@@ -1175,9 +1088,7 @@ def build_objective_launch_quality_summary(
         for debt in report.debt:
             legacy_debt[debt.code.value] = legacy_debt.get(debt.code.value, 0) + 1
             if debt.severity is DebtSeverity.ERROR:
-                legacy_error_debt[debt.code.value] = (
-                    legacy_error_debt.get(debt.code.value, 0) + 1
-                )
+                legacy_error_debt[debt.code.value] = legacy_error_debt.get(debt.code.value, 0) + 1
     legacy_accepted = sum(1 for report in legacy_reports if report.accepted)
     legacy_rejected = len(legacy_reports) - legacy_accepted
 
@@ -1187,9 +1098,7 @@ def build_objective_launch_quality_summary(
         for debt in report.debt:
             sidecar_debt[debt.code.value] = sidecar_debt.get(debt.code.value, 0) + 1
             if debt.severity is DebtSeverity.ERROR:
-                sidecar_error_debt[debt.code.value] = (
-                    sidecar_error_debt.get(debt.code.value, 0) + 1
-                )
+                sidecar_error_debt[debt.code.value] = sidecar_error_debt.get(debt.code.value, 0) + 1
 
     # Structural acceptance is owned by hierarchy checks outside this builder.
     legacy_structure_accepted = True
@@ -1263,19 +1172,11 @@ class ObjectiveRefinementEventState:
             if not value:
                 raise ValueError(f"{name} is required")
             object.__setattr__(self, name, value)
-        if isinstance(
-            self.assumption_ids, (str, bytes, bytearray, memoryview)
-        ) or any(not isinstance(item, str) for item in self.assumption_ids):
+        if isinstance(self.assumption_ids, (str, bytes, bytearray, memoryview)) or any(
+            not isinstance(item, str) for item in self.assumption_ids
+        ):
             raise ValueError("assumption_ids must be a sequence of strings")
-        assumptions = tuple(
-            sorted(
-                {
-                    item.strip()
-                    for item in self.assumption_ids
-                    if item.strip()
-                }
-            )
-        )
+        assumptions = tuple(sorted({item.strip() for item in self.assumption_ids if item.strip()}))
         object.__setattr__(self, "assumption_ids", assumptions)
         if not isinstance(self.semantic_event_ids, Mapping) or any(
             not isinstance(key, str)
@@ -1284,22 +1185,15 @@ class ObjectiveRefinementEventState:
             or not value.strip()
             for key, value in self.semantic_event_ids.items()
         ):
-            raise ValueError(
-                "semantic_event_ids must be a string-to-string mapping"
-            )
+            raise ValueError("semantic_event_ids must be a string-to-string mapping")
         object.__setattr__(
             self,
             "semantic_event_ids",
-            {
-                key: self.semantic_event_ids[key]
-                for key in sorted(self.semantic_event_ids)
-            },
+            {key: self.semantic_event_ids[key] for key in sorted(self.semantic_event_ids)},
         )
         if not isinstance(self.last_receipt_id, str):
             raise ValueError("last_receipt_id must be a string")
-        object.__setattr__(
-            self, "last_receipt_id", self.last_receipt_id.strip()
-        )
+        object.__setattr__(self, "last_receipt_id", self.last_receipt_id.strip())
         if (
             isinstance(self.retry_after, bool)
             or not isinstance(self.retry_after, int)
@@ -1327,9 +1221,7 @@ class ObjectiveRefinementEventState:
         return {**self._payload(), "content_id": self.content_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ObjectiveRefinementEventState":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveRefinementEventState":
         expected = {
             "schema",
             "root_goal_id",
@@ -1342,9 +1234,7 @@ class ObjectiveRefinementEventState:
             "content_id",
         }
         if not isinstance(payload, Mapping) or set(payload) != expected:
-            raise ValueError(
-                "objective refinement event state must use the closed schema"
-            )
+            raise ValueError("objective refinement event state must use the closed schema")
         if payload.get("schema") != OBJECTIVE_REFINEMENT_EVENT_STATE_SCHEMA:
             raise ValueError("unsupported objective refinement event state schema")
         result = cls(
@@ -1357,9 +1247,7 @@ class ObjectiveRefinementEventState:
             retry_after=payload.get("retry_after", 0),
         )
         if payload.get("content_id") != result.content_id:
-            raise ValueError(
-                "objective refinement event state identity does not match"
-            )
+            raise ValueError("objective refinement event state identity does not match")
         return result
 
 
@@ -1373,15 +1261,10 @@ class ObjectiveRefinementPollResult:
 
     @property
     def model_called(self) -> bool:
-        return bool(
-            self.refinement_result is not None
-            and self.refinement_result.model_called
-        )
+        return bool(self.refinement_result is not None and self.refinement_result.model_called)
 
 
-ObjectiveDeltaCommitter = Callable[
-    [FormalWorkPlan, AdaptiveRefinementReceipt], None
-]
+ObjectiveDeltaCommitter = Callable[[FormalWorkPlan, AdaptiveRefinementReceipt], None]
 
 
 class ObjectiveRefinementEventTracker:
@@ -1417,9 +1300,7 @@ class ObjectiveRefinementEventTracker:
                 lock_path.parent.mkdir(parents=True, exist_ok=True)
                 handle = lock_path.open("a+", encoding="utf-8")
             except OSError as exc:
-                raise ValueError(
-                    f"could not lock objective refinement event state: {exc}"
-                ) from exc
+                raise ValueError(f"could not lock objective refinement event state: {exc}") from exc
             with handle:
                 try:
                     import fcntl
@@ -1444,18 +1325,12 @@ class ObjectiveRefinementEventTracker:
         try:
             payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                f"invalid objective refinement event state: {exc}"
-            ) from exc
+            raise ValueError(f"invalid objective refinement event state: {exc}") from exc
         if not isinstance(payload, Mapping):
-            raise ValueError(
-                "objective refinement event state must contain an object"
-            )
+            raise ValueError("objective refinement event state must contain an object")
         return ObjectiveRefinementEventState.from_dict(payload)
 
-    def poll(
-        self, request: AdaptiveRefinementRequest
-    ) -> ObjectiveRefinementPollResult:
+    def poll(self, request: AdaptiveRefinementRequest) -> ObjectiveRefinementPollResult:
         """Evaluate only semantically changed signals from one frozen request."""
 
         if not isinstance(request, AdaptiveRefinementRequest):
@@ -1474,14 +1349,10 @@ class ObjectiveRefinementEventTracker:
                         "event state does not match the frozen root, assumptions, "
                         "or refinement policy"
                     )
-            prior_events = dict(
-                state.semantic_event_ids if state is not None else {}
-            )
+            prior_events = dict(state.semantic_event_ids if state is not None else {})
             current_slots: dict[str, list[str]] = {}
             for signal in request.signals:
-                current_slots.setdefault(
-                    self._event_slot(signal), []
-                ).append(signal.evidence_id)
+                current_slots.setdefault(self._event_slot(signal), []).append(signal.evidence_id)
             current_event_ids = {
                 slot: content_identity(
                     {
@@ -1497,9 +1368,7 @@ class ObjectiveRefinementEventTracker:
                 if prior_events.get(slot) != event_id
             }
             changed = tuple(
-                signal
-                for signal in request.signals
-                if self._event_slot(signal) in changed_slots
+                signal for signal in request.signals if self._event_slot(signal) in changed_slots
             )
             if not changed:
                 return ObjectiveRefinementPollResult(
@@ -1538,9 +1407,7 @@ class ObjectiveRefinementEventTracker:
                     if objective_written
                     else ObjectiveRefinementPollDecision.REFINEMENT_EVALUATED
                 ),
-                changed_signal_ids=tuple(
-                    signal.evidence_id for signal in changed
-                ),
+                changed_signal_ids=tuple(signal.evidence_id for signal in changed),
                 state_content_id=next_state.content_id,
                 refinement_result=result,
                 objective_written=objective_written,
@@ -1594,11 +1461,13 @@ class ObjectiveGoalMigrationResult:
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload.update({
-            "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
-            "objective_path": str(self.objective_path),
-            "changed": self.changed,
-        })
+        payload.update(
+            {
+                "schema": "ipfs_accelerate_py.agent_supervisor.objective_goal_migration@1",
+                "objective_path": str(self.objective_path),
+                "changed": self.changed,
+            }
+        )
         return payload
 
 
@@ -1721,9 +1590,7 @@ class ObjectiveEvidenceProjection:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ObjectiveEvidenceProjection":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ObjectiveEvidenceProjection":
         allowed = {
             "schema",
             "version",
@@ -1737,8 +1604,7 @@ class ObjectiveEvidenceProjection:
         unknown = sorted(str(key) for key in payload if str(key) not in allowed)
         if unknown:
             raise ValueError(
-                "objective evidence projection contains unknown fields: "
-                + ", ".join(unknown)
+                "objective evidence projection contains unknown fields: " + ", ".join(unknown)
             )
         if (
             payload.get("schema") != OBJECTIVE_EVIDENCE_PROJECTION_SCHEMA
@@ -1782,9 +1648,7 @@ def resolve_objective_evidence_projection(
         if requirement in {str(item).strip() for item in goal.required_evidence}
     ]
     if not owners:
-        raise ValueError(
-            f"objective heap has no owner for evidence requirement {requirement}"
-        )
+        raise ValueError(f"objective heap has no owner for evidence requirement {requirement}")
     goals_by_id = {goal.goal_id: goal for goal in goals}
 
     def ancestor_ids(goal: ObjectiveGoal) -> set[str]:
@@ -1828,23 +1692,19 @@ def resolve_objective_evidence_projection(
             goal
             for goal in owners
             if all(
-                other.goal_id == goal.goal_id
-                or other.goal_id in ancestor_ids(goal)
+                other.goal_id == goal.goal_id or other.goal_id in ancestor_ids(goal)
                 for other in owners
             )
         ]
         if len(maximal) != 1:
             raise ValueError(
-                f"objective heap has multiple owners for evidence requirement "
-                f"{requirement}"
+                f"objective heap has multiple owners for evidence requirement {requirement}"
             )
         owner = maximal[0]
     parents = tuple(str(item).strip() for item in owner.parent_goal_ids if str(item).strip())
     expected_parent = str(expected_parent_goal_id or "").strip()
     if expected_parent and expected_parent not in parents:
-        raise ValueError(
-            f"evidence owner {owner.goal_id} is not a child of {expected_parent}"
-        )
+        raise ValueError(f"evidence owner {owner.goal_id} is not a child of {expected_parent}")
     if not parents:
         raise ValueError(f"evidence owner {owner.goal_id} has no parent goal")
     parent = expected_parent or parents[0]
@@ -1858,12 +1718,10 @@ def resolve_objective_evidence_projection(
 
 
 SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "self_improvement_goal_evidence_binding.v1"
+    "ipfs_accelerate_py.agent_supervisor.self_improvement_goal_evidence_binding.v1"
 )
 SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor."
-    "self_improvement_goal_evidence_reconciliation.v1"
+    "ipfs_accelerate_py.agent_supervisor.self_improvement_goal_evidence_reconciliation.v1"
 )
 
 
@@ -1875,9 +1733,7 @@ def _strict_record_keys(
 ) -> None:
     unknown = sorted(str(key) for key in payload if str(key) not in allowed)
     if unknown:
-        raise ValueError(
-            f"{record_name} contains unknown fields: {', '.join(unknown)}"
-        )
+        raise ValueError(f"{record_name} contains unknown fields: {', '.join(unknown)}")
 
 
 def _canonical_receipt_payload(value: Any) -> dict[str, Any]:
@@ -1893,17 +1749,13 @@ def _canonical_receipt_payload(value: Any) -> dict[str, Any]:
 def _receipt_string_values(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         values: Iterable[Any] = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         values = value
     else:
         return ()
     return tuple(
         dict.fromkeys(
-            compact
-            for item in values
-            if (compact := " ".join(str(item or "").strip().split()))
+            compact for item in values if (compact := " ".join(str(item or "").strip().split()))
         )
     )
 
@@ -1918,11 +1770,7 @@ def _receipt_requirement_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
         "authoritative_evidence_claim_references",
     ):
         result.extend(_receipt_string_values(payload.get(name)))
-    criterion = str(
-        payload.get("acceptance_criterion")
-        or payload.get("criterion")
-        or ""
-    ).strip()
+    criterion = str(payload.get("acceptance_criterion") or payload.get("criterion") or "").strip()
     if criterion:
         result.append(criterion)
     metadata = payload.get("metadata")
@@ -1952,12 +1800,8 @@ def _receipt_content_identity(payload: Mapping[str, Any]) -> str:
 def _receipt_nonempty_text(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        return bool(value) and all(
-            isinstance(item, str) and bool(item.strip()) for item in value
-        )
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return bool(value) and all(isinstance(item, str) and bool(item.strip()) for item in value)
     return False
 
 
@@ -1987,9 +1831,7 @@ def _receipt_identifier(payload: Mapping[str, Any]) -> str:
     return _receipt_content_identity(payload)
 
 
-def _receipt_timestamp(
-    payload: Mapping[str, Any], *names: str
-) -> datetime | None:
+def _receipt_timestamp(payload: Mapping[str, Any], *names: str) -> datetime | None:
     for name in names:
         raw = payload.get(name)
         if raw in (None, ""):
@@ -2079,9 +1921,7 @@ def _restore_self_improvement_receipt(
         }
         restored = receipt_types[schema].from_dict(candidate)
         reproduced = restored.to_dict()
-        if _receipt_content_identity(reproduced) != _receipt_content_identity(
-            candidate
-        ):
+        if _receipt_content_identity(reproduced) != _receipt_content_identity(candidate):
             return dict(candidate), ("receipt_canonical_projection_mismatch",)
         return reproduced, ()
     except (KeyError, TypeError, ValueError):
@@ -2112,9 +1952,7 @@ class SelfImprovementGoalEvidenceBinding:
             raise ValueError("requirement_id is required")
         object.__setattr__(self, "requirement_id", requirement)
         projection = self.goal_projection
-        if projection is not None and not isinstance(
-            projection, ObjectiveEvidenceProjection
-        ):
+        if projection is not None and not isinstance(projection, ObjectiveEvidenceProjection):
             if not isinstance(projection, Mapping):
                 raise TypeError("goal_projection must be an evidence projection")
             projection = ObjectiveEvidenceProjection.from_dict(projection)
@@ -2137,19 +1975,11 @@ class SelfImprovementGoalEvidenceBinding:
             self,
             "reason_codes",
             tuple(
-                dict.fromkeys(
-                    str(item).strip()
-                    for item in self.reason_codes
-                    if str(item).strip()
-                )
+                dict.fromkeys(str(item).strip() for item in self.reason_codes if str(item).strip())
             ),
         )
-        if self.authoritative and (
-            self.goal_projection is None or self.reason_codes
-        ):
-            raise ValueError(
-                "authoritative evidence requires a projection and no rejection"
-            )
+        if self.authoritative and (self.goal_projection is None or self.reason_codes):
+            raise ValueError("authoritative evidence requires a projection and no rejection")
 
     @property
     def binding_id(self) -> str:
@@ -2161,9 +1991,7 @@ class SelfImprovementGoalEvidenceBinding:
             "version": 1,
             "requirement_id": self.requirement_id,
             "goal_projection": (
-                self.goal_projection.to_dict()
-                if self.goal_projection is not None
-                else None
+                self.goal_projection.to_dict() if self.goal_projection is not None else None
             ),
             "receipt_id": self.receipt_id,
             "receipt_content_id": self.receipt_content_id,
@@ -2182,9 +2010,7 @@ class SelfImprovementGoalEvidenceBinding:
         return {**self._payload(), "binding_id": self.binding_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "SelfImprovementGoalEvidenceBinding":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SelfImprovementGoalEvidenceBinding":
         allowed = {
             "schema",
             "version",
@@ -2203,12 +2029,9 @@ class SelfImprovementGoalEvidenceBinding:
             "authoritative",
             "reason_codes",
         }
-        _strict_record_keys(
-            payload, allowed, record_name="self-improvement evidence binding"
-        )
+        _strict_record_keys(payload, allowed, record_name="self-improvement evidence binding")
         if (
-            payload.get("schema")
-            != SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA
+            payload.get("schema") != SELF_IMPROVEMENT_GOAL_EVIDENCE_BINDING_SCHEMA
             or payload.get("version") != 1
         ):
             raise ValueError("unsupported self-improvement evidence binding schema")
@@ -2257,11 +2080,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             object.__setattr__(self, name, value)
         requested = tuple(
             sorted(
-                {
-                    str(item).strip()
-                    for item in self.requested_requirement_ids
-                    if str(item).strip()
-                }
+                {str(item).strip() for item in self.requested_requirement_ids if str(item).strip()}
             )
         )
         object.__setattr__(self, "requested_requirement_ids", requested)
@@ -2284,16 +2103,10 @@ class SelfImprovementGoalEvidenceReconciliation:
         proposals = {
             str(requirement).strip(): tuple(
                 sorted(
-                    {
-                        str(reference).strip()
-                        for reference in references
-                        if str(reference).strip()
-                    }
+                    {str(reference).strip() for reference in references if str(reference).strip()}
                 )
             )
-            for requirement, references in dict(
-                self.proposal_evidence or {}
-            ).items()
+            for requirement, references in dict(self.proposal_evidence or {}).items()
             if str(requirement).strip()
         }
         object.__setattr__(
@@ -2308,8 +2121,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             requirement
             for requirement in self.requested_requirement_ids
             if any(
-                item.requirement_id == requirement and item.authoritative
-                for item in self.bindings
+                item.requirement_id == requirement and item.authoritative for item in self.bindings
             )
         )
 
@@ -2320,9 +2132,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             requirement
             for requirement in self.requested_requirement_ids
             if requirement not in authoritative
-            and any(
-                item.requirement_id == requirement for item in self.bindings
-            )
+            and any(item.requirement_id == requirement for item in self.bindings)
         )
 
     @property
@@ -2331,8 +2141,7 @@ class SelfImprovementGoalEvidenceReconciliation:
         return tuple(
             requirement
             for requirement in self.requested_requirement_ids
-            if requirement not in authoritative
-            and bool(self.proposal_evidence.get(requirement))
+            if requirement not in authoritative and bool(self.proposal_evidence.get(requirement))
         )
 
     @property
@@ -2349,8 +2158,7 @@ class SelfImprovementGoalEvidenceReconciliation:
     @property
     def satisfied(self) -> bool:
         return bool(self.requested_requirement_ids) and (
-            self.authoritative_requirement_ids
-            == self.requested_requirement_ids
+            self.authoritative_requirement_ids == self.requested_requirement_ids
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -2361,23 +2169,14 @@ class SelfImprovementGoalEvidenceReconciliation:
             "repository_tree": self.repository_tree,
             "policy_id": self.policy_id,
             "evaluated_at": self.evaluated_at,
-            "requested_requirement_ids": list(
-                self.requested_requirement_ids
-            ),
+            "requested_requirement_ids": list(self.requested_requirement_ids),
             "bindings": [item.to_dict() for item in self.bindings],
             "proposal_evidence": {
-                key: list(value)
-                for key, value in self.proposal_evidence.items()
+                key: list(value) for key, value in self.proposal_evidence.items()
             },
-            "authoritative_requirement_ids": list(
-                self.authoritative_requirement_ids
-            ),
-            "rejected_requirement_ids": list(
-                self.rejected_requirement_ids
-            ),
-            "proposal_only_requirement_ids": list(
-                self.proposal_only_requirement_ids
-            ),
+            "authoritative_requirement_ids": list(self.authoritative_requirement_ids),
+            "rejected_requirement_ids": list(self.rejected_requirement_ids),
+            "proposal_only_requirement_ids": list(self.proposal_only_requirement_ids),
             "missing_requirement_ids": list(self.missing_requirement_ids),
             "satisfied": self.satisfied,
         }
@@ -2393,9 +2192,7 @@ class SelfImprovementGoalEvidenceReconciliation:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "SelfImprovementGoalEvidenceReconciliation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SelfImprovementGoalEvidenceReconciliation":
         allowed = {
             "schema",
             "version",
@@ -2419,18 +2216,13 @@ class SelfImprovementGoalEvidenceReconciliation:
             record_name="self-improvement goal evidence reconciliation",
         )
         if (
-            payload.get("schema")
-            != SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA
+            payload.get("schema") != SELF_IMPROVEMENT_GOAL_EVIDENCE_RECONCILIATION_SCHEMA
             or payload.get("version") != 1
         ):
-            raise ValueError(
-                "unsupported self-improvement goal evidence reconciliation schema"
-            )
+            raise ValueError("unsupported self-improvement goal evidence reconciliation schema")
         bindings = payload.get("bindings")
         proposals = payload.get("proposal_evidence")
-        if not isinstance(bindings, Sequence) or isinstance(
-            bindings, (str, bytes, bytearray)
-        ):
+        if not isinstance(bindings, Sequence) or isinstance(bindings, (str, bytes, bytearray)):
             raise ValueError("bindings must be a sequence")
         if not isinstance(proposals, Mapping):
             raise ValueError("proposal_evidence must be an object")
@@ -2439,9 +2231,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             repository_tree=str(payload.get("repository_tree") or ""),
             policy_id=str(payload.get("policy_id") or ""),
             evaluated_at=str(payload.get("evaluated_at") or ""),
-            requested_requirement_ids=tuple(
-                payload.get("requested_requirement_ids") or ()
-            ),
+            requested_requirement_ids=tuple(payload.get("requested_requirement_ids") or ()),
             bindings=tuple(
                 SelfImprovementGoalEvidenceBinding.from_dict(item)
                 if isinstance(item, Mapping)
@@ -2451,8 +2241,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             proposal_evidence={
                 str(key): tuple(value)
                 for key, value in proposals.items()
-                if isinstance(value, Sequence)
-                and not isinstance(value, (str, bytes, bytearray))
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
             },
         )
         projected = result.to_dict()
@@ -2465,9 +2254,7 @@ class SelfImprovementGoalEvidenceReconciliation:
             "reconciliation_id",
         ):
             if payload.get(name) != projected[name]:
-                raise ValueError(
-                    f"self-improvement reconciliation {name} mismatch"
-                )
+                raise ValueError(f"self-improvement reconciliation {name} mismatch")
         return result
 
 
@@ -2508,11 +2295,7 @@ def reconcile_self_improvement_goal_evidence(
     ):
         raise ValueError("freshness_seconds must be a non-negative number")
     evaluated = _reconciliation_now(now)
-    explicit_requirements = {
-        str(item).strip()
-        for item in requirement_ids
-        if str(item).strip()
-    }
+    explicit_requirements = {str(item).strip() for item in requirement_ids if str(item).strip()}
     if explicit_requirements:
         requested = tuple(sorted(explicit_requirements))
     else:
@@ -2522,16 +2305,12 @@ def reconcile_self_improvement_goal_evidence(
                     str(requirement).strip()
                     for goal in parse_goal_heap(objective_text)
                     for requirement in goal.required_evidence
-                    if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(
-                        str(requirement).strip()
-                    )
+                    if OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(str(requirement).strip())
                 }
             )
         )
     nonopaque = tuple(
-        item
-        for item in requested
-        if not OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(item)
+        item for item in requested if not OPAQUE_EVIDENCE_REQUIREMENT_PATTERN.fullmatch(item)
     )
     if nonopaque:
         raise ValueError(
@@ -2554,9 +2333,7 @@ def reconcile_self_improvement_goal_evidence(
             sorted(
                 {
                     str(reference).strip()
-                    for reference in (proposal_evidence or {}).get(
-                        requirement, ()
-                    )
+                    for reference in (proposal_evidence or {}).get(requirement, ())
                     if str(reference).strip()
                 }
             )
@@ -2576,9 +2353,7 @@ def reconcile_self_improvement_goal_evidence(
         if not claims:
             continue
         owner_ids = {
-            projections[requirement].goal_id
-            for requirement in claims
-            if requirement in projections
+            projections[requirement].goal_id for requirement in claims if requirement in projections
         }
         shared_reasons: list[str] = list(integrity_reasons)
         if len(owner_ids) > 1:
@@ -2591,19 +2366,13 @@ def reconcile_self_improvement_goal_evidence(
             or receipt.get("tree_id")
             or ""
         ).strip()
-        receipt_policy = str(
-            receipt.get("policy_id") or receipt.get("policy_digest") or ""
-        ).strip()
+        receipt_policy = str(receipt.get("policy_id") or receipt.get("policy_digest") or "").strip()
         producer_kind = str(receipt.get("producer_kind") or "").strip()
         source_tier = str(
-            receipt.get("source_tier")
-            or receipt.get("receipt_kind")
-            or producer_kind
+            receipt.get("source_tier") or receipt.get("receipt_kind") or producer_kind
         ).strip()
         artifact_digest = str(
-            receipt.get("artifact_digest")
-            or receipt.get("provenance_cid")
-            or ""
+            receipt.get("artifact_digest") or receipt.get("provenance_cid") or ""
         ).strip()
         command = receipt.get("command", receipt.get("commands"))
         toolchain = receipt.get("toolchain", receipt.get("toolchains"))
@@ -2635,9 +2404,9 @@ def reconcile_self_improvement_goal_evidence(
             shared_reasons.append("receipt_observed_at_missing_or_invalid")
         elif observed > evaluated + timedelta(seconds=300):
             shared_reasons.append("receipt_observed_in_future")
-        elif fresh_until is None and (
-            evaluated - observed
-        ).total_seconds() > float(freshness_seconds):
+        elif fresh_until is None and (evaluated - observed).total_seconds() > float(
+            freshness_seconds
+        ):
             shared_reasons.append("receipt_stale")
         if fresh_until is not None and evaluated > fresh_until:
             shared_reasons.append("receipt_stale")
@@ -2652,9 +2421,7 @@ def reconcile_self_improvement_goal_evidence(
             try:
                 if not isinstance(embedded_projection, Mapping):
                     raise TypeError
-                parsed_embedded = ObjectiveEvidenceProjection.from_dict(
-                    embedded_projection
-                )
+                parsed_embedded = ObjectiveEvidenceProjection.from_dict(embedded_projection)
             except (TypeError, ValueError):
                 shared_reasons.append("receipt_goal_projection_invalid")
 
@@ -2694,9 +2461,7 @@ def reconcile_self_improvement_goal_evidence(
                     policy_id=receipt_policy,
                     artifact_digest=artifact_digest,
                     observed_at=observed.isoformat() if observed else "",
-                    fresh_until=(
-                        fresh_until.isoformat() if fresh_until else ""
-                    ),
+                    fresh_until=(fresh_until.isoformat() if fresh_until else ""),
                     authoritative=not unique_reasons and projection is not None,
                     reason_codes=unique_reasons,
                 )
@@ -2721,8 +2486,7 @@ def reconcile_self_improvement_goal_evidence(
             observed_at=item.observed_at,
             fresh_until=item.fresh_until,
             authoritative=(
-                item.authoritative
-                and len(distinct_by_requirement[item.requirement_id]) == 1
+                item.authoritative and len(distinct_by_requirement[item.requirement_id]) == 1
             ),
             reason_codes=(
                 item.reason_codes
@@ -2785,7 +2549,9 @@ def fibonacci_priority(depth: int, sibling_index: int = 0) -> int:
     return fibonacci_number(max(1, depth + 2)) * 1000 + max(0, sibling_index)
 
 
-def infer_goal_prefix(goals: Sequence[ObjectiveGoal], *, fallback: str = DEFAULT_GOAL_PREFIX) -> str:
+def infer_goal_prefix(
+    goals: Sequence[ObjectiveGoal], *, fallback: str = DEFAULT_GOAL_PREFIX
+) -> str:
     """Infer a numeric goal-id prefix from existing goals."""
 
     prefixes: dict[str, int] = {}
@@ -2833,9 +2599,7 @@ _GENERATED_OBJECTIVE_REQUIRED_FIELDS = frozenset(
         "gap_task",
     }
 )
-_GENERATED_OBJECTIVE_NONEMPTY_FIELDS = (
-    _GENERATED_OBJECTIVE_REQUIRED_FIELDS - {"parent"}
-)
+_GENERATED_OBJECTIVE_NONEMPTY_FIELDS = _GENERATED_OBJECTIVE_REQUIRED_FIELDS - {"parent"}
 
 
 def _validate_generated_objective_candidate(
@@ -2860,9 +2624,7 @@ def _validate_generated_objective_candidate(
         or any(not item for item in expected_appended_ids)
         or len(expected_appended_ids) != len(set(expected_appended_ids))
     ):
-        raise ValueError(
-            "generated objective candidate requires unique appended goal ids"
-        )
+        raise ValueError("generated objective candidate requires unique appended goal ids")
 
     prior_goals = parse_goal_heap(prior_text)
     candidate_goals = parse_goal_heap(candidate_text)
@@ -2882,40 +2644,30 @@ def _validate_generated_objective_candidate(
         goal = goals_by_id[goal_id]
         missing = sorted(_GENERATED_OBJECTIVE_REQUIRED_FIELDS - set(goal.fields))
         if missing:
-            raise ValueError(
-                f"generated objective goal {goal_id} is missing fields: {missing}"
-            )
+            raise ValueError(f"generated objective goal {goal_id} is missing fields: {missing}")
         empty = sorted(
             key
             for key in _GENERATED_OBJECTIVE_NONEMPTY_FIELDS
             if not str(goal.fields.get(key) or "").strip()
         )
         if empty:
-            raise ValueError(
-                f"generated objective goal {goal_id} has empty fields: {empty}"
-            )
+            raise ValueError(f"generated objective goal {goal_id} has empty fields: {empty}")
         parents = tuple(goal.parent_goal_ids)
-        unknown_parents = sorted(
-            parent for parent in parents if parent not in goals_by_id
-        )
+        unknown_parents = sorted(parent for parent in parents if parent not in goals_by_id)
         if unknown_parents:
             raise ValueError(
-                f"generated objective goal {goal_id} has unknown parents: "
-                f"{unknown_parents}"
+                f"generated objective goal {goal_id} has unknown parents: {unknown_parents}"
             )
 
     # A generated root is valid only when creating a new document.  Every
     # append to an existing heap must retain explicit lineage.
     if prior_ids:
         root_appends = [
-            goal_id
-            for goal_id in expected_appended_ids
-            if not goals_by_id[goal_id].parent_goal_ids
+            goal_id for goal_id in expected_appended_ids if not goals_by_id[goal_id].parent_goal_ids
         ]
         if root_appends:
             raise ValueError(
-                "generated objective candidate introduced additional roots: "
-                f"{root_appends}"
+                f"generated objective candidate introduced additional roots: {root_appends}"
             )
 
     visiting: set[str] = set()
@@ -2925,9 +2677,7 @@ def _validate_generated_objective_candidate(
         if goal_id in visited:
             return
         if goal_id in visiting:
-            raise ValueError(
-                f"generated objective candidate contains a parent cycle at {goal_id}"
-            )
+            raise ValueError(f"generated objective candidate contains a parent cycle at {goal_id}")
         visiting.add(goal_id)
         for parent in goals_by_id[goal_id].parent_goal_ids:
             if parent in goals_by_id:
@@ -2952,11 +2702,7 @@ def _write_generated_objective_candidate(
 
     lock_path = objective_admission_lock_path(objective_path)
     with exclusive_file_lock(lock_path, timeout_seconds=30.0):
-        current_text = (
-            objective_path.read_text(encoding="utf-8")
-            if objective_path.exists()
-            else ""
-        )
+        current_text = objective_path.read_text(encoding="utf-8") if objective_path.exists() else ""
         if current_text != prior_text:
             raise ValueError(
                 "generated objective candidate is stale; refusing to overwrite "
@@ -2992,7 +2738,9 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
             block = []
             return
 
-        normalized_updates = {normalize_field_key(key): (key, value) for key, value in goal_updates.items()}
+        normalized_updates = {
+            normalize_field_key(key): (key, value) for key, value in goal_updates.items()
+        }
         seen_keys: set[str] = set()
         output: list[str] = []
         last_field_index = 0
@@ -3002,7 +2750,9 @@ def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> 
                 key, _value = line[2:].split(":", 1)
                 normalized = normalize_field_key(key)
                 if normalized in normalized_updates:
-                    output.append(f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}")
+                    output.append(
+                        f"- {normalized_updates[normalized][0]}: {normalized_updates[normalized][1]}"
+                    )
                     seen_keys.add(normalized)
                     replaced_wrapped_field = True
                 else:
@@ -3108,10 +2858,10 @@ def open_implementation_goal_ids_from_todo_board(
             continue
         candidate_kind = task.metadata.get("candidate kind", "").strip().casefold()
         merge_role = task.metadata.get("merge role", "").strip().casefold()
-        if (
-            candidate_kind == "validation_gate"
-            or merge_role in {"validation_gate", "completion_gate"}
-        ):
+        if candidate_kind == "validation_gate" or merge_role in {
+            "validation_gate",
+            "completion_gate",
+        }:
             continue
         for key in TASK_GOAL_METADATA_KEYS:
             goal_ids.update(split_terms(task.metadata.get(key, "")))
@@ -3319,12 +3069,7 @@ def _gitlink_paths(repo_root: Path) -> tuple[str, ...]:
             continue
         path = raw_path.decode("utf-8", errors="surrogateescape")
         candidate = Path(path)
-        if (
-            not path
-            or candidate.is_absolute()
-            or ".." in candidate.parts
-            or path in paths
-        ):
+        if not path or candidate.is_absolute() or ".." in candidate.parts or path in paths:
             continue
         paths.append(path)
     return tuple(sorted(paths))
@@ -3361,11 +3106,7 @@ def _bind_submodule_worktree_identities(
             binary=True,
         )
         status_snapshot = raw_status if isinstance(raw_status, bytes) else b""
-    dirty_paths = {
-        entry[3:]
-        for entry in status_snapshot.split(b"\0")
-        if len(entry) >= 4
-    }
+    dirty_paths = {entry[3:] for entry in status_snapshot.split(b"\0") if len(entry) >= 4}
     dirty_gitlinks = tuple(
         relative
         for relative in gitlinks
@@ -3410,9 +3151,7 @@ def _bind_submodule_worktree_identities(
             _visited_repositories=next_visited,
         )
         digest.update(b"\0tree\0")
-        digest.update(
-            child_identity.tree_id.encode("utf-8", errors="surrogateescape")
-        )
+        digest.update(child_identity.tree_id.encode("utf-8", errors="surrogateescape"))
     return RepositoryTreeIdentity(
         repository_id=identity.repository_id,
         tree_id=f"sha256:{digest.hexdigest()}",
@@ -3431,14 +3170,10 @@ def _control_tree_identity(
     top_text = str(_git_output(root, "rev-parse", "--show-toplevel") or "")
     if not top_text:
         excluded_files = {
-            path.resolve()
-            for path in excluded_paths
-            if not path.exists() or not path.is_dir()
+            path.resolve() for path in excluded_paths if not path.exists() or not path.is_dir()
         }
         excluded_directories = {
-            path.resolve()
-            for path in excluded_paths
-            if path.exists() and path.is_dir()
+            path.resolve() for path in excluded_paths if path.exists() and path.is_dir()
         }
 
         def excluded(candidate: Path) -> bool:
@@ -3469,13 +3204,9 @@ def _control_tree_identity(
                 elif candidate.is_file():
                     digest.update(b"\0file\0")
                     digest.update(relative.encode("utf-8"))
-                    digest.update(
-                        str(candidate.stat().st_mode & 0o777).encode("ascii")
-                    )
+                    digest.update(str(candidate.stat().st_mode & 0o777).encode("ascii"))
                     with candidate.open("rb") as stream:
-                        for chunk in iter(
-                            lambda: stream.read(1024 * 1024), b""
-                        ):
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                             digest.update(chunk)
             except OSError as exc:
                 # A concurrently removed or unreadable source is itself a
@@ -3503,9 +3234,7 @@ def _control_tree_identity(
             excluded_paths=excluded_paths,
             visited_repositories=_visited_repositories,
         )
-    common_dir_text = str(
-        _git_output(root, "rev-parse", "--git-common-dir") or ""
-    )
+    common_dir_text = str(_git_output(root, "rev-parse", "--git-common-dir") or "")
     if common_dir_text:
         common_dir = Path(common_dir_text)
         if not common_dir.is_absolute():
@@ -3517,10 +3246,7 @@ def _control_tree_identity(
     if not head_tree:
         return RepositoryTreeIdentity(
             repository_id=repository_id,
-            tree_id=(
-                "unversioned:"
-                + sha256(str(root).encode("utf-8")).hexdigest()
-            ),
+            tree_id=("unversioned:" + sha256(str(root).encode("utf-8")).hexdigest()),
         )
     # Hash the tracked manifest after removing control paths.  Starting from
     # ``HEAD^{tree}`` would still include the last committed bytes of an
@@ -3545,8 +3271,7 @@ def _control_tree_identity(
         separator = entry.find(b"\t")
         entry_path = entry[separator + 1 :] if separator >= 0 else b""
         if entry_path and any(
-            entry_path == excluded
-            or entry_path.startswith(excluded + b"/")
+            entry_path == excluded or entry_path.startswith(excluded + b"/")
             for excluded in excluded_bytes
         ):
             continue
@@ -3636,9 +3361,7 @@ def _objective_goal_completion_policy(goal: ObjectiveGoal) -> dict[str, Any]:
         "goal_id": str(goal.goal_id),
         "title": normalize_identity_text(goal.title),
         "goal": normalize_identity_text(fields.get("goal", "")),
-        "conflict_policy": normalize_identity_text(
-            fields.get("conflict_policy", "")
-        ),
+        "conflict_policy": normalize_identity_text(fields.get("conflict_policy", "")),
         "parents": sorted(str(item) for item in goal.parent_goal_ids),
         "acceptance": normalize_identity_text(acceptance),
         "required_evidence": sorted(
@@ -3649,9 +3372,7 @@ def _objective_goal_completion_policy(goal: ObjectiveGoal) -> dict[str, Any]:
         "predicted_symbols": sorted(
             normalize_identity_text(item) for item in goal.predicted_symbols
         ),
-        "validation": [
-            normalize_identity_text(item) for item in goal.validation_commands
-        ],
+        "validation": [normalize_identity_text(item) for item in goal.validation_commands],
     }
 
 
@@ -3832,9 +3553,7 @@ def _goal_completion_gate_record(
     if isinstance(supplied, Mapping):
         return dict(supplied)
     raw = str(
-        goal.fields.get("completion_gate_record")
-        or goal.fields.get("completion_gate_json")
-        or ""
+        goal.fields.get("completion_gate_record") or goal.fields.get("completion_gate_json") or ""
     ).strip()
     if not raw:
         return {}
@@ -3850,7 +3569,9 @@ def _atomic_rewrite(path: Path, text: str) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.migration-", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.migration-", dir=path.parent
+    )
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -3924,9 +3645,7 @@ def _load_objective_materialization_journal(path: Path) -> dict[str, Any]:
         raise ValueError("objective materialization transactions must be an object")
     return {
         "schema": _OBJECTIVE_MATERIALIZATION_JOURNAL_SCHEMA,
-        "transactions": {
-            str(key): dict(value) for key, value in transactions.items()
-        },
+        "transactions": {str(key): dict(value) for key, value in transactions.items()},
         **(
             {"latest_transaction_id": str(payload["latest_transaction_id"])}
             if payload.get("latest_transaction_id")
@@ -3942,10 +3661,7 @@ def _objective_materialization_transaction_id(
     expected_goal_ids: Sequence[str] = (),
 ) -> str:
     material = {
-        "schema": (
-            "ipfs_accelerate_py.agent_supervisor."
-            "objective_materialization_transaction@1"
-        ),
+        "schema": ("ipfs_accelerate_py.agent_supervisor.objective_materialization_transaction@1"),
         "base_heap_content_id": preview.base_heap_content_id,
         "candidate_heap_content_id": preview.candidate_heap_content_id,
         "root_goal_id": preview.root_goal_id,
@@ -3997,9 +3713,7 @@ def _objective_transaction_result(
         changed=bool(changed),
         resumed=bool(resumed),
         reason_codes=tuple(
-            dict.fromkeys(
-                str(item).strip() for item in reason_codes if str(item).strip()
-            )
+            dict.fromkeys(str(item).strip() for item in reason_codes if str(item).strip())
         ),
         base_heap_content_id=preview.base_heap_content_id,
         candidate_heap_content_id=preview.candidate_heap_content_id,
@@ -4008,10 +3722,7 @@ def _objective_transaction_result(
         root_content_id=preview.root_content_id,
         epoch_id=epoch_id,
         mapped_goal_ids=(
-            (
-                tuple(expected_goal_ids)
-                or tuple(item.goal.goal_id for item in preview.materialized)
-            )
+            (tuple(expected_goal_ids) or tuple(item.goal.goal_id for item in preview.materialized))
             if state is ObjectiveMaterializationTransactionState.COMMITTED
             else ()
         ),
@@ -4026,22 +3737,17 @@ def _materialization_record_matches_preview(
     expected_goal_ids: Sequence[str] = (),
 ) -> bool:
     matches = (
-        str(record.get("base_heap_content_id") or "")
-        == preview.base_heap_content_id
-        and str(record.get("candidate_heap_content_id") or "")
-        == preview.candidate_heap_content_id
+        str(record.get("base_heap_content_id") or "") == preview.base_heap_content_id
+        and str(record.get("candidate_heap_content_id") or "") == preview.candidate_heap_content_id
         and str(record.get("root_goal_id") or "") == preview.root_goal_id
         and str(record.get("root_content_id") or "") == preview.root_content_id
-        and tuple(record.get("proposal_ids") or ())
-        == preview.admitted_proposal_ids
+        and tuple(record.get("proposal_ids") or ()) == preview.admitted_proposal_ids
         and str(record.get("candidate_text") or "") == preview.candidate_text
     )
     if epoch_id:
         matches = matches and str(record.get("epoch_id") or "") == epoch_id
     if expected_goal_ids:
-        matches = matches and tuple(record.get("mapped_goal_ids") or ()) == tuple(
-            expected_goal_ids
-        )
+        matches = matches and tuple(record.get("mapped_goal_ids") or ()) == tuple(expected_goal_ids)
     return matches
 
 
@@ -4057,26 +3763,16 @@ def _normalize_objective_epoch_fences(
     if not isinstance(epoch_id, str):
         raise TypeError("epoch_id must be a string")
     normalized_epoch_id = epoch_id.strip()
-    if (
-        "\x00" in normalized_epoch_id
-        or len(normalized_epoch_id.encode("utf-8")) > 512
-    ):
+    if "\x00" in normalized_epoch_id or len(normalized_epoch_id.encode("utf-8")) > 512:
         raise ValueError("epoch_id exceeds its safe text bound")
     if not isinstance(expected_objective_revision, str):
         raise TypeError("expected_objective_revision must be a string")
     normalized_revision = expected_objective_revision.strip()
-    if (
-        "\x00" in normalized_revision
-        or len(normalized_revision.encode("utf-8")) > 512
-    ):
+    if "\x00" in normalized_revision or len(normalized_revision.encode("utf-8")) > 512:
         raise ValueError("expected_objective_revision exceeds its safe text bound")
-    if isinstance(expected_goal_ids, (str, bytes)) or not isinstance(
-        expected_goal_ids, Sequence
-    ):
+    if isinstance(expected_goal_ids, (str, bytes)) or not isinstance(expected_goal_ids, Sequence):
         raise TypeError("expected_goal_ids must be a sequence of goal IDs")
-    normalized_goal_ids = tuple(
-        str(item).strip() for item in expected_goal_ids
-    )
+    normalized_goal_ids = tuple(str(item).strip() for item in expected_goal_ids)
     if any(
         not item or "\x00" in item or len(item.encode("utf-8")) > 512
         for item in normalized_goal_ids
@@ -4087,14 +3783,9 @@ def _normalize_objective_epoch_fences(
     if len(set(normalized_goal_ids)) != len(normalized_goal_ids):
         raise ValueError("expected_goal_ids must be unique")
 
-    preview_goal_ids = tuple(
-        item.goal.goal_id for item in preview.materialized
-    )
+    preview_goal_ids = tuple(item.goal.goal_id for item in preview.materialized)
     reason_codes: list[str] = []
-    if (
-        normalized_revision
-        and normalized_revision != preview.base_heap_content_id
-    ):
+    if normalized_revision and normalized_revision != preview.base_heap_content_id:
         reason_codes.append("objective_revision_conflict")
     if normalized_goal_ids and normalized_goal_ids != preview_goal_ids:
         reason_codes.append("goal_mapping_conflict")
@@ -4112,18 +3803,12 @@ def _materialization_goal_errors(
     goals = parse_goal_heap(text)
     ids = [goal.goal_id for goal in goals]
     errors: list[str] = []
-    duplicate_ids = sorted(
-        goal_id for goal_id in set(ids) if ids.count(goal_id) > 1
-    )
+    duplicate_ids = sorted(goal_id for goal_id in set(ids) if ids.count(goal_id) > 1)
     if duplicate_ids:
         errors.append("duplicate_goal_id")
     by_id = {goal.goal_id: goal for goal in goals}
     known_ids = set(by_id)
-    if any(
-        parent not in known_ids
-        for goal in goals
-        for parent in goal.parent_goal_ids
-    ):
+    if any(parent not in known_ids for goal in goals for parent in goal.parent_goal_ids):
         errors.append("unresolved_parent")
 
     state: dict[str, int] = {}
@@ -4135,11 +3820,7 @@ def _materialization_goal_errors(
         if marker == 2:
             return True
         state[goal_id] = 1
-        valid = all(
-            visit(parent)
-            for parent in by_id[goal_id].parent_goal_ids
-            if parent in by_id
-        )
+        valid = all(visit(parent) for parent in by_id[goal_id].parent_goal_ids if parent in by_id)
         state[goal_id] = 2
         return valid
 
@@ -4240,9 +3921,7 @@ def _validate_materialization_lease(
         )
     try:
         value = (
-            lease_guard(expected_lease_token)
-            if expected_lease_token is not None
-            else lease_guard()
+            lease_guard(expected_lease_token) if expected_lease_token is not None else lease_guard()
         )
     except Exception as exc:
         return f"{type(exc).__name__}: {exc}"
@@ -4296,13 +3975,11 @@ def commit_objective_goal_materialization(
 
     if not isinstance(preview, ObjectiveGoalMaterializationPreview):
         raise TypeError("preview must be ObjectiveGoalMaterializationPreview")
-    normalized_epoch_id, normalized_goal_ids, fence_errors = (
-        _normalize_objective_epoch_fences(
-            preview=preview,
-            epoch_id=epoch_id,
-            expected_objective_revision=expected_objective_revision,
-            expected_goal_ids=expected_goal_ids,
-        )
+    normalized_epoch_id, normalized_goal_ids, fence_errors = _normalize_objective_epoch_fences(
+        preview=preview,
+        epoch_id=epoch_id,
+        expected_objective_revision=expected_objective_revision,
+        expected_goal_ids=expected_goal_ids,
     )
     transaction_id = _objective_materialization_transaction_id(
         preview,
@@ -4349,9 +4026,7 @@ def commit_objective_goal_materialization(
     from ..task_sources.duckdb_state import exclusive_file_lock
 
     try:
-        lock = exclusive_file_lock(
-            lock_path, timeout_seconds=max(0.0, float(lock_timeout_seconds))
-        )
+        lock = exclusive_file_lock(lock_path, timeout_seconds=max(0.0, float(lock_timeout_seconds)))
         with lock:
             journal = _load_objective_materialization_journal(journal_path)
             transactions = dict(journal["transactions"])
@@ -4370,9 +4045,7 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=str(
-                        prior.get("repository_tree_id")
-                        or expected_repository_tree_id
-                        or ""
+                        prior.get("repository_tree_id") or expected_repository_tree_id or ""
                     ),
                     epoch_id=normalized_epoch_id,
                     expected_goal_ids=normalized_goal_ids,
@@ -4381,26 +4054,16 @@ def commit_objective_goal_materialization(
                 )
 
             current_text = (
-                objective_path.read_text(encoding="utf-8")
-                if objective_path.exists()
-                else ""
+                objective_path.read_text(encoding="utf-8") if objective_path.exists() else ""
             )
             current_goals = parse_goal_heap(current_text)
             current_root = next(
-                (
-                    goal
-                    for goal in current_goals
-                    if goal.goal_id == preview.root_goal_id
-                ),
+                (goal for goal in current_goals if goal.goal_id == preview.root_goal_id),
                 None,
             )
-            if (
-                preview.root_goal_id
-                and (
-                    current_root is None
-                    or objective_goal_content_id(current_root)
-                    != preview.root_content_id
-                )
+            if preview.root_goal_id and (
+                current_root is None
+                or objective_goal_content_id(current_root) != preview.root_content_id
             ):
                 return _objective_transaction_result(
                     objective_path=objective_path,
@@ -4416,9 +4079,7 @@ def commit_objective_goal_materialization(
                 )
 
             current_content_id = objective_heap_content_id(current_text)
-            metadata_errors = _materialization_goal_errors(
-                current_text, preview, require_all=False
-            )
+            metadata_errors = _materialization_goal_errors(current_text, preview, require_all=False)
             conflicting_metadata = [
                 item for item in metadata_errors if item.startswith("metadata_mismatch:")
             ]
@@ -4451,9 +4112,7 @@ def commit_objective_goal_materialization(
                         transaction_id=transaction_id,
                         state=ObjectiveMaterializationTransactionState.COMMITTED,
                         repository_tree_id=str(
-                            prior.get("repository_tree_id")
-                            or expected_repository_tree_id
-                            or ""
+                            prior.get("repository_tree_id") or expected_repository_tree_id or ""
                         ),
                         epoch_id=normalized_epoch_id,
                         expected_goal_ids=normalized_goal_ids,
@@ -4466,9 +4125,7 @@ def commit_objective_goal_materialization(
                     transaction_id=transaction_id,
                     state=ObjectiveMaterializationTransactionState.BLOCKED,
                     repository_tree_id=str(
-                        prior.get("repository_tree_id")
-                        or expected_repository_tree_id
-                        or ""
+                        prior.get("repository_tree_id") or expected_repository_tree_id or ""
                     ),
                     epoch_id=normalized_epoch_id,
                     expected_goal_ids=normalized_goal_ids,
@@ -4487,9 +4144,7 @@ def commit_objective_goal_materialization(
                 or expected_repository_tree_id
                 or identity.tree_id
             )
-            if expected_repository_tree_id and (
-                str(expected_repository_tree_id) != frozen_tree_id
-            ):
+            if expected_repository_tree_id and (str(expected_repository_tree_id) != frozen_tree_id):
                 return _objective_transaction_result(
                     objective_path=objective_path,
                     journal_path=journal_path,
@@ -4523,14 +4178,16 @@ def commit_objective_goal_materialization(
                 base_text = current_text
             elif prior is not None and base_text:
                 for count in range(1, len(preview.materialized) + 1):
-                    if objective_heap_content_id(
-                        _append_materialized_prefix(base_text, preview, count)
-                    ) == current_content_id:
+                    if (
+                        objective_heap_content_id(
+                            _append_materialized_prefix(base_text, preview, count)
+                        )
+                        == current_content_id
+                    ):
                         prefix_count = count
                         break
-            if (
-                current_content_id == preview.candidate_heap_content_id
-                and (prior is not None or not normalized_epoch_id)
+            if current_content_id == preview.candidate_heap_content_id and (
+                prior is not None or not normalized_epoch_id
             ):
                 prefix_count = len(preview.materialized)
             if prefix_count < 0:
@@ -4570,10 +4227,7 @@ def commit_objective_goal_materialization(
                     "epoch_id": normalized_epoch_id,
                     "mapped_goal_ids": list(
                         normalized_goal_ids
-                        or tuple(
-                            item.goal.goal_id
-                            for item in preview.materialized
-                        )
+                        or tuple(item.goal.goal_id for item in preview.materialized)
                     ),
                     "candidate_text": preview.candidate_text,
                     "base_text": base_text,
@@ -4596,9 +4250,7 @@ def commit_objective_goal_materialization(
             )
             _atomic_write_json(journal_path, journal)
 
-            lease_error = _validate_materialization_lease(
-                lease_guard, expected_lease_token
-            )
+            lease_error = _validate_materialization_lease(lease_guard, expected_lease_token)
             if lease_error:
                 prepared["updated_at"] = utc_now()
                 prepared["last_error"] = lease_error
@@ -4623,10 +4275,7 @@ def commit_objective_goal_materialization(
             if changed:
                 _atomic_rewrite(objective_path, preview.candidate_text)
             persisted_text = objective_path.read_text(encoding="utf-8")
-            if (
-                objective_heap_content_id(persisted_text)
-                != preview.candidate_heap_content_id
-            ):
+            if objective_heap_content_id(persisted_text) != preview.candidate_heap_content_id:
                 prepared["updated_at"] = utc_now()
                 prepared["last_error"] = "objective heap replacement was incomplete"
                 prepared["reason_codes"] = ["partial_write"]
@@ -4691,10 +4340,7 @@ def commit_objective_goal_materialization(
                 repository_tree_id=frozen_tree_id,
                 epoch_id=normalized_epoch_id,
                 expected_goal_ids=(
-                    normalized_goal_ids
-                    or tuple(
-                        item.goal.goal_id for item in preview.materialized
-                    )
+                    normalized_goal_ids or tuple(item.goal.goal_id for item in preview.materialized)
                 ),
                 changed=changed,
                 resumed=resumed or prefix_count > 0,
@@ -4725,9 +4371,8 @@ def migrate_legacy_objective_goals(
     todo_path: Path | None = None,
     task_header_prefix: str = "",
     todo_boards: Sequence[tuple[Path, str]] | None = None,
-    completion_evidence_records: Mapping[
-        str, Sequence[CompletionEvidence | Mapping[str, Any]]
-    ] | None = None,
+    completion_evidence_records: Mapping[str, Sequence[CompletionEvidence | Mapping[str, Any]]]
+    | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     completion_control_paths: Sequence[Path] = (),
     require_artifact_binding: bool = False,
@@ -4756,9 +4401,7 @@ def migrate_legacy_objective_goals(
         )
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
-    _external_goal_ids, external_blocked_goal_ids = (
-        external_authority_goal_fence(goals)
-    )
+    _external_goal_ids, external_blocked_goal_ids = external_authority_goal_fence(goals)
     supplied_records = completion_evidence_records or {}
 
     def supplied_external_records(goal_id: str) -> bool:
@@ -4776,20 +4419,17 @@ def migrate_legacy_objective_goals(
             except (TypeError, ValueError):
                 return False
         return bool(normalized) and all(
-            record.metadata.get("external_operational_completion") is True
-            for record in normalized
+            record.metadata.get("external_operational_completion") is True for record in normalized
         )
 
     selected_ids = {str(item).strip() for item in goal_ids or () if str(item).strip()}
     candidates = [
-        goal for goal in goals
+        goal
+        for goal in goals
         if is_legacy_completed_goal_state(goal.status)
         and (
             goal.goal_id not in external_blocked_goal_ids
-            or (
-                goal.goal_id in _external_goal_ids
-                and supplied_external_records(goal.goal_id)
-            )
+            or (goal.goal_id in _external_goal_ids and supplied_external_records(goal.goal_id))
         )
         and (not selected_ids or goal.goal_id in selected_ids)
     ]
@@ -4832,20 +4472,20 @@ def migrate_legacy_objective_goals(
                     if is_legacy_completed_goal_state(child.status)
                     else normalize_goal_state(child.status)
                 )
-                result.append({
-                    "goal_id": child_id,
-                    "state": child_state.value,
-                    "verified": child_state is GoalState.VERIFIED_COMPLETE,
-                })
+                result.append(
+                    {
+                        "goal_id": child_id,
+                        "state": child_state.value,
+                        "verified": child_state is GoalState.VERIFIED_COMPLETE,
+                    }
+                )
             pending.extend(hierarchy.get("children", {}).get(child_id, ()))
         return result
 
     for goal in batch:
         if require_artifact_binding:
             evidence = [
-                item
-                if isinstance(item, CompletionEvidence)
-                else CompletionEvidence.from_dict(item)
+                item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
                 for item in supplied_records.get(goal.goal_id, ())
             ]
             supplied_gate = gate_records.get(goal.goal_id)
@@ -4857,11 +4497,12 @@ def migrate_legacy_objective_goals(
             evidence,
             repository_tree=identity.tree_id,
         )
-        criteria = str(
-            goal.fields.get("acceptance_criteria")
-            or goal.fields.get("acceptance")
-            or ""
-        ).strip() or goal.required_evidence
+        criteria = (
+            str(
+                goal.fields.get("acceptance_criteria") or goal.fields.get("acceptance") or ""
+            ).strip()
+            or goal.required_evidence
+        )
         migration = migrate_legacy_goal_completion(
             goal_id=goal.goal_id,
             legacy_state=goal.status,
@@ -4895,10 +4536,18 @@ def migrate_legacy_objective_goals(
             "Completion migrated at": migrated_at,
             "Completion migration reason": "; ".join(migration.reason_codes),
             "Completion confidence": str(diagnostics["confidence"]),
-            "Uncovered criteria": json.dumps(diagnostics["uncovered_criteria"], separators=(",", ":")),
-            "Stale evidence": json.dumps(diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")),
-            "Analyzer health": json.dumps(diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")),
-            "Exhaustion quorum": json.dumps(diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")),
+            "Uncovered criteria": json.dumps(
+                diagnostics["uncovered_criteria"], separators=(",", ":")
+            ),
+            "Stale evidence": json.dumps(
+                diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")
+            ),
+            "Analyzer health": json.dumps(
+                diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")
+            ),
+            "Exhaustion quorum": json.dumps(
+                diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")
+            ),
             "Reopen reasons": json.dumps(diagnostics["reopen_reasons"], separators=(",", ":")),
         }
         if evidence:
@@ -4934,15 +4583,12 @@ def reconcile_objective_goal_completion(
     task_header_prefix: str = "",
     todo_boards: Sequence[tuple[Path, str]] | None = None,
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
-    completion_evidence_records: Mapping[
-        str, Sequence[CompletionEvidence | Mapping[str, Any]]
-    ] | None = None,
+    completion_evidence_records: Mapping[str, Sequence[CompletionEvidence | Mapping[str, Any]]]
+    | None = None,
     completion_gate_records: Mapping[str, Mapping[str, Any]] | None = None,
     completion_control_paths: Sequence[Path] = (),
     require_artifact_binding: bool = False,
-    external_completion_authority: (
-        ExternalCompletionAuthority | Mapping[str, Any] | None
-    ) = None,
+    external_completion_authority: (ExternalCompletionAuthority | Mapping[str, Any] | None) = None,
     scan_exclude_paths: Iterable[str | Path] = (),
     now: str | None = None,
     evidence_freshness_seconds: float = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
@@ -4993,16 +4639,12 @@ def reconcile_objective_goal_completion(
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
-        current_authority_goal_ids = set(
-            external_completion.governed_goal_ids
-        )
+        current_authority_goal_ids = set(external_completion.governed_goal_ids)
         externally_governed_goal_ids.update(current_authority_goal_ids)
         for goal_id in current_authority_goal_ids:
             # External authority replaces, rather than augments, locally
             # persisted/task-produced evidence for governed operational goals.
-            supplied_records[goal_id] = list(
-                external_completion.evidence_records.get(goal_id, ())
-            )
+            supplied_records[goal_id] = list(external_completion.evidence_records.get(goal_id, ()))
     migration_result = migrate_legacy_objective_goals(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -5022,11 +4664,7 @@ def reconcile_objective_goal_completion(
     if require_artifact_binding:
         goal_ids = [goal.goal_id for goal in goals]
         duplicate_goal_ids = sorted(
-            {
-                goal_id
-                for goal_id in goal_ids
-                if goal_id and goal_ids.count(goal_id) > 1
-            }
+            {goal_id for goal_id in goal_ids if goal_id and goal_ids.count(goal_id) > 1}
         )
         if duplicate_goal_ids:
             raise ValueError(
@@ -5048,9 +4686,7 @@ def reconcile_objective_goal_completion(
                 + ", ".join(unknown_parents)
             )
         parents_by_goal = {
-            goal.goal_id: tuple(
-                parent for parent in goal.parent_goal_ids if parent
-            )
+            goal.goal_id: tuple(parent for parent in goal.parent_goal_ids if parent)
             for goal in goals
             if goal.goal_id
         }
@@ -5061,10 +4697,7 @@ def reconcile_objective_goal_completion(
             if goal_id in visited:
                 return
             if goal_id in visiting:
-                raise ValueError(
-                    "objective completion graph contains a parent cycle at "
-                    f"{goal_id}"
-                )
+                raise ValueError(f"objective completion graph contains a parent cycle at {goal_id}")
             visiting.add(goal_id)
             for parent_id in parents_by_goal.get(goal_id, ()):
                 verify_acyclic(parent_id)
@@ -5074,9 +4707,7 @@ def reconcile_objective_goal_completion(
         for goal_id in sorted(parents_by_goal):
             verify_acyclic(goal_id)
     externally_governed_goal_ids.update(
-        goal.goal_id
-        for goal in goals
-        if goal.goal_id and _requires_external_completion(goal)
+        goal.goal_id for goal in goals if goal.goal_id and _requires_external_completion(goal)
     )
     if external_completion_authority is not None:
         # Migration may rewrite the tracked objective heap. Reinspect after
@@ -5087,21 +4718,15 @@ def reconcile_objective_goal_completion(
             repo_root=repo_root,
             objective_path=objective_path,
             goal_evidence_terms={
-                goal.goal_id: tuple(goal.required_evidence)
-                for goal in goals
-                if goal.goal_id
+                goal.goal_id: tuple(goal.required_evidence) for goal in goals if goal.goal_id
             },
             now=now,
             freshness_seconds=evidence_freshness_seconds,
         )
-        current_authority_goal_ids = set(
-            external_completion.governed_goal_ids
-        )
+        current_authority_goal_ids = set(external_completion.governed_goal_ids)
         externally_governed_goal_ids.update(current_authority_goal_ids)
         for goal_id in externally_governed_goal_ids:
-            supplied_records[goal_id] = list(
-                external_completion.evidence_records.get(goal_id, ())
-            )
+            supplied_records[goal_id] = list(external_completion.evidence_records.get(goal_id, ()))
     else:
         for goal_id in externally_governed_goal_ids:
             supplied_records[goal_id] = []
@@ -5116,17 +4741,12 @@ def reconcile_objective_goal_completion(
     for goal in goals:
         if require_artifact_binding:
             records = [
-                item
-                if isinstance(item, CompletionEvidence)
-                else CompletionEvidence.from_dict(item)
+                item if isinstance(item, CompletionEvidence) else CompletionEvidence.from_dict(item)
                 for item in supplied_records.get(goal.goal_id, ())
             ]
         else:
             records = _goal_completion_records(goal, supplied_records)
-        if (
-            external_completion is not None
-            and goal.goal_id in current_authority_goal_ids
-        ):
+        if external_completion is not None and goal.goal_id in current_authority_goal_ids:
             rebound_records: list[CompletionEvidence] = []
             for record in records:
                 payload = record.to_dict()
@@ -5189,15 +4809,12 @@ def reconcile_objective_goal_completion(
     if todo_path is not None:
         completion_boards.append((todo_path, task_header_prefix))
     completion_boards.extend(todo_boards or ())
-    open_goal_ids = open_implementation_goal_ids_from_todo_boards(
-        completion_boards
-    )
+    open_goal_ids = open_implementation_goal_ids_from_todo_boards(completion_boards)
     referenced_goal_ids = referenced_goal_ids_from_todo_boards(completion_boards)
     hierarchy = goal_graph(goals)
     goals_by_id = {item.goal_id: item for item in goals if item.goal_id}
     effective_states = {
-        goal_id: normalize_goal_state(goal.status)
-        for goal_id, goal in goals_by_id.items()
+        goal_id: normalize_goal_state(goal.status) for goal_id, goal in goals_by_id.items()
     }
     external_final_states = {
         goal_id: effective_states[goal_id]
@@ -5278,11 +4895,13 @@ def reconcile_objective_goal_completion(
             child = goals_by_id.get(child_id)
             if child is not None:
                 state = effective_states[child_id].value
-                descendants.append({
-                    "goal_id": child_id,
-                    "state": state,
-                    "verified": state == GoalState.VERIFIED_COMPLETE.value,
-                })
+                descendants.append(
+                    {
+                        "goal_id": child_id,
+                        "state": state,
+                        "verified": state == GoalState.VERIFIED_COMPLETE.value,
+                    }
+                )
             pending.extend(hierarchy.get("children", {}).get(child_id, ()))
         return descendants
 
@@ -5290,8 +4909,7 @@ def reconcile_objective_goal_completion(
         if goal.goal_id not in externally_governed_goal_ids:
             external_ancestors = governing_external_ancestors(goal.goal_id)
             if any(
-                external_final_states.get(goal_id)
-                is not GoalState.VERIFIED_COMPLETE
+                external_final_states.get(goal_id) is not GoalState.VERIFIED_COMPLETE
                 for goal_id in external_ancestors
             ):
                 # The governing external decision either has not been
@@ -5304,41 +4922,27 @@ def reconcile_objective_goal_completion(
         source_evidence_complete = bool(goal.required_evidence) and all(
             discovered_evidence.get(term) for term in goal.required_evidence
         )
-        tasks_complete = (
-            goal.goal_id not in open_goal_ids
-            and (
-                not completion_boards
-                or goal.goal_id in referenced_goal_ids
-                or bool(records)
-                or source_evidence_complete
-                or goal.goal_id in externally_governed_goal_ids
-                or is_legacy_completed_goal_state(
-                    str(goal.fields.get("legacy_completion_state") or "")
-                )
-            )
+        tasks_complete = goal.goal_id not in open_goal_ids and (
+            not completion_boards
+            or goal.goal_id in referenced_goal_ids
+            or bool(records)
+            or source_evidence_complete
+            or goal.goal_id in externally_governed_goal_ids
+            or is_legacy_completed_goal_state(str(goal.fields.get("legacy_completion_state") or ""))
         )
         if require_artifact_binding:
             supplied_gate = supplied_gate_records.get(goal.goal_id)
-            gate_record = (
-                dict(supplied_gate)
-                if isinstance(supplied_gate, Mapping)
-                else {}
-            )
+            gate_record = dict(supplied_gate) if isinstance(supplied_gate, Mapping) else {}
         else:
             gate_record = _goal_completion_gate_record(
                 goal,
                 supplied_gate_records,
             )
         criteria_text = str(
-            goal.fields.get("acceptance_criteria")
-            or goal.fields.get("acceptance")
-            or ""
+            goal.fields.get("acceptance_criteria") or goal.fields.get("acceptance") or ""
         ).strip()
         criteria: Sequence[str] | str = (
-            (
-                goal.required_evidence
-                or ("external_operational_completion_receipt",)
-            )
+            (goal.required_evidence or ("external_operational_completion_receipt",))
             if goal.goal_id in externally_governed_goal_ids
             else criteria_text or goal.required_evidence
         )
@@ -5350,16 +4954,17 @@ def reconcile_objective_goal_completion(
                 "passed": False,
                 "returncode": 1,
                 "reason": (
-                    "open_todo_tasks"
-                    if goal.goal_id in open_goal_ids
-                    else "no_producing_tasks"
+                    "open_todo_tasks" if goal.goal_id in open_goal_ids else "no_producing_tasks"
                 ),
                 "todo_boards": open_goal_ids.get(
                     goal.goal_id,
                     referenced_boards,
                 ),
             }
-        elif current_state in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE} and records:
+        elif (
+            current_state in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE}
+            and records
+        ):
             # Receipts supplied by another process remain provenance inputs,
             # but verification also requires the repository's current
             # validation command to pass at reconciliation time.
@@ -5380,37 +4985,24 @@ def reconcile_objective_goal_completion(
                 local_validation = validation_results[goal.goal_id]
                 if record.metadata.get("external_operational_completion") is True:
                     reconciliation_validation_receipt: Mapping[str, Any] = {
-                        "schema": EXTERNAL_COMPLETION_EVIDENCE_SCHEMA
-                        + "/local-validation-join",
-                        "attempted": bool(
-                            local_validation.get("attempted", False)
-                        ),
+                        "schema": EXTERNAL_COMPLETION_EVIDENCE_SCHEMA + "/local-validation-join",
+                        "attempted": bool(local_validation.get("attempted", False)),
                         "passed": bool(local_validation.get("passed", False)),
                         "status": (
-                            "verified"
-                            if local_validation.get("passed") is True
-                            else "failed"
+                            "verified" if local_validation.get("passed") is True else "failed"
                         ),
                         "tree_id": str(local_validation.get("tree_id") or ""),
-                        "receipt_cid": str(
-                            local_validation.get("receipt_cid") or ""
-                        ),
+                        "receipt_cid": str(local_validation.get("receipt_cid") or ""),
                         "external_validator_receipt_cid": str(
                             record.metadata.get("validator_receipt_cid") or ""
                         ),
-                        "external_operational_receipt_cid": (
-                            record.provenance_cid
-                        ),
+                        "external_operational_receipt_cid": (record.provenance_cid),
                     }
                 else:
                     reconciliation_validation_receipt = local_validation
-                metadata["reconciliation_validation_receipt"] = (
-                    reconciliation_validation_receipt
-                )
+                metadata["reconciliation_validation_receipt"] = reconciliation_validation_receipt
                 payload["metadata"] = metadata
-                payload["validation_passed"] = bool(
-                    local_validation.get("passed", False)
-                )
+                payload["validation_passed"] = bool(local_validation.get("passed", False))
                 reconciled_records.append(CompletionEvidence.from_dict(payload))
             records = reconciled_records
 
@@ -5437,26 +5029,17 @@ def reconcile_objective_goal_completion(
                 ),
                 *gate_record.get("child_goals", ()),
             ],
-            required_child_goal_ids=gate_record.get(
-                "required_child_goal_ids", ()
-            ),
+            required_child_goal_ids=gate_record.get("required_child_goal_ids", ()),
             analysis_result=gate_record.get("analysis_result"),
-            analysis_inconclusive=bool(
-                gate_record.get("analysis_inconclusive", False)
-            ),
+            analysis_inconclusive=bool(gate_record.get("analysis_inconclusive", False)),
         )
         if goal.goal_id in externally_governed_goal_ids:
             external_final_states[goal.goal_id] = decision.state
         decisions[goal.goal_id] = decision.to_dict()
-        if (
-            external_completion is not None
-            and goal.goal_id in current_authority_goal_ids
-        ):
+        if external_completion is not None and goal.goal_id in current_authority_goal_ids:
             decisions[goal.goal_id]["external_completion"] = {
                 "authority_cid": external_completion.authority_cid,
-                "results": list(
-                    external_completion.results_for_goal(goal.goal_id)
-                ),
+                "results": list(external_completion.results_for_goal(goal.goal_id)),
             }
         elif goal.goal_id in externally_governed_goal_ids:
             missing_authority_reason = (
@@ -5474,15 +5057,11 @@ def reconcile_objective_goal_completion(
                     "receipt_cid": "",
                     "requirement_cid": "",
                 }
-                for term in (
-                    goal.required_evidence
-                    or ("external_operational_completion_receipt",)
-                )
+                for term in (goal.required_evidence or ("external_operational_completion_receipt",))
             ]
             decisions[goal.goal_id]["external_completion"] = {
                 "authority_cid": str(
-                    goal.fields.get("external_completion_authority_cid")
-                    or ""
+                    goal.fields.get("external_completion_authority_cid") or ""
                 ).strip(),
                 "results": missing_authority_results,
             }
@@ -5491,10 +5070,7 @@ def reconcile_objective_goal_completion(
         if goal.goal_id in externally_governed_goal_ids:
             goal_evidence = {
                 term: [
-                    (
-                        f"{record.provenance_cid} "
-                        "(external-operational-receipt)"
-                    )
+                    (f"{record.provenance_cid} (external-operational-receipt)")
                     for record in records
                     if record.acceptance_criterion == term
                 ]
@@ -5502,8 +5078,7 @@ def reconcile_objective_goal_completion(
             }
         else:
             goal_evidence = {
-                term: list(discovered_evidence.get(term, []))
-                for term in goal.required_evidence
+                term: list(discovered_evidence.get(term, [])) for term in goal.required_evidence
             }
         if any(goal_evidence.values()):
             completion_evidence[goal.goal_id] = goal_evidence
@@ -5511,28 +5086,30 @@ def reconcile_objective_goal_completion(
         goal_updates = {
             "Goal completion schema version": str(GOAL_COMPLETION_SCHEMA_VERSION),
             "Completion confidence": str(diagnostics["confidence"]),
-            "Uncovered criteria": json.dumps(diagnostics["uncovered_criteria"], separators=(",", ":")),
-            "Stale evidence": json.dumps(diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")),
-            "Analyzer health": json.dumps(diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")),
-            "Exhaustion quorum": json.dumps(diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")),
+            "Uncovered criteria": json.dumps(
+                diagnostics["uncovered_criteria"], separators=(",", ":")
+            ),
+            "Stale evidence": json.dumps(
+                diagnostics["stale_evidence"], sort_keys=True, separators=(",", ":")
+            ),
+            "Analyzer health": json.dumps(
+                diagnostics["analyzer_health"], sort_keys=True, separators=(",", ":")
+            ),
+            "Exhaustion quorum": json.dumps(
+                diagnostics["exhaustion_quorum"], sort_keys=True, separators=(",", ":")
+            ),
             "Reopen reasons": json.dumps(diagnostics["reopen_reasons"], separators=(",", ":")),
         }
-        if (
-            external_completion is not None
-            and goal.goal_id in current_authority_goal_ids
-        ):
+        if external_completion is not None and goal.goal_id in current_authority_goal_ids:
             external_results = external_completion.results_for_goal(goal.goal_id)
             goal_updates.update(
                 {
-                    "External completion authority CID": (
-                        external_completion.authority_cid
-                    ),
+                    "External completion authority CID": (external_completion.authority_cid),
                     "External completion receipt CIDs": json.dumps(
                         sorted(
                             result["receipt_cid"]
                             for result in external_results
-                            if result.get("valid") is True
-                            and result.get("receipt_cid")
+                            if result.get("valid") is True and result.get("receipt_cid")
                         ),
                         separators=(",", ":"),
                     ),
@@ -5548,9 +5125,7 @@ def reconcile_objective_goal_completion(
                 {
                     "External completion receipt CIDs": "[]",
                     "External completion validation": json.dumps(
-                        decisions[goal.goal_id]["external_completion"][
-                            "results"
-                        ],
+                        decisions[goal.goal_id]["external_completion"]["results"],
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
@@ -5560,11 +5135,13 @@ def reconcile_objective_goal_completion(
             updates[goal.goal_id] = goal_updates
             continue
         reason = "; ".join(decision.actionable_reasons) or "all completion evidence gates passed"
-        goal_updates.update({
-            "Status": decision.state.value,
-            "State transitioned at": transitioned_at,
-            "State transition reason": reason,
-        })
+        goal_updates.update(
+            {
+                "Status": decision.state.value,
+                "State transitioned at": transitioned_at,
+                "State transition reason": reason,
+            }
+        )
         if records or goal.goal_id in externally_governed_goal_ids:
             goal_updates["Completion evidence records"] = json.dumps(
                 [record.to_dict() for record in records],
@@ -5642,13 +5219,9 @@ def reconcile_objective_goal_completion(
             external_completion.to_dict()
             if external_completion is not None
             else {
-                "schema": (
-                    EXTERNAL_COMPLETION_VALIDATION_SCHEMA + "/authority"
-                ),
+                "schema": (EXTERNAL_COMPLETION_VALIDATION_SCHEMA + "/authority"),
                 "authority_cid": "",
-                "governed_goal_ids": sorted(
-                    externally_governed_goal_ids
-                ),
+                "governed_goal_ids": sorted(externally_governed_goal_ids),
                 "valid_receipt_cids": [],
                 "source_inspection": {},
                 "results": [
@@ -5676,7 +5249,9 @@ def ensure_objective_tracking_document(
     """Create the objective tracking document if it does not exist."""
 
     if objective_path.exists():
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     root_goal_id = root_goal_id or f"{goal_prefix}000"
     objective_path.parent.mkdir(parents=True, exist_ok=True)
@@ -5721,7 +5296,9 @@ def ensure_objective_tracking_document(
         candidate_text=text,
         appended_goal_ids=[root_goal_id],
     )
-    return ObjectiveTrackingResult(objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id])
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id]
+    )
 
 
 COMPONENT_SCAN_SKIP_DIRS = {
@@ -5885,7 +5462,9 @@ def _component_path_safe_for_component(path: Path) -> bool:
     return True
 
 
-def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files: int = 256) -> dict[str, list[str]]:
+def _scan_component_metadata(
+    repo_root: Path, component_path: str, *, max_files: int = 256
+) -> dict[str, list[str]]:
     root = repo_root / component_path
     metadata = {
         "manifests": [],
@@ -5902,7 +5481,8 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
         dirnames[:] = [
             name
             for name in dirnames
-            if _component_scan_dirname_allowed(name) and _component_scan_path_usable(Path(current_root) / name)
+            if _component_scan_dirname_allowed(name)
+            and _component_scan_path_usable(Path(current_root) / name)
         ]
         current = Path(current_root)
         try:
@@ -5935,11 +5515,15 @@ def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files:
                     text = path.read_text(encoding="utf-8", errors="replace")
                 except OSError:
                     continue
-                for match in re.finditer(r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_\.]*)", text, flags=re.MULTILINE):
+                for match in re.finditer(
+                    r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_\.]*)", text, flags=re.MULTILINE
+                ):
                     import_roots.add(match.group(1).split(".", 1)[0])
 
     metadata["manifests"] = sorted(dict.fromkeys(metadata["manifests"]))[:40]
-    metadata["interface_descriptors"] = sorted(dict.fromkeys(metadata["interface_descriptors"]))[:80]
+    metadata["interface_descriptors"] = sorted(dict.fromkeys(metadata["interface_descriptors"]))[
+        :80
+    ]
     metadata["mcp_descriptors"] = sorted(dict.fromkeys(metadata["mcp_descriptors"]))[:80]
     metadata["python_import_roots"] = sorted(import_roots)[:80]
     return metadata
@@ -5989,7 +5573,9 @@ def discover_repository_components(
     return components
 
 
-def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = ()) -> list[tuple[str, str]]:
+def interoperability_pairs(
+    submodules: Sequence[str], *, focus: Sequence[str] = ()
+) -> list[tuple[str, str]]:
     paths = [path for path in dict.fromkeys(str(item).strip() for item in submodules) if path]
     focus_paths = [path for path in dict.fromkeys(str(item).strip() for item in focus) if path]
     pairs: list[tuple[str, str]] = []
@@ -6021,10 +5607,7 @@ def interoperability_pair_key(value: str | Sequence[str]) -> str:
     else:
         terms = [str(item).strip() for item in value if str(item).strip()]
     canonical_terms = [
-        key
-        for term in terms
-        for key in [canonical_interoperability_component(term)]
-        if key
+        key for term in terms for key in [canonical_interoperability_component(term)] if key
     ]
     return "\0".join(sorted(canonical_terms))
 
@@ -6078,9 +5661,15 @@ def _component_pair_metadata(
 ) -> dict[str, Any]:
     components = [component for component in (left, right) if component is not None]
     manifests = sorted({path for component in components for path in component.manifests})
-    interface_descriptors = sorted({path for component in components for path in component.interface_descriptors})
-    mcp_descriptors = sorted({path for component in components for path in component.mcp_descriptors})
-    python_import_roots = sorted({root for component in components for root in component.python_import_roots})
+    interface_descriptors = sorted(
+        {path for component in components for path in component.interface_descriptors}
+    )
+    mcp_descriptors = sorted(
+        {path for component in components for path in component.mcp_descriptors}
+    )
+    python_import_roots = sorted(
+        {root for component in components for root in component.python_import_roots}
+    )
     sources = sorted({source for component in components for source in component.sources})
     score = 1
     score += len(components)
@@ -6115,14 +5704,18 @@ def append_interoperability_goals(
     """Seed graph goals for cross-submodule integration and interoperability tests."""
 
     if not objective_path.exists() or max_goals <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     components = discover_repository_components(repo_root, component_paths=component_paths)
     component_by_path = {component.path: component for component in components}
     submodules = [component.path for component in components]
     pairs = interoperability_pairs(submodules, focus=focus)
     if not pairs:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -6150,7 +5743,9 @@ def append_interoperability_goals(
         if pair_key in existing_pairs:
             continue
         goal_id = allocate_goal_id()
-        metadata = _component_pair_metadata(component_by_path.get(left), component_by_path.get(right))
+        metadata = _component_pair_metadata(
+            component_by_path.get(left), component_by_path.get(right)
+        )
         safe_left = safe_bundle_key(left).replace("-", "_")
         safe_right = safe_bundle_key(right).replace("-", "_")
         test_path = f"tests/integration/test_{safe_left}_{safe_right}_interop.py"
@@ -6213,7 +5808,11 @@ def append_interoperability_goals(
                 "including a test, a contract note, and any adapter code needed by the objective."
             ),
         }
-        appended_blocks.append(render_goal_block(goal_id=goal_id, title=f"Interoperate {left} with {right}", fields=fields))
+        appended_blocks.append(
+            render_goal_block(
+                goal_id=goal_id, title=f"Interoperate {left} with {right}", fields=fields
+            )
+        )
         appended_goal_ids.append(goal_id)
         existing_pairs.add(pair_key)
         if len(appended_goal_ids) >= max_goals:
@@ -6221,10 +5820,7 @@ def append_interoperability_goals(
 
     if appended_blocks:
         candidate_text = (
-            text.rstrip()
-            + "\n\n"
-            + "\n\n".join(block.strip() for block in appended_blocks)
-            + "\n"
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n"
         )
         _write_generated_objective_candidate(
             objective_path,
@@ -6232,7 +5828,9 @@ def append_interoperability_goals(
             candidate_text=candidate_text,
             appended_goal_ids=appended_goal_ids,
         )
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
@@ -6452,9 +6050,7 @@ LAUNCH_READINESS_GOAL_TEMPLATES: tuple[dict[str, Any], ...] = (
             "objective heap fibonacci priority supervisor active management failed validation "
             "repair Playwright VAI MGW HAO production readiness"
         ),
-        "ast_query": (
-            "objective heap, supervisor, validation repair, Playwright, VAI, MGW, HAO"
-        ),
+        "ast_query": ("objective heap, supervisor, validation repair, Playwright, VAI, MGW, HAO"),
         "gap_task": (
             "Extend the supervisor loop so failed validation and stale idle lanes generate "
             "mission-aligned follow-up tasks and subgoals instead of generic reconciliation churn."
@@ -6478,7 +6074,9 @@ def append_launch_readiness_goals(
 
     _ = repo_root
     if not objective_path.exists() or max_goals <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -6541,7 +6139,9 @@ def append_launch_readiness_goals(
             ),
             "Gap task": str(template["gap_task"]),
         }
-        appended_blocks.append(render_goal_block(goal_id=goal_id, title=str(template["title"]), fields=fields))
+        appended_blocks.append(
+            render_goal_block(goal_id=goal_id, title=str(template["title"]), fields=fields)
+        )
         appended_goal_ids.append(goal_id)
         existing_keys.add(launch_key)
         if len(appended_goal_ids) >= max_goals:
@@ -6549,10 +6149,7 @@ def append_launch_readiness_goals(
 
     if appended_blocks:
         candidate_text = (
-            text.rstrip()
-            + "\n\n"
-            + "\n\n".join(block.strip() for block in appended_blocks)
-            + "\n"
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n"
         )
         _write_generated_objective_candidate(
             objective_path,
@@ -6560,7 +6157,9 @@ def append_launch_readiness_goals(
             candidate_text=candidate_text,
             appended_goal_ids=appended_goal_ids,
         )
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 def existing_refinement_keys(goals: Sequence[ObjectiveGoal]) -> set[tuple[str, str]]:
@@ -6583,17 +6182,21 @@ def refinement_title(parent_title: str, evidence: str) -> str:
     return f"Prove {compact} for {parent_title}"
 
 
-def refinement_fields(finding: ObjectiveFinding, *, evidence: str, depth: int, sibling_index: int) -> dict[str, str]:
-    outputs = ", ".join(finding.outputs) if finding.outputs else "ipfs_accelerate_py/agent_supervisor, docs, tests"
+def refinement_fields(
+    finding: ObjectiveFinding, *, evidence: str, depth: int, sibling_index: int
+) -> dict[str, str]:
+    outputs = (
+        ", ".join(finding.outputs)
+        if finding.outputs
+        else "ipfs_accelerate_py/agent_supervisor, docs, tests"
+    )
     acceptance_subset = [
         " ".join(str(item).strip().split())
         for item in finding.acceptance_subset
         if str(item).strip()
     ]
     if not acceptance_subset:
-        raise ValueError(
-            f"objective refinement for {finding.goal_id} has no acceptance subset"
-        )
+        raise ValueError(f"objective refinement for {finding.goal_id} has no acceptance subset")
     return {
         "Status": "active",
         "Parent": finding.goal_id,
@@ -6626,7 +6229,9 @@ def append_refinement_goals(
     """Append child goals for missing evidence terms that are still too broad."""
 
     if not objective_path.exists() or max_children_per_finding <= 0:
-        return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
+        return ObjectiveTrackingResult(
+            objective_path=objective_path, created=False, appended_goal_ids=[]
+        )
 
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
@@ -6673,10 +6278,7 @@ def append_refinement_goals(
         related_ids = ancestors(goal_id) | descendants(goal_id)
         return any(
             evidence_key
-            in {
-                normalize_evidence_key(item)
-                for item in goals_by_id[related_id].required_evidence
-            }
+            in {normalize_evidence_key(item) for item in goals_by_id[related_id].required_evidence}
             for related_id in related_ids
             if related_id in goals_by_id
         )
@@ -6717,10 +6319,7 @@ def append_refinement_goals(
 
     if appended_blocks:
         candidate_text = (
-            text.rstrip()
-            + "\n\n"
-            + "\n\n".join(block.strip() for block in appended_blocks)
-            + "\n"
+            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n"
         )
         _write_generated_objective_candidate(
             objective_path,
@@ -6728,7 +6327,9 @@ def append_refinement_goals(
             candidate_text=candidate_text,
             appended_goal_ids=appended_goal_ids,
         )
-    return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
+    return ObjectiveTrackingResult(
+        objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids
+    )
 
 
 def thought_node_id(kind: str, *parts: str) -> str:
@@ -6804,7 +6405,9 @@ def build_objective_thought_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, A
             add_edge(goal_node, surface_node, "touches_surface")
         if interop_pair or submodules:
             pair_values = interop_pair or submodules
-            interop_node = thought_node_id("interoperability_pair", goal.goal_id, ",".join(pair_values))
+            interop_node = thought_node_id(
+                "interoperability_pair", goal.goal_id, ",".join(pair_values)
+            )
             add_node(
                 interop_node,
                 kind="interoperability_pair",
@@ -6869,7 +6472,11 @@ def write_objective_graph_artifact(
 ) -> dict[str, Any]:
     """Write a JSON graph artifact for the current objective heap."""
 
-    goals = parse_goal_heap(objective_path.read_text(encoding="utf-8")) if objective_path.exists() else []
+    goals = (
+        parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        if objective_path.exists()
+        else []
+    )
     graph = goal_graph(goals)
     payload = {
         "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph",
@@ -6878,9 +6485,7 @@ def write_objective_graph_artifact(
         "goal_count": len(goals),
         "active_goal_count": sum(1 for goal in goals if goal.is_schedulable),
         "completed_goal_count": sum(
-            1
-            for goal in goals
-            if goal.lifecycle_state is GoalState.VERIFIED_COMPLETE
+            1 for goal in goals if goal.lifecycle_state is GoalState.VERIFIED_COMPLETE
         ),
         "heap_schedule": [record.to_dict() for record in objective_heap_schedule(goals)],
         "thought_graph": build_objective_thought_graph(goals),
@@ -6894,7 +6499,9 @@ def write_objective_graph_artifact(
                 "evidence": goal.required_evidence,
                 "track": goal.fields.get("track", "ops"),
                 "bundle": goal.fields.get("bundle", ""),
-                "refinement_depth": goal.fields.get("refinement_depth", str(graph["depths"].get(goal.goal_id, 0))),
+                "refinement_depth": goal.fields.get(
+                    "refinement_depth", str(graph["depths"].get(goal.goal_id, 0))
+                ),
             }
             for goal in sorted(goals, key=lambda item: item.priority)
         ],
@@ -6916,6 +6523,4 @@ def parse_root_evidence(values: Iterable[str]) -> list[str]:
 # path during the domain-layout cutover.  Publish the canonical module object
 # under that name as soon as this module has initialized so both import paths
 # share globals and mutation/atomic-write hooks.
-_sys.modules[
-    "ipfs_accelerate_py.agent_supervisor.objective_tracker"
-] = _sys.modules[__name__]
+_sys.modules["ipfs_accelerate_py.agent_supervisor.objective_tracker"] = _sys.modules[__name__]

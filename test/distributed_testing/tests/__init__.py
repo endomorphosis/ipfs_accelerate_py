@@ -23,18 +23,18 @@ from .. import worker as _worker
 
 # Optional: performance trend analyzer requires pandas/numpy.
 try:
-	from .. import performance_trend_analyzer as _performance_trend_analyzer
+    from .. import performance_trend_analyzer as _performance_trend_analyzer
 except ModuleNotFoundError as e:
-	# Keep test collection working in minimal environments.
-	_performance_trend_analyzer = None  # type: ignore
-	if getattr(e, "name", "") not in {"pandas", "numpy"}:
-		raise
+    # Keep test collection working in minimal environments.
+    _performance_trend_analyzer = None  # type: ignore
+    if getattr(e, "name", "") not in {"pandas", "numpy"}:
+        raise
 
 _sys.modules[__name__ + ".ci"] = _ci
 _sys.modules[__name__ + ".coordinator"] = _coordinator
 _sys.modules[__name__ + ".dynamic_resource_manager"] = _dynamic_resource_manager
 _sys.modules[__name__ + ".integration_mode"] = _integration_mode
 if _performance_trend_analyzer is not None:
-	_sys.modules[__name__ + ".performance_trend_analyzer"] = _performance_trend_analyzer
+    _sys.modules[__name__ + ".performance_trend_analyzer"] = _performance_trend_analyzer
 _sys.modules[__name__ + ".worker"] = _worker
 _sys.modules["worker"] = _worker

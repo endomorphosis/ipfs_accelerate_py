@@ -329,9 +329,10 @@ def test_compile_always_on_self_properties_bind_exact_shapes() -> None:
             obligation.template_id, obligation.template_version
         ).supports_code_shape(shape)
         assert item.cache_key_id
-        assert "supervisor_self_property" in (item.metadata or {}) or (
-            obligation.metadata or {}
-        ).get("supervisor_self_property") is True
+        assert (
+            "supervisor_self_property" in (item.metadata or {})
+            or (obligation.metadata or {}).get("supervisor_self_property") is True
+        )
 
 
 def test_prove_cache_reproof_warm_path_hits_for_all_self_shapes(
@@ -339,9 +340,7 @@ def test_prove_cache_reproof_warm_path_hits_for_all_self_shapes(
 ) -> None:
     cache = FormalVerificationCache(tmp_path)
     compilation = _compile(tree=TREE_A)
-    open_items = [
-        item for item in compilation.items if item.obligation is not None
-    ]
+    open_items = [item for item in compilation.items if item.obligation is not None]
     assert len(open_items) == len(REQUIRED_PROPERTY_IDS)
 
     calls: dict[str, int] = {}
@@ -467,9 +466,7 @@ def test_mutations_invalidate_self_property_cache_entries(tmp_path: Path) -> Non
             **REPROOF_KW,
         )
         solved = [
-            item
-            for item in report.results
-            if item.disposition is ReproofDisposition.RE_SOLVED
+            item for item in report.results if item.disposition is ReproofDisposition.RE_SOLVED
         ]
         assert solved, f"expected re-solve for mutation; got {report.to_dict()}"
         assert calls["n"] > before
@@ -508,12 +505,8 @@ def test_policy_gated_subset_still_warms_cache(tmp_path: Path) -> None:
             policy=str(key.policy),
         )
 
-    cold = prove_supervisor_self_properties(
-        cache, compilation, prove=prove, **REPROOF_KW
-    )
-    warm = prove_supervisor_self_properties(
-        cache, compilation, prove=prove, **REPROOF_KW
-    )
+    cold = prove_supervisor_self_properties(cache, compilation, prove=prove, **REPROOF_KW)
+    warm = prove_supervisor_self_properties(cache, compilation, prove=prove, **REPROOF_KW)
     assert cold.re_solved == 2
     assert warm.cache_hits == 2
     assert calls["n"] == 2

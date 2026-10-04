@@ -68,13 +68,9 @@ from .proof.multi_prover_router import (
 from .proof.prover_matrix_registry import ProverMatrixEntry, ProverMatrixSnapshot
 
 
-SUPERVISOR_CANONICAL_LOGIC_ADAPTER_INTERFACE: Final = (
-    "SupervisorCanonicalLogicAdapter@1"
-)
+SUPERVISOR_CANONICAL_LOGIC_ADAPTER_INTERFACE: Final = "SupervisorCanonicalLogicAdapter@1"
 SUPERVISOR_CANONICAL_LOGIC_ADAPTER_VERSION: Final = "1.0.0"
-ADAPTER_SCHEMA_VERSION: Final = (
-    "ipfs_accelerate_py/agent-supervisor/canonical-logic-adapter@1"
-)
+ADAPTER_SCHEMA_VERSION: Final = "ipfs_accelerate_py/agent-supervisor/canonical-logic-adapter@1"
 VOCABULARY_PROJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/canonical-vocabulary-projection@1"
 )
@@ -84,17 +80,11 @@ CANONICAL_FAMILY_MODELS_MODULE: Final = "ipfs_datasets_py.logic.families.models"
 CANONICAL_SOFTWARE_PROPERTY_MODULE: Final = (
     "ipfs_datasets_py.logic.software_verification.properties"
 )
-CANONICAL_TRANSLATION_MODULE: Final = (
-    "ipfs_datasets_py.logic.software_verification.translations"
-)
-CANONICAL_RECEIPT_MODULE: Final = (
-    "ipfs_datasets_py.logic.software_verification.receipts"
-)
+CANONICAL_TRANSLATION_MODULE: Final = "ipfs_datasets_py.logic.software_verification.translations"
+CANONICAL_RECEIPT_MODULE: Final = "ipfs_datasets_py.logic.software_verification.receipts"
 CANONICAL_CACHE_MODULE: Final = "ipfs_datasets_py.logic.backends.cache_protocol"
 CANONICAL_PROVIDER_MODULE: Final = CANONICAL_LOGIC_PROVIDER_MODULE
-CANONICAL_VERIFICATION_API_MODULE: Final = (
-    "ipfs_datasets_py.logic.verification_api"
-)
+CANONICAL_VERIFICATION_API_MODULE: Final = "ipfs_datasets_py.logic.verification_api"
 
 # Supervisor analysis families → datasets family_id (identity when shared).
 # Values that only exist on the supervisor side use the reserved
@@ -340,13 +330,9 @@ class VocabularyProjection:
         if not self.domain or not isinstance(self.domain, str):
             raise CanonicalLogicAdapterError("projection domain must be a non-empty string")
         if not self.supervisor_id or not isinstance(self.supervisor_id, str):
-            raise CanonicalLogicAdapterError(
-                "projection supervisor_id must be a non-empty string"
-            )
+            raise CanonicalLogicAdapterError("projection supervisor_id must be a non-empty string")
         if not self.canonical_id or not isinstance(self.canonical_id, str):
-            raise CanonicalLogicAdapterError(
-                "projection canonical_id must be a non-empty string"
-            )
+            raise CanonicalLogicAdapterError("projection canonical_id must be a non-empty string")
         if self.schema_version != VOCABULARY_PROJECTION_SCHEMA:
             raise CanonicalLogicAdapterError("unsupported vocabulary projection schema")
         if not isinstance(self.bidirectional, bool):
@@ -421,13 +407,7 @@ def _token(value: Any) -> str:
 
 
 def _normalized_token(value: Any) -> str:
-    return (
-        _token(value)
-        .casefold()
-        .replace("-", "_")
-        .replace(" ", "_")
-        .replace("+", "_plus")
-    )
+    return _token(value).casefold().replace("-", "_").replace(" ", "_").replace("+", "_plus")
 
 
 def _lazy_import(module_name: str) -> Any:
@@ -520,9 +500,7 @@ class SupervisorCanonicalLogicAdapter:
         supervisor_id = family.value
         canonical_id = _ANALYSIS_FAMILY_TO_CANONICAL.get(supervisor_id)
         if canonical_id is None:
-            raise CanonicalLogicAdapterError(
-                f"unsupported analysis logic family: {supervisor_id}"
-            )
+            raise CanonicalLogicAdapterError(f"unsupported analysis logic family: {supervisor_id}")
         return VocabularyProjection(
             domain="analysis_family",
             supervisor_id=supervisor_id,
@@ -550,9 +528,7 @@ class SupervisorCanonicalLogicAdapter:
             proj = VocabularyProjection.from_dict(projection)
             residual_id = str(proj.residual.get("supervisor_id") or "")
             canonical_id = proj.canonical_id
-        token = residual_id or _CANONICAL_FAMILY_TO_SUPERVISOR.get(
-            canonical_id, canonical_id
-        )
+        token = residual_id or _CANONICAL_FAMILY_TO_SUPERVISOR.get(canonical_id, canonical_id)
         # Only restore to supervisor LogicFamily members; namespaced extensions
         # that are not analysis families fail closed.
         try:
@@ -576,15 +552,11 @@ class SupervisorCanonicalLogicAdapter:
             else:
                 kind = classify_property_kind(str(getattr(value, "value", value)))
         except Exception as error:
-            raise CanonicalLogicAdapterError(
-                f"unsupported property kind: {value!r}"
-            ) from error
+            raise CanonicalLogicAdapterError(f"unsupported property kind: {value!r}") from error
         supervisor_id = kind.value
         canonical_id = _PROPERTY_KIND_TO_CANONICAL.get(supervisor_id)
         if canonical_id is None:
-            raise CanonicalLogicAdapterError(
-                f"unsupported property kind: {supervisor_id}"
-            )
+            raise CanonicalLogicAdapterError(f"unsupported property kind: {supervisor_id}")
         return VocabularyProjection(
             domain="property_kind",
             supervisor_id=supervisor_id,
@@ -608,9 +580,7 @@ class SupervisorCanonicalLogicAdapter:
             proj = VocabularyProjection.from_dict(projection)
             residual_id = str(proj.residual.get("supervisor_id") or "")
             canonical_id = proj.canonical_id
-        token = residual_id or _CANONICAL_PROPERTY_TO_SUPERVISOR.get(
-            canonical_id, canonical_id
-        )
+        token = residual_id or _CANONICAL_PROPERTY_TO_SUPERVISOR.get(canonical_id, canonical_id)
         return classify_property_kind(token)
 
     def map_property_kind_to_canonical(self, value: Any) -> str:
@@ -624,9 +594,7 @@ class SupervisorCanonicalLogicAdapter:
         try:
             form = value if isinstance(value, LogicForm) else LogicForm(_token(value))
         except (TypeError, ValueError) as error:
-            raise CanonicalLogicAdapterError(
-                f"unsupported logic form: {_token(value)}"
-            ) from error
+            raise CanonicalLogicAdapterError(f"unsupported logic form: {_token(value)}") from error
         supervisor_id = form.value
         canonical_id = _LOGIC_FORM_TO_CANONICAL.get(supervisor_id)
         if canonical_id is None:
@@ -651,9 +619,7 @@ class SupervisorCanonicalLogicAdapter:
             proj = VocabularyProjection.from_dict(projection)
             residual_id = str(proj.residual.get("supervisor_id") or "")
             canonical_id = proj.canonical_id
-        token = residual_id or _CANONICAL_FORM_TO_LOGIC_FORM.get(
-            canonical_id, canonical_id
-        )
+        token = residual_id or _CANONICAL_FORM_TO_LOGIC_FORM.get(canonical_id, canonical_id)
         try:
             return LogicForm(token)
         except ValueError as error:
@@ -664,9 +630,7 @@ class SupervisorCanonicalLogicAdapter:
     def project_translation_class(self, value: Any) -> VocabularyProjection:
         try:
             translation = (
-                value
-                if isinstance(value, TranslationClass)
-                else TranslationClass(_token(value))
+                value if isinstance(value, TranslationClass) else TranslationClass(_token(value))
             )
         except (TypeError, ValueError) as error:
             raise CanonicalLogicAdapterError(
@@ -675,9 +639,7 @@ class SupervisorCanonicalLogicAdapter:
         supervisor_id = translation.value
         preservation = _TRANSLATION_CLASS_TO_PRESERVATION.get(supervisor_id)
         if preservation is None:
-            raise CanonicalLogicAdapterError(
-                f"unsupported translation class: {supervisor_id}"
-            )
+            raise CanonicalLogicAdapterError(f"unsupported translation class: {supervisor_id}")
         taxonomy = _TRANSLATION_CLASS_TO_TAXONOMY_KIND[supervisor_id]
         return VocabularyProjection(
             domain="translation_class",
@@ -703,9 +665,7 @@ class SupervisorCanonicalLogicAdapter:
             proj = VocabularyProjection.from_dict(projection)
             residual_id = str(proj.residual.get("supervisor_id") or "")
             canonical_id = proj.canonical_id
-        token = residual_id or _PRESERVATION_TO_TRANSLATION_CLASS.get(
-            canonical_id, canonical_id
-        )
+        token = residual_id or _PRESERVATION_TO_TRANSLATION_CLASS.get(canonical_id, canonical_id)
         try:
             return TranslationClass(token)
         except ValueError as error:
@@ -713,9 +673,7 @@ class SupervisorCanonicalLogicAdapter:
                 f"cannot restore translation class from {canonical_id!r}"
             ) from error
 
-    def project_translation_contract(
-        self, contract: TranslationContract
-    ) -> dict[str, Any]:
+    def project_translation_contract(self, contract: TranslationContract) -> dict[str, Any]:
         if not isinstance(contract, TranslationContract):
             raise TypeError("contract must be a TranslationContract")
         source = self.project_logic_form(contract.source_form)
@@ -733,9 +691,7 @@ class SupervisorCanonicalLogicAdapter:
             "source_form": source.to_dict(),
             "target_form": target.to_dict(),
             "translation_class": translation.to_dict(),
-            "taxonomy_translation_kind": translation.residual.get(
-                "taxonomy_translation_kind"
-            ),
+            "taxonomy_translation_kind": translation.residual.get("taxonomy_translation_kind"),
             "approximation_direction": direction,
             "translator_id": contract.translator_id,
             "translator_version": contract.translator_version,
@@ -760,14 +716,10 @@ class SupervisorCanonicalLogicAdapter:
         self, payload: Mapping[str, Any]
     ) -> tuple[LogicForm, LogicForm, TranslationClass]:
         if not isinstance(payload, Mapping):
-            raise CanonicalLogicAdapterError(
-                "translation contract projection must be an object"
-            )
+            raise CanonicalLogicAdapterError("translation contract projection must be an object")
         source = self.restore_logic_form(payload.get("source_form") or {})
         target = self.restore_logic_form(payload.get("target_form") or {})
-        translation = self.restore_translation_class(
-            payload.get("translation_class") or {}
-        )
+        translation = self.restore_translation_class(payload.get("translation_class") or {})
         return source, target, translation
 
     # ------------------------------------------------------------------
@@ -788,30 +740,21 @@ class SupervisorCanonicalLogicAdapter:
             "state": getattr(entry.state, "value", entry.state)
             if hasattr(entry, "state")
             else payload.get("state"),
-            "authority": payload.get("authority")
-            or payload.get("maximum_authoritative_for")
-            or (),
+            "authority": payload.get("authority") or payload.get("maximum_authoritative_for") or (),
             "residual": {
-                "supervisor_schema": payload.get("schema")
-                or payload.get("schema_version"),
+                "supervisor_schema": payload.get("schema") or payload.get("schema_version"),
             },
         }
 
-    def restore_matrix_entry_payload(
-        self, projection: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def restore_matrix_entry_payload(self, projection: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(projection, Mapping):
             raise CanonicalLogicAdapterError("matrix entry projection must be an object")
         supervisor_entry = projection.get("supervisor_entry")
         if not isinstance(supervisor_entry, Mapping):
-            raise CanonicalLogicAdapterError(
-                "matrix entry projection is missing supervisor_entry"
-            )
+            raise CanonicalLogicAdapterError("matrix entry projection is missing supervisor_entry")
         return dict(supervisor_entry)
 
-    def project_matrix_snapshot(
-        self, snapshot: ProverMatrixSnapshot
-    ) -> dict[str, Any]:
+    def project_matrix_snapshot(self, snapshot: ProverMatrixSnapshot) -> dict[str, Any]:
         if not isinstance(snapshot, ProverMatrixSnapshot):
             raise TypeError("snapshot must be a ProverMatrixSnapshot")
         return {
@@ -831,21 +774,15 @@ class SupervisorCanonicalLogicAdapter:
     ) -> dict[str, Any]:
         if isinstance(capability, ProofProviderCapability):
             payload = capability.to_dict()
-            operations = [
-                getattr(item, "value", item) for item in capability.operations
-            ]
-            isolation = [
-                getattr(item, "value", item) for item in capability.isolation
-            ]
+            operations = [getattr(item, "value", item) for item in capability.operations]
+            isolation = [getattr(item, "value", item) for item in capability.isolation]
             provider_id = capability.provider_id
             provider_version = capability.provider_version
         elif isinstance(capability, FormalVerificationProviderCapability):
             payload = capability.to_dict()
             operations = list(payload.get("operations") or ())
             isolation = list(payload.get("isolation") or ())
-            provider_id = str(
-                payload.get("provider_id") or getattr(capability, "provider_id", "")
-            )
+            provider_id = str(payload.get("provider_id") or getattr(capability, "provider_id", ""))
             provider_version = str(
                 payload.get("provider_version")
                 or getattr(capability, "provider_version", "")
@@ -856,9 +793,7 @@ class SupervisorCanonicalLogicAdapter:
                 "capability must be a ProofProviderCapability or "
                 "FormalVerificationProviderCapability"
             )
-        runtimes = [
-            _ISOLATION_TO_RUNTIME.get(str(mode), "native_process") for mode in isolation
-        ]
+        runtimes = [_ISOLATION_TO_RUNTIME.get(str(mode), "native_process") for mode in isolation]
         return {
             "schema_version": ADAPTER_SCHEMA_VERSION,
             "interface": self.interface,
@@ -868,24 +803,16 @@ class SupervisorCanonicalLogicAdapter:
             "operations": operations,
             "isolation": isolation,
             "runtimes": runtimes,
-            "network_access_required": bool(
-                payload.get("network_access_required", False)
-            ),
-            "resource_limits_supported": bool(
-                payload.get("resource_limits_supported", False)
-            ),
+            "network_access_required": bool(payload.get("network_access_required", False)),
+            "resource_limits_supported": bool(payload.get("resource_limits_supported", False)),
             "proof_attempted": False,
             "proof_success": False,
             "supervisor_capability": payload,
         }
 
-    def restore_provider_capability(
-        self, projection: Mapping[str, Any]
-    ) -> ProofProviderCapability:
+    def restore_provider_capability(self, projection: Mapping[str, Any]) -> ProofProviderCapability:
         if not isinstance(projection, Mapping):
-            raise CanonicalLogicAdapterError(
-                "capability projection must be an object"
-            )
+            raise CanonicalLogicAdapterError("capability projection must be an object")
         supervisor = projection.get("supervisor_capability")
         if isinstance(supervisor, Mapping) and supervisor.get("provider_id"):
             # Prefer exact supervisor payload when present.
@@ -893,20 +820,14 @@ class SupervisorCanonicalLogicAdapter:
                 return ProofProviderCapability(
                     provider_id=str(supervisor.get("provider_id") or ""),
                     provider_version=str(supervisor.get("provider_version") or "1"),
-                    protocol_versions=tuple(
-                        supervisor.get("protocol_versions") or (1,)
-                    ),
+                    protocol_versions=tuple(supervisor.get("protocol_versions") or (1,)),
                     operations=tuple(
-                        supervisor.get("operations")
-                        or (ProofProviderOperation.CAPABILITY,)
+                        supervisor.get("operations") or (ProofProviderOperation.CAPABILITY,)
                     ),
                     isolation=tuple(
-                        supervisor.get("isolation")
-                        or (ProofProviderIsolation.IN_PROCESS,)
+                        supervisor.get("isolation") or (ProofProviderIsolation.IN_PROCESS,)
                     ),
-                    network_access_required=bool(
-                        supervisor.get("network_access_required", False)
-                    ),
+                    network_access_required=bool(supervisor.get("network_access_required", False)),
                     resource_limits_supported=bool(
                         supervisor.get("resource_limits_supported", False)
                     ),
@@ -941,12 +862,8 @@ class SupervisorCanonicalLogicAdapter:
             provider_version=str(projection.get("provider_version") or "1"),
             operations=operations,
             isolation=tuple(isolation_modes),
-            network_access_required=bool(
-                projection.get("network_access_required", False)
-            ),
-            resource_limits_supported=bool(
-                projection.get("resource_limits_supported", False)
-            ),
+            network_access_required=bool(projection.get("network_access_required", False)),
+            resource_limits_supported=bool(projection.get("resource_limits_supported", False)),
         )
 
     def project_capability_report(
@@ -1017,18 +934,12 @@ class SupervisorCanonicalLogicAdapter:
             field_name: payload.get(field_name, 0 if field_name != "network_allowed" else False)
             for field_name in _RESOURCE_BUDGET_FIELDS
         }
-        result["schema_version"] = (
-            "ipfs_datasets_py/logic-provider-resource-budget@1"
-        )
-        result["supervisor_schema"] = payload.get("schema") or payload.get(
-            "schema_version"
-        )
+        result["schema_version"] = "ipfs_datasets_py/logic-provider-resource-budget@1"
+        result["supervisor_schema"] = payload.get("schema") or payload.get("schema_version")
         result["interface"] = self.interface
         return result
 
-    def restore_resource_budget(
-        self, projection: Mapping[str, Any]
-    ) -> ResourceBudget:
+    def restore_resource_budget(self, projection: Mapping[str, Any]) -> ResourceBudget:
         if not isinstance(projection, Mapping):
             raise CanonicalLogicAdapterError("resource projection must be an object")
         kwargs = {
@@ -1116,21 +1027,15 @@ class SupervisorCanonicalLogicAdapter:
             "supervisor_plan": payload,
         }
 
-    def restore_portfolio_plan_payload(
-        self, projection: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def restore_portfolio_plan_payload(self, projection: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(projection, Mapping):
             raise CanonicalLogicAdapterError("route plan projection must be an object")
         supervisor = projection.get("supervisor_plan")
         if not isinstance(supervisor, Mapping):
-            raise CanonicalLogicAdapterError(
-                "route plan projection is missing supervisor_plan"
-            )
+            raise CanonicalLogicAdapterError("route plan projection is missing supervisor_plan")
         return dict(supervisor)
 
-    def project_property_obligation(
-        self, obligation: PropertyObligation
-    ) -> dict[str, Any]:
+    def project_property_obligation(self, obligation: PropertyObligation) -> dict[str, Any]:
         if not isinstance(obligation, PropertyObligation):
             raise TypeError("obligation must be a PropertyObligation")
         kind = self.project_property_kind(obligation.property_kind)
@@ -1158,13 +1063,9 @@ class SupervisorCanonicalLogicAdapter:
 
     def project_cache_scope(self, value: Any) -> VocabularyProjection:
         try:
-            scope = (
-                value if isinstance(value, CacheScope) else CacheScope(_token(value))
-            )
+            scope = value if isinstance(value, CacheScope) else CacheScope(_token(value))
         except (TypeError, ValueError) as error:
-            raise CanonicalLogicAdapterError(
-                f"unsupported cache scope: {_token(value)}"
-            ) from error
+            raise CanonicalLogicAdapterError(f"unsupported cache scope: {_token(value)}") from error
         supervisor_id = scope.value
         canonical_id = _CACHE_SCOPE_TO_CANONICAL.get(supervisor_id)
         if canonical_id is None:
@@ -1189,9 +1090,7 @@ class SupervisorCanonicalLogicAdapter:
             proj = VocabularyProjection.from_dict(projection)
             residual_id = str(proj.residual.get("supervisor_id") or "")
             canonical_id = proj.canonical_id
-        token = residual_id or _CANONICAL_CACHE_SCOPE_TO_SUPERVISOR.get(
-            canonical_id, canonical_id
-        )
+        token = residual_id or _CANONICAL_CACHE_SCOPE_TO_SUPERVISOR.get(canonical_id, canonical_id)
         try:
             return CacheScope(token)
         except ValueError as error:
@@ -1244,21 +1143,15 @@ class SupervisorCanonicalLogicAdapter:
             "tree_digest": _digest("candidate_tree"),
             "policy_digest": _digest("policy"),
             "supervisor_cache_key": payload,
-            "supervisor_key_id": getattr(key, "key_id", None)
-            or payload.get("key_id")
-            or "",
+            "supervisor_key_id": getattr(key, "key_id", None) or payload.get("key_id") or "",
         }
 
-    def restore_proof_cache_key_payload(
-        self, projection: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def restore_proof_cache_key_payload(self, projection: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(projection, Mapping):
             raise CanonicalLogicAdapterError("cache key projection must be an object")
         supervisor = projection.get("supervisor_cache_key")
         if not isinstance(supervisor, Mapping):
-            raise CanonicalLogicAdapterError(
-                "cache key projection is missing supervisor_cache_key"
-            )
+            raise CanonicalLogicAdapterError("cache key projection is missing supervisor_cache_key")
         return dict(supervisor)
 
     # ------------------------------------------------------------------
@@ -1275,9 +1168,7 @@ class SupervisorCanonicalLogicAdapter:
             payload = dict(result)
             content_id = str(payload.get("content_id") or "")
         else:
-            raise TypeError(
-                "result must be a TranslationValidationResult or mapping"
-            )
+            raise TypeError("result must be a TranslationValidationResult or mapping")
         issues = [
             dict(issue) if isinstance(issue, Mapping) else {"detail": str(issue)}
             for issue in payload.get("issues") or ()
@@ -1308,9 +1199,7 @@ class SupervisorCanonicalLogicAdapter:
             raise CanonicalLogicAdapterError("receipt projection must be an object")
         supervisor = projection.get("supervisor_receipt")
         if not isinstance(supervisor, Mapping):
-            raise CanonicalLogicAdapterError(
-                "receipt projection is missing supervisor_receipt"
-            )
+            raise CanonicalLogicAdapterError("receipt projection is missing supervisor_receipt")
         return dict(supervisor)
 
     def load_canonical_translation_receipt_type(self) -> Any:
@@ -1325,9 +1214,7 @@ class SupervisorCanonicalLogicAdapter:
 
     def load_canonical_family_registry(self) -> Any:
         module = self._import(CANONICAL_FAMILY_REGISTRY_MODULE)
-        return getattr(module, "DEFAULT_REGISTRY", None) or getattr(
-            module, "CANONICAL_REGISTRY"
-        )
+        return getattr(module, "DEFAULT_REGISTRY", None) or getattr(module, "CANONICAL_REGISTRY")
 
     def list_canonical_family_ids(self) -> tuple[str, ...]:
         registry = self.load_canonical_family_registry()
@@ -1345,9 +1232,7 @@ class SupervisorCanonicalLogicAdapter:
     def datasets_import_is_lazy(self) -> bool:
         """Return True when datasets modules are not yet imported by this adapter."""
 
-        return not any(
-            name.startswith("ipfs_datasets_py") for name in _import_cache
-        )
+        return not any(name.startswith("ipfs_datasets_py") for name in _import_cache)
 
     # ------------------------------------------------------------------
     # Cross-repo current-revision checks
@@ -1370,9 +1255,7 @@ class SupervisorCanonicalLogicAdapter:
                 module_status[module_name] = True
             except Exception as error:  # pragma: no cover - environment specific
                 module_status[module_name] = False
-                diagnostics.append(
-                    f"module_unavailable:{module_name}:{type(error).__name__}"
-                )
+                diagnostics.append(f"module_unavailable:{module_name}:{type(error).__name__}")
 
         parent_commit = ""
         gitlink = ""
@@ -1396,30 +1279,26 @@ class SupervisorCanonicalLogicAdapter:
         elif require_git_alignment:
             diagnostics.append(f"gitlink_lookup_failed:{err or 'missing'}")
 
-        if datasets_path.is_dir() and (datasets_path / ".git").exists() or (
+        if (
             datasets_path.is_dir()
-            and (root / ".git").exists()
+            and (datasets_path / ".git").exists()
+            or (datasets_path.is_dir() and (root / ".git").exists())
         ):
             code, embedded_head, err = _git(datasets_path, "rev-parse", "HEAD")
             if code != 0:
                 # Nested worktree / plain directory without independent git.
                 embedded_head = ""
                 if gitlink:
-                    diagnostics.append(
-                        f"embedded_rev_parse_failed:{err or 'unknown'}"
-                    )
+                    diagnostics.append(f"embedded_rev_parse_failed:{err or 'unknown'}")
 
         aligned = all(module_status.values())
         if require_git_alignment and gitlink and embedded_head and gitlink != embedded_head:
             aligned = False
-            diagnostics.append(
-                f"gitlink_mismatch:gitlink={gitlink}:embedded={embedded_head}"
-            )
+            diagnostics.append(f"gitlink_mismatch:gitlink={gitlink}:embedded={embedded_head}")
         if diagnostics and not all(module_status.values()):
             aligned = False
         if require_git_alignment and any(
-            item.startswith("parent_rev_parse_failed")
-            or item.startswith("gitlink_lookup_failed")
+            item.startswith("parent_rev_parse_failed") or item.startswith("gitlink_lookup_failed")
             for item in diagnostics
         ):
             # Missing git metadata is not a hard fail when modules resolve —

@@ -13,10 +13,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Templates for the missing models
@@ -208,38 +205,43 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
 
+
 def generate_missing_tests():
     """Generate test files for missing models."""
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_tests")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Generate M2M_100 test
     m2m100_path = os.path.join(output_dir, "test_hf_m2m_100.py")
     with open(m2m100_path, "w") as f:
         f.write(M2M100_TEMPLATE)
     logger.info(f"Generated M2M_100 test file: {m2m100_path}")
-    
+
     # Generate BLIP-2 test
     blip2_path = os.path.join(output_dir, "test_hf_blip_2.py")
     with open(blip2_path, "w") as f:
         f.write(BLIP2_TEMPLATE)
     logger.info(f"Generated BLIP-2 test file: {blip2_path}")
-    
+
     return m2m100_path, blip2_path
+
 
 def main():
     """Command-line entry point."""
     logger.info("Generating missing test files...")
     m2m100_path, blip2_path = generate_missing_tests()
-    
+
     logger.info("Running implementation progress report...")
-    os.system("python track_implementation_progress.py --dirs generated_tests --output reports/implementation_progress.md")
-    
+    os.system(
+        "python track_implementation_progress.py --dirs generated_tests --output reports/implementation_progress.md"
+    )
+
     logger.info("✅ Complete! Generated missing test files:")
     print(f"- M2M_100: {m2m100_path}")
     print(f"- BLIP-2: {blip2_path}")
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

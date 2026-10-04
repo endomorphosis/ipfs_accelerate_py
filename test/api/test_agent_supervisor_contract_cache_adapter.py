@@ -123,11 +123,14 @@ def test_adapter_keeps_snapshot_identity_separate_and_rebuilds_indexes(
 
     assert snapshot.repository_tree_cid == tree_cid
     assert "repository_tree_cid" not in receipt.key.to_dict()
-    assert adapter.read_snapshot_receipt(
-        snapshot.cid,
-        expected_repository_tree_cid=tree_cid,
-        expected_key_cids=(receipt.key_cid,),
-    ) == snapshot
+    assert (
+        adapter.read_snapshot_receipt(
+            snapshot.cid,
+            expected_repository_tree_cid=tree_cid,
+            expected_key_cids=(receipt.key_cid,),
+        )
+        == snapshot
+    )
 
     adapter.cache._index_path(receipt.key_cid).unlink()
     assert not adapter.lookup(
@@ -140,9 +143,7 @@ def test_adapter_keeps_snapshot_identity_separate_and_rebuilds_indexes(
         dependency_cids=(dependency_cid,),
     ).result == _result("proved")
 
-    assert adapter.invalidate_source_closure(dependency_cid) == (
-        receipt.key_cid,
-    )
+    assert adapter.invalidate_source_closure(dependency_cid) == (receipt.key_cid,)
     assert not adapter.lookup(
         source_cid,
         dependency_cids=(dependency_cid,),

@@ -78,9 +78,7 @@ def test_requirement_ids_and_shared_vocabularies() -> None:
     assert provider_usage_controls.SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID == (
         SUPERVISOR_USAGE_CONTROL_REQUIREMENT_ID
     )
-    assert set(usage_control_operations()) == {
-        op.value for op in SupervisorUsageControlOperation
-    }
+    assert set(usage_control_operations()) == {op.value for op in SupervisorUsageControlOperation}
     assert {op.value for op in USAGE_CONTROL_READ_OPERATIONS}.isdisjoint(
         {op.value for op in USAGE_CONTROL_MUTATION_OPERATIONS}
     )
@@ -212,17 +210,13 @@ def test_pagination_is_bounded_and_cursor_safe() -> None:
     assert page["success"] is True
     assert page["count"] == 1
     assert page["next_cursor"] == "work:0"
-    page2 = usage.blocked_work(
-        authorities=_read_auth(), limit=1, cursor=page["next_cursor"]
-    )
+    page2 = usage.blocked_work(authorities=_read_auth(), limit=1, cursor=page["next_cursor"])
     assert page2["count"] == 1
     assert page2["items"][0]["work_id"] == "work:1"
     oversized = usage.blocked_work(authorities=_read_auth(), limit=10_000)
     assert oversized["success"] is False
     assert oversized["error_code"] == "unbounded_page"
-    bad_cursor = usage.blocked_work(
-        authorities=_read_auth(), limit=1, cursor="missing"
-    )
+    bad_cursor = usage.blocked_work(authorities=_read_auth(), limit=1, cursor="missing")
     assert bad_cursor["error_code"] == "invalid_cursor"
 
 

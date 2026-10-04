@@ -79,9 +79,7 @@ def _claim(
         catalog_version="1",
         required_assurance=AssuranceLevel.KERNEL_VERIFIED,
         derived_assurance=(
-            AssuranceLevel.KERNEL_VERIFIED
-            if satisfied
-            else AssuranceLevel.UNVERIFIED
+            AssuranceLevel.KERNEL_VERIFIED if satisfied else AssuranceLevel.UNVERIFIED
         ),
         invalidation_selectors=selectors,
         evidence_ids=("evidence:kernel-1",) if satisfied else (),
@@ -107,22 +105,12 @@ def test_status_queries_are_distinct_and_content_addressed() -> None:
         _claim(property_id="property:stale", status=ClaimStatus.STALE),
     )
     query = build_code_proof_query(claims=claims)
-    assert {h.property_id for h in query.properties_satisfied().hits} == {
-        "property:sat"
-    }
+    assert {h.property_id for h in query.properties_satisfied().hits} == {"property:sat"}
     assert {h.property_id for h in query.properties_open().hits} == {"property:open"}
-    assert {h.property_id for h in query.properties_refuted().hits} == {
-        "property:ref"
-    }
-    assert {h.property_id for h in query.properties_unsupported().hits} == {
-        "property:uns"
-    }
-    assert {h.property_id for h in query.properties_not_measured().hits} == {
-        "property:nm"
-    }
-    assert {h.property_id for h in query.properties_stale().hits} == {
-        "property:stale"
-    }
+    assert {h.property_id for h in query.properties_refuted().hits} == {"property:ref"}
+    assert {h.property_id for h in query.properties_unsupported().hits} == {"property:uns"}
+    assert {h.property_id for h in query.properties_not_measured().hits} == {"property:nm"}
+    assert {h.property_id for h in query.properties_stale().hits} == {"property:stale"}
     sat = query.properties_satisfied()
     assert sat.result_id
     assert sat.to_dict()["interface"] == CODE_PROOF_QUERY_INTERFACE

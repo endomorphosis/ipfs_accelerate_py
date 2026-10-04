@@ -129,9 +129,7 @@ def _evidence(**changes: object) -> PromptEvidenceRecord:
         "source_kind": "directory_scan",
         "artifact_cid": _cid("retry-module-evidence"),
         "summary": "Retry handling is implemented in the supervisor package.",
-        "repository_paths": (
-            "ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py",
-        ),
+        "repository_paths": ("ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py",),
         "claim_keys": ("claim:retry-location",),
         "provenance": {"scanner": "fixture"},
     }
@@ -196,9 +194,7 @@ def _graph(**changes: object) -> PromptGoalGraph:
         acceptance=(acceptance,),
         evidence_cids=(evidence.evidence_cid,),
         policy_roots=(_cid("policy"), _cid("security")),
-        predicted_files=(
-            "ipfs_accelerate_py/agent_supervisor/prompt_workflow.py",
-        ),
+        predicted_files=("ipfs_accelerate_py/agent_supervisor/prompt_workflow.py",),
         provenance={"objective": "model", "scope_paths": "deterministic"},
     )
     values: dict[str, object] = {
@@ -681,9 +677,7 @@ def test_rescue_action_order_is_semantic_but_set_like_order_is_not() -> None:
         actions=(first, second),
         **{
             **values,
-            "rationale_reference_cids": tuple(
-                reversed(values["rationale_reference_cids"])
-            ),
+            "rationale_reference_cids": tuple(reversed(values["rationale_reference_cids"])),
             "unresolved_risks": tuple(reversed(values["unresolved_risks"])),
         },
     )

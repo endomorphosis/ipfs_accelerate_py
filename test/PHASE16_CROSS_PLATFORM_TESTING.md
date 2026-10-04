@@ -21,26 +21,28 @@ def test_matrix_generator():
     model_families = ["embedding", "vision", "text_generation", "audio", "multimodal"]
     hardware_platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
     model_sizes = ["tiny", "small", "base", "large"]
-    
+
     test_matrix = []
     for family in model_families:
         for platform in hardware_platforms:
             for size in model_sizes:
                 # Calculate priority based on combination
                 priority = _calculate_priority(family, platform, size)
-                
+
                 # Skip known-incompatible combinations
                 if _is_incompatible(family, platform, size):
                     continue
-                    
-                test_matrix.append({
-                    "family": family,
-                    "platform": platform,
-                    "size": size,
-                    "priority": priority,
-                    "test_types": _determine_test_types(family, platform, size)
-                })
-    
+
+                test_matrix.append(
+                    {
+                        "family": family,
+                        "platform": platform,
+                        "size": size,
+                        "priority": priority,
+                        "test_types": _determine_test_types(family, platform, size),
+                    }
+                )
+
     return test_matrix
 ```
 
@@ -112,20 +114,24 @@ def run_cross_platform_test(model, hardware, db_connection):
     """Run test with automatic database recording"""
     # Run the test
     result = benchmark_model_on_hardware(model, hardware)
-    
+
     # Store in database with standardized schema
     db_connection.execute(
         "INSERT INTO cross_platform_tests VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            model.name, model.family, hardware.type, 
-            result.success, result.performance, 
-            result.memory_usage, result.error_message
-        )
+            model.name,
+            model.family,
+            hardware.type,
+            result.success,
+            result.performance,
+            result.memory_usage,
+            result.error_message,
+        ),
     )
-    
+
     # Update compatibility matrix
     update_compatibility_matrix(model.family, hardware.type, result.compatibility_score)
-    
+
     return result
 ```
 

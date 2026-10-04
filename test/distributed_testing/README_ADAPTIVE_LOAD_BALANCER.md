@@ -257,15 +257,13 @@ if enable_load_balancer:
         enable_predictive_balancing=True,
         enable_cost_benefit_analysis=True,
         enable_hardware_specific_strategies=True,
-        enable_resource_efficiency=True
+        enable_resource_efficiency=True,
     )
     logger.info("Adaptive load balancer initialized")
 
 # Starting the load balancer as a background task
 if self.load_balancer:
-    self.load_balancer_task = anyio.create_task_group(
-        self.load_balancer.start_balancing()
-    )
+    self.load_balancer_task = anyio.create_task_group(self.load_balancer.start_balancing())
     logger.info("Load balancer started")
 ```
 
@@ -305,11 +303,13 @@ The load balancer exposes an internal API for other components to interact with:
 # Get load balancer statistics
 def get_load_balancer_stats() -> Dict[str, Any]:
     """Get statistics about the load balancer."""
-    
+
+
 # Handle task cancellation for migration
 async def handle_task_cancelled_for_migration(task_id: str, source_worker_id: str):
     """Handle task cancellation for migration."""
-    
+
+
 # Update worker performance metrics
 async def update_worker_performance(worker_id: str, metrics: Dict[str, Any]):
     """Update worker performance metrics externally."""
@@ -443,12 +443,12 @@ def update_dynamic_thresholds():
     # Get recent system load data
     recent_loads = system_load_history[-5:]
     avg_system_load = average(recent_loads)
-    
+
     # Calculate load trend using linear regression
     x = list(range(len(trend_records)))
     y = [record.avg_utilization for record in trend_records]
     trend_slope = calculate_linear_regression_slope(x, y)
-    
+
     # Determine adjustment factors
     if trend_slope > 0.01:  # Load increasing
         adjustment_factor = threshold_adjustment_rate * 1.5
@@ -459,22 +459,22 @@ def update_dynamic_thresholds():
     else:  # Load stable
         adjustment_factor = threshold_adjustment_rate
         direction = "stable"
-    
+
     # Adjust based on current load
     if avg_system_load > 0.75:  # High load
         high_adjust = -adjustment_factor * 1.2  # Lower high threshold
-        low_adjust = adjustment_factor * 0.8    # Raise low threshold
+        low_adjust = adjustment_factor * 0.8  # Raise low threshold
     elif avg_system_load < 0.3:  # Low load
-        high_adjust = adjustment_factor * 0.8   # Raise high threshold
-        low_adjust = -adjustment_factor * 1.2   # Lower low threshold
+        high_adjust = adjustment_factor * 0.8  # Raise high threshold
+        low_adjust = -adjustment_factor * 1.2  # Lower low threshold
     else:  # Normal load
         high_adjust = -adjustment_factor if avg_system_load > 0.5 else adjustment_factor
         low_adjust = adjustment_factor if avg_system_load > 0.5 else -adjustment_factor
-    
+
     # Apply adjustments within boundaries
     new_high = max(0.6, min(0.95, utilization_threshold_high + high_adjust))
     new_low = max(0.1, min(0.4, utilization_threshold_low + low_adjust))
-    
+
     # Ensure minimum separation
     min_separation = 0.3
     if new_high - new_low < min_separation:
@@ -482,7 +482,7 @@ def update_dynamic_thresholds():
             new_high = new_low + min_separation
         else:
             new_low = new_high - min_separation
-    
+
     # Update thresholds
     utilization_threshold_high = new_high
     utilization_threshold_low = new_low

@@ -68,9 +68,7 @@ def _assert_envelope(payload: dict[str, Any], *, operation: str | None = None) -
 
 
 def _load_datasets_mcp():
-    return importlib.import_module(
-        "ipfs_datasets_py.mcp_server.tools.logic_verification"
-    )
+    return importlib.import_module("ipfs_datasets_py.mcp_server.tools.logic_verification")
 
 
 def _load_root_mcp_surface():
@@ -119,9 +117,7 @@ def test_datasets_mcp_tool_surface_matches_stable_python_operations() -> None:
         assert tool in lv.TOOL_NAMES
         assert tool in lv.TOOL_SCHEMAS
         assert lv.TOOL_SCHEMAS[tool]["interface"] == lv.LOGIC_VERIFICATION_MCP_INTERFACE
-        assert lv.TOOL_SCHEMAS[tool]["returns"]["envelope"] == (
-            "logic-verification-response/v1"
-        )
+        assert lv.TOOL_SCHEMAS[tool]["returns"]["envelope"] == ("logic-verification-response/v1")
 
 
 def test_root_and_datasets_mcp_share_tool_names_and_operations() -> None:
@@ -150,9 +146,7 @@ def test_list_providers_parity_python_datasets_mcp() -> None:
     _assert_envelope(py, operation="list_providers")
     assert py["status"] == "declarative"
     assert py["result"]["count"] >= 9
-    assert py["result"].get("executable_provider_matrix") == (
-        EXECUTABLE_PROVIDER_MATRIX_INTERFACE
-    )
+    assert py["result"].get("executable_provider_matrix") == (EXECUTABLE_PROVIDER_MATRIX_INTERFACE)
     py_ids = {item["provider_id"] for item in py["result"]["providers"]}
     assert {"z3", "cvc5", "runtime_mtl", "hammer", "lean"} <= py_ids
 
@@ -176,9 +170,7 @@ def test_list_providers_parity_python_datasets_mcp() -> None:
     }
     assert matrix_core <= py_ids
     assert matrix_core <= mcp_ids
-    assert mcp["result"].get("executable_provider_matrix") == (
-        EXECUTABLE_PROVIDER_MATRIX_INTERFACE
-    )
+    assert mcp["result"].get("executable_provider_matrix") == (EXECUTABLE_PROVIDER_MATRIX_INTERFACE)
 
 
 def test_provider_capabilities_and_probe_parity() -> None:
@@ -194,9 +186,7 @@ def test_provider_capabilities_and_probe_parity() -> None:
     assert mcp_caps["result"]["count"] == py_caps["result"]["count"]
 
     missing_py = python_api.provider_capabilities("not-a-backend").to_dict()
-    missing_mcp = _run(
-        lv.verification_provider_capabilities(provider_id="not-a-backend")
-    )
+    missing_mcp = _run(lv.verification_provider_capabilities(provider_id="not-a-backend"))
     assert missing_py["status"] == "unsupported"
     assert missing_mcp["status"] == "unsupported"
 
@@ -222,9 +212,7 @@ def test_portfolio_execution_parity_across_python_and_mcp() -> None:
     assert py["result"].get("executed") is True
     assert "selection" in py["result"]
     assert "verdict" in py["result"]
-    assert py["result"].get("executable_provider_matrix") == (
-        EXECUTABLE_PROVIDER_MATRIX_INTERFACE
-    )
+    assert py["result"].get("executable_provider_matrix") == (EXECUTABLE_PROVIDER_MATRIX_INTERFACE)
     assert py["assumptions"] == ["parity:1"]
 
     lv = _load_datasets_mcp()
@@ -286,9 +274,7 @@ def test_logic_tools_reexport_matches_datasets_mcp() -> None:
     """Datasets logic_tools re-export is the bridge parent MCP registration uses."""
 
     datasets_mcp = _load_datasets_mcp()
-    logic_tools = importlib.import_module(
-        "ipfs_datasets_py.mcp_server.tools.logic_tools"
-    )
+    logic_tools = importlib.import_module("ipfs_datasets_py.mcp_server.tools.logic_tools")
     for tool in (
         "verification_list_providers",
         "verification_portfolio",

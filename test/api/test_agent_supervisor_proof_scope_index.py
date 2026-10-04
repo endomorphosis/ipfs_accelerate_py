@@ -96,27 +96,31 @@ def _snapshot(blob_a: str = "blob:a1") -> dict[str, list[dict[str, object]]]:
 def test_scope_dimensions_map_to_dependent_obligations_and_receipts() -> None:
     index = build_proof_scope_index(**_snapshot())
 
-    assert index.obligations_for_scope(
-        ProofInputKind.FILE, "src/api.py"
-    ) == ("obligation:api", "obligation:consumer")
-    assert index.receipts_for_scope(
-        "qualified_symbol", "pkg.api.Service.run"
-    ) == ("receipt:api", "receipt:consumer")
-    assert index.dependents(
-        "interface", "pkg.api.Service"
-    ).obligation_ids == ("obligation:api", "obligation:consumer")
-    assert index.dependents(
-        "assumption", "assumption:lease-is-current"
-    ).receipt_ids == ("receipt:api", "receipt:consumer")
-    assert index.obligations_for_scope(
-        "template", "lease-uniqueness"
-    ) == ("obligation:api", "obligation:consumer")
-    assert index.receipts_for_scope(
-        "toolchain", "lean-4.19"
-    ) == ("receipt:api", "receipt:consumer")
-    assert index.obligations_for_scope(
-        "policy", "protected-paths-v3"
-    ) == ("obligation:api", "obligation:consumer")
+    assert index.obligations_for_scope(ProofInputKind.FILE, "src/api.py") == (
+        "obligation:api",
+        "obligation:consumer",
+    )
+    assert index.receipts_for_scope("qualified_symbol", "pkg.api.Service.run") == (
+        "receipt:api",
+        "receipt:consumer",
+    )
+    assert index.dependents("interface", "pkg.api.Service").obligation_ids == (
+        "obligation:api",
+        "obligation:consumer",
+    )
+    assert index.dependents("assumption", "assumption:lease-is-current").receipt_ids == (
+        "receipt:api",
+        "receipt:consumer",
+    )
+    assert index.obligations_for_scope("template", "lease-uniqueness") == (
+        "obligation:api",
+        "obligation:consumer",
+    )
+    assert index.receipts_for_scope("toolchain", "lean-4.19") == ("receipt:api", "receipt:consumer")
+    assert index.obligations_for_scope("policy", "protected-paths-v3") == (
+        "obligation:api",
+        "obligation:consumer",
+    )
     assert index.active_receipt_ids == ("receipt:api", "receipt:consumer")
     assert ProofScopeIndex.from_json(index.to_json()) == index
 
@@ -124,14 +128,13 @@ def test_scope_dimensions_map_to_dependent_obligations_and_receipts() -> None:
 def test_explicit_template_toolchain_and_policy_changes_invalidate_dependents() -> None:
     index = build_proof_scope_index(**_snapshot())
 
-    template_changed = index.invalidate(
-        [("template", "lease-uniqueness")], max_reason_chain=3
-    )
+    template_changed = index.invalidate([("template", "lease-uniqueness")], max_reason_chain=3)
     assert template_changed.active_receipt_ids == ()
     assert template_changed.reasons_for("obligation:api")[0].changed_input is not None
-    assert template_changed.invalidate(
-        [("template", "lease-uniqueness")], max_reason_chain=3
-    ) == template_changed
+    assert (
+        template_changed.invalidate([("template", "lease-uniqueness")], max_reason_chain=3)
+        == template_changed
+    )
 
     toolchain_changed = index.invalidate(["toolchain:lean-4.19"])
     policy_changed = build_proof_scope_index(
@@ -149,18 +152,14 @@ def test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path() -
         return [{"qualified_symbol": "pkg.api.Service.run"}]
 
     cold = build_proof_scope_index(
-        scope_blobs=[
-            {"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}
-        ],
+        scope_blobs=[{"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}],
         parser=parser,
     )
     assert calls == ["src/api.py"]
     assert cold.stats.parsed_blob_count == 1
 
     warm = build_proof_scope_index(
-        scope_blobs=[
-            {"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}
-        ],
+        scope_blobs=[{"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}],
         previous=cold,
         parser=parser,
     )
@@ -188,12 +187,8 @@ def test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path() -
     renamed_scope_id = renamed_probe.scope_records[0].scope_id
     old_scope_id = cold.scope_records[0].scope_id
     with_evidence = build_proof_scope_index(
-        scope_blobs=[
-            {"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}
-        ],
-        obligations=[
-            {"obligation_id": "old-obligation", "ast_scope_ids": [old_scope_id]}
-        ],
+        scope_blobs=[{"path": "src/api.py", "blob_id": "blob:same", "source": "def run(): pass"}],
+        obligations=[{"obligation_id": "old-obligation", "ast_scope_ids": [old_scope_id]}],
         receipts=[
             {
                 "receipt_id": "old-receipt",
@@ -231,9 +226,7 @@ def test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path() -
     assert renamed.invalidated_obligation_ids == ("old-obligation",)
     assert renamed.invalidated_receipt_ids == ("old-receipt",)
     assert renamed.reasons_for("old-obligation")[0].reason_code == "scope_renamed"
-    assert not renamed.obligations_for_scope(
-        "file", "src/renamed_api.py", active_only=True
-    )
+    assert not renamed.obligations_for_scope("file", "src/renamed_api.py", active_only=True)
 
 
 def test_invalidation_is_transitive_and_reason_chains_are_bounded() -> None:
@@ -308,6 +301,7 @@ def test_dataset_store_round_trips_content_addressed_index(tmp_path: Path) -> No
     assert store.load_proof_scope_index("repo/tree:one") == index
     assert store.load_proof_scope_index(artifact) == index
     assert store.load_proof_scope_index(artifact.manifest_path) == index
-    assert store.load_proof_scope_index_manifest("repo/tree:one")[
-        "artifact_id"
-    ] == artifact.artifact_id
+    assert (
+        store.load_proof_scope_index_manifest("repo/tree:one")["artifact_id"]
+        == artifact.artifact_id
+    )

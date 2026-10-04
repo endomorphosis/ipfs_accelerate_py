@@ -206,11 +206,13 @@ def test_with_cuda(cuda_device):
     # Use CUDA device
     pass
 
+
 # Model fixtures
 def test_with_bert(bert_model):
     model, tokenizer = bert_model
     # Use BERT model
     pass
+
 
 # Browser fixtures
 def test_with_webgpu(webgpu_browser):

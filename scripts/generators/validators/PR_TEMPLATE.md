@@ -26,9 +26,7 @@ This PR adds a comprehensive template validation system for all generator script
 from generators.validators.template_validator_integration import validate_template_for_generator
 
 is_valid, errors = validate_template_for_generator(
-    template_content,
-    generator_type="merged_test_generator",
-    validate_hardware=True
+    template_content, generator_type="merged_test_generator", validate_hardware=True
 )
 
 if not is_valid:

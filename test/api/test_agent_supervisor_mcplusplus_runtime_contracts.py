@@ -81,9 +81,7 @@ def runtime() -> HermeticMCPlusPlusRuntime:
 def _phases_include(witness: RuntimeWitness, *phases: WitnessPhase) -> None:
     completed = set(witness.observation.phases_completed)
     for phase in phases:
-        assert phase.value in completed, (
-            f"missing phase {phase.value} in {sorted(completed)}"
-        )
+        assert phase.value in completed, f"missing phase {phase.value} in {sorted(completed)}"
 
 
 # ---------------------------------------------------------------------------
@@ -111,13 +109,9 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
     assert OBJECTIVE_GOAL_ID == "VFS-G061"
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-058"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     # Domain envelope evidence remains runtime-witness only.
-    assert runtime_witness_evidence_terms() == (
-        "vfs/mcplusplus-runtime-witness@1",
-    )
+    assert runtime_witness_evidence_terms() == ("vfs/mcplusplus-runtime-witness@1",)
     assert "objective validation repair" not in runtime_witness_evidence_terms()
     assert covered_evidence_terms() == ("vfs/mcplusplus-runtime-witness@1",)
     assert "objective validation repair" not in covered_evidence_terms()
@@ -272,9 +266,7 @@ def test_default_adapters_distinguish_production_and_mock() -> None:
     assert mocks
     assert all(a.is_production for a in production)
     assert all(a.is_mock for a in mocks)
-    assert all(
-        not a.implementation_kind.grants_production_authority for a in mocks
-    )
+    assert all(not a.implementation_kind.grants_production_authority for a in mocks)
     names = {a.tool_name for a in production}
     assert "echo" in names
     assert "vfs.stat" in names
@@ -436,9 +428,7 @@ def test_production_identity_and_vfs_stat(
     assert identity.observation.result["name"] == "swiss"
     assert identity.observation.result["identity"].startswith("b")
 
-    stat = runtime.call(
-        make_call_request("vfs.stat", {"path": "ipfs_kit_py/vfs.py"})
-    )
+    stat = runtime.call(make_call_request("vfs.stat", {"path": "ipfs_kit_py/vfs.py"}))
     assert stat.observation.outcome is WitnessOutcome.PASSED
     assert stat.observation.result["exists"] is True
     assert stat.observation.grants_runtime_authority is True
@@ -497,9 +487,7 @@ def test_unavailable_backend(runtime: HermeticMCPlusPlusRuntime) -> None:
 def test_cancellation_via_request_flag(
     runtime: HermeticMCPlusPlusRuntime,
 ) -> None:
-    witness = runtime.call(
-        make_call_request("echo", {"message": "x"}, cancel=True)
-    )
+    witness = runtime.call(make_call_request("echo", {"message": "x"}, cancel=True))
     assert witness.observation.outcome is WitnessOutcome.CANCELLED
     assert witness.observation.cancelled is True
 
@@ -538,8 +526,7 @@ def test_adapter_profile_mismatch() -> None:
                 adapter_id="adapter:echo:basic-only",
                 implementation_kind=ImplementationKind.PRODUCTION,
                 implementation_target=(
-                    "ipfs_accelerate_py.agent_supervisor."
-                    "mcplusplus_runtime_witness._handler_echo"
+                    "ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness._handler_echo"
                 ),
                 input_schema={
                     "type": "object",
@@ -675,8 +662,7 @@ def test_run_suite_receipt_and_deterministic_replay(
     # only when fixture identity is fixed.
     rt2 = HermeticMCPlusPlusRuntime(
         forest_id=FOREST,
-        adapters=list(default_production_adapters())
-        + list(default_mock_adapters()),
+        adapters=list(default_production_adapters()) + list(default_mock_adapters()),
         fixture_id=runtime.fixture_id,
         manifest_cid=runtime.manifest_cid,
         timeout_ms=runtime.timeout_ms,
@@ -783,9 +769,7 @@ def test_subprocess_runtime_fixture_records_discovery_and_outcomes() -> None:
     for witness in receipt.witnesses:
         assert "echo" in witness.discovery.production_tools
         assert witness.discovery.manifest_cid == receipt.manifest_cid
-        assert WitnessPhase.DISCOVERY.value in (
-            witness.observation.phases_completed
-        )
+        assert WitnessPhase.DISCOVERY.value in (witness.observation.phases_completed)
 
     # Deterministic replay of the subprocess receipt.
     assert replay_receipt(receipt).content_id == receipt.content_id
@@ -807,9 +791,7 @@ def test_dispatch_target_identity_is_recorded(
     witness = runtime.call(make_call_request("vfs.stat", {"path": "/a"}))
     obs = witness.observation
     assert obs.adapter_id == "adapter:vfs.stat:production"
-    assert "mcplusplus_runtime_witness._handler_vfs_stat" in (
-        obs.implementation_target
-    )
+    assert "mcplusplus_runtime_witness._handler_vfs_stat" in (obs.implementation_target)
     assert obs.implementation_kind is ImplementationKind.PRODUCTION
 
 
@@ -827,9 +809,7 @@ def test_negotiation_and_discovery_round_trip() -> None:
         fixture_tools=(),
         manifest_cid="baguqeeram1",
     )
-    assert ToolDiscoveryRecord.from_dict(discovery.to_dict()).content_id == (
-        discovery.content_id
-    )
+    assert ToolDiscoveryRecord.from_dict(discovery.to_dict()).content_id == (discovery.content_id)
     negotiation = CapabilityNegotiationRecord(
         requested_profiles=("mcp++/basic",),
         admitted_profiles=("mcp++/basic",),
@@ -840,9 +820,10 @@ def test_negotiation_and_discovery_round_trip() -> None:
         negotiated=True,
         reason="negotiated",
     )
-    assert CapabilityNegotiationRecord.from_dict(
-        negotiation.to_dict()
-    ).content_id == negotiation.content_id
+    assert (
+        CapabilityNegotiationRecord.from_dict(negotiation.to_dict()).content_id
+        == negotiation.content_id
+    )
 
 
 def test_call_request_normalizes_tool_name() -> None:
@@ -856,13 +837,8 @@ def test_cancellation_token_requires_identity() -> None:
 
 
 def test_unavailable_adapter_spec_flag() -> None:
-    specs = {
-        s.tool_name: s for s in default_production_adapters()
-    }
-    assert (
-        specs["unavailable.probe"].backend_availability
-        is BackendAvailability.UNAVAILABLE
-    )
+    specs = {s.tool_name: s for s in default_production_adapters()}
+    assert specs["unavailable.probe"].backend_availability is BackendAvailability.UNAVAILABLE
 
 
 def test_runtime_fixture_identity_stable_for_same_registry() -> None:
@@ -896,9 +872,7 @@ def test_suite_covers_acceptance_failure_matrix(
                 {"message": "s"},
                 expected_manifest_cid="baguqeerastale",
             ),
-            make_call_request(
-                "echo", {"message": "t"}, force_timeout=True
-            ),
+            make_call_request("echo", {"message": "t"}, force_timeout=True),
         ]
     )
     expected = [

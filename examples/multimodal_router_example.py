@@ -16,7 +16,7 @@ The router automatically selects the best available provider based on:
 import os
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 try:
@@ -57,7 +57,9 @@ def example_with_image_url():
     image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/240px-PNG_transparency_demonstration_1.png"
 
     if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
-        print("Note: No API key configured. This example requires OPENAI_API_KEY or OPENROUTER_API_KEY.")
+        print(
+            "Note: No API key configured. This example requires OPENAI_API_KEY or OPENROUTER_API_KEY."
+        )
         print("Falling back to text-only mode for demonstration.")
         image_url = None
 
@@ -110,7 +112,7 @@ def example_with_image_bytes():
 
             header = b"\x89PNG\r\n\x1a\n"
             ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
-            raw_data = b"\x00\xFF\x00\x00"  # filter=0, R=255, G=0, B=0
+            raw_data = b"\x00\xff\x00\x00"  # filter=0, R=255, G=0, B=0
             idat = chunk(b"IDAT", zlib.compress(raw_data))
             iend = chunk(b"IEND", b"")
             return header + ihdr + idat + iend
@@ -133,6 +135,7 @@ def example_custom_provider():
 
     class EchoMultimodalProvider:
         """A simple provider that echoes the prompt with image info."""
+
         def generate(self, prompt: str, *, image=None, model_name=None, **kwargs):
             has_image = image is not None
             return f"Echo (image={'yes' if has_image else 'no'}): {prompt}"

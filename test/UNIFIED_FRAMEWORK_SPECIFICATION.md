@@ -158,7 +158,7 @@ The `WebPlatformHandler` class serves as the main entry point for the unified fr
 ```python
 class WebPlatformHandler:
     """Main handler for web platform integration."""
-    
+
     def __init__(self, model_path=None, config=None):
         """Initialize the web platform handler."""
         self.model_path = model_path
@@ -166,54 +166,56 @@ class WebPlatformHandler:
         self.environment = self._detect_environment()
         self.components = {}
         self.initialized = False
-        
+
         # Initialize core subsystems
         self.config_manager = ConfigurationManager(self.config)
         self.error_handler = ErrorHandler(self.config_manager.get("error_handling", {}))
-        self.performance_monitor = PerformanceMonitor(self.config_manager.get("performance_monitoring", {}))
+        self.performance_monitor = PerformanceMonitor(
+            self.config_manager.get("performance_monitoring", {})
+        )
         self.logging = LoggingSystem(self.config_manager.get("logging", {}))
         self.resource_manager = ResourceManager(self.config_manager.get("resources", {}))
-        
+
         # Initialize component registry
         self.component_registry = ComponentRegistry(self)
-        
+
         # Initialize adapters
         self.precision_adapter = PrecisionAdapter(self)
         self.loading_adapter = LoadingAdapter(self)
         self.runtime_adapter = RuntimeAdapter(self)
         self.streaming_adapter = StreamingAdapter(self)
-        
+
     def _detect_environment(self):
         """Detect the execution environment."""
         detector = BrowserCapabilityDetector()
         environment = detector.detect_capabilities()
-        
+
         # Enhance with hardware detection
         environment["hardware"] = self._detect_hardware()
-        
+
         return environment
-    
+
     def _detect_hardware(self):
         """Detect hardware capabilities."""
         # Implementation depends on browser environment
         # May use navigator.gpu, etc.
         return {
             "gpu_available": True,  # Placeholder
-            "memory_gb": 4,         # Placeholder
-            "cores": 4              # Placeholder
+            "memory_gb": 4,  # Placeholder
+            "cores": 4,  # Placeholder
         }
-    
+
     def initialize(self, model=None, options=None):
         """Initialize the framework with a model."""
         if self.initialized:
             self.logging.warn("Framework already initialized")
             return
-            
+
         try:
             # Merge options with config
             if options:
                 self.config_manager.merge(options)
-            
+
             # Set model if provided
             if model:
                 self.model = model
@@ -222,133 +224,125 @@ class WebPlatformHandler:
                 self.model = self._load_model_from_path(self.model_path)
             else:
                 raise ValueError("No model or model_path provided")
-                
+
             # Initialize components based on detected environment
             self._initialize_components()
-            
+
             # Mark as initialized
             self.initialized = True
-            
+
             # Start performance monitoring
             self.performance_monitor.start()
-            
+
             return True
         except Exception as e:
             # Handle initialization error
             error_info = self.error_handler.handle_initialization_error(e)
             self.logging.error(f"Initialization failed: {error_info['message']}")
             return False
-    
+
     def _initialize_components(self):
         """Initialize components based on environment and configuration."""
         # Determine which components to initialize
         required_components = self.config_manager.get("components", {})
-        
+
         # Initialize precision control if needed
         if required_components.get("precision_control", True):
             self.component_registry.register(
-                "precision_control",
-                self.precision_adapter.create_controller()
+                "precision_control", self.precision_adapter.create_controller()
             )
-            
+
         # Initialize progressive loading if needed
         if required_components.get("progressive_loading", True):
             self.component_registry.register(
-                "progressive_loading",
-                self.loading_adapter.create_loader()
+                "progressive_loading", self.loading_adapter.create_loader()
             )
-            
+
         # Initialize streaming if needed
         if required_components.get("streaming", False):
-            self.component_registry.register(
-                "streaming",
-                self.streaming_adapter.create_pipeline()
-            )
-            
+            self.component_registry.register("streaming", self.streaming_adapter.create_pipeline())
+
         # Initialize runtime adaptation if needed
         if required_components.get("runtime_adaptation", True):
             self.component_registry.register(
-                "runtime_adaptation",
-                self.runtime_adapter.create_adapter()
+                "runtime_adaptation", self.runtime_adapter.create_adapter()
             )
-    
+
     def _load_model_from_path(self, path):
         """Load a model from the given path."""
         # Implementation depends on model format
         return None  # Placeholder
-        
+
     def run(self, inputs, **kwargs):
         """Run inference with the model."""
         if not self.initialized:
             return self.error_handler.handle_error(
-                ValueError("Framework not initialized"),
-                context={"inputs": inputs}
+                ValueError("Framework not initialized"), context={"inputs": inputs}
             )
-            
+
         try:
             # Start tracking performance
             self.performance_monitor.start_operation("inference")
-            
+
             # Prepare inputs
             prepared_inputs = self._prepare_inputs(inputs)
-            
+
             # Run model
             outputs = self._run_model(prepared_inputs, **kwargs)
-            
+
             # Process outputs
             processed_outputs = self._process_outputs(outputs)
-            
+
             # End performance tracking
             self.performance_monitor.end_operation("inference")
-            
+
             return processed_outputs
         except Exception as e:
             # Handle inference error
-            return self.error_handler.handle_inference_error(e, context={
-                "inputs": inputs,
-                "kwargs": kwargs
-            })
-    
+            return self.error_handler.handle_inference_error(
+                e, context={"inputs": inputs, "kwargs": kwargs}
+            )
+
     async def run_stream(self, inputs, **kwargs):
         """Run streaming inference with the model."""
         if not self.initialized:
             raise ValueError("Framework not initialized")
-            
+
         # Get streaming component
         streaming = self.component_registry.get("streaming")
         if not streaming:
             raise ValueError("Streaming component not initialized")
-            
+
         # Run streaming inference
         async for token in streaming.generate_stream(inputs, **kwargs):
             yield token
-            
+
     def get_component(self, name):
         """Get a component by name."""
         return self.component_registry.get(name)
-        
+
     def get_performance_metrics(self):
         """Get performance metrics."""
         return self.performance_monitor.get_metrics()
-        
+
     def release(self):
         """Release resources."""
         if not self.initialized:
             return
-            
+
         try:
             # Stop performance monitoring
             self.performance_monitor.stop()
-            
+
             # Release components
             for component_name in list(self.components.keys()):
                 component = self.components.pop(component_name, None)
                 if hasattr(component, "release") and callable(component.release):
                     component.release()
-                    
+
             # Release resources
             self.resource_manager.release_all()
-            
+
             # Mark as uninitialized
             self.initialized = False
         except Exception as e:
@@ -369,14 +363,14 @@ The `ConfigurationManager` handles configuration validation, merging, and defaul
 ```python
 class ConfigurationManager:
     """Manages component configuration."""
-    
+
     def __init__(self, config=None):
         """Initialize the configuration manager."""
         self.config = config or {}
         self.defaults = self._get_defaults()
         self.validators = self._get_validators()
         self.initialized_config = None
-        
+
     def _get_defaults(self):
         """Get default configuration values."""
         return {
@@ -384,58 +378,58 @@ class ConfigurationManager:
                 "mode": "graceful",  # Options: graceful, strict
                 "report_errors": True,
                 "auto_recovery": True,
-                "max_retries": 3
+                "max_retries": 3,
             },
             "performance_monitoring": {
                 "enabled": True,
                 "sampling_rate": 0.1,  # Sample 10% of operations
                 "detailed_metrics": False,
-                "report_to_telemetry": False
+                "report_to_telemetry": False,
             },
             "logging": {
                 "level": "info",  # Options: debug, info, warn, error
                 "console": True,
                 "structured": True,
-                "include_context": True
+                "include_context": True,
             },
             "resources": {
                 "max_memory_mb": 0,  # 0 means no limit
                 "release_unused": True,
                 "gc_interval": 60,  # Seconds
-                "memory_pressure_threshold": 0.8  # 80% memory usage
+                "memory_pressure_threshold": 0.8,  # 80% memory usage
             },
             "components": {
                 "precision_control": True,
                 "progressive_loading": True,
                 "streaming": False,
-                "runtime_adaptation": True
+                "runtime_adaptation": True,
             },
             "precision": {
                 "mode": "auto",  # Options: auto, 2bit, 3bit, 4bit, 8bit, fp16, fp32
                 "use_mixed_precision": True,
                 "critical_layers_precision": "fp16",
-                "kv_cache_precision": "4bit"
+                "kv_cache_precision": "4bit",
             },
             "loading": {
                 "progressive": True,
                 "parallel": True,
                 "prefetch_distance": 2,
-                "checkpoint_interval": 5
+                "checkpoint_interval": 5,
             },
             "streaming": {
                 "batch_size": "auto",  # Options: auto, or integer
                 "enable_websocket": False,
                 "websocket_port": 8765,
-                "low_latency": True
+                "low_latency": True,
             },
             "runtime": {
                 "adaptation_enabled": True,
                 "monitoring_interval_ms": 1000,
                 "adaptation_threshold": 0.2,
-                "metrics_history_size": 50
-            }
+                "metrics_history_size": 50,
+            },
         }
-    
+
     def _get_validators(self):
         """Get configuration validators."""
         return {
@@ -445,33 +439,35 @@ class ConfigurationManager:
             "logging.level": lambda v: v in ["debug", "info", "warn", "error"],
             "resources.max_memory_mb": lambda v: isinstance(v, int) and v >= 0,
             "resources.memory_pressure_threshold": lambda v: 0 <= v <= 1,
-            "precision.mode": lambda v: v in ["auto", "2bit", "3bit", "4bit", "8bit", "fp16", "fp32"]
+            "precision.mode": lambda v: (
+                v in ["auto", "2bit", "3bit", "4bit", "8bit", "fp16", "fp32"]
+            ),
         }
-        
+
     def initialize(self):
         """Initialize configuration with defaults and validation."""
         if self.initialized_config is not None:
             return self.initialized_config
-            
+
         # Start with defaults
         result = copy.deepcopy(self.defaults)
-        
+
         # Merge user config
         self._deep_merge(result, self.config)
-        
+
         # Validate configuration
         self._validate_config(result)
-        
+
         # Store initialized config
         self.initialized_config = result
-        
+
         return result
-        
+
     def get(self, key, default=None):
         """Get a configuration value by key."""
         if self.initialized_config is None:
             self.initialize()
-            
+
         # Support nested keys with dot notation
         if "." in key:
             parts = key.split(".")
@@ -484,12 +480,12 @@ class ConfigurationManager:
             return value
         else:
             return self.initialized_config.get(key, default)
-            
+
     def merge(self, config):
         """Merge a new configuration with the existing one."""
         self._deep_merge(self.config, config)
         self.initialized_config = None  # Force reinitialization
-        
+
     def _deep_merge(self, target, source):
         """Deep merge source dict into target dict."""
         for key, value in source.items():
@@ -497,7 +493,7 @@ class ConfigurationManager:
                 self._deep_merge(target[key], value)
             else:
                 target[key] = value
-                
+
     def _validate_config(self, config):
         """Validate configuration values."""
         for key, validator in self.validators.items():
@@ -511,7 +507,7 @@ class ConfigurationManager:
                     # Reset to default value
                     default_value = self._get_default_value(key)
                     parent[parts[-1]] = default_value
-                    
+
     def _get_default_value(self, key):
         """Get default value for a key."""
         parts = key.split(".")
@@ -536,7 +532,7 @@ The `ErrorHandler` provides comprehensive error management with graceful degrada
 ```python
 class ErrorHandler:
     """Handles errors with graceful degradation."""
-    
+
     def __init__(self, config=None):
         """Initialize the error handler."""
         self.config = config or {}
@@ -545,13 +541,13 @@ class ErrorHandler:
         self.auto_recovery = self.config.get("auto_recovery", True)
         self.max_retries = self.config.get("max_retries", 3)
         self.retries = {}
-        
+
     def handle_error(self, error, context=None):
         """Handle any error with appropriate strategy."""
         error_type = type(error).__name__
         error_message = str(error)
         context = context or {}
-        
+
         # Create error info object
         error_info = {
             "type": error_type,
@@ -559,51 +555,50 @@ class ErrorHandler:
             "context": context,
             "timestamp": time.time(),
             "recoverable": self._is_recoverable(error),
-            "retry_count": self.retries.get(error_type, 0)
+            "retry_count": self.retries.get(error_type, 0),
         }
-        
+
         # Report error if enabled
         if self.report_errors:
             self._report_error(error_info)
-            
+
         # Determine if we should retry
-        if (self.auto_recovery and 
-            error_info["recoverable"] and 
-            error_info["retry_count"] < self.max_retries):
+        if (
+            self.auto_recovery
+            and error_info["recoverable"]
+            and error_info["retry_count"] < self.max_retries
+        ):
             # Increment retry count
             self.retries[error_type] = error_info["retry_count"] + 1
-            
+
             # Attempt recovery
             recovery_result = self._attempt_recovery(error, context)
             if recovery_result is not None:
                 error_info["recovered"] = True
                 error_info["recovery_result"] = recovery_result
                 return recovery_result
-                
+
         # If strict mode and not recovered, re-raise
         if self.mode == "strict" and not error_info.get("recovered", False):
             raise error
-            
+
         # In graceful mode, return error info
-        return {
-            "error": error_info,
-            "result": None
-        }
-        
+        return {"error": error_info, "result": None}
+
     def handle_initialization_error(self, error):
         """Handle initialization-specific errors."""
         error_info = self.handle_error(error, context={"phase": "initialization"})
-        
+
         # For initialization errors, we prefer to return structured info
         # rather than raising, even in strict mode
         return error_info
-        
+
     def handle_inference_error(self, error, context=None):
         """Handle inference-specific errors."""
         context = context or {}
         context["phase"] = "inference"
         return self.handle_error(error, context)
-        
+
     def _is_recoverable(self, error):
         """Determine if an error is recoverable."""
         # Some errors are known to be recoverable
@@ -611,15 +606,15 @@ class ErrorHandler:
             "MemoryError",  # May be recoverable with resource cleanup
             "TimeoutError",  # May be recoverable with retry
             "ConnectionError",  # May be recoverable with retry
-            "ResourceExhaustedError"  # Custom error type for resource exhaustion
+            "ResourceExhaustedError",  # Custom error type for resource exhaustion
         ]
-        
+
         return type(error).__name__ in recoverable_types
-        
+
     def _attempt_recovery(self, error, context):
         """Attempt to recover from an error."""
         error_type = type(error).__name__
-        
+
         # Different recovery strategies based on error type
         if error_type == "MemoryError":
             return self._recover_from_memory_error(context)
@@ -627,26 +622,26 @@ class ErrorHandler:
             return self._recover_from_timeout(context)
         elif error_type == "ConnectionError":
             return self._recover_from_connection_error(context)
-        
+
         # No recovery strategy available
         return None
-        
+
     def _recover_from_memory_error(self, context):
         """Recover from a memory error."""
         # Implementation would include memory cleanup
         # Releasing unused resources, etc.
         return None  # Placeholder
-        
+
     def _recover_from_timeout(self, context):
         """Recover from a timeout error."""
         # Implementation would include retry with longer timeout
         return None  # Placeholder
-        
+
     def _recover_from_connection_error(self, context):
         """Recover from a connection error."""
         # Implementation would include retry with connection reestablishment
         return None  # Placeholder
-        
+
     def _report_error(self, error_info):
         """Report an error to logging/telemetry."""
         # Implementation would report to appropriate systems
@@ -665,28 +660,31 @@ The `ComponentRegistry` manages component lifecycle and dependencies.
 ```python
 class ComponentRegistry:
     """Manages component lifecycle and dependencies."""
-    
+
     def __init__(self, framework):
         """Initialize the component registry."""
         self.framework = framework
         self.components = {}
         self.dependencies = self._get_dependencies()
-        
+
     def _get_dependencies(self):
         """Get component dependencies."""
         return {
             "precision_control": [],  # No dependencies
             "progressive_loading": [],  # No dependencies
             "streaming": ["precision_control"],  # Depends on precision control
-            "runtime_adaptation": ["precision_control", "progressive_loading"]  # Multiple dependencies
+            "runtime_adaptation": [
+                "precision_control",
+                "progressive_loading",
+            ],  # Multiple dependencies
         }
-        
+
     def register(self, name, component):
         """Register a component."""
         if name in self.components:
             self.framework.logging.warn(f"Component {name} already registered")
             return False
-            
+
         # Check dependencies
         if name in self.dependencies:
             for dependency in self.dependencies[name]:
@@ -695,25 +693,25 @@ class ComponentRegistry:
                         f"Cannot register {name}: missing dependency {dependency}"
                     )
                     return False
-                    
+
         # Register component
         self.components[name] = component
         self.framework.logging.info(f"Registered component: {name}")
         return True
-        
+
     def get(self, name):
         """Get a component by name."""
         return self.components.get(name)
-        
+
     def has(self, name):
         """Check if a component is registered."""
         return name in self.components
-        
+
     def unregister(self, name):
         """Unregister a component."""
         if name not in self.components:
             return False
-            
+
         # Check if other components depend on this one
         for dep_name, deps in self.dependencies.items():
             if name in deps and dep_name in self.components:
@@ -721,19 +719,19 @@ class ComponentRegistry:
                     f"Component {dep_name} depends on {name}, unregistering both"
                 )
                 self.unregister(dep_name)
-                
+
         # Release the component
         component = self.components.pop(name)
         if hasattr(component, "release") and callable(component.release):
             component.release()
-            
+
         self.framework.logging.info(f"Unregistered component: {name}")
         return True
-        
+
     def list_components(self):
         """List all registered components."""
         return list(self.components.keys())
-        
+
     def release_all(self):
         """Release all components."""
         # Unregister in reverse dependency order
@@ -754,49 +752,44 @@ The `PrecisionAdapter` provides an interface to the precision control system.
 ```python
 class PrecisionAdapter:
     """Adapter for precision control system."""
-    
+
     def __init__(self, framework):
         """Initialize the precision adapter."""
         self.framework = framework
         self.config = framework.config_manager.get("precision", {})
-        
+
     def create_controller(self):
         """Create a precision controller based on configuration."""
         mode = self.config.get("mode", "auto")
         use_mixed_precision = self.config.get("use_mixed_precision", True)
-        
+
         # Determine actual precision based on configuration and environment
         if mode == "auto":
             # Auto-detect optimal precision
             mode = self._determine_optimal_precision()
-            
+
         # Create controller based on determined precision
         if mode in ["2bit", "3bit"]:
             return self._create_ultra_low_precision_controller(
-                bits=int(mode[0]),
-                use_mixed_precision=use_mixed_precision
+                bits=int(mode[0]), use_mixed_precision=use_mixed_precision
             )
         elif mode == "4bit":
-            return self._create_4bit_precision_controller(
-                use_mixed_precision=use_mixed_precision
-            )
+            return self._create_4bit_precision_controller(use_mixed_precision=use_mixed_precision)
         elif mode == "8bit":
-            return self._create_8bit_precision_controller(
-                use_mixed_precision=use_mixed_precision
-            )
+            return self._create_8bit_precision_controller(use_mixed_precision=use_mixed_precision)
         elif mode == "fp16":
             return self._create_fp16_precision_controller()
         else:  # fp32
             return self._create_fp32_precision_controller()
-            
+
     def _determine_optimal_precision(self):
         """Determine optimal precision based on environment."""
         # Check if WebGPU is available
         webgpu_available = self.framework.environment.get("webgpu", {}).get("available", False)
-        
+
         # Check memory constraints
         available_memory_gb = self.framework.environment.get("hardware", {}).get("memory_gb", 0)
-        
+
         if webgpu_available:
             # WebGPU available, use aggressive precision
             if available_memory_gb < 2:
@@ -813,36 +806,40 @@ class PrecisionAdapter:
                 return "8bit"  # Low memory
             else:
                 return "fp16"  # Medium to high memory
-                
+
     def _create_ultra_low_precision_controller(self, bits, use_mixed_precision):
         """Create ultra-low precision controller (2-bit or 3-bit)."""
         # Implementation would create controller from webgpu_ultra_low_precision.py
         controller_config = {
             "bits": bits,
             "use_mixed_precision": use_mixed_precision,
-            "critical_layers_bits": int(self.config.get("critical_layers_precision", "fp16").replace("fp", "")),
+            "critical_layers_bits": int(
+                self.config.get("critical_layers_precision", "fp16").replace("fp", "")
+            ),
             "kv_cache_bits": int(self.config.get("kv_cache_precision", "4bit").replace("bit", "")),
-            "optimize_for_browser": self.framework.environment.get("browser", {}).get("name", "unknown")
+            "optimize_for_browser": self.framework.environment.get("browser", {}).get(
+                "name", "unknown"
+            ),
         }
-        
+
         # This is a placeholder for the actual implementation
         return controller_config
-        
+
     def _create_4bit_precision_controller(self, use_mixed_precision):
         """Create 4-bit precision controller."""
         # Similar implementation to ultra-low precision
         return {"bits": 4, "use_mixed_precision": use_mixed_precision}
-        
+
     def _create_8bit_precision_controller(self, use_mixed_precision):
         """Create 8-bit precision controller."""
         # Similar implementation to other precision controllers
         return {"bits": 8, "use_mixed_precision": use_mixed_precision}
-        
+
     def _create_fp16_precision_controller(self):
         """Create FP16 precision controller."""
         # Implementation for FP16 precision
         return {"precision": "fp16"}
-        
+
     def _create_fp32_precision_controller(self):
         """Create FP32 precision controller."""
         # Implementation for FP32 precision
@@ -860,59 +857,35 @@ class PrecisionAdapter:
 handler = WebPlatformHandler(
     config={
         # Core configuration
-        "error_handling": {
-            "mode": "graceful",
-            "report_errors": True
-        },
-        "performance_monitoring": {
-            "enabled": True,
-            "detailed_metrics": True
-        },
-        "logging": {
-            "level": "info",
-            "structured": True
-        },
-        "resources": {
-            "max_memory_mb": 4096,
-            "memory_pressure_threshold": 0.8
-        },
-        
+        "error_handling": {"mode": "graceful", "report_errors": True},
+        "performance_monitoring": {"enabled": True, "detailed_metrics": True},
+        "logging": {"level": "info", "structured": True},
+        "resources": {"max_memory_mb": 4096, "memory_pressure_threshold": 0.8},
         # Component configuration
         "components": {
             "precision_control": True,
             "progressive_loading": True,
             "streaming": True,
-            "runtime_adaptation": True
+            "runtime_adaptation": True,
         },
-        
         # Precision configuration
         "precision": {
             "mode": "auto",
             "use_mixed_precision": True,
             "critical_layers_precision": "fp16",
-            "kv_cache_precision": "4bit"
+            "kv_cache_precision": "4bit",
         },
-        
         # Progressive loading configuration
-        "loading": {
-            "progressive": True,
-            "parallel": True,
-            "prefetch_distance": 2
-        },
-        
+        "loading": {"progressive": True, "parallel": True, "prefetch_distance": 2},
         # Streaming configuration
         "streaming": {
             "batch_size": "auto",
             "enable_websocket": True,
             "websocket_port": 8765,
-            "low_latency": True
+            "low_latency": True,
         },
-        
         # Runtime adaptation configuration
-        "runtime": {
-            "adaptation_enabled": True,
-            "monitoring_interval_ms": 1000
-        }
+        "runtime": {"adaptation_enabled": True, "monitoring_interval_ms": 1000},
     }
 )
 
@@ -921,17 +894,11 @@ model_path = "path/to/model"
 handler.initialize(model_path=model_path)
 
 # Run inference
-result = handler.run(
-    "Explain quantum computing in simple terms",
-    max_tokens=100,
-    temperature=0.7
-)
+result = handler.run("Explain quantum computing in simple terms", max_tokens=100, temperature=0.7)
 
 # Run streaming inference
 async for token in handler.run_stream(
-    "Explain quantum computing in simple terms",
-    max_tokens=100,
-    temperature=0.7
+    "Explain quantum computing in simple terms", max_tokens=100, temperature=0.7
 ):
     print(token, end="", flush=True)
 

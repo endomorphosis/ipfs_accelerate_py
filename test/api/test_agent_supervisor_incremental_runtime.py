@@ -119,10 +119,7 @@ def test_objective_scan_skips_symlinks_and_never_reads_external_targets(
         objective_path=objective,
     )
     assert records
-    assert all(
-        not Path(str(row["root_relative_path"])).is_absolute()
-        for row in records
-    )
+    assert all(not Path(str(row["root_relative_path"])).is_absolute() for row in records)
     assert all(
         "EXTERNAL_EVIDENCE_MUST_NOT_BE_SCANNED" not in str(row.get("evidence_text") or "")
         for row in records
@@ -357,12 +354,22 @@ def _seed_repo_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     (repo / "app.py").write_text("from pathlib import Path\nVALUE = 7\n", encoding="utf-8")
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "seed implementation")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(dependency), "vendor/dependency")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(dependency),
+        "vendor/dependency",
+    )
     _git(repo, "commit", "-am", "add dependency")
     return repo, dependency
 
 
-def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tmp_path: Path) -> None:
+def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(
+    tmp_path: Path,
+) -> None:
     repo, _dependency = _seed_repo_with_submodule(tmp_path)
     pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool", max_entries=2)
     prepare_calls = 0
@@ -371,7 +378,9 @@ def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tm
         nonlocal prepare_calls
         prepare_calls += 1
         time.sleep(0.02)
-        _git(path, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--checkout")
+        _git(
+            path, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--checkout"
+        )
 
     cold = pool.acquire(
         cache_key="linux-lock-v1",
@@ -381,9 +390,15 @@ def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tm
         prepare=prepare,
     )
     assert cold.reused is False
-    assert (cold.path / "vendor" / "dependency" / "dependency.py").read_text(encoding="utf-8") == "VALUE = 7\n"
+    assert (cold.path / "vendor" / "dependency" / "dependency.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 7\n"
     cold_validation = subprocess.run(
-        ["python", "-c", "from pathlib import Path; assert 'VALUE = 7' in Path('app.py').read_text()"],
+        [
+            "python",
+            "-c",
+            "from pathlib import Path; assert 'VALUE = 7' in Path('app.py').read_text()",
+        ],
         cwd=cold.path,
         capture_output=True,
         check=False,
@@ -402,7 +417,11 @@ def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tm
         prepare=prepare,
     )
     warm_validation = subprocess.run(
-        ["python", "-c", "from pathlib import Path; assert 'VALUE = 7' in Path('app.py').read_text()"],
+        [
+            "python",
+            "-c",
+            "from pathlib import Path; assert 'VALUE = 7' in Path('app.py').read_text()",
+        ],
         cwd=warm.path,
         capture_output=True,
         check=False,
@@ -465,9 +484,7 @@ def test_pooled_admission_leaves_lifecycle_denied_entry_untouched(
         lease_id=lifecycle.lease_id,
         expected_fence=lifecycle.fence,
     )
-    pool_state_path = (
-        worktree_root / ".pool-state" / f"{prior_entry_id}.json"
-    )
+    pool_state_path = worktree_root / ".pool-state" / f"{prior_entry_id}.json"
     lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(prior_path)
     state_before = pool_state_path.read_bytes()
     lifecycle_before = lifecycle_path.read_bytes()
@@ -484,18 +501,13 @@ def test_pooled_admission_leaves_lifecycle_denied_entry_untouched(
 
     assert acquired.reused is False
     assert acquired.path != prior_path
-    assert (
-        "worktree_reuse_denied:owner_dead_lease_unexpired"
-        in acquired.invalidation_reasons
-    )
+    assert "worktree_reuse_denied:owner_dead_lease_unexpired" in acquired.invalidation_reasons
     assert pool_state_path.read_bytes() == state_before
     assert lifecycle_path.read_bytes() == lifecycle_before
     assert daemon.worktree_lifecycle.load_workspace(prior_path) == lifecycle
     assert _git(prior_path, "rev-parse", "HEAD") == head_before
     assert _git(prior_path, "status", "--porcelain") == status_before
-    assert not (
-        worktree_root / ".pool-state" / f"{prior_entry_id}.lock"
-    ).exists()
+    assert not (worktree_root / ".pool-state" / f"{prior_entry_id}.lock").exists()
 
     release = daemon._release_pooled_worktree_lease(
         acquired_path,
@@ -510,14 +522,8 @@ def test_pooled_admission_leaves_lifecycle_denied_entry_untouched(
     assert _git(prior_path, "status", "--porcelain") == status_before
 
     invalidation = pool.invalidate()
-    denied_skip = next(
-        item
-        for item in invalidation["skipped"]
-        if item["path"] == str(prior_path)
-    )
-    assert denied_skip["reason"] == (
-        "worktree_reuse_denied:owner_dead_lease_unexpired"
-    )
+    denied_skip = next(item for item in invalidation["skipped"] if item["path"] == str(prior_path))
+    assert denied_skip["reason"] == ("worktree_reuse_denied:owner_dead_lease_unexpired")
     assert pool_state_path.read_bytes() == state_before
     assert lifecycle_path.read_bytes() == lifecycle_before
     assert _git(prior_path, "rev-parse", "HEAD") == head_before
@@ -577,12 +583,10 @@ def test_pooled_admission_reclaims_expired_lifecycle_only_after_claim(
     lifecycle_before = lifecycle_path.read_bytes()
     daemon.worktree_lifecycle.clock = lambda: 1_011.0
 
-    preflight_allowed, preflight_reason = (
-        daemon._authorize_pooled_worktree_reuse(
-            prior_path,
-            lifecycle.branch,
-            "preflight",
-        )
+    preflight_allowed, preflight_reason = daemon._authorize_pooled_worktree_reuse(
+        prior_path,
+        lifecycle.branch,
+        "preflight",
     )
     assert preflight_allowed is True
     assert preflight_reason == "stale_owner_lease_expired"
@@ -609,11 +613,7 @@ def test_pooled_admission_reclaims_expired_lifecycle_only_after_claim(
     daemon._create_seeded_worktree(missing_request, missing_branch)
     missing_path = daemon._effective_pooled_worktree_path(missing_request)
     missing_lease = daemon._worktree_pool_leases[missing_path]
-    (
-        worktree_root
-        / ".pool-state"
-        / f"{missing_lease.entry_id}.json"
-    ).unlink()
+    (worktree_root / ".pool-state" / f"{missing_lease.entry_id}.json").unlink()
 
     generic_failure = daemon._cleanup_merged_worktree(
         missing_path,
@@ -685,9 +685,7 @@ def test_lifecycle_denied_pool_release_stays_retryable_and_cannot_fall_through(
         lease_id=lifecycle.lease_id,
         expected_fence=lifecycle.fence,
     )
-    pool_state_path = (
-        worktree_root / ".pool-state" / f"{lease.entry_id}.json"
-    )
+    pool_state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
     lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
     state_before = pool_state_path.read_bytes()
     lock_before = lock_path.read_bytes()
@@ -820,13 +818,17 @@ def test_dirty_workspace_is_discarded_instead_of_shared(tmp_path: Path) -> None:
     assert release["pooled"] is False
     assert release["reason"] == "dirty_worktree"
 
-    next_lease = pool.acquire(cache_key="setup-v1", base_ref="main", branch_name="implementation/next")
+    next_lease = pool.acquire(
+        cache_key="setup-v1", base_ref="main", branch_name="implementation/next"
+    )
     assert next_lease.reused is False
     assert not (next_lease.path / "secret.txt").exists()
     assert next_lease.release()["pooled"] is True
 
 
-def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(tmp_path: Path) -> None:
+def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(
+    tmp_path: Path,
+) -> None:
     repo, _dependency = _seed_repo_with_submodule(tmp_path)
     worktree_root = tmp_path / "daemon-pool"
     daemon = PortalImplementationDaemon(
@@ -849,7 +851,9 @@ def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(
     assert cold_path.exists()
     assert cold_path != requested_cold
     assert daemon._worktree_setup_result(cold_path)["cache_hit"] is False
-    assert daemon._cleanup_merged_worktree(cold_path, "implementation/daemon-cold")["pooled"] is True
+    assert (
+        daemon._cleanup_merged_worktree(cold_path, "implementation/daemon-cold")["pooled"] is True
+    )
 
     requested_warm = worktree_root / "task-attempt-warm"
     warm_baseline = daemon._create_seeded_worktree(
@@ -863,10 +867,14 @@ def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(
     assert warm_setup["cache_hit"] is True
     assert warm_setup["saved_duration_seconds"] >= 0
     assert _git(warm_path, "status", "--porcelain") == ""
-    assert daemon._cleanup_merged_worktree(warm_path, "implementation/daemon-warm")["pooled"] is True
+    assert (
+        daemon._cleanup_merged_worktree(warm_path, "implementation/daemon-warm")["pooled"] is True
+    )
 
 
-def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tmp_path: Path) -> None:
+def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(
+    tmp_path: Path,
+) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
@@ -893,7 +901,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         task_header_prefix="## INC-",
         implement=True,
         implementation_command=(
-            "python -c \"from pathlib import Path; "
+            'python -c "from pathlib import Path; '
             "Path('feature.py').write_text('VALUE = 1\\\\n')\""
         ),
         use_ephemeral_worktree=True,
@@ -913,10 +921,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     assert handoff["lifecycle_finalize"]["reason"] == "pooled_merge_queue_handoff"
     assert merge_result["worktree_lifecycle_handoff"]["finalized"] is True
     assert daemon._active_worktree_lifecycle is None
-    assert (
-        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
-        is None
-    )
+    assert daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"])) is None
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
     assert (
@@ -948,7 +953,7 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command="python -c \"raise SystemExit(7)\"",
+        implementation_command='python -c "raise SystemExit(7)"',
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
     )
@@ -966,17 +971,9 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert result["returncode"] == 7
     assert result["cleanup_result"]["reason"] == "failed_implementation_pool_lease_released"
     assert result["cleanup_result"]["pool_release"]["released"] is True
-    assert (
-        result["cleanup_result"]["pool_release"]["lifecycle_finalize"][
-            "finalized"
-        ]
-        is True
-    )
+    assert result["cleanup_result"]["pool_release"]["lifecycle_finalize"]["finalized"] is True
     assert daemon._active_worktree_lifecycle is None
-    assert (
-        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
-        is None
-    )
+    assert daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"])) is None
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
 
@@ -998,8 +995,7 @@ def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
         repo_root=repo,
         implement=True,
         implementation_command=(
-            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
-            "raise SystemExit(1)\""
+            'python -c "print(\\"ERROR: You\'ve hit your usage limit.\\"); raise SystemExit(1)"'
         ),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1030,7 +1026,7 @@ def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
     )
 
     daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
-    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    daemon.implementation_command = 'python -c "raise SystemExit(7)"'
     second = daemon._run_implementation(
         task,
         PortalTaskState.load(daemon.state_path),
@@ -1057,8 +1053,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
         repo_root=repo,
         implement=True,
         implementation_command=(
-            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
-            "raise SystemExit(1)\""
+            'python -c "print(\\"ERROR: You\'ve hit your usage limit.\\"); raise SystemExit(1)"'
         ),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
@@ -1078,9 +1073,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
     assert first["deferred"] is True
     assert first["reason"] == "provider_capacity_exhausted"
     assert first["attempt_consumed"] is False
-    assert first["cleanup_result"]["reason"] == (
-        "failed_implementation_worktree_preserved"
-    )
+    assert first["cleanup_result"]["reason"] == ("failed_implementation_worktree_preserved")
     assert first["cleanup_result"]["cleaned"] is False
     assert first["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
     first_worktree = Path(first["worktree_path"])
@@ -1099,7 +1092,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
     _git(repo, "worktree", "remove", "--force", str(first_worktree))
     _git(repo, "branch", "-D", first["branch"])
     daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
-    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    daemon.implementation_command = 'python -c "raise SystemExit(7)"'
 
     second = daemon._run_implementation(
         task,
@@ -1108,9 +1101,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
 
     assert second["returncode"] == 7
     assert second.get("reason") != "worktree_lifecycle_claim_exists"
-    assert second["cleanup_result"]["reason"] == (
-        "failed_implementation_worktree_preserved"
-    )
+    assert second["cleanup_result"]["reason"] == ("failed_implementation_worktree_preserved")
     assert second["cleanup_result"]["cleaned"] is False
     assert second["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
     assert Path(second["worktree_path"]).exists()
@@ -1212,9 +1203,7 @@ def test_supervisor_does_not_reconcile_a_live_pooled_worktree(
     result = supervisor.reconcile_backlogged_worktrees()
 
     live_skip = next(
-        item
-        for item in result["skipped"]
-        if item["reason"] == "active_worktree_pool_lease"
+        item for item in result["skipped"] if item["reason"] == "active_worktree_pool_lease"
     )
     assert live_skip["path"] == str(lease.path)
     assert live_skip["owner_source"] == "worktree_pool_lease"
@@ -1310,9 +1299,7 @@ def test_supervisor_does_not_cleanup_an_idle_pooled_worktree(
     result = supervisor.cleanup_backlogged_worktrees()
 
     idle_skip = next(
-        item
-        for item in result["skipped"]
-        if item["reason"] == "idle_worktree_pool_entry"
+        item for item in result["skipped"] if item["reason"] == "idle_worktree_pool_entry"
     )
     assert idle_skip["path"] == str(idle_path)
     assert idle_skip["owner_source"] == "worktree_pool_lease"

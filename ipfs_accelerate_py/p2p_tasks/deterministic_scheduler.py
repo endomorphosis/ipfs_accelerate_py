@@ -72,7 +72,11 @@ class MerkleClock:
         return str(self.merkle_root or "")
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"node_id": self.node_id, "vector": dict(self.vector or {}), "merkle_root": self.get_hash()}
+        return {
+            "node_id": self.node_id,
+            "vector": dict(self.vector or {}),
+            "merkle_root": self.get_hash(),
+        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MerkleClock":

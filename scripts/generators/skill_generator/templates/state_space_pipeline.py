@@ -3,7 +3,7 @@
 State-Space Pipeline Template for IPFS Accelerate Python.
 
 This module implements a pipeline template for State-Space models like
-Mamba, Mamba-2, and RWKV. It handles State-Space-specific processing and 
+Mamba, Mamba-2, and RWKV. It handles State-Space-specific processing and
 optimizations for efficient inference.
 """
 
@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class StateSpacePipelineTemplate(BasePipelineTemplate):
     """Template for State-Space model pipelines."""
-    
+
     def __init__(self):
         """Initialize the State-Space pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class StateSpacePipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 4  # State-space can handle larger batches efficiently
-    
+
     def get_import_statements(self) -> str:
         """Get State-Space pipeline import statements."""
         return """
@@ -34,7 +34,7 @@ import json
 import numpy as np
 from typing import List, Dict, Union, Any, Optional, Tuple
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get State-Space preprocessing code for specific task types."""
         if task_type == "text_generation":
@@ -214,7 +214,7 @@ for param_name, param_value in kwargs.items():
     if param_name not in config:
         config[param_name] = param_value
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get State-Space postprocessing code for specific task types."""
         if task_type == "text_generation":
@@ -388,7 +388,7 @@ with self.torch.no_grad():
         "state_decode": config.get("state_decode", "default")
     }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get State-Space result formatting code for specific task types."""
         if task_type == "text_generation":
@@ -433,7 +433,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get State-Space mock input code."""
         return """
@@ -447,7 +447,7 @@ mock_input = {
     "state_decode": True  # State-Space-specific parameter
 }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get State-Space mock output code."""
         return """
@@ -483,7 +483,7 @@ else:
 
 return mock_output
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get State-Space utility functions."""
         return """
@@ -546,7 +546,7 @@ def estimate_memory_usage(batch_size, sequence_length, hidden_size, dtype="float
         "total_estimated_mb": (input_memory + hidden_states + state_memory) * bytes_to_mb
     }
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check State-Space pipeline compatibility with architecture type."""
         # State-Space pipeline is compatible with State-Space-based architectures
@@ -555,9 +555,9 @@ def estimate_memory_usage(batch_size, sequence_length, hidden_size, dtype="float
             "mamba",
             "rwkv",
             "linear-attention",  # Some linear attention models use State-Space
-            "recurrent"  # Recurrent models can be processed similarly
+            "recurrent",  # Recurrent models can be processed similarly
         ]
-    
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check State-Space pipeline compatibility with task type."""
         # State-Space pipeline is compatible with these tasks
@@ -565,5 +565,5 @@ def estimate_memory_usage(batch_size, sequence_length, hidden_size, dtype="float
             "text_generation",
             "text_classification",
             "feature_extraction",
-            "question_answering"
+            "question_answering",
         ]

@@ -192,13 +192,9 @@ class PinnedSymaiCompletionError(LLMRouterError):
 
     def __init__(self, safe_failure_class: str) -> None:
         if safe_failure_class not in self._SAFE_FAILURE_CLASSES:
-            raise ValueError(
-                "unsupported pinned SyMAI completion failure class"
-            )
+            raise ValueError("unsupported pinned SyMAI completion failure class")
         self.safe_failure_class = safe_failure_class
-        super().__init__(
-            "pinned SyMAI completion failed: " + safe_failure_class
-        )
+        super().__init__("pinned SyMAI completion failed: " + safe_failure_class)
 
 
 # Evidence identity for AICAT-G130 / AICAT-030 llm usage integration.
@@ -232,9 +228,7 @@ _LAST_GENERATION_TRACE = threading.local()
 _LAST_USAGE_ADMISSION = threading.local()
 _PINNED_SYMAI_LEANSTRAL_ALIAS = "Leanstral-119B"
 _PINNED_SYMAI_LEANSTRAL_INNER_PROVIDER = "leanstral_local"
-_PINNED_SYMAI_LEANSTRAL_MODEL = (
-    "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
-)
+_PINNED_SYMAI_LEANSTRAL_MODEL = "Frosty40/Leanstral-1.5-119B-A6B-GGUF-NVFP4:NVFP4"
 _PINNED_SYMAI_LEANSTRAL_ENDPOINT = "http://127.0.0.1:8080/v1"
 _SYMAI_ROUTE_BINDING_KWARG = "_symai_route_binding"
 _PINNED_SYMAI_TRACE_KEYS = frozenset(
@@ -251,21 +245,11 @@ _PINNED_SYMAI_ROUTE_BINDING = {
     "service_endpoint": _PINNED_SYMAI_LEANSTRAL_ENDPOINT,
     "routing_backend": "llama.cpp",
 }
-_PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME = (
-    "semantic_roundtrip_canonical_ir_v1"
-)
-_PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME = (
-    "semantic_roundtrip_realization_v1"
-)
-_PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME = (
-    "srt023_replacement_l1_canonical_ir_v1"
-)
-_PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME = (
-    "srt023_replacement_t1_realization_v1"
-)
-_PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME = (
-    "srt023_replacement_l2_canonical_ir_v1"
-)
+_PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME = "semantic_roundtrip_canonical_ir_v1"
+_PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME = "semantic_roundtrip_realization_v1"
+_PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME = "srt023_replacement_l1_canonical_ir_v1"
+_PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME = "srt023_replacement_t1_realization_v1"
+_PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME = "srt023_replacement_l2_canonical_ir_v1"
 _PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES = frozenset(
     {
         _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME,
@@ -494,9 +478,8 @@ def _default_task_p2p_announce_files() -> list[str]:
 
 def _read_task_p2p_announce() -> dict | None:
     # Optional env override.
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-        or os.environ.get("ipfs_accelerate_py_TASK_P2P_ANNOUNCE_FILE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+        "ipfs_accelerate_py_TASK_P2P_ANNOUNCE_FILE"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return None
@@ -516,7 +499,11 @@ def _read_task_p2p_announce() -> dict | None:
             if not text:
                 continue
             info = json.loads(text)
-            if isinstance(info, dict) and isinstance(info.get("multiaddr"), str) and "/p2p/" in str(info.get("multiaddr")):
+            if (
+                isinstance(info, dict)
+                and isinstance(info.get("multiaddr"), str)
+                and "/p2p/" in str(info.get("multiaddr"))
+            ):
                 return info
         except Exception:
             continue
@@ -626,9 +613,10 @@ def submit_task(
     # - we have an announce hint (local service), OR
     # - user explicitly enables auto-discovery, AND libp2p is installed.
     have_hint = bool(remote_multiaddr)
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
 
     should_try_p2p = bool(remote_multiaddr) or (explicit_discovery and auto_discovery)
     if not should_try_p2p and announce is not None:
@@ -654,7 +642,11 @@ def submit_task(
             info = anyio.run(_run, backend="trio")
             if isinstance(info, dict):
                 tid = str(info.get("task_id") or "").strip()
-                pid = str(info.get("peer_id") or "").strip() or remote_peer_id or _extract_peer_id_from_multiaddr(remote_multiaddr)
+                pid = (
+                    str(info.get("peer_id") or "").strip()
+                    or remote_peer_id
+                    or _extract_peer_id_from_multiaddr(remote_multiaddr)
+                )
                 if pid and tid:
                     return _encode_p2p_task_id(peer_id=pid, task_id=tid)
                 if tid:
@@ -696,9 +688,10 @@ def get_task(task_id: str, *, queue_path: Optional[str] = None) -> Optional[dict
         remote_multiaddr = str(announce.get("multiaddr") or "").strip()
         remote_peer_id = str(announce.get("peer_id") or "").strip() or remote_peer_id
 
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
     should_try_p2p = bool(parsed is not None or remote_multiaddr)
     if not should_try_p2p and announce is not None:
         should_try_p2p = True
@@ -763,9 +756,10 @@ def wait_task(
         remote_multiaddr = str(announce.get("multiaddr") or "").strip()
         remote_peer_id = str(announce.get("peer_id") or "").strip() or remote_peer_id
 
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
     should_try_p2p = bool(parsed is not None or remote_multiaddr)
     if not should_try_p2p and announce is not None:
         should_try_p2p = True
@@ -782,7 +776,9 @@ def wait_task(
             remote = RemoteQueue(peer_id=effective_peer_id or "", multiaddr=remote_multiaddr)
 
             async def _run() -> Optional[dict]:
-                task = await wait_task_p2p(remote=remote, task_id=str(effective_task_id), timeout_s=float(timeout_s))
+                task = await wait_task_p2p(
+                    remote=remote, task_id=str(effective_task_id), timeout_s=float(timeout_s)
+                )
                 return task if isinstance(task, dict) else None
 
             return anyio.run(_run, backend="trio")
@@ -799,7 +795,9 @@ def wait_task(
     q = TaskQueue(queue_path)
     deadline = time.time() + max(0.0, float(timeout_s))
     task = q.get(str(task_id))
-    while task is not None and task.get("status") in {"queued", "running"} and time.time() < deadline:
+    while (
+        task is not None and task.get("status") in {"queued", "running"} and time.time() < deadline
+    ):
         time.sleep(0.1)
         task = q.get(str(task_id))
     return task if isinstance(task, dict) else None
@@ -923,7 +921,9 @@ def _chat_history_get(chat_session_id: str) -> tuple[str | None, str | None]:
     return (_load_chat_history_text(cid), cid)
 
 
-def _chat_history_append_turn(*, chat_session_id: str, user_prompt: str, assistant_text: str) -> str | None:
+def _chat_history_append_turn(
+    *, chat_session_id: str, user_prompt: str, assistant_text: str
+) -> str | None:
     sid = str(chat_session_id or "").strip()
     if not sid:
         return None
@@ -937,7 +937,11 @@ def _chat_history_append_turn(*, chat_session_id: str, user_prompt: str, assista
         _load_chat_history_index()
         prior_cid = str(_CHAT_HISTORY_INDEX.get(sid) or "").strip()
         prior_text = _load_chat_history_text(prior_cid) if prior_cid else None
-        merged = (str(prior_text or "").strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+        merged = (
+            (str(prior_text or "").strip() + "\n\n" + turn).strip()
+            if str(prior_text or "").strip()
+            else turn
+        )
         cid = _store_chat_history_text(merged)
         _CHAT_HISTORY_INDEX[sid] = cid
         _save_chat_history_index()
@@ -977,7 +981,9 @@ def generate_text_mesh(
 
     provider_norm = str(provider or "").strip().lower() or "copilot_cli"
     if provider_norm != "copilot_cli":
-        if (isinstance(resume_session_id, str) and resume_session_id.strip()) or bool(continue_session):
+        if (isinstance(resume_session_id, str) and resume_session_id.strip()) or bool(
+            continue_session
+        ):
             raise LLMRouterError(
                 "resume/continue session flags are only supported for provider='copilot_cli'"
             )
@@ -1015,7 +1021,11 @@ def generate_text_mesh(
 
     # Best-effort: carry forward an archived history CID when available.
     history_cid: str | None = None
-    if not (isinstance(history, str) and history.strip()) and isinstance(chat_session_id, str) and chat_session_id.strip():
+    if (
+        not (isinstance(history, str) and history.strip())
+        and isinstance(chat_session_id, str)
+        and chat_session_id.strip()
+    ):
         try:
             _hist_text, _hist_cid = _chat_history_get(chat_session_id.strip())
             if isinstance(_hist_cid, str) and _hist_cid.strip():
@@ -1090,7 +1100,9 @@ def generate_text_mesh(
                 remote = RemoteQueue(peer_id=str(peer_id), multiaddr=str(remote_multiaddr))
 
                 async def _run_cancel() -> None:
-                    await cancel_task_p2p(remote=remote, task_id=str(inner_id), reason="route_timeout")
+                    await cancel_task_p2p(
+                        remote=remote, task_id=str(inner_id), reason="route_timeout"
+                    )
 
                 anyio.run(_run_cancel, backend="trio")
             else:
@@ -1110,7 +1122,11 @@ def generate_text_mesh(
             effective_history = str(history or "").strip() if isinstance(history, str) else ""
             effective_history_cid: str | None = None
 
-            if not effective_history and isinstance(chat_session_id, str) and chat_session_id.strip():
+            if (
+                not effective_history
+                and isinstance(chat_session_id, str)
+                and chat_session_id.strip()
+            ):
                 try:
                     cached_text, cached_cid = _chat_history_get(chat_session_id.strip())
                     if isinstance(cached_text, str) and cached_text.strip():
@@ -1123,7 +1139,9 @@ def generate_text_mesh(
             if effective_history:
                 # Ensure the recovered history is persisted and content-addressed.
                 try:
-                    effective_history_cid = effective_history_cid or _store_chat_history_text(effective_history)
+                    effective_history_cid = effective_history_cid or _store_chat_history_text(
+                        effective_history
+                    )
                 except Exception:
                     pass
                 fallback_prompt = (
@@ -1142,7 +1160,9 @@ def generate_text_mesh(
 
             # If the session-bound route timed out, resubmit with a fresh session
             # id on this machine so local workers can drain the queued task.
-            if _truthy(os.environ.get("IPFS_ACCELERATE_PY_LLM_MESH_FAILOVER_REWRITE_SESSION_ID", "1")):
+            if _truthy(
+                os.environ.get("IPFS_ACCELERATE_PY_LLM_MESH_FAILOVER_REWRITE_SESSION_ID", "1")
+            ):
                 failover_sid = str(
                     os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_FAILOVER_SESSION")
                     or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION")
@@ -1173,7 +1193,9 @@ def generate_text_mesh(
                 err2 = str(task2.get("error") or "") or str((result2 or {}).get("error") or "")
                 raise LLMRouterError(err2 or "mesh llm.generate failed")
             if status2 != "completed":
-                raise LLMRouterError(f"mesh llm.generate did not complete after failover: {status2 or 'unknown'}")
+                raise LLMRouterError(
+                    f"mesh llm.generate did not complete after failover: {status2 or 'unknown'}"
+                )
             if isinstance(result2, dict) and "text" in result2:
                 text2 = str(result2.get("text") or "")
                 if isinstance(chat_session_id, str) and chat_session_id.strip():
@@ -1223,7 +1245,9 @@ def get_remote_capabilities(*, timeout_s: float = 10.0, detail: bool = False) ->
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
 
         async def _run() -> Dict[str, object]:
-            caps = await get_capabilities_p2p(remote=remote, timeout_s=float(timeout_s), detail=bool(detail))
+            caps = await get_capabilities_p2p(
+                remote=remote, timeout_s=float(timeout_s), detail=bool(detail)
+            )
             return caps if isinstance(caps, dict) else {}
 
         return anyio.run(_run, backend="trio")
@@ -1263,7 +1287,9 @@ def call_remote_tool(
         safe_args: Dict[str, object] = args if isinstance(args, dict) else {}
 
         async def _run() -> Dict[str, object]:
-            resp = await call_tool_p2p(remote=remote, tool_name=str(tool_name), args=safe_args, timeout_s=float(timeout_s))
+            resp = await call_tool_p2p(
+                remote=remote, tool_name=str(tool_name), args=safe_args, timeout_s=float(timeout_s)
+            )
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
         return anyio.run(_run, backend="trio")
@@ -1456,7 +1482,9 @@ def _classify_codex_error_kind(*, stdout: str, stderr: str) -> Optional[str]:
     if provider_msg and _is_codex_quota_exceeded_message(provider_msg):
         return "quota_exceeded"
 
-    combined = "\n".join([p for p in [provider_msg, stdout, stderr] if isinstance(p, str) and p.strip()])
+    combined = "\n".join(
+        [p for p in [provider_msg, stdout, stderr] if isinstance(p, str) and p.strip()]
+    )
     if _is_codex_quota_exceeded_message(combined):
         return "quota_exceeded"
 
@@ -1578,10 +1606,17 @@ def get_accelerate_status() -> dict:
     except Exception:
         backend_available = False
 
-    return {"available": backend_available, "enabled": True, "env_disabled": False, "env_var": env_value}
+    return {
+        "available": backend_available,
+        "enabled": True,
+        "env_disabled": False,
+        "env_var": env_value,
+    }
 
 
-def _resolve_transformers_module(*, deps: Optional[RouterDeps] = None, module_override: object | None = None) -> object | None:
+def _resolve_transformers_module(
+    *, deps: Optional[RouterDeps] = None, module_override: object | None = None
+) -> object | None:
     """Resolve the transformers module with optional RouterDeps injection/caching."""
 
     if module_override is not None:
@@ -1668,7 +1703,9 @@ def _stable_kwargs_digest(kwargs: Dict[str, object]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]) -> str:
+def _effective_model_key(
+    *, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]
+) -> str:
     """Best-effort model identifier for caching.
 
     Callers are inconsistent about whether they pass the model via ``model_name``
@@ -1729,9 +1766,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
             or _generic_llm_model_env()
             or "gpt2"
         ).strip()
-    if pk in _GROK_CLI_PROVIDER_ALIASES or (
-        pk == "grok" and _cli_available(_grok_cli_command())
-    ):
+    if pk in _GROK_CLI_PROVIDER_ALIASES or (pk == "grok" and _cli_available(_grok_cli_command())):
         return (
             _coalesce_env(
                 "ipfs_accelerate_py_GROK_CLI_MODEL",
@@ -1769,9 +1804,13 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
     return _generic_llm_model_env()
 
 
-def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], prompt: str, kwargs: Dict[str, object]) -> str:
+def _response_cache_key(
+    *, provider: Optional[str], model_name: Optional[str], prompt: str, kwargs: Dict[str, object]
+) -> str:
     provider_key = (provider or "auto").strip().lower()
-    model_key = _effective_model_key(provider_key=provider_key, model_name=model_name, kwargs=kwargs)
+    model_key = _effective_model_key(
+        provider_key=provider_key, model_name=model_name, kwargs=kwargs
+    )
 
     strategy = _response_cache_key_strategy()
     if strategy == "cid":
@@ -1794,7 +1833,9 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
 
 @runtime_checkable
 class LLMProvider(Protocol):
-    def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str: ...
+    def generate(
+        self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+    ) -> str: ...
 
 
 @runtime_checkable
@@ -2229,9 +2270,7 @@ def _is_probably_text_generation_model(model_id: str) -> bool:
     lower = str(model_id or "").strip().lower()
     if not lower:
         return False
-    return not any(
-        token in lower for token in ("bart", "pegasus", "t5", "mbart", "summar")
-    )
+    return not any(token in lower for token in ("bart", "pegasus", "t5", "mbart", "summar"))
 
 
 def _hf_live_model_manager_candidate_models() -> list[str]:
@@ -2273,11 +2312,7 @@ def _hf_live_model_manager_candidate_models() -> list[str]:
     ordered: list[str] = []
     for record in sorted(records, key=_score, reverse=True):
         model_id = str(record.get("model_id") or "").strip()
-        if (
-            model_id
-            and model_id not in ordered
-            and _is_probably_text_generation_model(model_id)
-        ):
+        if model_id and model_id not in ordered and _is_probably_text_generation_model(model_id):
             ordered.append(model_id)
     return ordered
 
@@ -2285,20 +2320,26 @@ def _hf_live_model_manager_candidate_models() -> list[str]:
 def _hf_dynamic_model_discovery_enabled(*, kwargs: dict[str, object]) -> bool:
     raw = kwargs.get("hf_dynamic_model_discovery")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
-            "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
-        ) or "1"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+                "IPFS_DATASETS_PY_HF_DYNAMIC_MODEL_DISCOVERY",
+            )
+            or "1"
+        )
     return _truthy(str(raw))
 
 
 def _hf_llm_discovery_limit(*, kwargs: dict[str, object]) -> int:
     raw = kwargs.get("hf_llm_discovery_limit")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_LIMIT",
-            "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_LIMIT",
-        ) or "20"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_LIMIT",
+                "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_LIMIT",
+            )
+            or "20"
+        )
     try:
         return max(1, int(raw))
     except Exception:
@@ -2308,10 +2349,13 @@ def _hf_llm_discovery_limit(*, kwargs: dict[str, object]) -> int:
 def _hf_llm_discovery_tags(*, kwargs: dict[str, object]) -> list[str]:
     raw = kwargs.get("hf_llm_discovery_tags")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_TAGS",
-            "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_TAGS",
-        ) or "text-generation,text2text-generation,summarization"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_LLM_DISCOVERY_TAGS",
+                "IPFS_DATASETS_PY_HF_LLM_DISCOVERY_TAGS",
+            )
+            or "text-generation,text2text-generation,summarization"
+        )
     return [item.strip() for item in str(raw).split(",") if item.strip()]
 
 
@@ -2373,10 +2417,13 @@ def _hf_llm_fallback_models(*, kwargs: dict[str, object]) -> list[str]:
 def _hf_arch_router_enabled(*, kwargs: dict[str, object]) -> bool:
     raw = kwargs.get("hf_use_arch_router")
     if raw is None:
-        raw = _coalesce_env(
-            "IPFS_ACCELERATE_PY_HF_USE_ARCH_ROUTER",
-            "IPFS_DATASETS_PY_HF_USE_ARCH_ROUTER",
-        ) or "1"
+        raw = (
+            _coalesce_env(
+                "IPFS_ACCELERATE_PY_HF_USE_ARCH_ROUTER",
+                "IPFS_DATASETS_PY_HF_USE_ARCH_ROUTER",
+            )
+            or "1"
+        )
     return _truthy(str(raw))
 
 
@@ -2753,10 +2800,7 @@ def _cli_help_text(command: str) -> str:
 
 def _copilot_cli_supports_image_inputs(command: str) -> bool:
     help_text = _cli_help_text(command).lower()
-    return any(
-        marker in help_text
-        for marker in ("--image", "image input", "attach image")
-    )
+    return any(marker in help_text for marker in ("--image", "image input", "attach image"))
 
 
 def _normalize_copilot_add_dirs(raw: object) -> list[str]:
@@ -2764,9 +2808,7 @@ def _normalize_copilot_add_dirs(raw: object) -> list[str]:
         return []
     if isinstance(raw, str):
         candidates: Sequence[object] = raw.split(os.pathsep)
-    elif isinstance(raw, Sequence) and not isinstance(
-        raw, (bytes, bytearray, str)
-    ):
+    elif isinstance(raw, Sequence) and not isinstance(raw, (bytes, bytearray, str)):
         candidates = raw
     else:
         candidates = [raw]
@@ -2882,8 +2924,16 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                **({"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")} if os.getenv("OPENROUTER_HTTP_REFERER") else {}),
-                **({"X-Title": os.getenv("OPENROUTER_APP_TITLE")} if os.getenv("OPENROUTER_APP_TITLE") else {}),
+                **(
+                    {"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")}
+                    if os.getenv("OPENROUTER_HTTP_REFERER")
+                    else {}
+                ),
+                **(
+                    {"X-Title": os.getenv("OPENROUTER_APP_TITLE")}
+                    if os.getenv("OPENROUTER_APP_TITLE")
+                    else {}
+                ),
                 **({"X-HF-Bill-To": bill_to} if bill_to else {}),
             },
         )
@@ -2951,7 +3001,9 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 bill_to=_resolve_hf_bill_to(kwargs=dict(kwargs)),
             )
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -3003,9 +3055,7 @@ def _get_openai_provider() -> Optional[LLMProvider]:
                 raw = response.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-            raise RuntimeError(
-                f"OpenAI HTTP {exc.code}: {detail or exc.reason}"
-            ) from exc
+            raise RuntimeError(f"OpenAI HTTP {exc.code}: {detail or exc.reason}") from exc
         except Exception as exc:
             raise RuntimeError(f"OpenAI request failed: {exc}") from exc
         try:
@@ -3024,21 +3074,23 @@ def _get_openai_provider() -> Optional[LLMProvider]:
             model_name: Optional[str] = None,
             **kwargs: object,
         ) -> dict:
-            model = model_name or _coalesce_env(
-                "IPFS_ACCELERATE_PY_OPENAI_MODEL",
-                "ipfs_accelerate_py_OPENAI_MODEL",
-                "IPFS_DATASETS_PY_OPENAI_MODEL",
-                "OPENAI_MODEL",
-                "IPFS_ACCELERATE_PY_LLM_MODEL",
-                "ipfs_accelerate_py_LLM_MODEL",
-                "IPFS_DATASETS_PY_LLM_MODEL",
-            ) or "gpt-4.1-mini"
+            model = (
+                model_name
+                or _coalesce_env(
+                    "IPFS_ACCELERATE_PY_OPENAI_MODEL",
+                    "ipfs_accelerate_py_OPENAI_MODEL",
+                    "IPFS_DATASETS_PY_OPENAI_MODEL",
+                    "OPENAI_MODEL",
+                    "IPFS_ACCELERATE_PY_LLM_MODEL",
+                    "ipfs_accelerate_py_LLM_MODEL",
+                    "IPFS_DATASETS_PY_LLM_MODEL",
+                )
+                or "gpt-4.1-mini"
+            )
             payload: dict[str, object] = {
                 "model": model,
                 "messages": list(messages),
-                "max_tokens": int(
-                    kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))
-                ),
+                "max_tokens": int(kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))),
                 "temperature": float(kwargs.get("temperature", 0.2)),
             }
             for key in ("logprobs", "top_logprobs", "response_format", "seed"):
@@ -3063,9 +3115,7 @@ def _get_openai_provider() -> Optional[LLMProvider]:
             if isinstance(choices, list) and choices:
                 item = choices[0] if isinstance(choices[0], dict) else {}
                 message = item.get("message")
-                if isinstance(message, dict) and isinstance(
-                    message.get("content"), str
-                ):
+                if isinstance(message, dict) and isinstance(message.get("content"), str):
                     return message["content"].strip()
                 if isinstance(item.get("text"), str):
                     return item["text"].strip()
@@ -3147,16 +3197,10 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                         payload[key] = value
                 stop = kwargs.get("stop")
                 if stop is not None:
-                    payload["stop"] = (
-                        list(stop)
-                        if isinstance(stop, (list, tuple))
-                        else [str(stop)]
-                    )
+                    payload["stop"] = list(stop) if isinstance(stop, (list, tuple)) else [str(stop)]
                 result = create(**payload)
             except Exception as exc:
-                raise RuntimeError(
-                    f"HF Inference Providers chat request failed: {exc}"
-                ) from exc
+                raise RuntimeError(f"HF Inference Providers chat request failed: {exc}") from exc
             data = _hf_to_jsonable(result)
             if not isinstance(data, dict):
                 raise RuntimeError("HF Inference Providers chat response invalid")
@@ -3182,13 +3226,9 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                 parsed = _parse_openai_compat_response(data)
                 if parsed.choices and parsed.choices[0].message.content:
                     return parsed.choices[0].message.content
-                raise RuntimeError(
-                    "HF Inference Providers chat response missing choices"
-                )
+                raise RuntimeError("HF Inference Providers chat response missing choices")
 
-            max_new_tokens = int(
-                kwargs.get("max_new_tokens", kwargs.get("max_tokens", 128))
-            )
+            max_new_tokens = int(kwargs.get("max_new_tokens", kwargs.get("max_tokens", 128)))
             temperature = float(kwargs.get("temperature", 0.2))
             timeout = float(kwargs.get("timeout", 120))
             wait_for_model_raw = kwargs.get("wait_for_model", True)
@@ -3199,9 +3239,7 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                 else bool(wait_for_model_raw)
             )
             use_cache = (
-                _truthy(use_cache_raw)
-                if isinstance(use_cache_raw, str)
-                else bool(use_cache_raw)
+                _truthy(use_cache_raw) if isinstance(use_cache_raw, str) else bool(use_cache_raw)
             )
             parameters: dict[str, object] = {
                 "max_new_tokens": max_new_tokens,
@@ -3247,9 +3285,7 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                         hub = importlib.import_module("huggingface_hub")
                         client_cls = getattr(hub, "InferenceClient", None)
                         if client_cls is None:
-                            raise RuntimeError(
-                                "huggingface_hub.InferenceClient not available"
-                            )
+                            raise RuntimeError("huggingface_hub.InferenceClient not available")
                         client = client_cls(
                             **_build_hf_inference_client_kwargs(
                                 provider="hf-inference",
@@ -3270,17 +3306,13 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                             return_full_text=parameters.get("return_full_text"),
                         )
                     except Exception as exc:
-                        raise RuntimeError(
-                            f"HF Inference Client request failed: {exc}"
-                        ) from exc
+                        raise RuntimeError(f"HF Inference Client request failed: {exc}") from exc
                     if isinstance(result, str) and result:
                         return result
                     generated = getattr(result, "generated_text", None)
                     if isinstance(generated, str) and generated:
                         return generated
-                    raise RuntimeError(
-                        "HF Inference Client response missing generated text"
-                    )
+                    raise RuntimeError("HF Inference Client response missing generated text")
 
                 try:
                     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -3288,56 +3320,44 @@ def _get_hf_inference_api_provider() -> Optional[LLMProvider]:
                 except urllib.error.HTTPError as exc:
                     if exc.code in {400, 404, 422, 503}:
                         return _generate_via_inference_client()
-                    detail = (
-                        exc.read().decode("utf-8", errors="replace")
-                        if exc.fp
-                        else ""
-                    )
+                    detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
                     raise RuntimeError(
                         f"HF Inference API HTTP {exc.code}: {detail or exc.reason}"
                     ) from exc
                 except Exception as exc:
                     if "404" in str(exc) or "Not Found" in str(exc):
                         return _generate_via_inference_client()
-                    raise RuntimeError(
-                        f"HF Inference API request failed: {exc}"
-                    ) from exc
+                    raise RuntimeError(f"HF Inference API request failed: {exc}") from exc
                 try:
                     data = json.loads(raw)
                 except Exception as exc:
-                    raise RuntimeError(
-                        "HF Inference API returned invalid JSON"
-                    ) from exc
+                    raise RuntimeError("HF Inference API returned invalid JSON") from exc
                 if isinstance(data, dict) and isinstance(data.get("error"), str):
-                    raise RuntimeError(
-                        f"HF Inference API error: {data.get('error')}"
-                    )
+                    raise RuntimeError(f"HF Inference API error: {data.get('error')}")
                 extracted = _extract_hf_response_text(data)
                 if extracted is None:
-                    raise RuntimeError(
-                        "HF Inference API response missing generated text"
-                    )
+                    raise RuntimeError("HF Inference API response missing generated text")
                 return extracted
 
             selected_model = (
                 model_name or _default_hf_inference_model(kwargs=effective_kwargs)
             ).strip()
             routed_model: Optional[str] = None
-            if model_name is None and not bool(
-                kwargs.get("hf_skip_model_routing")
-            ):
+            if model_name is None and not bool(kwargs.get("hf_skip_model_routing")):
                 routed_model = _route_hf_model_with_arch_router(
                     prompt=prompt,
                     kwargs=effective_kwargs,
                     request_timeout=timeout,
-                    generate_fn=lambda router_prompt, router_model, router_timeout: _HFInferenceAPIProvider().generate(
-                        router_prompt,
-                        model_name=router_model,
-                        hf_skip_model_routing=True,
-                        max_new_tokens=128,
-                        temperature=0.0,
-                        timeout=router_timeout,
-                        return_full_text=False,
+                    generate_fn=lambda router_prompt, router_model, router_timeout: (
+                        _HFInferenceAPIProvider().generate(
+                            router_prompt,
+                            model_name=router_model,
+                            hf_skip_model_routing=True,
+                            max_new_tokens=128,
+                            temperature=0.0,
+                            timeout=router_timeout,
+                            return_full_text=False,
+                        )
                     ),
                 )
                 if routed_model:
@@ -3384,11 +3404,15 @@ def _get_llama_cpp_provider(*, auto_install: bool = False) -> Optional[LLMProvid
     ).rstrip("/")
     server_config = config_from_env()
     base_url = configured_base_url or server_config.base_url
-    model_default = _coalesce_env(
-        "IPFS_ACCELERATE_LLAMA_CPP_MODEL",
-        "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL",
-        "ipfs_accelerate_py_LLAMA_CPP_MODEL",
-    ) or server_config.model_ref or DEFAULT_LEANSTRAL_MODEL_REF
+    model_default = (
+        _coalesce_env(
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL",
+            "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL",
+            "ipfs_accelerate_py_LLAMA_CPP_MODEL",
+        )
+        or server_config.model_ref
+        or DEFAULT_LEANSTRAL_MODEL_REF
+    )
     api_key = _coalesce_env(
         "IPFS_ACCELERATE_LLAMA_CPP_API_KEY",
         "IPFS_ACCELERATE_PY_LLAMA_CPP_API_KEY",
@@ -3505,7 +3529,9 @@ def _get_llama_cpp_provider(*, auto_install: bool = False) -> Optional[LLMProvid
             timeout = float(kwargs.get("timeout", 300))
             return _request(payload, timeout=timeout)
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -3568,8 +3594,7 @@ def _get_llama_cpp_native_provider(*, auto_install: bool = False) -> Optional[LL
             capture_output=True,
             check=False,
             timeout=float(
-                _coalesce_env("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_INSTALL_TIMEOUT_SECONDS")
-                or "1800"
+                _coalesce_env("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_INSTALL_TIMEOUT_SECONDS") or "1800"
             ),
         )
         if result.returncode != 0:
@@ -3721,7 +3746,9 @@ def _get_llama_cpp_native_provider(*, auto_install: bool = False) -> Optional[LL
                 raise RuntimeError("llama_cpp_native returned invalid chat completion")
             return result
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -3747,10 +3774,20 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _CodexCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
+            model = (
+                model_name
+                or _coalesce_env(
+                    "ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL"
+                )
+                or "chatgpt-5.6-terra"
+            ).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
-            skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
+            skip_git_repo_check = (
+                os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
+            )
             timeout = float(kwargs.get("timeout", 180))
 
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
@@ -3807,7 +3844,12 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         return _clean_codex_output(extracted)
                 return _clean_codex_output(text_out)
 
-            if trace_enabled and proc.stdout and isinstance(trace_jsonl_path, str) and trace_jsonl_path.strip():
+            if (
+                trace_enabled
+                and proc.stdout
+                and isinstance(trace_jsonl_path, str)
+                and trace_jsonl_path.strip()
+            ):
                 try:
                     os.makedirs(os.path.dirname(trace_jsonl_path.strip()) or ".", exist_ok=True)
                     with open(trace_jsonl_path.strip(), "a", encoding="utf-8") as handle:
@@ -3904,8 +3946,10 @@ def _is_goose_provider_name(name: Optional[str]) -> bool:
 def _kwargs_are_side_effecting(kwargs: Mapping[str, object]) -> bool:
     """True when request kwargs authorize side-effecting / agent execution."""
 
-    if bool(kwargs.get("side_effecting")) or bool(kwargs.get("agent")) or bool(
-        kwargs.get("with_tools")
+    if (
+        bool(kwargs.get("side_effecting"))
+        or bool(kwargs.get("agent"))
+        or bool(kwargs.get("with_tools"))
     ):
         return True
     if kwargs.get("agent_policy") is not None or kwargs.get("policy") is not None:
@@ -3957,7 +4001,9 @@ def _goose_openai_compatible_backend_env(
     )
     env.setdefault("OPENAI_HOST", host)
     env.setdefault("OPENAI_BASE_PATH", base_path)
-    env.setdefault("GOOSE_PROVIDER", env.get("GOOSE_PROVIDER") or _goose_default_underlying_provider())
+    env.setdefault(
+        "GOOSE_PROVIDER", env.get("GOOSE_PROVIDER") or _goose_default_underlying_provider()
+    )
     env.setdefault("GOOSE_DISABLE_KEYRING", env.get("GOOSE_DISABLE_KEYRING") or "1")
     local_bin = str(Path.home() / ".local" / "bin")
     path = env.get("PATH", "")
@@ -3994,9 +4040,7 @@ def build_goose_cli_command(
 
     if max_turns is None:
         if normalized == "chat":
-            max_turns = int(
-                _coalesce_env("ipfs_accelerate_py_GOOSE_CLI_MAX_TURNS", "2") or "2"
-            )
+            max_turns = int(_coalesce_env("ipfs_accelerate_py_GOOSE_CLI_MAX_TURNS", "2") or "2")
         else:
             max_turns = int(
                 _coalesce_env(
@@ -4161,11 +4205,7 @@ def build_grok_cli_command(
     if workspace is not None:
         cmd.extend(["--cwd", str(Path(workspace).expanduser().resolve())])
 
-    approve = (
-        bool(always_approve)
-        if always_approve is not None
-        else normalized == "agent"
-    )
+    approve = bool(always_approve) if always_approve is not None else normalized == "agent"
     if approve:
         cmd.append("--always-approve")
 
@@ -4354,7 +4394,9 @@ def _get_goose_cli_provider(*, auto_install: bool = False) -> Optional[LLMProvid
                 error = LLMRouterError(message)
                 # Preserve side-effect signal so the router never retries after
                 # output or tool activity has begun.
-                setattr(error, "side_effects_started", bool(getattr(exc, "side_effects_started", False)))
+                setattr(
+                    error, "side_effects_started", bool(getattr(exc, "side_effects_started", False))
+                )
                 setattr(error, "goose_error_kind", getattr(exc, "kind", None))
                 raise error from exc
             except LLMRouterError:
@@ -4363,7 +4405,9 @@ def _get_goose_cli_provider(*, auto_install: bool = False) -> Optional[LLMProvid
                 # Policy / contract failures from the adapter surface as router errors.
                 message = str(exc) or "goose_cli failed"
                 error = LLMRouterError(message)
-                setattr(error, "side_effects_started", bool(getattr(exc, "side_effects_started", False)))
+                setattr(
+                    error, "side_effects_started", bool(getattr(exc, "side_effects_started", False))
+                )
                 raise error from exc
             return str(text)
 
@@ -4375,17 +4419,22 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
     # mode with an auto-executed prompt (`-i`) so this works in non-interactive
     # worker subprocesses.
     default_command = "npx --yes @github/copilot"
-    command = _coalesce_env(
-        "ipfs_accelerate_py_COPILOT_CLI_CMD",
-        "IPFS_ACCELERATE_PY_COPILOT_CLI_CMD",
-        "IPFS_DATASETS_PY_COPILOT_CLI_CMD",
-    ) or default_command
+    command = (
+        _coalesce_env(
+            "ipfs_accelerate_py_COPILOT_CLI_CMD",
+            "IPFS_ACCELERATE_PY_COPILOT_CLI_CMD",
+            "IPFS_DATASETS_PY_COPILOT_CLI_CMD",
+        )
+        or default_command
+    )
     if not _cli_available(command):
         return None
     supports_image_inputs = _copilot_cli_supports_image_inputs(command)
 
     class _CopilotCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             model = (
                 (model_name or "").strip()
                 or _coalesce_env(
@@ -4406,9 +4455,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
             copilot_log_dir = kwargs.pop("copilot_log_dir", None)
             resume_session_id = kwargs.pop("resume_session_id", None)
             continue_session = bool(kwargs.pop("continue_session", False))
-            copilot_add_dirs = _normalize_copilot_add_dirs(
-                kwargs.pop("copilot_add_dirs", None)
-            )
+            copilot_add_dirs = _normalize_copilot_add_dirs(kwargs.pop("copilot_add_dirs", None))
             if not copilot_add_dirs:
                 copilot_add_dirs = _copilot_cli_add_dirs_from_env()
             allow_paths_value = kwargs.pop("copilot_allow_all_paths", None)
@@ -4472,9 +4519,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                         f"copilot_session_{_utc_stamp()}_{os.getpid()}.md",
                     )
 
-            use_standalone_file_mode = bool(
-                copilot_add_dirs or copilot_allow_all_paths
-            )
+            use_standalone_file_mode = bool(copilot_add_dirs or copilot_allow_all_paths)
             if use_standalone_file_mode:
                 standalone = find_standalone_copilot_cli()
                 if standalone is None:
@@ -4626,9 +4671,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                 or _generic_llm_model_env()
                 or "gpt-5-mini"
             )
-            add_dirs = _normalize_copilot_add_dirs(
-                call_options.pop("copilot_add_dirs", None)
-            )
+            add_dirs = _normalize_copilot_add_dirs(call_options.pop("copilot_add_dirs", None))
             if not add_dirs:
                 add_dirs = _copilot_cli_add_dirs_from_env()
             allow_value = call_options.pop("copilot_allow_all_paths", None)
@@ -4636,9 +4679,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                 _copilot_allow_all_paths_default()
                 if allow_value is None
                 else (
-                    _truthy(str(allow_value))
-                    if isinstance(allow_value, str)
-                    else bool(allow_value)
+                    _truthy(str(allow_value)) if isinstance(allow_value, str) else bool(allow_value)
                 )
             )
 
@@ -4697,11 +4738,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
             for add_dir in [*add_dirs, *image_dirs]:
                 if add_dir:
                     cmd.extend(["--add-dir", add_dir])
-            cmd.append(
-                "\n\n".join(
-                    section for section in prompt_sections if section
-                ).strip()
-            )
+            cmd.append("\n\n".join(section for section in prompt_sections if section).strip())
             try:
                 proc = subprocess.run(
                     cmd,
@@ -4714,9 +4751,7 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
             except FileNotFoundError as exc:
                 raise LLMRouterError("Copilot CLI not found on PATH") from exc
             if proc.returncode != 0:
-                raise LLMRouterError(
-                    (proc.stderr or "").strip() or "copilot CLI failed"
-                )
+                raise LLMRouterError((proc.stderr or "").strip() or "copilot CLI failed")
             return _clean_copilot_output(proc.stdout or "")
 
     return _CopilotCLIProvider()
@@ -4729,7 +4764,9 @@ def _get_copilot_sdk_provider() -> Optional[LLMProvider]:
         return None
 
     class _CopilotSDKProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             model = os.environ.get("ipfs_accelerate_py_COPILOT_SDK_MODEL", "").strip()
             timeout_seconds = float(os.environ.get("ipfs_accelerate_py_COPILOT_SDK_TIMEOUT", "120"))
@@ -4754,7 +4791,11 @@ def _get_copilot_sdk_provider() -> Optional[LLMProvider]:
                     await client.stop()
 
             try:
-                from ipfs_accelerate_py.utils.anyio_compat import AsyncContextError, fail_after, run as run_anyio
+                from ipfs_accelerate_py.utils.anyio_compat import (
+                    AsyncContextError,
+                    fail_after,
+                    run as run_anyio,
+                )
 
                 async def _run_with_timeout() -> str:
                     with fail_after(timeout_seconds):
@@ -4773,7 +4814,9 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _GeminiCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             timeout = float(kwargs.get("timeout", 180))
 
@@ -4807,9 +4850,11 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
             if proc.returncode == 0:
                 return _clean_gemini_output(proc.stdout or "")
 
-            stderr = (proc.stderr or "")
+            stderr = proc.stderr or ""
             # Known failure mode when running on Node.js v18.
-            node18_regex_error = ("invalid regular expression flags" in stderr.lower()) and ("node.js v18" in stderr.lower())
+            node18_regex_error = ("invalid regular expression flags" in stderr.lower()) and (
+                "node.js v18" in stderr.lower()
+            )
             if node18_regex_error:
                 try:
                     proc2 = _run(base_cmd)
@@ -4830,9 +4875,13 @@ def _get_gemini_py_provider() -> Optional[LLMProvider]:
         return None
 
     class _GeminiPyProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
-            client = GeminiCLI(use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")))
+            client = GeminiCLI(
+                use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE"))
+            )
             timeout = int(float(kwargs.get("timeout", 180)))
             result = client.execute(["generate", prompt], capture_output=True, timeout=timeout)
             if result.returncode != 0:
@@ -4848,10 +4897,14 @@ def _get_claude_code_provider() -> Optional[LLMProvider]:
         return None
 
     class _ClaudeCodeProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             timeout = float(kwargs.get("timeout", 180))
-            return _clean_claude_output(_run_cli_command(command, prompt, timeout_seconds=timeout, label="Claude Code CLI"))
+            return _clean_claude_output(
+                _run_cli_command(command, prompt, timeout_seconds=timeout, label="Claude Code CLI")
+            )
 
     return _ClaudeCodeProvider()
 
@@ -4863,9 +4916,13 @@ def _get_claude_py_provider() -> Optional[LLMProvider]:
         return None
 
     class _ClaudePyProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
-            client = ClaudeCLI(use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")))
+            client = ClaudeCLI(
+                use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE"))
+            )
             timeout = int(float(kwargs.get("timeout", 180)))
             result = client.execute(["chat", prompt], capture_output=True, timeout=timeout)
             if result.returncode != 0:
@@ -4903,7 +4960,9 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
         return mistral_vibe_auth_available()
 
     class _MistralVibeProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             model = (
                 model_name
                 or _coalesce_env(
@@ -4920,7 +4979,9 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
             if is_leanstral and not agent:
                 agent = "lean"
             if agent and not re.fullmatch(r"[A-Za-z0-9_-]+", agent):
-                raise ValueError("mistral_vibe_agent must contain only letters, digits, underscores, or hyphens")
+                raise ValueError(
+                    "mistral_vibe_agent must contain only letters, digits, underscores, or hyphens"
+                )
             # Vibe's lean agent installs and selects its own versioned Leanstral
             # model. An active-model environment override is validated before
             # the agent profile and causes a misleading fallback warning.
@@ -4951,7 +5012,7 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
                     extra_env={
                         **({"MISTRAL_API_KEY": mistral_api_key} if mistral_api_key else {}),
                         "VIBE_ACTIVE_MODEL": vibe_active_model or None,
-                    }
+                    },
                 )
             except LLMRouterError as exc:
                 if not mistral_api_key and not _mistral_auth_available():
@@ -4975,15 +5036,14 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _GrokCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (
-                (model_name or "").strip()
-                or _coalesce_env(
-                    "ipfs_accelerate_py_GROK_CLI_MODEL",
-                    "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
-                    "IPFS_DATASETS_PY_GROK_CLI_MODEL",
-                    "GROK_CLI_MODEL",
-                )
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
+            model = (model_name or "").strip() or _coalesce_env(
+                "ipfs_accelerate_py_GROK_CLI_MODEL",
+                "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
+                "IPFS_DATASETS_PY_GROK_CLI_MODEL",
+                "GROK_CLI_MODEL",
             )
             timeout = float(kwargs.pop("timeout", 180))
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
@@ -5280,7 +5340,9 @@ def _get_xai_provider() -> Optional[LLMProvider]:
             timeout = float(kwargs.get("timeout", 120))
             return _request(payload, timeout=timeout)
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -5358,9 +5420,7 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
                 or META_MODEL_API_DEFAULT_MODEL
             )
             model = normalize_meta_model_name(model)
-            default_max = int(
-                os.getenv("ipfs_accelerate_py_META_AI_MAX_COMPLETION_TOKENS", "1024")
-            )
+            default_max = int(os.getenv("ipfs_accelerate_py_META_AI_MAX_COMPLETION_TOKENS", "1024"))
             max_completion_tokens = kwargs.get(
                 "max_completion_tokens",
                 kwargs.get("max_tokens", kwargs.get("max_new_tokens", default_max)),
@@ -5383,7 +5443,9 @@ def _get_meta_ai_provider() -> Optional[LLMProvider]:
             timeout = float(kwargs.get("timeout", 120))
             return _request(payload, timeout=timeout)
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             if (
                 "max_completion_tokens" not in kwargs
                 and "max_tokens" not in kwargs
@@ -5475,9 +5537,7 @@ def _bounded_json_response(
             f"pinned Leanstral service request failed: {type(exc).__name__}"
         ) from exc
     if len(raw) > max_bytes:
-        raise RuntimeError(
-            "pinned Leanstral service response exceeded byte limit"
-        )
+        raise RuntimeError("pinned Leanstral service response exceeded byte limit")
 
     def reject_duplicate_keys(
         pairs: list[tuple[str, object]],
@@ -5499,9 +5559,7 @@ def _bounded_json_response(
             parse_constant=reject_nonfinite,
         )
     except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
-        raise RuntimeError(
-            "pinned Leanstral service returned invalid JSON"
-        ) from exc
+        raise RuntimeError("pinned Leanstral service returned invalid JSON") from exc
     if not isinstance(value, dict):
         raise RuntimeError("pinned Leanstral service returned a non-object")
     return value
@@ -5516,12 +5574,7 @@ def _served_model_ids(value: dict[str, object]) -> list[str]:
         if isinstance(record, str):
             model_id = record
         elif isinstance(record, dict):
-            model_id = str(
-                record.get("id")
-                or record.get("model")
-                or record.get("name")
-                or ""
-            )
+            model_id = str(record.get("id") or record.get("model") or record.get("name") or "")
         else:
             continue
         if model_id:
@@ -5547,9 +5600,7 @@ def _pinned_symai_json_copy(
             "pinned SyMAI Leanstral route requires JSON-only contract values"
         ) from exc
     if len(encoded) > max_bytes:
-        raise RuntimeError(
-            "pinned SyMAI Leanstral schema exceeded its byte bound"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral schema exceeded its byte bound")
     return json.loads(encoded.decode("utf-8"))
 
 
@@ -5559,20 +5610,14 @@ def _pinned_symai_bounded_atom_enum(
     allow_leading_empty: bool,
 ) -> list[str]:
     if not isinstance(value, list):
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip schema has an invalid enum"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip schema has an invalid enum")
     atoms = list(value)
     if allow_leading_empty:
         if not atoms or atoms[0] != "":
-            raise RuntimeError(
-                "pinned SyMAI semantic-roundtrip object enum is invalid"
-            )
+            raise RuntimeError("pinned SyMAI semantic-roundtrip object enum is invalid")
         atoms = atoms[1:]
     if len(atoms) > _PINNED_SYMAI_MAX_VOCABULARY_ITEMS:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip vocabulary exceeded its bound"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip vocabulary exceeded its bound")
     if any(
         not isinstance(atom, str)
         or not atom
@@ -5580,13 +5625,9 @@ def _pinned_symai_bounded_atom_enum(
         or atom != " ".join(atom.strip().split())
         for atom in atoms
     ):
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip vocabulary is invalid"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip vocabulary is invalid")
     if len(atoms) != len(set(atoms)):
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip vocabulary contains duplicates"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip vocabulary contains duplicates")
     return ([""] if allow_leading_empty else []) + atoms
 
 
@@ -5596,9 +5637,7 @@ def _pinned_symai_semantic_canonical_schema(
     require_nonempty: bool = False,
 ) -> dict[str, object]:
     if not isinstance(schema, dict):
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip canonical schema is invalid"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip canonical schema is invalid")
     try:
         rules_schema = schema["properties"]["rules"]
         rule_schema = rules_schema["items"]
@@ -5611,14 +5650,10 @@ def _pinned_symai_semantic_canonical_schema(
         exceptions = properties["exceptions"]["items"]["enum"]
         temporal = properties["temporal"]["items"]["enum"]
     except (KeyError, TypeError) as exc:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip canonical schema is invalid"
-        ) from exc
+        raise RuntimeError("pinned SyMAI semantic-roundtrip canonical schema is invalid") from exc
 
     if modality != ["O", "P", "F"]:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip modality enum is invalid"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip modality enum is invalid")
     bounded_actors = _pinned_symai_bounded_atom_enum(
         actors,
         allow_leading_empty=False,
@@ -5636,9 +5671,7 @@ def _pinned_symai_semantic_canonical_schema(
         allow_leading_empty=False,
     )
     if exceptions != bounded_qualifiers or temporal != bounded_qualifiers:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip qualifier enums drifted"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip qualifier enums drifted")
 
     qualifier_schema: dict[str, object] = {
         "type": "array",
@@ -5681,12 +5714,8 @@ def _pinned_symai_semantic_canonical_schema(
                     "enum": bounded_objects,
                 },
                 "conditions": qualifier_schema,
-                "exceptions": json.loads(
-                    json.dumps(qualifier_schema)
-                ),
-                "temporal": json.loads(
-                    json.dumps(qualifier_schema)
-                ),
+                "exceptions": json.loads(json.dumps(qualifier_schema)),
+                "temporal": json.loads(json.dumps(qualifier_schema)),
             },
         },
     }
@@ -5701,9 +5730,7 @@ def _pinned_symai_semantic_canonical_schema(
         },
     }
     if schema != expected:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip canonical schema drifted"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip canonical schema drifted")
     return expected
 
 
@@ -5713,17 +5740,13 @@ def _pinned_symai_replacement_realization_schema(
     """Validate the exact bounded, polarity-indexed SRT-023 T1 contract."""
 
     if not isinstance(schema, dict):
-        raise RuntimeError(
-            "pinned SyMAI replacement realization schema is invalid"
-        )
+        raise RuntimeError("pinned SyMAI replacement realization schema is invalid")
     try:
         rules_schema = schema["properties"]["rules"]
         count = rules_schema["minItems"]
         maximum = rules_schema["maxItems"]
     except (KeyError, TypeError) as exc:
-        raise RuntimeError(
-            "pinned SyMAI replacement realization schema is invalid"
-        ) from exc
+        raise RuntimeError("pinned SyMAI replacement realization schema is invalid") from exc
     if (
         isinstance(count, bool)
         or not isinstance(count, int)
@@ -5731,9 +5754,7 @@ def _pinned_symai_replacement_realization_schema(
         or count > _PINNED_SYMAI_MAX_RULES
         or maximum != count
     ):
-        raise RuntimeError(
-            "pinned SyMAI replacement realization rule count is invalid"
-        )
+        raise RuntimeError("pinned SyMAI replacement realization rule count is invalid")
     expected = {
         "type": "object",
         "additionalProperties": False,
@@ -5780,9 +5801,7 @@ def _pinned_symai_replacement_realization_schema(
         },
     }
     if schema != expected:
-        raise RuntimeError(
-            "pinned SyMAI replacement realization schema drifted"
-        )
+        raise RuntimeError("pinned SyMAI replacement realization schema drifted")
     return expected
 
 
@@ -5798,17 +5817,11 @@ def _validate_pinned_symai_response_format(
             "pinned SyMAI Leanstral route requires a supported frozen or "
             "bounded semantic-roundtrip JSON-schema contract"
         )
-    if any(
-        normalized == allowed
-        for allowed in _PINNED_SYMAI_ALLOWED_RESPONSE_FORMATS
-    ):
+    if any(normalized == allowed for allowed in _PINNED_SYMAI_ALLOWED_RESPONSE_FORMATS):
         json_schema = normalized["json_schema"]
         assert isinstance(json_schema, dict)
         return normalized, str(json_schema["name"])
-    if (
-        set(normalized) != {"type", "json_schema"}
-        or normalized.get("type") != "json_schema"
-    ):
+    if set(normalized) != {"type", "json_schema"} or normalized.get("type") != "json_schema":
         raise RuntimeError(
             "pinned SyMAI Leanstral route requires a supported frozen or "
             "bounded semantic-roundtrip JSON-schema contract"
@@ -5820,15 +5833,12 @@ def _validate_pinned_symai_response_format(
         or json_schema.get("strict") is not True
     ):
         raise RuntimeError(
-            "pinned SyMAI Leanstral route requires a strict bounded "
-            "JSON-schema contract"
+            "pinned SyMAI Leanstral route requires a strict bounded JSON-schema contract"
         )
     schema_name = json_schema.get("name")
     schema = json_schema.get("schema")
     if schema_name == _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME:
-        json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
-            schema
-        )
+        json_schema["schema"] = _pinned_symai_semantic_canonical_schema(schema)
     elif schema_name in _PINNED_SYMAI_REPLACEMENT_CANONICAL_SCHEMA_NAMES:
         json_schema["schema"] = _pinned_symai_semantic_canonical_schema(
             schema,
@@ -5836,13 +5846,9 @@ def _validate_pinned_symai_response_format(
         )
     elif schema_name == _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME:
         if schema != _PINNED_SYMAI_REALIZATION_RESPONSE_SCHEMA:
-            raise RuntimeError(
-                "pinned SyMAI semantic-roundtrip realization schema drifted"
-            )
+            raise RuntimeError("pinned SyMAI semantic-roundtrip realization schema drifted")
     elif schema_name == _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME:
-        json_schema["schema"] = (
-            _pinned_symai_replacement_realization_schema(schema)
-        )
+        json_schema["schema"] = _pinned_symai_replacement_realization_schema(schema)
     else:
         raise RuntimeError(
             "pinned SyMAI Leanstral route requires a supported frozen or "
@@ -5855,9 +5861,7 @@ def _validate_pinned_symai_generation_contract(
     generation_options: object,
 ) -> dict[str, object]:
     if not isinstance(generation_options, dict):
-        raise RuntimeError(
-            "pinned SyMAI Leanstral generation options must be an object"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral generation options must be an object")
     allowed_options = {
         "response_format",
         "temperature",
@@ -5870,29 +5874,18 @@ def _validate_pinned_symai_generation_contract(
         "top_p",
     }
     if set(generation_options) - allowed_options:
-        raise RuntimeError(
-            "pinned SyMAI Leanstral generation options contain unsupported "
-            "settings"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral generation options contain unsupported settings")
     response_format, schema_name = _validate_pinned_symai_response_format(
         generation_options.get("response_format")
     )
     semantic_max_tokens = {
-        _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME: (
-            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
-        ),
+        _PINNED_SYMAI_SEMANTIC_CANONICAL_SCHEMA_NAME: (_PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS),
         _PINNED_SYMAI_SEMANTIC_REALIZATION_SCHEMA_NAME: (
             _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
         ),
-        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME: (
-            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
-        ),
-        _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME: (
-            _PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS
-        ),
-        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME: (
-            _PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS
-        ),
+        _PINNED_SYMAI_REPLACEMENT_L1_SCHEMA_NAME: (_PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS),
+        _PINNED_SYMAI_REPLACEMENT_T1_SCHEMA_NAME: (_PINNED_SYMAI_SEMANTIC_REALIZATION_MAX_TOKENS),
+        _PINNED_SYMAI_REPLACEMENT_L2_SCHEMA_NAME: (_PINNED_SYMAI_SEMANTIC_CANONICAL_MAX_TOKENS),
     }
     is_semantic_roundtrip = schema_name in semantic_max_tokens
     semantic_required_options = {
@@ -5904,55 +5897,32 @@ def _validate_pinned_symai_generation_contract(
         "timeout",
         "cache_prompt",
     }
-    if (
-        is_semantic_roundtrip
-        and not semantic_required_options.issubset(generation_options)
-    ):
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip generation settings are "
-            "incomplete"
-        )
+    if is_semantic_roundtrip and not semantic_required_options.issubset(generation_options):
+        raise RuntimeError("pinned SyMAI semantic-roundtrip generation settings are incomplete")
 
-    if (
-        "max_tokens" in generation_options
-        and "max_new_tokens" in generation_options
-    ):
-        raise RuntimeError(
-            "pinned SyMAI Leanstral route received ambiguous token settings"
-        )
+    if "max_tokens" in generation_options and "max_new_tokens" in generation_options:
+        raise RuntimeError("pinned SyMAI Leanstral route received ambiguous token settings")
     if is_semantic_roundtrip and "max_tokens" not in generation_options:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip route requires max_tokens"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip route requires max_tokens")
     raw_max_tokens = generation_options.get(
         "max_tokens",
         generation_options.get("max_new_tokens", 512),
     )
-    if isinstance(raw_max_tokens, bool) or not isinstance(
-        raw_max_tokens, int
-    ):
+    if isinstance(raw_max_tokens, bool) or not isinstance(raw_max_tokens, int):
         raise RuntimeError("pinned SyMAI Leanstral token bound is invalid")
     max_tokens = raw_max_tokens
     if is_semantic_roundtrip:
         if max_tokens != semantic_max_tokens[schema_name]:
-            raise RuntimeError(
-                "pinned SyMAI semantic-roundtrip token setting drifted"
-            )
+            raise RuntimeError("pinned SyMAI semantic-roundtrip token setting drifted")
     elif not 1 <= max_tokens <= 512:
         raise RuntimeError("pinned SyMAI Leanstral token bound is invalid")
 
     raw_temperature = generation_options.get("temperature", 0.0)
-    if isinstance(raw_temperature, bool) or not isinstance(
-        raw_temperature, (int, float)
-    ):
-        raise RuntimeError(
-            "pinned SyMAI Leanstral route requires temperature zero"
-        )
+    if isinstance(raw_temperature, bool) or not isinstance(raw_temperature, (int, float)):
+        raise RuntimeError("pinned SyMAI Leanstral route requires temperature zero")
     temperature = float(raw_temperature)
     if not math.isfinite(temperature) or temperature != 0.0:
-        raise RuntimeError(
-            "pinned SyMAI Leanstral route requires temperature zero"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral route requires temperature zero")
 
     raw_seed = generation_options.get("seed", 0)
     if isinstance(raw_seed, bool) or not isinstance(raw_seed, int) or raw_seed:
@@ -5970,56 +5940,37 @@ def _validate_pinned_symai_generation_contract(
     )
     if is_semantic_roundtrip:
         if raw_stop != _PINNED_SYMAI_SEMANTIC_STOP:
-            raise RuntimeError(
-                "pinned SyMAI semantic-roundtrip stop setting drifted"
-            )
+            raise RuntimeError("pinned SyMAI semantic-roundtrip stop setting drifted")
     elif (
         not isinstance(raw_stop, (list, tuple))
         or not 1 <= len(raw_stop) <= 4
-        or any(
-            not isinstance(item, str)
-            or not item
-            or len(item) > 64
-            for item in raw_stop
-        )
+        or any(not isinstance(item, str) or not item or len(item) > 64 for item in raw_stop)
     ):
         raise RuntimeError("pinned SyMAI Leanstral stop setting is invalid")
     stop = list(raw_stop)
 
     raw_timeout = generation_options.get(
         "timeout",
-        (
-            _PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS
-            if is_semantic_roundtrip
-            else 30.0
-        ),
+        (_PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS if is_semantic_roundtrip else 30.0),
     )
-    if isinstance(raw_timeout, bool) or not isinstance(
-        raw_timeout, (int, float)
-    ):
+    if isinstance(raw_timeout, bool) or not isinstance(raw_timeout, (int, float)):
         raise RuntimeError("pinned SyMAI Leanstral timeout is invalid")
     timeout = float(raw_timeout)
     if not math.isfinite(timeout) or timeout <= 0:
         raise RuntimeError("pinned SyMAI Leanstral timeout is invalid")
     if is_semantic_roundtrip:
         if timeout != _PINNED_SYMAI_SEMANTIC_TIMEOUT_SECONDS:
-            raise RuntimeError(
-                "pinned SyMAI semantic-roundtrip timeout setting drifted"
-            )
+            raise RuntimeError("pinned SyMAI semantic-roundtrip timeout setting drifted")
     else:
         timeout = min(timeout, 60.0)
 
     cache_prompt = generation_options.get("cache_prompt", False)
     if cache_prompt is not False:
-        raise RuntimeError(
-            "pinned SyMAI Leanstral route requires prompt caching disabled"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral route requires prompt caching disabled")
 
     top_p = generation_options.get("top_p")
     if is_semantic_roundtrip and top_p is not None:
-        raise RuntimeError(
-            "pinned SyMAI semantic-roundtrip sampling settings drifted"
-        )
+        raise RuntimeError("pinned SyMAI semantic-roundtrip sampling settings drifted")
     if top_p is not None:
         if isinstance(top_p, bool) or not isinstance(top_p, (int, float)):
             raise RuntimeError("pinned SyMAI Leanstral top_p is invalid")
@@ -6055,16 +6006,9 @@ def validate_pinned_symai_request_contract(
     """
 
     if model_name != _PINNED_SYMAI_LEANSTRAL_ALIAS:
-        raise RuntimeError(
-            "private SyMAI route binding used with the wrong model alias"
-        )
-    if (
-        not isinstance(route_binding, dict)
-        or route_binding != _PINNED_SYMAI_ROUTE_BINDING
-    ):
-        raise RuntimeError(
-            "private SyMAI route binding is incomplete or drifted"
-        )
+        raise RuntimeError("private SyMAI route binding used with the wrong model alias")
+    if not isinstance(route_binding, dict) or route_binding != _PINNED_SYMAI_ROUTE_BINDING:
+        raise RuntimeError("private SyMAI route binding is incomplete or drifted")
     return _validate_pinned_symai_generation_contract(generation_options)
 
 
@@ -6083,9 +6027,7 @@ def _generate_pinned_symai_leanstral(
     def remaining_timeout() -> float:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError(
-                "pinned SyMAI Leanstral aggregate timeout expired"
-            )
+            raise RuntimeError("pinned SyMAI Leanstral aggregate timeout expired")
         return remaining
 
     models_request = urllib.request.Request(
@@ -6100,10 +6042,7 @@ def _generate_pinned_symai_leanstral(
     )
     served_ids = _served_model_ids(models)
     if served_ids.count(_PINNED_SYMAI_LEANSTRAL_MODEL) != 1:
-        raise RuntimeError(
-            "pinned Leanstral model is absent or ambiguous at the "
-            "frozen endpoint"
-        )
+        raise RuntimeError("pinned Leanstral model is absent or ambiguous at the frozen endpoint")
 
     max_tokens = int(contract["max_tokens"])
     temperature = float(contract["temperature"])
@@ -6138,9 +6077,7 @@ def _generate_pinned_symai_leanstral(
         sort_keys=True,
     ).encode("utf-8")
     if len(encoded_payload) > _PINNED_SYMAI_MAX_REQUEST_BYTES:
-        raise RuntimeError(
-            "pinned SyMAI Leanstral request exceeded its byte bound"
-        )
+        raise RuntimeError("pinned SyMAI Leanstral request exceeded its byte bound")
     completion_request = urllib.request.Request(
         f"{_PINNED_SYMAI_LEANSTRAL_ENDPOINT}/chat/completions",
         data=encoded_payload,
@@ -6156,32 +6093,17 @@ def _generate_pinned_symai_leanstral(
         max_bytes=64 * 1024,
     )
     if str(completion.get("model") or "") != _PINNED_SYMAI_LEANSTRAL_MODEL:
-        raise RuntimeError(
-            "pinned Leanstral service returned a different model"
-        )
+        raise RuntimeError("pinned Leanstral service returned a different model")
     choices = completion.get("choices")
     if not isinstance(choices, list) or len(choices) != 1:
-        raise RuntimeError(
-            "pinned Leanstral service returned invalid choices"
-        )
+        raise RuntimeError("pinned Leanstral service returned invalid choices")
     first = choices[0]
-    if (
-        isinstance(first, dict)
-        and first.get("finish_reason") == "length"
-    ):
-        raise PinnedSymaiCompletionError(
-            PinnedSymaiCompletionError.OUTPUT_TOKEN_LIMIT
-        )
+    if isinstance(first, dict) and first.get("finish_reason") == "length":
+        raise PinnedSymaiCompletionError(PinnedSymaiCompletionError.OUTPUT_TOKEN_LIMIT)
     if not isinstance(first, dict) or first.get("finish_reason") != "stop":
-        raise RuntimeError(
-            "pinned Leanstral service returned an invalid choice"
-        )
+        raise RuntimeError("pinned Leanstral service returned an invalid choice")
     message = first.get("message")
-    text = (
-        message.get("content")
-        if isinstance(message, dict)
-        else first.get("text")
-    )
+    text = message.get("content") if isinstance(message, dict) else first.get("text")
     if not isinstance(text, str) or not text.strip():
         raise RuntimeError("pinned Leanstral service returned empty text")
     return text.strip(), dict(_PINNED_SYMAI_ROUTE_BINDING)
@@ -6229,9 +6151,7 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
             return None
         if not isinstance(result, dict):
             return None
-        if "heartbeat_ts" in result or (
-            "phase" in result and "worker_id" in result
-        ):
+        if "heartbeat_ts" in result or ("phase" in result and "worker_id" in result):
             return None
         for key in (
             "text",
@@ -6315,23 +6235,15 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
                 backend_name = result.get("backend")
                 resolved_model = result.get("model")
                 if isinstance(backend_name, str) and backend_name:
-                    self._generation_trace.payload[
-                        "routing_backend"
-                    ] = backend_name
+                    self._generation_trace.payload["routing_backend"] = backend_name
                 if isinstance(resolved_model, str) and resolved_model:
-                    self._generation_trace.payload[
-                        "resolved_model_name"
-                    ] = resolved_model
+                    self._generation_trace.payload["resolved_model_name"] = resolved_model
             text = _extract_generated_text(result)
             if text:
                 return text
-            if isinstance(result, dict) and isinstance(
-                result.get("message"), str
-            ):
+            if isinstance(result, dict) and isinstance(result.get("message"), str):
                 raise RuntimeError(str(result["message"]))
-            raise RuntimeError(
-                "AccelerateManager provider did not return generated text"
-            )
+            raise RuntimeError("AccelerateManager provider did not return generated text")
 
         def generate_multimodal(
             self,
@@ -6348,19 +6260,11 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
             call_options = dict(kwargs)
             payload: dict[str, object] = {
                 "prompt": str(prompt or ""),
-                "image_urls": [
-                    str(url)
-                    for url in image_urls or ()
-                    if str(url or "").strip()
-                ],
-                "image_data_urls": [
-                    _image_path_to_data_url(path) for path in image_paths or ()
-                ],
+                "image_urls": [str(url) for url in image_urls or () if str(url or "").strip()],
+                "image_data_urls": [_image_path_to_data_url(path) for path in image_paths or ()],
                 "system_prompt": system_prompt,
                 "additional_text_blocks": [
-                    str(block)
-                    for block in additional_text_blocks or ()
-                    if str(block or "").strip()
+                    str(block) for block in additional_text_blocks or () if str(block or "").strip()
                 ],
             }
             if messages is not None:
@@ -6570,9 +6474,7 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
                     max_length=prompt_budget,
                     return_tensors=None,
                 )
-                input_ids = (
-                    encoded.get("input_ids") if isinstance(encoded, dict) else None
-                )
+                input_ids = encoded.get("input_ids") if isinstance(encoded, dict) else None
                 if input_ids:
                     return (
                         tokenizer.decode(input_ids, skip_special_tokens=False),
@@ -6610,11 +6512,7 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
                         max_length=prompt_budget,
                         return_tensors=None,
                     )
-                    input_ids = (
-                        encoded.get("input_ids")
-                        if isinstance(encoded, dict)
-                        else None
-                    )
+                    input_ids = encoded.get("input_ids") if isinstance(encoded, dict) else None
                     if input_ids:
                         return (
                             tokenizer.decode(
@@ -6627,7 +6525,9 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
                     pass
             return prompt[-max(256, prompt_budget * 4) :], retry_tokens
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             model = model_name or _generic_llm_model_env() or "gpt2"
             pipe = self._pipelines.get(model)
             if pipe is None:
@@ -6717,9 +6617,10 @@ def _get_p2p_task_queue_provider() -> LLMProvider:
                 )
                 or 60.0
             )
-            task_type = str(
-                call_options.pop("task_type", None) or "text-generation"
-            ).strip() or "text-generation"
+            task_type = (
+                str(call_options.pop("task_type", None) or "text-generation").strip()
+                or "text-generation"
+            )
             task_id = submit_task(
                 prompt=str(prompt or ""),
                 model_name=model_name
@@ -6739,24 +6640,15 @@ def _get_p2p_task_queue_provider() -> LLMProvider:
                 timeout_s=float(timeout_value),
             )
             if not isinstance(task, dict):
-                raise LLMRouterError(
-                    f"TaskQueue task did not complete before timeout: {task_id}"
-                )
+                raise LLMRouterError(f"TaskQueue task did not complete before timeout: {task_id}")
             status = str(task.get("status") or "").strip().lower()
             if status != "completed":
-                error = str(
-                    task.get("error")
-                    or task.get("message")
-                    or status
-                    or "unknown error"
-                )
+                error = str(task.get("error") or task.get("message") or status or "unknown error")
                 raise LLMRouterError(f"TaskQueue task failed: {error}")
             text = _extract_generated_text_from_task_result(task.get("result"))
             if isinstance(text, str) and text.strip():
                 return text
-            raise LLMRouterError(
-                "TaskQueue task completed without generated text"
-            )
+            raise LLMRouterError("TaskQueue task completed without generated text")
 
     return _P2PTaskQueueProvider()
 
@@ -6889,9 +6781,15 @@ def _get_mock_provider() -> LLMProvider:
                 cats = "cats" in text and "animals" in text
                 if fmt == "prolog":
                     # Use ASCII tokens to satisfy tests that check for prolog-like syntax.
-                    return "forall(X, (cat(X) -> animal(X)))." if cats else "exists(X, statement(X))."
+                    return (
+                        "forall(X, (cat(X) -> animal(X)))." if cats else "exists(X, statement(X))."
+                    )
                 if fmt == "tptp":
-                    return "fof(ax1, axiom, ! [X] : ( cat(X) => animal(X) ) )." if cats else "fof(ax1, axiom, ? [X] : statement(X) )."
+                    return (
+                        "fof(ax1, axiom, ! [X] : ( cat(X) => animal(X) ) )."
+                        if cats
+                        else "fof(ax1, axiom, ? [X] : statement(X) )."
+                    )
                 # symbolic/default
                 return "∀x (Cat(x) → Animal(x))" if cats else "∃x Statement(x)"
 
@@ -6904,15 +6802,23 @@ def _get_mock_provider() -> LLMProvider:
                     "fol_formula": formula,
                     "confidence": 0.9,
                     "logical_components": {
-                        "quantifiers": ["∀" if fmt == "symbolic" else ("forall" if fmt == "prolog" else "!")],
+                        "quantifiers": [
+                            "∀" if fmt == "symbolic" else ("forall" if fmt == "prolog" else "!")
+                        ],
                         "predicates": ["Cat", "Animal"],
                         "entities": ["cat", "animal"],
-                        "connectives": ["→" if fmt == "symbolic" else ("->" if fmt == "prolog" else "=>")],
+                        "connectives": [
+                            "→" if fmt == "symbolic" else ("->" if fmt == "prolog" else "=>")
+                        ],
                     },
                     "reasoning_steps": ["mock"],
                     "validation_results": {"valid": True, "backend": "mock"},
                     "warnings": [],
-                    "metadata": {"backend": "mock", "model": model_name or "mock", "output_format": fmt},
+                    "metadata": {
+                        "backend": "mock",
+                        "model": model_name or "mock",
+                        "output_format": fmt,
+                    },
                 }
                 return json.dumps(payload, ensure_ascii=False)
 
@@ -6933,7 +6839,9 @@ def _get_mock_provider() -> LLMProvider:
                 return "is, are, has"
             if "extract" in lowered and "entit" in lowered:
                 return "cat, animal"
-            if "extract" in lowered and ("connective" in lowered or "logical connective" in lowered):
+            if "extract" in lowered and (
+                "connective" in lowered or "logical connective" in lowered
+            ):
                 return "and, or, not"
 
             if "first-order logic" in lowered or "fol" in lowered:
@@ -7266,9 +7174,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
         default_model="gpt2",
     ),
 )
-_BUILTIN_LLM_PROVIDER_SPEC_BY_NAME = {
-    spec.name: spec for spec in _BUILTIN_LLM_PROVIDER_SPECS
-}
+_BUILTIN_LLM_PROVIDER_SPEC_BY_NAME = {spec.name: spec for spec in _BUILTIN_LLM_PROVIDER_SPECS}
 
 
 def _llm_capability(
@@ -7433,9 +7339,7 @@ def _builtin_llm_provider_state(
             "IPFS_ACCELERATE_PY_ENABLE_IPFS_ACCELERATE",
             "IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE",
         )
-        configured = (
-            None if not raw else str(raw).strip().lower() in {"1", "true", "yes", "on"}
-        )
+        configured = None if not raw else str(raw).strip().lower() in {"1", "true", "yes", "on"}
         return (
             LifecycleState.CONFIGURED if configured else LifecycleState.DECLARED,
             OperationalState(
@@ -7509,16 +7413,14 @@ def _builtin_llm_provider_descriptor(
 
 def _llm_provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
     descriptors = {
-        spec.name: _builtin_llm_provider_descriptor(spec)
-        for spec in _BUILTIN_LLM_PROVIDER_SPECS
+        spec.name: _builtin_llm_provider_descriptor(spec) for spec in _BUILTIN_LLM_PROVIDER_SPECS
     }
     with _PROVIDER_REGISTRY_LOCK:
         registered = tuple(_PROVIDER_REGISTRY.values())
     for info in registered:
         # Dynamic registration has the same precedence as invocation.
-        descriptors[info.name] = (
-            info.descriptor
-            or _registered_llm_provider_descriptor(info.name, None)
+        descriptors[info.name] = info.descriptor or _registered_llm_provider_descriptor(
+            info.name, None
         )
     return descriptors
 
@@ -7526,10 +7428,7 @@ def _llm_provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
 def list_providers() -> List[ProviderDescriptor]:
     """List LLM providers without resolving or constructing any provider."""
 
-    return [
-        descriptor
-        for _, descriptor in sorted(_llm_provider_descriptors_by_name().items())
-    ]
+    return [descriptor for _, descriptor in sorted(_llm_provider_descriptors_by_name().items())]
 
 
 def _canonical_llm_catalog_provider_name(name: str) -> str:
@@ -7542,25 +7441,17 @@ def _canonical_llm_catalog_provider_name(name: str) -> str:
     # The historical "grok" selector prefers the CLI when installed and then
     # the xAI API. Checking PATH does not execute or install the CLI.
     if requested == "grok":
-        return (
-            "grok_cli"
-            if _cli_available(_grok_cli_command())
-            else "xai"
-        )
+        return "grok_cli" if _cli_available(_grok_cli_command()) else "xai"
     canonical = _PROVIDER_ALIASES.get(requested)
     if canonical in descriptors:
         return canonical
     matches = sorted(
-        descriptor.name
-        for descriptor in descriptors.values()
-        if requested in descriptor.aliases
+        descriptor.name for descriptor in descriptors.values() if requested in descriptor.aliases
     )
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        raise ValueError(
-            f"Ambiguous LLM provider alias {name!r}: {', '.join(matches)}"
-        )
+        raise ValueError(f"Ambiguous LLM provider alias {name!r}: {', '.join(matches)}")
     raise ValueError(f"Unknown LLM provider: {name}")
 
 
@@ -7585,11 +7476,7 @@ def _llm_model_descriptor(
         # the single built-in LLM capability shape.
         capabilities = provider.capabilities or (_llm_capability(),)
     else:
-        capability = (
-            provider.capabilities[0]
-            if provider.capabilities
-            else _llm_capability()
-        )
+        capability = provider.capabilities[0] if provider.capabilities else _llm_capability()
         capabilities = (
             _llm_capability(
                 chat=Operation.TEXT_CHAT in capability.operations,
@@ -7607,9 +7494,7 @@ def _llm_model_descriptor(
         state=provider.state,
         provenance=(Provenance(source="llm_router.static"),),
         labels={
-            "access_requirement": provider_labels.get(
-                "access_requirement", "unknown"
-            ),
+            "access_requirement": provider_labels.get("access_requirement", "unknown"),
             "batching": provider_labels.get("batching", "supported"),
             "device": provider_labels.get("device", "unknown"),
             "invocation_model": model_name,
@@ -7698,9 +7583,7 @@ def _select_llm_discovery_provider(
         transformers_available = False
     if transformers_available:
         return "local_hf"
-    raise RuntimeError(
-        "No LLM provider is statically resolvable for the requested constraints"
-    )
+    raise RuntimeError("No LLM provider is statically resolvable for the requested constraints")
 
 
 def resolve_model(
@@ -7727,9 +7610,7 @@ def resolve_model(
     if constraints:
         unknown = ", ".join(sorted(str(key) for key in constraints))
         raise TypeError(f"Unknown LLM resolution constraints: {unknown}")
-    operation_value = (
-        operation.value if isinstance(operation, Operation) else str(operation)
-    )
+    operation_value = operation.value if isinstance(operation, Operation) else str(operation)
     supported_operations = {
         Operation.TEXT_GENERATE.value,
         Operation.TEXT_CHAT.value,
@@ -7749,8 +7630,7 @@ def resolve_model(
     }
     if operation_value not in capability_operations:
         raise ValueError(
-            f"LLM provider {provider_name!r} does not declare operation "
-            f"{operation_value!r}"
+            f"LLM provider {provider_name!r} does not declare operation {operation_value!r}"
         )
     if device:
         known_device = dict(provider_descriptor.labels).get("device", "unknown")
@@ -7759,12 +7639,12 @@ def resolve_model(
             item.strip().casefold() for item in known_device.split(",") if item.strip()
         }
         if (
-            known_device not in {"unknown", "runtime-selected", "worker-selected", "provider-managed"}
+            known_device
+            not in {"unknown", "runtime-selected", "worker-selected", "provider-managed"}
             and requested_device not in known_devices
         ):
             raise ValueError(
-                f"LLM provider {provider_name!r} does not declare device "
-                f"{requested_device!r}"
+                f"LLM provider {provider_name!r} does not declare device {requested_device!r}"
             )
 
     known_models = _llm_models_for_provider(provider_name)
@@ -7862,7 +7742,9 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         elif name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
             builtin = _get_llama_cpp_native_provider(auto_install=True)
             if builtin is None:
-                raise LLMRouterError("llama-cpp-python not installed for llama_cpp_native provider.")
+                raise LLMRouterError(
+                    "llama-cpp-python not installed for llama_cpp_native provider."
+                )
         else:
             builtin = _builtin_provider_by_name(name)
         if builtin is not None:
@@ -7904,7 +7786,9 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         elif forced_name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
             builtin = _get_llama_cpp_native_provider(auto_install=True)
             if builtin is None:
-                raise LLMRouterError("llama-cpp-python not installed for llama_cpp_native provider.")
+                raise LLMRouterError(
+                    "llama-cpp-python not installed for llama_cpp_native provider."
+                )
         else:
             builtin = _builtin_provider_by_name(forced_name)
         if builtin is not None:
@@ -7984,7 +7868,9 @@ def get_llm_provider(
         cached = resolved_deps.get_cached(deps_key)
         if cached is not None:
             return cached
-        return resolved_deps.set_cached(deps_key, _resolve_provider_uncached(provider, deps=resolved_deps))
+        return resolved_deps.set_cached(
+            deps_key, _resolve_provider_uncached(provider, deps=resolved_deps)
+        )
 
     # Process-global caching path.
     return _resolve_provider_cached(provider, _provider_cache_key())
@@ -7994,12 +7880,16 @@ def _effective_llm_provider_name(explicit_provider: Optional[str]) -> str:
     """Return the canonical provider name used for diagnostics and traces."""
 
     key = (
-        explicit_provider
-        or os.getenv("ipfs_accelerate_py_LLM_PROVIDER")
-        or os.getenv("IPFS_ACCELERATE_PY_LLM_PROVIDER")
-        or os.getenv("IPFS_DATASETS_PY_LLM_PROVIDER")
-        or ""
-    ).strip().lower()
+        (
+            explicit_provider
+            or os.getenv("ipfs_accelerate_py_LLM_PROVIDER")
+            or os.getenv("IPFS_ACCELERATE_PY_LLM_PROVIDER")
+            or os.getenv("IPFS_DATASETS_PY_LLM_PROVIDER")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
     if key == "grok":
         return "grok_cli" if _cli_available(_grok_cli_command()) else "xai"
     if key in _GROK_CLI_PROVIDER_ALIASES:
@@ -8105,9 +7995,7 @@ def _coerce_positive_int(value: object, *, default: int) -> int:
 def _estimate_output_tokens_from_kwargs(kwargs: Mapping[str, object]) -> int:
     for key in ("max_tokens", "max_new_tokens", "max_completion_tokens", "max_length"):
         if key in kwargs and kwargs[key] is not None:
-            return _coerce_positive_int(
-                kwargs[key], default=_DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE
-            )
+            return _coerce_positive_int(kwargs[key], default=_DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE)
     return _DEFAULT_LLM_OUTPUT_TOKEN_ESTIMATE
 
 
@@ -8458,9 +8346,7 @@ def _build_llm_static_candidate(
     provider_id = stable_id("provider", "llm", provider_name)
     model_id = stable_id("model", "llm", provider_name, model_name or "default")
     deployment_id = stable_id("deployment", "llm", provider_name, "default")
-    binding_id = stable_id(
-        "binding", "llm", provider_name, model_name or "default", scope_id
-    )
+    binding_id = stable_id("binding", "llm", provider_name, model_name or "default", scope_id)
     return StaticCandidate(
         binding_id=binding_id,
         provider_id=provider_id,
@@ -8508,9 +8394,7 @@ def _admission_result_to_trace(result: object) -> Dict[str, object]:
         "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
         "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
         "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
-        "catalog_revision": getattr(selected, "catalog_revision", None)
-        if selected
-        else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None) if selected else None,
         "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
         "remote_charged": bool(getattr(result, "success", False)),
     }
@@ -8551,10 +8435,7 @@ def _parse_llm_provider_observation(
     try:
         from .endpoint_usage.adapters import parse_provider_observation
 
-        if any(
-            key in observation
-            for key in ("headers", "body", "family", "http_status", "usage")
-        ):
+        if any(key in observation for key in ("headers", "body", "family", "http_status", "usage")):
             payload = dict(observation)
             payload.setdefault("scope_id", scope_id)
             payload.setdefault("request_id", request_id)
@@ -8648,9 +8529,7 @@ def _classify_llm_invoke_exception(exc: BaseException) -> "object":
     if bool(getattr(exc, "side_effects_started", False)):
         return ErrorSafetyClass.SIDE_EFFECT
     message = str(exc).casefold()
-    reason_codes: List[str] = [
-        _canonical_reason_code(type(exc).__name__, default="provider_error")
-    ]
+    reason_codes: List[str] = [_canonical_reason_code(type(exc).__name__, default="provider_error")]
     http_status: Optional[int] = None
     for attr in ("status_code", "status", "http_status", "code"):
         raw = getattr(exc, attr, None)
@@ -8703,10 +8582,7 @@ def _classify_llm_invoke_exception(exc: BaseException) -> "object":
             http_status=http_status or 429,
             reason_codes=("rate_limited", "capacity_unavailable"),
         )
-    if any(
-        token in message
-        for token in ("timeout", "timed out", "deadline exceeded")
-    ):
+    if any(token in message for token in ("timeout", "timed out", "deadline exceeded")):
         return classify_invoke_error(
             http_status=http_status or 408,
             reason_codes=("timeout",),
@@ -8776,9 +8652,7 @@ def _record_usage_observe_shadow(
             payload["usage_revision"] = getattr(snap, "usage_revision", None)
             payload["scope_id"] = usage_scope_id
         except Exception:
-            payload["reason_codes"] = list(payload["reason_codes"]) + [
-                "snapshot_unavailable"
-            ]
+            payload["reason_codes"] = list(payload["reason_codes"]) + ["snapshot_unavailable"]
         if success and remote and str(getattr(mode, "value", mode)) == "shadow":
             try:
                 from .endpoint_usage.schema import UsageVector as _UsageVector
@@ -8787,8 +8661,7 @@ def _record_usage_observe_shadow(
                     usage_scope_id,
                     kind=UsageEventKind.OBSERVATION_SUCCESS,
                     units=_UsageVector(),
-                    request_id=usage_request_id
-                    or stable_id("lreq", "shadow", usage_scope_id),
+                    request_id=usage_request_id or stable_id("lreq", "shadow", usage_scope_id),
                     reason_codes=("shadow_observe",),
                 )
             except Exception:
@@ -8899,9 +8772,7 @@ def _generate_text_with_usage_admission(
         remote=True,
         kwargs=kwargs,
     )
-    request_id = usage_request_id or stable_id(
-        "lreq", "llm", str(time.time_ns()), str(len(prompt))
-    )
+    request_id = usage_request_id or stable_id("lreq", "llm", str(time.time_ns()), str(len(prompt)))
     idempotency_key = usage_idempotency_key or stable_id("lidem", request_id)
     catalog_revision = usage_catalog_revision or stable_id(
         "cat", "llm_router", USAGE_ROUTING_REQUIREMENT_ID
@@ -8921,9 +8792,7 @@ def _generate_text_with_usage_admission(
     else:
         backend = provider_instance or get_llm_provider(provider, deps=deps)
         provider_used = _llm_provider_display_name(backend, requested=provider)
-        scope_id = stable_id(
-            "scope", "llm", provider_used, model_name or "default"
-        )
+        scope_id = stable_id("scope", "llm", provider_used, model_name or "default")
         ureq_probe = usage_request
         if isinstance(ureq_probe, Mapping):
             preferred_scope = ureq_probe.get("preferred_scope_id")
@@ -8951,9 +8820,7 @@ def _generate_text_with_usage_admission(
             pre_dispatch=True,
         )
 
-    origin_labels: Dict[str, str] = dict(
-        getattr(candidates[0], "labels", None) or {}
-    )
+    origin_labels: Dict[str, str] = dict(getattr(candidates[0], "labels", None) or {})
     origin_labels.update(
         _llm_compatibility_labels(
             provider_name=str(origin_labels.get("router_provider") or provider or ""),
@@ -8965,9 +8832,7 @@ def _generate_text_with_usage_admission(
         # Side-effecting work must never fallback across providers.
         candidates = candidates[:1]
     else:
-        filtered = _filter_llm_compatible_candidates(
-            candidates, origin_labels=origin_labels
-        )
+        filtered = _filter_llm_compatible_candidates(candidates, origin_labels=origin_labels)
         candidates = filtered or list(candidates[:1])
 
     meta_by_binding = {
@@ -9066,9 +8931,7 @@ def _generate_text_with_usage_admission(
                 )
             router_name = labels.get("router_provider") or provider
             try:
-                active_backend = provider_instance or get_llm_provider(
-                    router_name, deps=deps
-                )
+                active_backend = provider_instance or get_llm_provider(router_name, deps=deps)
             except Exception as exc:
                 return InvokeOutcome(
                     success=False,
@@ -9081,9 +8944,7 @@ def _generate_text_with_usage_admission(
         call_kwargs = dict(kwargs)
         if side_effecting_request:
             call_kwargs["disable_model_retry"] = True
-        provider_name_for_call = _llm_provider_display_name(
-            active_backend, requested=provider
-        )
+        provider_name_for_call = _llm_provider_display_name(active_backend, requested=provider)
         try:
             dispatched_holder["dispatched"] = True
             generated = _generate_with_provider_fallbacks(
@@ -9216,9 +9077,7 @@ def _generate_text_with_usage_admission(
         jitter_max_ms=0,
     )
     effective_policy = policy
-    if getattr(pin, "is_exact", False) and not getattr(
-        pin, "allow_fallback_with_pin", False
-    ):
+    if getattr(pin, "is_exact", False) and not getattr(pin, "allow_fallback_with_pin", False):
         if policy.fallback is not FallbackClass.NONE:
             effective_policy = RoutingPolicy(
                 mode=policy.mode,
@@ -9265,9 +9124,7 @@ def _generate_text_with_usage_admission(
     elif not result.success and dispatched_holder.get("dispatched"):
         trace["pre_dispatch"] = False
         trace["remote_charged"] = True
-        trace["reason_codes"] = list(trace.get("reason_codes") or []) + [
-            "post_dispatch_settled"
-        ]
+        trace["reason_codes"] = list(trace.get("reason_codes") or []) + ["post_dispatch_settled"]
     _set_last_usage_admission(trace)
 
     if not result.success or "generated" not in result_holder:
@@ -9299,9 +9156,7 @@ def _generate_text_with_usage_admission(
     generated = str(result_holder["generated"])
     provider_used = str(result_holder.get("provider_used") or effective_provider_name)
     used_model_name = result_holder.get("used_model_name")
-    used_model = (
-        str(used_model_name) if isinstance(used_model_name, str) else model_name
-    )
+    used_model = str(used_model_name) if isinstance(used_model_name, str) else model_name
     route_trace = result_holder.get("route_trace")
     _set_last_generation_trace(
         provider_name=provider_used,
@@ -9356,10 +9211,9 @@ def _generate_with_provider_fallbacks(
                 return backend.generate(prompt, model_name=None, **kwargs)
             except Exception:
                 pass
-        if (
-            _is_hf_inference_provider_name(effective_provider_name)
-            and _is_hf_model_compatibility_error(initial_error)
-        ):
+        if _is_hf_inference_provider_name(
+            effective_provider_name
+        ) and _is_hf_model_compatibility_error(initial_error):
             attempted = {
                 str(model_name or "").strip(),
                 _coalesce_env(
@@ -9475,7 +9329,9 @@ def generate_text(
     remote_dispatched = False
     if response_cache_ok:
         try:
-            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+            cache_key = _response_cache_key(
+                provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+            )
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
@@ -9537,7 +9393,9 @@ def generate_text(
     if side_effecting_request:
         call_kwargs["disable_model_retry"] = True
 
-    provider_used_name = _llm_provider_display_name(backend, requested=provider) or effective_provider_name
+    provider_used_name = (
+        _llm_provider_display_name(backend, requested=provider) or effective_provider_name
+    )
     try:
         remote_dispatched = True
         result = _generate_with_provider_fallbacks(
@@ -9548,9 +9406,7 @@ def generate_text(
             kwargs=call_kwargs,
         )
         route_trace: dict[str, object] = {}
-        route_trace_getter = getattr(
-            backend, "get_last_generation_trace", None
-        )
+        route_trace_getter = getattr(backend, "get_last_generation_trace", None)
         if callable(route_trace_getter):
             try:
                 candidate_trace = route_trace_getter()
@@ -9593,9 +9449,7 @@ def generate_text(
         return result
     except Exception as primary_error:
         # Agent / side-effecting requests never switch providers or fall back.
-        if side_effecting_request or bool(
-            getattr(primary_error, "side_effects_started", False)
-        ):
+        if side_effecting_request or bool(getattr(primary_error, "side_effects_started", False)):
             if usage_coordinator is not None and _usage_mode_observes_only(policy):
                 _record_usage_observe_shadow(
                     prompt=str(prompt or ""),
@@ -9614,8 +9468,7 @@ def generate_text(
             raise
         pinned_provider = _canonicalize_provider(provider)
         pinned_optional = bool(
-            provider is not None
-            and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
+            provider is not None and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
         )
         if provider is None or pinned_optional:
             for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
@@ -9652,9 +9505,7 @@ def generate_text(
                             streaming=bool(usage_streaming),
                             kwargs=kwargs,
                         )
-                    elif usage_coordinator is None or _usage_mode_is_off(
-                        policy, usage_coordinator
-                    ):
+                    elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
                         _set_last_usage_admission(
                             {
                                 "success": True,
@@ -9758,7 +9609,9 @@ def _batch_worker_count(
         except (TypeError, ValueError):
             pass
 
-    provider_key = _canonicalize_provider(provider) if provider else str(provider or "").strip().lower()
+    provider_key = (
+        _canonicalize_provider(provider) if provider else str(provider or "").strip().lower()
+    )
     if provider_key in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
         return 1
     # Goose chat is safe to parallelize modestly; agent path forces serial above.
@@ -9775,19 +9628,14 @@ def _normalize_text_batch_result(
     if isinstance(value, str):
         if expected_count == 1:
             return [value]
-        raise RuntimeError(
-            "Batch LLM provider returned a single string for multiple prompts"
-        )
+        raise RuntimeError("Batch LLM provider returned a single string for multiple prompts")
     try:
         values = list(value)  # type: ignore[arg-type]
     except TypeError as exc:
-        raise RuntimeError(
-            "Batch LLM provider returned a non-iterable result"
-        ) from exc
+        raise RuntimeError("Batch LLM provider returned a non-iterable result") from exc
     if len(values) != expected_count:
         raise RuntimeError(
-            "Batch LLM provider returned "
-            f"{len(values)} results for {expected_count} prompts"
+            f"Batch LLM provider returned {len(values)} results for {expected_count} prompts"
         )
     return [str(item or "") for item in values]
 
@@ -9976,9 +9824,7 @@ def generate_text_batch(
                 "attempt_count": len(batch_admissions),
                 "completed_items": len(prompt_list),
                 "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
-                "remote_charged": any(
-                    item.get("remote_charged") for item in batch_admissions
-                ),
+                "remote_charged": any(item.get("remote_charged") for item in batch_admissions),
             }
         )
         return [str(item or "") for item in results]
@@ -10023,8 +9869,7 @@ def generate_text_batch(
     results: list[Optional[str]] = [None] * len(prompt_list)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_generate_one, prompt): idx
-            for idx, prompt in enumerate(prompt_list)
+            executor.submit(_generate_one, prompt): idx for idx, prompt in enumerate(prompt_list)
         }
         for future in as_completed(futures):
             results[futures[future]] = future.result()
@@ -10078,8 +9923,7 @@ def generate_text_mesh_batch(
     results: list[Optional[str]] = [None] * len(prompt_list)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_generate_one, prompt): idx
-            for idx, prompt in enumerate(prompt_list)
+            executor.submit(_generate_one, prompt): idx for idx, prompt in enumerate(prompt_list)
         }
         for future in as_completed(futures):
             results[futures[future]] = future.result()
@@ -10128,8 +9972,7 @@ def chat_completions_batch_create(
     results: list[Optional[OpenAICompatResponse]] = [None] * len(batches)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_create_one, messages): idx
-            for idx, messages in enumerate(batches)
+            executor.submit(_create_one, messages): idx for idx, messages in enumerate(batches)
         }
         for future in as_completed(futures):
             results[futures[future]] = future.result()
@@ -10182,7 +10025,9 @@ def _parse_openai_compat_response(data: dict) -> OpenAICompatResponse:
                             token = entry.get("token")
                             logprob = entry.get("logprob")
                             if isinstance(token, str) and isinstance(logprob, (int, float)):
-                                top_logprobs.append(OpenAICompatTopLogProb(token=token, logprob=float(logprob)))
+                                top_logprobs.append(
+                                    OpenAICompatTopLogProb(token=token, logprob=float(logprob))
+                                )
     except Exception:
         top_logprobs = []
 
@@ -10190,7 +10035,9 @@ def _parse_openai_compat_response(data: dict) -> OpenAICompatResponse:
         choices=[
             OpenAICompatChoice(
                 message=OpenAICompatMessage(content=str(content).strip()),
-                logprobs=OpenAICompatLogProbs(content=[OpenAICompatLogProbsContentItem(top_logprobs=top_logprobs)]),
+                logprobs=OpenAICompatLogProbs(
+                    content=[OpenAICompatLogProbsContentItem(top_logprobs=top_logprobs)]
+                ),
             )
         ]
     )
@@ -10330,7 +10177,9 @@ def chat_completions_create(
         choices=[
             OpenAICompatChoice(
                 message=OpenAICompatMessage(content=str(text).strip()),
-                logprobs=OpenAICompatLogProbs(content=[OpenAICompatLogProbsContentItem(top_logprobs=[])]),
+                logprobs=OpenAICompatLogProbs(
+                    content=[OpenAICompatLogProbsContentItem(top_logprobs=[])]
+                ),
             )
         ]
     )
@@ -10353,7 +10202,9 @@ def get_openai_compat_async_client(
     default_model = model
 
     class _ChatCompletions:
-        async def create(self, *, messages: list[dict[str, str]], model: str, **kwargs: object) -> OpenAICompatResponse:
+        async def create(
+            self, *, messages: list[dict[str, str]], model: str, **kwargs: object
+        ) -> OpenAICompatResponse:
             effective_model = default_model or model
 
             def _run_sync() -> OpenAICompatResponse:

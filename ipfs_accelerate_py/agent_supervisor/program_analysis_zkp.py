@@ -102,14 +102,10 @@ PROGRAM_ZKP_CAPABILITY_CHECK_SCHEMA: Final[str] = (
 PROGRAM_ZKP_PROOF_SCHEMA_ID: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-proof@1"
 )
-PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE: Final[str] = (
-    "vfs/zk-capability-conformance@1"
-)
+PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE: Final[str] = "vfs/zk-capability-conformance@1"
 # VFS-G080 objective evidence identities (statement + independent receipt).
 PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT: Final[str] = "vfs/zk-trace-statement@1"
-PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT: Final[str] = (
-    "vfs/zk-verification-receipt@1"
-)
+PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT: Final[str] = "vfs/zk-verification-receipt@1"
 PROGRAM_ZKP_G080_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
     PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
@@ -311,7 +307,9 @@ class TraceTransitionKind(str, Enum):
 
 
 # Ordered, exclusive transition table: each source has exactly one legal next.
-SUPPORTED_TRACE_TRANSITIONS: Final[tuple[tuple[TraceState, TraceTransitionKind, TraceState], ...]] = (
+SUPPORTED_TRACE_TRANSITIONS: Final[
+    tuple[tuple[TraceState, TraceTransitionKind, TraceState], ...]
+] = (
     (TraceState.INIT, TraceTransitionKind.OPEN_FOREST, TraceState.FOREST_OPENED),
     (
         TraceState.FOREST_OPENED,
@@ -350,9 +348,7 @@ SUPPORTED_TRACE_TRANSITIONS: Final[tuple[tuple[TraceState, TraceTransitionKind, 
     ),
 )
 
-_TRANSITION_INDEX: Final[
-    dict[tuple[TraceState, TraceTransitionKind], TraceState]
-] = {
+_TRANSITION_INDEX: Final[dict[tuple[TraceState, TraceTransitionKind], TraceState]] = {
     (source, kind): target for source, kind, target in SUPPORTED_TRACE_TRANSITIONS
 }
 
@@ -384,9 +380,7 @@ def _text(value: Any, *, field_name: str, required: bool = True) -> str:
     if "\x00" in normalized:
         raise ProgramAnalysisZkpError("%s must not contain NUL" % field_name)
     if len(normalized.encode("utf-8")) > MAX_TEXT_BYTES:
-        raise ProgramAnalysisZkpError(
-            "%s exceeds %s UTF-8 bytes" % (field_name, MAX_TEXT_BYTES)
-        )
+        raise ProgramAnalysisZkpError("%s exceeds %s UTF-8 bytes" % (field_name, MAX_TEXT_BYTES))
     return normalized
 
 
@@ -398,9 +392,7 @@ def _enum(value: Any, enum_type: type[T], *, field_name: str) -> T:
         return enum_type(raw)  # type: ignore[call-arg]
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)  # type: ignore[attr-defined]
-        raise ProgramAnalysisZkpError(
-            "%s must be one of: %s" % (field_name, allowed)
-        ) from exc
+        raise ProgramAnalysisZkpError("%s must be one of: %s" % (field_name, allowed)) from exc
 
 
 def _boolean(value: Any, *, field_name: str) -> bool:
@@ -440,9 +432,7 @@ def encode_public_input_vector(public_inputs: Mapping[str, str]) -> tuple[str, .
     for key in PUBLIC_COMMITMENT_KEYS:
         value = public_inputs[key]
         if not isinstance(value, str) or not value.strip():
-            raise ProgramAnalysisZkpError(
-                "public input %s must be a non-empty string" % key
-            )
+            raise ProgramAnalysisZkpError("public input %s must be a non-empty string" % key)
         vector.append(value.strip())
     return tuple(vector)
 
@@ -473,9 +463,7 @@ def supported_transition_table() -> tuple[dict[str, str], ...]:
     )
 
 
-def next_trace_state(
-    current: TraceState | str, kind: TraceTransitionKind | str
-) -> TraceState:
+def next_trace_state(current: TraceState | str, kind: TraceTransitionKind | str) -> TraceState:
     """Return the unique legal successor or raise :class:`ProgramZkpTraceError`."""
 
     state = _enum(current, TraceState, field_name="current")
@@ -571,9 +559,7 @@ class ProgramZkpPublicInputs(CanonicalContract):
                 _text(getattr(self, name), field_name=name, required=True),
             )
         if self.public_input_codec_id != PUBLIC_INPUT_CODEC_ID:
-            raise ProgramZkpVersionError(
-                "public_input_codec_id must be %s" % PUBLIC_INPUT_CODEC_ID
-            )
+            raise ProgramZkpVersionError("public_input_codec_id must be %s" % PUBLIC_INPUT_CODEC_ID)
         if self.public_input_codec_version != PUBLIC_INPUT_CODEC_VERSION:
             raise ProgramZkpVersionError(
                 "public_input_codec_version must be %s" % PUBLIC_INPUT_CODEC_VERSION
@@ -642,9 +628,7 @@ class ProgramZkpPublicInputs(CanonicalContract):
                 "public inputs payload is missing required fields"
             ) from exc
         if claimed_digest and claimed_digest != result.public_input_digest:
-            raise ProgramZkpTamperError(
-                "forged or stale public-input digest rejected"
-            )
+            raise ProgramZkpTamperError("forged or stale public-input digest rejected")
         if claimed_id and claimed_id != result.content_id:
             raise ProgramZkpTamperError("forged public-input content identity rejected")
         return result
@@ -709,9 +693,7 @@ class ProgramZkpTraceStep:
     def __post_init__(self) -> None:
         if isinstance(self.index, bool) or not isinstance(self.index, int) or self.index < 0:
             raise ProgramAnalysisZkpError("trace step index must be a non-negative integer")
-        object.__setattr__(
-            self, "kind", _enum(self.kind, TraceTransitionKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, TraceTransitionKind, field_name="kind"))
         object.__setattr__(
             self,
             "source_state",
@@ -729,9 +711,7 @@ class ProgramZkpTraceStep:
         )
         expected = _TRANSITION_INDEX.get((self.source_state, self.kind))
         if expected is None or expected is not self.target_state:
-            raise ProgramZkpTraceError(
-                "step %s is not a supported transition" % self.index
-            )
+            raise ProgramZkpTraceError("step %s is not a supported transition" % self.index)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -786,20 +766,14 @@ class ProgramZkpTrace(CanonicalContract):
         if not isinstance(self.steps, Sequence) or isinstance(self.steps, (str, bytes)):
             raise ProgramAnalysisZkpError("steps must be a sequence of trace steps")
         if len(self.steps) > MAX_TRACE_STEPS:
-            raise ProgramAnalysisZkpError(
-                "trace exceeds %s steps" % MAX_TRACE_STEPS
-            )
+            raise ProgramAnalysisZkpError("trace exceeds %s steps" % MAX_TRACE_STEPS)
         normalized: list[ProgramZkpTraceStep] = []
         for index, raw in enumerate(self.steps):
             step = (
-                raw
-                if isinstance(raw, ProgramZkpTraceStep)
-                else ProgramZkpTraceStep.from_dict(raw)
+                raw if isinstance(raw, ProgramZkpTraceStep) else ProgramZkpTraceStep.from_dict(raw)
             )
             if step.index != index:
-                raise ProgramZkpTraceError(
-                    "trace step indices must be contiguous starting at 0"
-                )
+                raise ProgramZkpTraceError("trace step indices must be contiguous starting at 0")
             normalized.append(step)
         object.__setattr__(self, "steps", tuple(normalized))
         self._validate_transition_sequence()
@@ -816,18 +790,13 @@ class ProgramZkpTrace(CanonicalContract):
             if step.kind is not expected_kind:
                 raise ProgramZkpTraceError(
                     "reordered or substituted transition at index %s: "
-                    "expected %s got %s"
-                    % (step.index, expected_kind.value, step.kind.value)
+                    "expected %s got %s" % (step.index, expected_kind.value, step.kind.value)
                 )
             if step.source_state is not state:
-                raise ProgramZkpTraceError(
-                    "trace state mismatch at index %s" % step.index
-                )
+                raise ProgramZkpTraceError("trace state mismatch at index %s" % step.index)
             state = next_trace_state(state, step.kind)
             if step.target_state is not state:
-                raise ProgramZkpTraceError(
-                    "trace target mismatch at index %s" % step.index
-                )
+                raise ProgramZkpTraceError("trace target mismatch at index %s" % step.index)
         if state is not TraceState.TERMINAL:
             raise ProgramZkpTraceError("trace must terminate in terminal state")
         # COMMIT_RESULT step must bind the same result commitment as the public input.
@@ -838,9 +807,7 @@ class ProgramZkpTrace(CanonicalContract):
             commit_step.binding_commitment
             and commit_step.binding_commitment != self.result_commitment
         ):
-            raise ProgramZkpTraceError(
-                "committed result does not match public result_commitment"
-            )
+            raise ProgramZkpTraceError("committed result does not match public result_commitment")
 
     @property
     def trace_id(self) -> str:
@@ -969,29 +936,21 @@ class ProgramZkpWitnessPolicy(CanonicalContract):
             "redact_from_logs",
             "redact_from_cache",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), field_name=name))
         if (
             isinstance(self.max_opening_fields, bool)
             or not isinstance(self.max_opening_fields, int)
             or self.max_opening_fields < 1
             or self.max_opening_fields > 10_000
         ):
-            raise ProgramAnalysisZkpError(
-                "max_opening_fields must be an integer in [1, 10000]"
-            )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
+            raise ProgramAnalysisZkpError("max_opening_fields must be an integer in [1, 10000]")
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
         if not self.redact_from_public_artifacts:
             raise ProgramAnalysisZkpError(
                 "witness policy must redact private openings from public artifacts"
             )
         if not self.redact_from_logs:
-            raise ProgramAnalysisZkpError(
-                "witness policy must redact private openings from logs"
-            )
+            raise ProgramAnalysisZkpError("witness policy must redact private openings from logs")
         if not self.redact_from_cache:
             raise ProgramAnalysisZkpError(
                 "witness policy must redact private openings from cache entries"
@@ -1018,10 +977,7 @@ class ProgramZkpWitnessPolicy(CanonicalContract):
             return False
         if name in {"ast_node", "ast_opening"} and not self.allow_ast_openings:
             return False
-        if (
-            name in {"proof_trace", "proof_trace_opening"}
-            and not self.allow_proof_trace_openings
-        ):
+        if name in {"proof_trace", "proof_trace_opening"} and not self.allow_proof_trace_openings:
             return False
         return True
 
@@ -1077,20 +1033,15 @@ class PrivateProgramAnalysisWitness:
             raise ProgramAnalysisZkpError("policy must be ProgramZkpWitnessPolicy")
         if len(values) > checked_policy.max_opening_fields:
             raise ProgramAnalysisZkpError(
-                "witness exceeds max_opening_fields=%s"
-                % checked_policy.max_opening_fields
+                "witness exceeds max_opening_fields=%s" % checked_policy.max_opening_fields
             )
         normalized: Dict[str, Any] = {}
         for raw_name, value in values.items():
             if not isinstance(raw_name, str) or not raw_name.strip():
-                raise ProgramAnalysisZkpError(
-                    "witness field names must be non-empty strings"
-                )
+                raise ProgramAnalysisZkpError("witness field names must be non-empty strings")
             name = raw_name.strip()
             if not checked_policy.admits_field(name):
-                raise ProgramAnalysisZkpError(
-                    "witness field %s is not admitted by policy" % name
-                )
+                raise ProgramAnalysisZkpError("witness field %s is not admitted by policy" % name)
             normalized[name] = value
         if not normalized:
             raise ProgramAnalysisZkpError("witness values must not be empty")
@@ -1115,14 +1066,10 @@ class PrivateProgramAnalysisWitness:
 
     def __reduce_ex__(self, protocol: int) -> Any:
         del protocol
-        raise ProgramZkpWitnessDisclosureError(
-            "private witness cannot be serialized or cached"
-        )
+        raise ProgramZkpWitnessDisclosureError("private witness cannot be serialized or cached")
 
     def __getstate__(self) -> Any:
-        raise ProgramZkpWitnessDisclosureError(
-            "private witness cannot be serialized or cached"
-        )
+        raise ProgramZkpWitnessDisclosureError("private witness cannot be serialized or cached")
 
     def to_dict(self) -> Dict[str, Any]:
         raise ProgramZkpWitnessDisclosureError(
@@ -1204,10 +1151,7 @@ def public_program_zkp_artifact(value: Any) -> Any:
             if lowered in _SAFE_PUBLIC_REDACTION_KEYS and isinstance(item, bool):
                 result[key_text] = item
                 continue
-            if any(
-                lowered == marker or marker in lowered
-                for marker in _PRIVATE_WITNESS_MARKERS
-            ):
+            if any(lowered == marker or marker in lowered for marker in _PRIVATE_WITNESS_MARKERS):
                 if lowered not in _SAFE_PUBLIC_REDACTION_KEYS:
                     raise ProgramZkpWitnessDisclosureError(
                         "private witness markers are rejected from public artifacts"
@@ -1227,8 +1171,7 @@ def public_program_zkp_artifact(value: Any) -> Any:
         reject_private_witness_from_public_payload(public)
         return public
     raise ProgramZkpWitnessDisclosureError(
-        "value of type %s is not a public program-analysis artifact"
-        % type(value).__name__
+        "value of type %s is not a public program-analysis artifact" % type(value).__name__
     )
 
 
@@ -1282,12 +1225,8 @@ class ProgramZkpStatement(CanonicalContract):
                     ProgramZkpPublicInputs.from_dict(self.public_inputs),
                 )
             else:
-                raise ProgramAnalysisZkpError(
-                    "public_inputs must be ProgramZkpPublicInputs"
-                )
-        object.__setattr__(
-            self, "trace_id", _text(self.trace_id, field_name="trace_id")
-        )
+                raise ProgramAnalysisZkpError("public_inputs must be ProgramZkpPublicInputs")
+        object.__setattr__(self, "trace_id", _text(self.trace_id, field_name="trace_id"))
         object.__setattr__(
             self,
             "claim_level",
@@ -1409,8 +1348,7 @@ class ProgramZkpStatement(CanonicalContract):
             and claimed_evidence != PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
         ):
             raise ProgramZkpTamperError(
-                "statement evidence must be %s"
-                % PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+                "statement evidence must be %s" % PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
             )
         public_inputs = ProgramZkpPublicInputs.from_dict(data.get("public_inputs") or {})
         result = cls(
@@ -1441,19 +1379,13 @@ class ProgramZkpProvingRequest:
         if not isinstance(self.trace, ProgramZkpTrace):
             raise ProgramAnalysisZkpError("trace must be ProgramZkpTrace")
         if not isinstance(self._witness, PrivateProgramAnalysisWitness):
-            raise ProgramAnalysisZkpError(
-                "_witness must be PrivateProgramAnalysisWitness"
-            )
+            raise ProgramAnalysisZkpError("_witness must be PrivateProgramAnalysisWitness")
         if self.trace.trace_id != self.statement.trace_id:
             raise ProgramZkpTamperError("trace identity does not match statement")
         if self.trace.public_input_digest != self.statement.public_input_digest:
-            raise ProgramZkpTamperError(
-                "trace public-input digest does not match statement"
-            )
+            raise ProgramZkpTamperError("trace public-input digest does not match statement")
         if self.trace.result_commitment != self.statement.public_inputs.result_commitment:
-            raise ProgramZkpTamperError(
-                "trace result commitment does not match public inputs"
-            )
+            raise ProgramZkpTamperError("trace result commitment does not match public inputs")
 
     def __repr__(self) -> str:
         return (
@@ -1509,9 +1441,7 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
     def __post_init__(self) -> None:
         if not isinstance(self.statement, ProgramZkpStatement):
             if isinstance(self.statement, Mapping):
-                object.__setattr__(
-                    self, "statement", ProgramZkpStatement.from_dict(self.statement)
-                )
+                object.__setattr__(self, "statement", ProgramZkpStatement.from_dict(self.statement))
             else:
                 raise ProgramAnalysisZkpError("statement must be ProgramZkpStatement")
         object.__setattr__(
@@ -1648,9 +1578,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
     def __post_init__(self) -> None:
         if not isinstance(self.statement, ProgramZkpStatement):
             if isinstance(self.statement, Mapping):
-                object.__setattr__(
-                    self, "statement", ProgramZkpStatement.from_dict(self.statement)
-                )
+                object.__setattr__(self, "statement", ProgramZkpStatement.from_dict(self.statement))
             else:
                 raise ProgramAnalysisZkpError("statement must be ProgramZkpStatement")
         object.__setattr__(
@@ -1664,9 +1592,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             "ceremony_id",
             "public_input_codec_version",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "backend_mode",
@@ -1696,23 +1622,17 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             _boolean(self.independent_verifier, field_name="independent_verifier"),
         )
         if self.proof_schema_id != PROGRAM_ZKP_PROOF_SCHEMA_ID:
-            raise ProgramZkpVersionError(
-                "proof_schema_id must be %s" % PROGRAM_ZKP_PROOF_SCHEMA_ID
-            )
+            raise ProgramZkpVersionError("proof_schema_id must be %s" % PROGRAM_ZKP_PROOF_SCHEMA_ID)
         # Bind receipt pins to the statement's public inputs (tamper resistance).
         pins = self.statement.public_inputs
         if self.verifying_key_id != pins.verifying_key_id:
-            raise ProgramZkpTamperError(
-                "receipt verifying_key_id does not match statement"
-            )
+            raise ProgramZkpTamperError("receipt verifying_key_id does not match statement")
         if self.circuit_id != pins.circuit_id:
             raise ProgramZkpTamperError("receipt circuit_id does not match statement")
         if self.ceremony_id != pins.ceremony_id:
             raise ProgramZkpTamperError("receipt ceremony_id does not match statement")
         if self.public_input_digest != self.statement.public_input_digest:
-            raise ProgramZkpTamperError(
-                "receipt public_input_digest does not match statement"
-            )
+            raise ProgramZkpTamperError("receipt public_input_digest does not match statement")
         if self.public_input_codec_version != pins.public_input_codec_version:
             raise ProgramZkpVersionError(
                 "receipt public-input codec version does not match statement"
@@ -1833,13 +1753,9 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
                 "replay verifying_key_id does not match verification receipt"
             )
         if _text(circuit_id, field_name="circuit_id") != self.circuit_id:
-            raise ProgramZkpReplayError(
-                "replay circuit_id does not match verification receipt"
-            )
+            raise ProgramZkpReplayError("replay circuit_id does not match verification receipt")
         if _text(ceremony_id, field_name="ceremony_id") != self.ceremony_id:
-            raise ProgramZkpReplayError(
-                "replay ceremony_id does not match verification receipt"
-            )
+            raise ProgramZkpReplayError("replay ceremony_id does not match verification receipt")
         if (
             _text(public_input_codec_version, field_name="public_input_codec_version")
             != self.public_input_codec_version
@@ -1848,14 +1764,10 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
                 "replay public-input codec version does not match verification receipt"
             )
         if pins.public_input_digest != self.statement.public_input_digest:
-            raise ProgramZkpReplayError(
-                "replay public inputs do not match the bound statement"
-            )
+            raise ProgramZkpReplayError("replay public inputs do not match the bound statement")
         if capability_epoch is not None:
             expected = self.capability_epoch
-            actual = _text(
-                capability_epoch, field_name="capability_epoch", required=False
-            )
+            actual = _text(capability_epoch, field_name="capability_epoch", required=False)
             if expected and actual != expected:
                 raise ProgramZkpReplayError(
                     "replay capability_epoch does not match verification receipt"
@@ -1897,8 +1809,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             and claimed_evidence != PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
         ):
             raise ProgramZkpTamperError(
-                "receipt evidence must be %s"
-                % PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+                "receipt evidence must be %s" % PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
             )
         result = cls(
             statement=ProgramZkpStatement.from_dict(data.get("statement") or {}),
@@ -1913,9 +1824,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             ),
             backend_mode=data.get("backend_mode", ProgramZkpBackendMode.SHADOW),
             capability_epoch=data.get("capability_epoch", ""),
-            capability_production_eligible=data.get(
-                "capability_production_eligible", False
-            ),
+            capability_production_eligible=data.get("capability_production_eligible", False),
             proof_schema_id=data.get("proof_schema_id", PROGRAM_ZKP_PROOF_SCHEMA_ID),
             independent_verifier=data.get("independent_verifier", False),
         )
@@ -2166,9 +2075,7 @@ def zk_attestation_independent_of_semantic_authority() -> bool:
         ClaimLevel.RESOLVED_STATIC,
     ):
         try:
-            reject_illegal_zk_claim_promotion(
-                ClaimLevel.ZK_TRACE_ATTESTED, target
-            )
+            reject_illegal_zk_claim_promotion(ClaimLevel.ZK_TRACE_ATTESTED, target)
         except (ProgramZkpClaimPromotionError, ClaimPromotionError, SemanticAuthorityError):
             continue
         raise ProgramZkpClaimPromotionError(
@@ -2210,8 +2117,8 @@ class ProgramZkpCapabilityDimension(str, Enum):
     CANCELLATION = "cancellation"
 
 
-REQUIRED_CAPABILITY_DIMENSIONS: Final[tuple[ProgramZkpCapabilityDimension, ...]] = (
-    tuple(ProgramZkpCapabilityDimension)
+REQUIRED_CAPABILITY_DIMENSIONS: Final[tuple[ProgramZkpCapabilityDimension, ...]] = tuple(
+    ProgramZkpCapabilityDimension
 )
 
 
@@ -2285,28 +2192,24 @@ class ProgramZkpAuthorityDenialReason(str, Enum):
     PROBE_FAILED = "probe_failed"
 
 
-_PRODUCTION_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = (
-    frozenset(
-        {
-            ProgramZkpCapabilityStatus.VERIFIED,
-            ProgramZkpCapabilityStatus.AVAILABLE,
-        }
-    )
+_PRODUCTION_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = frozenset(
+    {
+        ProgramZkpCapabilityStatus.VERIFIED,
+        ProgramZkpCapabilityStatus.AVAILABLE,
+    }
 )
 
-_FAIL_CLOSED_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = (
-    frozenset(
-        {
-            ProgramZkpCapabilityStatus.SIMULATED,
-            ProgramZkpCapabilityStatus.SHADOW,
-            ProgramZkpCapabilityStatus.FAILED,
-            ProgramZkpCapabilityStatus.STALE,
-            ProgramZkpCapabilityStatus.REJECTED,
-            ProgramZkpCapabilityStatus.UNAVAILABLE,
-            ProgramZkpCapabilityStatus.DEGRADED,
-            ProgramZkpCapabilityStatus.CONFIGURED,
-        }
-    )
+_FAIL_CLOSED_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = frozenset(
+    {
+        ProgramZkpCapabilityStatus.SIMULATED,
+        ProgramZkpCapabilityStatus.SHADOW,
+        ProgramZkpCapabilityStatus.FAILED,
+        ProgramZkpCapabilityStatus.STALE,
+        ProgramZkpCapabilityStatus.REJECTED,
+        ProgramZkpCapabilityStatus.UNAVAILABLE,
+        ProgramZkpCapabilityStatus.DEGRADED,
+        ProgramZkpCapabilityStatus.CONFIGURED,
+    }
 )
 
 
@@ -2332,9 +2235,7 @@ def encode_public_input_field_vector(
     Placeholder and nonzero-only encodings fail closed for production use.
     """
 
-    encoding = _enum(
-        field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding"
-    )
+    encoding = _enum(field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding")
     if encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
         raise ProgramZkpAuthorityError(
             "placeholder field encoding cannot encode production public inputs"
@@ -2344,9 +2245,7 @@ def encode_public_input_field_vector(
             "v1 nonzero-only field encoding is insufficient for production authority"
         )
     if encoding is not ProgramZkpFieldEncodingKind.BN254_SHA256:
-        raise ProgramZkpVersionError(
-            "unsupported field encoding %s" % encoding.value
-        )
+        raise ProgramZkpVersionError("unsupported field encoding %s" % encoding.value)
     if isinstance(public_inputs, ProgramZkpPublicInputs):
         vector = public_inputs.public_input_vector
     elif isinstance(public_inputs, Mapping):
@@ -2463,9 +2362,7 @@ class ProgramZkpCapabilityCheck(CanonicalContract):
             "status",
             _enum(self.status, ProgramZkpCapabilityStatus, field_name="status"),
         )
-        object.__setattr__(
-            self, "reason", _text(self.reason, field_name="reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, field_name="reason", required=False))
         object.__setattr__(
             self,
             "production_eligible",
@@ -2555,13 +2452,9 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         object.__setattr__(
             self,
             "circuit_family",
-            _enum(
-                self.circuit_family, ProgramZkpCircuitFamily, field_name="circuit_family"
-            ),
+            _enum(self.circuit_family, ProgramZkpCircuitFamily, field_name="circuit_family"),
         )
-        object.__setattr__(
-            self, "circuit_id", _text(self.circuit_id, field_name="circuit_id")
-        )
+        object.__setattr__(self, "circuit_id", _text(self.circuit_id, field_name="circuit_id"))
         if (
             isinstance(self.circuit_version, bool)
             or not isinstance(self.circuit_version, int)
@@ -2571,9 +2464,7 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         object.__setattr__(
             self,
             "knowledge_graph_fail_open",
-            _boolean(
-                self.knowledge_graph_fail_open, field_name="knowledge_graph_fail_open"
-            ),
+            _boolean(self.knowledge_graph_fail_open, field_name="knowledge_graph_fail_open"),
         )
         object.__setattr__(self, "stale", _boolean(self.stale, field_name="stale"))
         object.__setattr__(
@@ -2632,29 +2523,19 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         if self.stale:
             reasons.append(ProgramZkpAuthorityDenialReason.STALE_CAPABILITY.value)
         if self.knowledge_graph_fail_open:
-            reasons.append(
-                ProgramZkpAuthorityDenialReason.KNOWLEDGE_GRAPH_FAIL_OPEN.value
-            )
+            reasons.append(ProgramZkpAuthorityDenialReason.KNOWLEDGE_GRAPH_FAIL_OPEN.value)
         if self.backend_mode is ProgramZkpBackendMode.SIMULATED:
             reasons.append(ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value)
         if self.backend_mode is ProgramZkpBackendMode.SHADOW:
             reasons.append(ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value)
         if self.field_encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
-            reasons.append(
-                ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value
-            )
+            reasons.append(ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value)
         if self.field_encoding is ProgramZkpFieldEncodingKind.NONZERO_ONLY_V1:
-            reasons.append(
-                ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value
-            )
+            reasons.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
         if self.circuit_family is ProgramZkpCircuitFamily.TDFOL_ONLY:
-            reasons.append(
-                ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
-            )
+            reasons.append(ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value)
         if self.circuit_family is ProgramZkpCircuitFamily.NONZERO_ONLY_V1:
-            reasons.append(
-                ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value
-            )
+            reasons.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
         for check in self.checks:
             for reason in check.denial_reasons:
                 if reason not in reasons:
@@ -2711,9 +2592,7 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
     def require_production_eligible(self) -> None:
         if not self.production_eligible:
             reasons = ", ".join(self.denial_reasons) or "capability_probe_failed"
-            raise ProgramZkpAuthorityError(
-                "production ZK authority denied: %s" % reasons
-            )
+            raise ProgramZkpAuthorityError("production ZK authority denied: %s" % reasons)
 
     def _payload(self) -> Dict[str, Any]:
         return {
@@ -2745,9 +2624,7 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         return public
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ProgramZkpCapabilityConformanceReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramZkpCapabilityConformanceReport":
         if not isinstance(payload, Mapping):
             raise ProgramAnalysisZkpError("capability report payload must be a mapping")
         data = dict(payload)
@@ -2766,16 +2643,12 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
         result = cls(
             checks=tuple(data.get("checks") or ()),
             backend_mode=data.get("backend_mode", ProgramZkpBackendMode.SHADOW),
-            field_encoding=data.get(
-                "field_encoding", ProgramZkpFieldEncodingKind.BN254_SHA256
-            ),
+            field_encoding=data.get("field_encoding", ProgramZkpFieldEncodingKind.BN254_SHA256),
             circuit_family=data.get(
                 "circuit_family", ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE
             ),
             circuit_id=data.get("circuit_id", PROGRAM_CONTRACT_TRACE_CIRCUIT_ID),
-            circuit_version=data.get(
-                "circuit_version", PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION
-            ),
+            circuit_version=data.get("circuit_version", PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION),
             knowledge_graph_fail_open=data.get("knowledge_graph_fail_open", False),
             stale=data.get("stale", False),
             architecture=data.get("architecture", ""),
@@ -2783,9 +2656,7 @@ class ProgramZkpCapabilityConformanceReport(CanonicalContract):
             notes=tuple(data.get("notes") or ()),
         )
         if claimed_id and claimed_id != result.content_id:
-            raise ProgramZkpTamperError(
-                "forged capability conformance report identity rejected"
-            )
+            raise ProgramZkpTamperError("forged capability conformance report identity rejected")
         return result
 
 
@@ -2877,9 +2748,7 @@ def _probe_backend(
             status=ProgramZkpCapabilityStatus.REJECTED,
             reason="backend is not cryptographic",
             evidence={"backend_mode": backend_mode.value, "backend_id": identity},
-            denial_reasons=(
-                ProgramZkpAuthorityDenialReason.BACKEND_NOT_CRYPTOGRAPHIC.value,
-            ),
+            denial_reasons=(ProgramZkpAuthorityDenialReason.BACKEND_NOT_CRYPTOGRAPHIC.value,),
         )
     return _check(
         ProgramZkpCapabilityDimension.BACKEND,
@@ -2899,9 +2768,7 @@ def _probe_circuit_version(
     family = circuit_family
     denials: list[str] = []
     if family is ProgramZkpCircuitFamily.TDFOL_ONLY:
-        denials.append(
-            ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
-        )
+        denials.append(ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value)
     if family is ProgramZkpCircuitFamily.NONZERO_ONLY_V1:
         denials.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
     if not is_versioned_artifact_id(circuit_id):
@@ -2918,8 +2785,7 @@ def _probe_circuit_version(
                 "circuit_version": circuit_version,
                 "circuit_family": family.value,
             },
-            denial_reasons=denials
-            or (ProgramZkpAuthorityDenialReason.PROBE_FAILED.value,),
+            denial_reasons=denials or (ProgramZkpAuthorityDenialReason.PROBE_FAILED.value,),
         )
     if denials:
         return _check(
@@ -3105,8 +2971,10 @@ def _probe_key(
     if expected_digest:
         expected = _text(expected_digest, field_name="expected_digest")
         evidence["expected_digest"] = expected
-        if digest != expected and expected != key_id and not key_id.endswith(
-            digest.removeprefix("sha256:")
+        if (
+            digest != expected
+            and expected != key_id
+            and not key_id.endswith(digest.removeprefix("sha256:"))
         ):
             denials.append(ProgramZkpAuthorityDenialReason.CORRUPTED_KEY.value)
     if denials:
@@ -3141,9 +3009,7 @@ def _probe_public_input_codec(
     if codec_id != PUBLIC_INPUT_CODEC_ID or codec_version != PUBLIC_INPUT_CODEC_VERSION:
         denials.append(ProgramZkpAuthorityDenialReason.CODEC_INCOMPATIBLE.value)
     if field_encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
-        denials.append(
-            ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value
-        )
+        denials.append(ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value)
     if field_encoding is ProgramZkpFieldEncodingKind.NONZERO_ONLY_V1:
         denials.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
     if field_encoding is not ProgramZkpFieldEncodingKind.BN254_SHA256:
@@ -3215,9 +3081,7 @@ def _probe_independent_verifier(
             status=ProgramZkpCapabilityStatus.UNAVAILABLE,
             reason="independent verifier is not available",
             evidence={"verifier_id": verifier_id},
-            denial_reasons=(
-                ProgramZkpAuthorityDenialReason.INDEPENDENT_VERIFIER_ABSENT.value,
-            ),
+            denial_reasons=(ProgramZkpAuthorityDenialReason.INDEPENDENT_VERIFIER_ABSENT.value,),
         )
     return _check(
         ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER,
@@ -3304,9 +3168,7 @@ def probe_program_analysis_zkp_capability(
     circuit_id: str = PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
     circuit_version: int = PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION,
     circuit_family: ProgramZkpCircuitFamily | str | None = None,
-    field_encoding: ProgramZkpFieldEncodingKind | str = (
-        ProgramZkpFieldEncodingKind.BN254_SHA256
-    ),
+    field_encoding: ProgramZkpFieldEncodingKind | str = (ProgramZkpFieldEncodingKind.BN254_SHA256),
     proving_key_id: str = "",
     verifying_key_id: str = "",
     ceremony_id: str = "",
@@ -3343,9 +3205,7 @@ def probe_program_analysis_zkp_capability(
     """
 
     mode = _enum(backend_mode, ProgramZkpBackendMode, field_name="backend_mode")
-    encoding = _enum(
-        field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding"
-    )
+    encoding = _enum(field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding")
     family = (
         _enum(circuit_family, ProgramZkpCircuitFamily, field_name="circuit_family")
         if circuit_family is not None
@@ -3377,9 +3237,7 @@ def probe_program_analysis_zkp_capability(
             fail(ProgramZkpCapabilityDimension.VERIFYING_KEY, "probe cancelled"),
             fail(ProgramZkpCapabilityDimension.PUBLIC_INPUT_CODEC, "probe cancelled"),
             fail(ProgramZkpCapabilityDimension.PROOF_SCHEMA, "probe cancelled"),
-            fail(
-                ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER, "probe cancelled"
-            ),
+            fail(ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER, "probe cancelled"),
             fail(ProgramZkpCapabilityDimension.BOUNDS, "probe cancelled"),
             cancelled,
         )
@@ -3392,8 +3250,7 @@ def probe_program_analysis_zkp_capability(
             circuit_version=circuit_version,
             knowledge_graph_fail_open=knowledge_graph_fail_open,
             stale=stale,
-            architecture=architecture_override
-            or "%s-%s" % (platform.system(), platform.machine()),
+            architecture=architecture_override or "%s-%s" % (platform.system(), platform.machine()),
             cancellation_supported=cancellation_supported,
             notes=tuple(notes) + ("cancelled",),
         )
@@ -3433,9 +3290,7 @@ def probe_program_analysis_zkp_capability(
             codec_version=codec_version,
             field_encoding=encoding,
         ),
-        _probe_proof_schema(
-            proof_schema_id=proof_schema_id, sample_proof=sample_proof
-        ),
+        _probe_proof_schema(proof_schema_id=proof_schema_id, sample_proof=sample_proof),
         _probe_independent_verifier(
             independent_verifier_available=independent_verifier_available,
             verifier_id=verifier_id,
@@ -3466,9 +3321,7 @@ def probe_program_analysis_zkp_capability(
                         "production_eligible", check.production_eligible
                     ),
                     evidence=override.get("evidence", dict(check.evidence)),
-                    denial_reasons=tuple(
-                        override.get("denial_reasons", check.denial_reasons)
-                    ),
+                    denial_reasons=tuple(override.get("denial_reasons", check.denial_reasons)),
                 )
             )
         checks = rewritten
@@ -3482,8 +3335,7 @@ def probe_program_analysis_zkp_capability(
         circuit_version=circuit_version,
         knowledge_graph_fail_open=knowledge_graph_fail_open,
         stale=stale,
-        architecture=architecture_override
-        or "%s-%s" % (platform.system(), platform.machine()),
+        architecture=architecture_override or "%s-%s" % (platform.system(), platform.machine()),
         cancellation_supported=cancellation_supported,
         notes=tuple(notes),
     )
@@ -3567,9 +3419,7 @@ def grants_production_authority(
     if not isinstance(receipt, ProgramZkpVerificationReceipt):
         raise ProgramAnalysisZkpError("receipt must be ProgramZkpVerificationReceipt")
     if not isinstance(capability, ProgramZkpCapabilityConformanceReport):
-        raise ProgramAnalysisZkpError(
-            "capability must be ProgramZkpCapabilityConformanceReport"
-        )
+        raise ProgramAnalysisZkpError("capability must be ProgramZkpCapabilityConformanceReport")
     if not receipt.authoritative:
         return False
     if not capability.production_eligible:
@@ -3592,8 +3442,7 @@ def require_production_authority(
         if not receipt.authoritative:
             reasons.append(ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value)
         raise ProgramZkpAuthorityError(
-            "production ZK authority denied: %s"
-            % (", ".join(reasons) or "not_authoritative")
+            "production ZK authority denied: %s" % (", ".join(reasons) or "not_authoritative")
         )
 
 
@@ -3660,9 +3509,7 @@ def verify_program_zkp_independently(
     if not isinstance(envelope, ProgramZkpShadowEnvelope):
         raise ProgramAnalysisZkpError("envelope must be ProgramZkpShadowEnvelope")
     if not isinstance(capability, ProgramZkpCapabilityConformanceReport):
-        raise ProgramAnalysisZkpError(
-            "capability must be ProgramZkpCapabilityConformanceReport"
-        )
+        raise ProgramAnalysisZkpError("capability must be ProgramZkpCapabilityConformanceReport")
     if cancellation_event is not None and cancellation_event.is_set():
         raise ProgramZkpCapabilityError("independent verification cancelled")
 
@@ -3715,9 +3562,7 @@ def verify_program_zkp_independently(
         raise ProgramZkpTamperError("corrupted verifying key rejected: empty")
     key_digest = "sha256:" + hashlib.sha256(key_raw).hexdigest()
     if expected_verifying_key_digest:
-        expected = _text(
-            expected_verifying_key_digest, field_name="expected_verifying_key_digest"
-        )
+        expected = _text(expected_verifying_key_digest, field_name="expected_verifying_key_digest")
         if key_digest != expected:
             raise ProgramZkpTamperError("corrupted verifying key rejected: digest mismatch")
 
@@ -3759,9 +3604,7 @@ def verify_program_zkp_independently(
         # Shadow/simulated independent "verification" is structural only.
         verified = True
 
-    verdict = (
-        ProgramZkpVerdict.VERIFIED if verified else ProgramZkpVerdict.REJECTED
-    )
+    verdict = ProgramZkpVerdict.VERIFIED if verified else ProgramZkpVerdict.REJECTED
     return ProgramZkpVerificationReceipt(
         statement=envelope.statement,
         verdict=verdict,
@@ -3812,9 +3655,7 @@ def record_production_program_zkp_verification(
         )
     # No semantic claim promotion: still only zk_trace_attested.
     if receipt.claim_level is not ClaimLevel.ZK_TRACE_ATTESTED:
-        raise ProgramZkpClaimPromotionError(
-            "production receipt cannot promote claim level"
-        )
+        raise ProgramZkpClaimPromotionError("production receipt cannot promote claim level")
     return receipt
 
 

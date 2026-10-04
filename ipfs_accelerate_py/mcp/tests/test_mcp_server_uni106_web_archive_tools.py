@@ -221,7 +221,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 output_format="xml",
             )
             self.assertEqual(invalid_output_format.get("status"), "error")
-            self.assertIn("'output_format' must be one of", str(invalid_output_format.get("error", "")))
+            self.assertIn(
+                "'output_format' must be one of", str(invalid_output_format.get("error", ""))
+            )
 
             search_result = await search_common_crawl(domain="example.com", limit=5)
             self.assertIn(search_result.get("status"), ["success", "error"])
@@ -250,9 +252,13 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 max_matches=0,
             )
             self.assertEqual(advanced_invalid_max.get("status"), "error")
-            self.assertIn("'max_matches' must be greater than 0", str(advanced_invalid_max.get("error", "")))
+            self.assertIn(
+                "'max_matches' must be greater than 0", str(advanced_invalid_max.get("error", ""))
+            )
 
-            advanced_search_result = await search_common_crawl_advanced(domain="example.com", max_matches=5)
+            advanced_search_result = await search_common_crawl_advanced(
+                domain="example.com", max_matches=5
+            )
             self.assertIn(advanced_search_result.get("status"), ["success", "error"])
             if advanced_search_result.get("status") == "success":
                 self.assertIn("results", advanced_search_result)
@@ -263,7 +269,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 warc_length=100,
             )
             self.assertEqual(missing_warc_filename.get("status"), "error")
-            self.assertIn("'warc_filename' is required", str(missing_warc_filename.get("error", "")))
+            self.assertIn(
+                "'warc_filename' is required", str(missing_warc_filename.get("error", ""))
+            )
 
             invalid_warc_offset = await fetch_warc_record_advanced(
                 warc_filename="sample.warc.gz",
@@ -279,7 +287,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 warc_length=0,
             )
             self.assertEqual(invalid_warc_length.get("status"), "error")
-            self.assertIn("'warc_length' must be greater than 0", str(invalid_warc_length.get("error", "")))
+            self.assertIn(
+                "'warc_length' must be greater than 0", str(invalid_warc_length.get("error", ""))
+            )
 
             warc_fetch_result = await fetch_warc_record_advanced(
                 warc_filename="sample.warc.gz",
@@ -308,7 +318,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_representative_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_representative_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _run() -> None:
             async def _contradictory_failure(**_: object) -> dict:
                 return {"status": "success", "success": False, "error": "delegate failure"}
@@ -373,7 +385,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             if models_result.get("status") == "success":
                 self.assertIn("models", models_result)
 
-            missing_model_path = await scrape_with_autoscraper(model_path="", target_urls=["https://example.com"])
+            missing_model_path = await scrape_with_autoscraper(
+                model_path="", target_urls=["https://example.com"]
+            )
             self.assertEqual(missing_model_path.get("status"), "error")
             self.assertIn("'model_path' is required", str(missing_model_path.get("error", "")))
 
@@ -382,7 +396,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 target_urls=[],
             )
             self.assertEqual(missing_target_urls.get("status"), "error")
-            self.assertIn("'target_urls' must be a non-empty list", str(missing_target_urls.get("error", "")))
+            self.assertIn(
+                "'target_urls' must be a non-empty list", str(missing_target_urls.get("error", ""))
+            )
 
             empty_target_urls = await scrape_with_autoscraper(
                 model_path="/tmp/mock.pkl",
@@ -425,7 +441,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 model_name="model1",
             )
             self.assertEqual(missing_wanted_data.get("status"), "error")
-            self.assertIn("'wanted_data' must be a non-empty list", str(missing_wanted_data.get("error", "")))
+            self.assertIn(
+                "'wanted_data' must be a non-empty list", str(missing_wanted_data.get("error", ""))
+            )
 
             create_result = await create_autoscraper_model(
                 sample_url="https://example.com",
@@ -448,7 +466,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 new_sample_urls=[],
             )
             self.assertEqual(missing_opt_urls.get("status"), "error")
-            self.assertIn("'new_sample_urls' must be a non-empty list", str(missing_opt_urls.get("error", "")))
+            self.assertIn(
+                "'new_sample_urls' must be a non-empty list", str(missing_opt_urls.get("error", ""))
+            )
 
             empty_opt_urls = await optimize_autoscraper_model(
                 model_path="/tmp/mock.pkl",
@@ -496,7 +516,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 batch_size=0,
             )
             self.assertEqual(invalid_batch_size.get("status"), "error")
-            self.assertIn("'batch_size' must be greater than 0", str(invalid_batch_size.get("error", "")))
+            self.assertIn(
+                "'batch_size' must be greater than 0", str(invalid_batch_size.get("error", ""))
+            )
 
             invalid_delay = await batch_scrape_with_autoscraper(
                 model_path="/tmp/mock.pkl",
@@ -527,7 +549,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_brave_count = await search_brave(query="cats", count=0)
             self.assertEqual(invalid_brave_count.get("status"), "error")
-            self.assertIn("'count' must be greater than 0", str(invalid_brave_count.get("error", "")))
+            self.assertIn(
+                "'count' must be greater than 0", str(invalid_brave_count.get("error", ""))
+            )
 
             invalid_brave_offset = await search_brave(query="cats", offset=-1)
             self.assertEqual(invalid_brave_offset.get("status"), "error")
@@ -535,11 +559,15 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_brave_safesearch = await search_brave(query="cats", safesearch="bad")
             self.assertEqual(invalid_brave_safesearch.get("status"), "error")
-            self.assertIn("'safesearch' must be one of", str(invalid_brave_safesearch.get("error", "")))
+            self.assertIn(
+                "'safesearch' must be one of", str(invalid_brave_safesearch.get("error", ""))
+            )
 
             invalid_brave_freshness = await search_brave(query="cats", freshness="pz")
             self.assertEqual(invalid_brave_freshness.get("status"), "error")
-            self.assertIn("'freshness' must be one of", str(invalid_brave_freshness.get("error", "")))
+            self.assertIn(
+                "'freshness' must be one of", str(invalid_brave_freshness.get("error", ""))
+            )
 
             brave_result = await search_brave(query="cats", count=3)
             self.assertIn(brave_result.get("status"), ["success", "error"])
@@ -552,13 +580,20 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             missing_brave_batch_queries = await batch_search_brave(queries=[])
             self.assertEqual(missing_brave_batch_queries.get("status"), "error")
-            self.assertIn("'queries' must be a non-empty list", str(missing_brave_batch_queries.get("error", "")))
+            self.assertIn(
+                "'queries' must be a non-empty list",
+                str(missing_brave_batch_queries.get("error", "")),
+            )
 
             invalid_brave_batch_delay = await batch_search_brave(queries=["cats"], delay_seconds=-1)
             self.assertEqual(invalid_brave_batch_delay.get("status"), "error")
-            self.assertIn("'delay_seconds' must be >= 0", str(invalid_brave_batch_delay.get("error", "")))
+            self.assertIn(
+                "'delay_seconds' must be >= 0", str(invalid_brave_batch_delay.get("error", ""))
+            )
 
-            brave_batch_result = await batch_search_brave(queries=["cats", "dogs"], count=2, delay_seconds=0)
+            brave_batch_result = await batch_search_brave(
+                queries=["cats", "dogs"], count=2, delay_seconds=0
+            )
             self.assertIn(brave_batch_result.get("status"), ["success", "error"])
 
             brave_cache_stats = await get_brave_cache_stats()
@@ -577,7 +612,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_google_start = await search_google(query="cats", start=0)
             self.assertEqual(invalid_google_start.get("status"), "error")
-            self.assertIn("'start' must be greater than 0", str(invalid_google_start.get("error", "")))
+            self.assertIn(
+                "'start' must be greater than 0", str(invalid_google_start.get("error", ""))
+            )
 
             invalid_google_safe = await search_google(query="cats", safe="bad")
             self.assertEqual(invalid_google_safe.get("status"), "error")
@@ -585,7 +622,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_google_type = await search_google(query="cats", search_type="video")
             self.assertEqual(invalid_google_type.get("status"), "error")
-            self.assertIn("'search_type' must be 'image' or null", str(invalid_google_type.get("error", "")))
+            self.assertIn(
+                "'search_type' must be 'image' or null", str(invalid_google_type.get("error", ""))
+            )
 
             google_result = await search_google(query="cats", num=3)
             self.assertIn(google_result.get("status"), ["success", "error"])
@@ -595,13 +634,22 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             missing_google_batch_queries = await batch_search_google(queries=[])
             self.assertEqual(missing_google_batch_queries.get("status"), "error")
-            self.assertIn("'queries' must be a non-empty list", str(missing_google_batch_queries.get("error", "")))
+            self.assertIn(
+                "'queries' must be a non-empty list",
+                str(missing_google_batch_queries.get("error", "")),
+            )
 
-            invalid_google_batch_delay = await batch_search_google(queries=["cats"], delay_seconds=-1)
+            invalid_google_batch_delay = await batch_search_google(
+                queries=["cats"], delay_seconds=-1
+            )
             self.assertEqual(invalid_google_batch_delay.get("status"), "error")
-            self.assertIn("'delay_seconds' must be >= 0", str(invalid_google_batch_delay.get("error", "")))
+            self.assertIn(
+                "'delay_seconds' must be >= 0", str(invalid_google_batch_delay.get("error", ""))
+            )
 
-            google_batch_result = await batch_search_google(queries=["cats", "dogs"], num=2, delay_seconds=0)
+            google_batch_result = await batch_search_google(
+                queries=["cats", "dogs"], num=2, delay_seconds=0
+            )
             self.assertIn(google_batch_result.get("status"), ["success", "error"])
 
         anyio.run(_run)
@@ -640,7 +688,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_github_code_sort = await search_github_code(query="ipfs", sort="stars")
             self.assertEqual(invalid_github_code_sort.get("status"), "error")
-            self.assertIn("'sort' must be 'indexed' or null", str(invalid_github_code_sort.get("error", "")))
+            self.assertIn(
+                "'sort' must be 'indexed' or null", str(invalid_github_code_sort.get("error", ""))
+            )
 
             github_code_result = await search_github_code(query="def add", per_page=2)
             self.assertIn(github_code_result.get("status"), ["success", "error"])
@@ -648,14 +698,22 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             github_users_result = await search_github_users(query="barberb", per_page=2)
             self.assertIn(github_users_result.get("status"), ["success", "error"])
 
-            github_issues_result = await search_github_issues(query="repo:octocat/Hello-World is:issue", per_page=2)
+            github_issues_result = await search_github_issues(
+                query="repo:octocat/Hello-World is:issue", per_page=2
+            )
             self.assertIn(github_issues_result.get("status"), ["success", "error"])
 
-            invalid_github_batch_type = await batch_search_github(queries=["ipfs"], search_type="bad")
+            invalid_github_batch_type = await batch_search_github(
+                queries=["ipfs"], search_type="bad"
+            )
             self.assertEqual(invalid_github_batch_type.get("status"), "error")
-            self.assertIn("'search_type' must be one of", str(invalid_github_batch_type.get("error", "")))
+            self.assertIn(
+                "'search_type' must be one of", str(invalid_github_batch_type.get("error", ""))
+            )
 
-            github_batch_result = await batch_search_github(queries=["ipfs", "mcp"], per_page=2, delay_seconds=0)
+            github_batch_result = await batch_search_github(
+                queries=["ipfs", "mcp"], per_page=2, delay_seconds=0
+            )
             self.assertIn(github_batch_result.get("status"), ["success", "error"])
 
             invalid_hf_sort = await search_huggingface_models(sort="bad")
@@ -678,11 +736,17 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             hf_model_info = await get_huggingface_model_info(model_id="bert-base-uncased")
             self.assertIn(hf_model_info.get("status"), ["success", "error"])
 
-            invalid_hf_batch_type = await batch_search_huggingface(queries=["bert"], search_type="bad")
+            invalid_hf_batch_type = await batch_search_huggingface(
+                queries=["bert"], search_type="bad"
+            )
             self.assertEqual(invalid_hf_batch_type.get("status"), "error")
-            self.assertIn("'search_type' must be one of", str(invalid_hf_batch_type.get("error", "")))
+            self.assertIn(
+                "'search_type' must be one of", str(invalid_hf_batch_type.get("error", ""))
+            )
 
-            hf_batch_result = await batch_search_huggingface(queries=["bert", "gpt"], limit=2, delay_seconds=0)
+            hf_batch_result = await batch_search_huggingface(
+                queries=["bert", "gpt"], limit=2, delay_seconds=0
+            )
             self.assertIn(hf_batch_result.get("status"), ["success", "error"])
 
             missing_openverse_query = await search_openverse_images(query="")
@@ -695,11 +759,17 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             openverse_audio_result = await search_openverse_audio(query="music", page_size=2)
             self.assertIn(openverse_audio_result.get("status"), ["success", "error"])
 
-            invalid_openverse_batch_type = await batch_search_openverse(queries=["cat"], search_type="video")
+            invalid_openverse_batch_type = await batch_search_openverse(
+                queries=["cat"], search_type="video"
+            )
             self.assertEqual(invalid_openverse_batch_type.get("status"), "error")
-            self.assertIn("'search_type' must be one of", str(invalid_openverse_batch_type.get("error", "")))
+            self.assertIn(
+                "'search_type' must be one of", str(invalid_openverse_batch_type.get("error", ""))
+            )
 
-            openverse_batch_result = await batch_search_openverse(queries=["cat", "dog"], page_size=2, delay_seconds=0)
+            openverse_batch_result = await batch_search_openverse(
+                queries=["cat", "dog"], page_size=2, delay_seconds=0
+            )
             self.assertIn(openverse_batch_result.get("status"), ["success", "error"])
 
             missing_serp_query = await search_serpstack(query="")
@@ -716,11 +786,17 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             serp_images_result = await search_serpstack_images(query="ipfs", num=2)
             self.assertIn(serp_images_result.get("status"), ["success", "error"])
 
-            invalid_serp_batch_delay = await batch_search_serpstack(queries=["ipfs"], delay_seconds=-1)
+            invalid_serp_batch_delay = await batch_search_serpstack(
+                queries=["ipfs"], delay_seconds=-1
+            )
             self.assertEqual(invalid_serp_batch_delay.get("status"), "error")
-            self.assertIn("'delay_seconds' must be >= 0", str(invalid_serp_batch_delay.get("error", "")))
+            self.assertIn(
+                "'delay_seconds' must be >= 0", str(invalid_serp_batch_delay.get("error", ""))
+            )
 
-            serp_batch_result = await batch_search_serpstack(queries=["ipfs", "mcp"], num=2, delay_seconds=0)
+            serp_batch_result = await batch_search_serpstack(
+                queries=["ipfs", "mcp"], num=2, delay_seconds=0
+            )
             self.assertIn(serp_batch_result.get("status"), ["success", "error"])
 
         anyio.run(_run)
@@ -759,24 +835,36 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             invalid_unified_max_docs = await unified_search_and_fetch(query="ipfs", max_documents=0)
             self.assertEqual(invalid_unified_max_docs.get("status"), "error")
-            self.assertIn("'max_documents' must be greater than 0", str(invalid_unified_max_docs.get("error", "")))
+            self.assertIn(
+                "'max_documents' must be greater than 0",
+                str(invalid_unified_max_docs.get("error", "")),
+            )
 
-            unified_saf_result = await unified_search_and_fetch(query="ipfs", max_results=3, max_documents=2)
+            unified_saf_result = await unified_search_and_fetch(
+                query="ipfs", max_results=3, max_documents=2
+            )
             self.assertIn(unified_saf_result.get("status"), ["success", "error"])
 
             unified_health_result = await unified_health()
             self.assertIn(unified_health_result.get("status"), ["success", "error"])
 
-            missing_seed_urls = await unified_agentic_discover_and_fetch(seed_urls=[], target_terms=["ipfs"])
+            missing_seed_urls = await unified_agentic_discover_and_fetch(
+                seed_urls=[], target_terms=["ipfs"]
+            )
             self.assertEqual(missing_seed_urls.get("status"), "error")
-            self.assertIn("'seed_urls' must be a non-empty list", str(missing_seed_urls.get("error", "")))
+            self.assertIn(
+                "'seed_urls' must be a non-empty list", str(missing_seed_urls.get("error", ""))
+            )
 
             missing_target_terms = await unified_agentic_discover_and_fetch(
                 seed_urls=["https://example.com"],
                 target_terms=[],
             )
             self.assertEqual(missing_target_terms.get("status"), "error")
-            self.assertIn("'target_terms' must be a non-empty list", str(missing_target_terms.get("error", "")))
+            self.assertIn(
+                "'target_terms' must be a non-empty list",
+                str(missing_target_terms.get("error", "")),
+            )
 
             invalid_agentic_mode = await unified_agentic_discover_and_fetch(
                 seed_urls=["https://example.com"],
@@ -833,7 +921,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             missing_submission_id = await check_archive_status(submission_id=" ")
             self.assertEqual(missing_submission_id.get("status"), "error")
-            self.assertIn("'submission_id' is required", str(missing_submission_id.get("error", "")))
+            self.assertIn(
+                "'submission_id' is required", str(missing_submission_id.get("error", ""))
+            )
 
             content_result = await get_archive_is_content(archive_url="https://archive.is/abc123")
             self.assertIn(content_result.get("status"), ["success", "error"])
@@ -883,7 +973,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertEqual(invalid_timeout.get("status"), "error")
             self.assertIn("'timeout' must be greater than 0", str(invalid_timeout.get("error", "")))
 
-            result = await archive_to_archive_is(url="https://example.com", wait_for_completion=False)
+            result = await archive_to_archive_is(
+                url="https://example.com", wait_for_completion=False
+            )
             self.assertIn(result.get("status"), ["success", "pending", "error", "timeout"])
             if result.get("status") == "error":
                 self.assertIn("error", result)
@@ -898,7 +990,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             empty_urls = await batch_archive_to_archive_is(urls=[" "])
             self.assertEqual(empty_urls.get("status"), "error")
-            self.assertIn("'urls' must contain at least one non-empty URL", str(empty_urls.get("error", "")))
+            self.assertIn(
+                "'urls' must contain at least one non-empty URL", str(empty_urls.get("error", ""))
+            )
 
             invalid_delay = await batch_archive_to_archive_is(
                 urls=["https://example.com"],
@@ -974,9 +1068,13 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertEqual(missing_cdxj_verify.get("status"), "error")
             self.assertIn("'cdxj_path' is required", str(missing_cdxj_verify.get("error", "")))
 
-            invalid_sample_size = await verify_ipwb_archive(cdxj_path="/tmp/mock.cdxj", sample_size=0)
+            invalid_sample_size = await verify_ipwb_archive(
+                cdxj_path="/tmp/mock.cdxj", sample_size=0
+            )
             self.assertEqual(invalid_sample_size.get("status"), "error")
-            self.assertIn("'sample_size' must be greater than 0", str(invalid_sample_size.get("error", "")))
+            self.assertIn(
+                "'sample_size' must be greater than 0", str(invalid_sample_size.get("error", ""))
+            )
 
             index_result = await index_warc_to_ipwb(warc_path="/tmp/mock.warc")
             self.assertIn(index_result.get("status"), ["success", "error"])
@@ -1036,7 +1134,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
                 output_format="csv",
             )
             self.assertEqual(invalid_output_format.get("status"), "error")
-            self.assertIn("'output_format' must be one of", str(invalid_output_format.get("error", "")))
+            self.assertIn(
+                "'output_format' must be one of", str(invalid_output_format.get("error", ""))
+            )
 
             text_result = await extract_text_from_warc(warc_path="/tmp/mock.warc")
             self.assertIn(text_result.get("status"), ["success", "error"])
@@ -1053,7 +1153,9 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             if meta_result.get("status") == "error":
                 self.assertIn("error", meta_result)
 
-            index_result = await index_warc(warc_path="/tmp/mock.warc", output_path="/tmp/mock.cdxj")
+            index_result = await index_warc(
+                warc_path="/tmp/mock.warc", output_path="/tmp/mock.cdxj"
+            )
             self.assertIn(index_result.get("status"), ["success", "error"])
             if index_result.get("status") == "error":
                 self.assertIn("error", index_result)

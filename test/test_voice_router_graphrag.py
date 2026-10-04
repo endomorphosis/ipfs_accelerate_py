@@ -47,12 +47,7 @@ def _fixture_wav(
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(sample_rate)
-        audio.writeframes(
-            b"".join(
-                sample.to_bytes(2, "little", signed=True)
-                for sample in samples
-            )
-        )
+        audio.writeframes(b"".join(sample.to_bytes(2, "little", signed=True) for sample in samples))
     return output.getvalue()
 
 
@@ -90,10 +85,7 @@ def _evidence() -> GroundingEvidence:
 def _plan() -> VoiceResponsePlan:
     return VoiceResponsePlan(
         template_id="food-help-v2",
-        template=(
-            "{program} can help. Call {phone}. "
-            "[source](ipfs://bafy-food-current) [1]"
-        ),
+        template=("{program} can help. Call {phone}. [source](ipfs://bafy-food-current) [1]"),
         slots=(
             GroundedSlot("program", "Community Food Network", ("food-current",)),
             GroundedSlot("phone", "503-555-0111", ("food-current",)),
@@ -145,9 +137,10 @@ def test_prompt_parts_are_canonical_and_do_not_mutate_caller_data() -> None:
 
 
 def test_spoken_normalization_removes_citations_but_keeps_human_text() -> None:
-    assert normalize_spoken_text(
-        "Call 211 [1]. [source](https://example.test/a) ipfs://bafy"
-    ) == "Call 211."
+    assert (
+        normalize_spoken_text("Call 211 [1]. [source](https://example.test/a) ipfs://bafy")
+        == "Call 211."
+    )
     with pytest.raises(VoiceGroundingValidationError):
         normalize_spoken_text("[source](https://example.test/only)")
 
@@ -170,9 +163,7 @@ def test_full_router_turn_is_stt_retrieval_rendering_tts_and_provenance() -> Non
     )
 
     assert result.status == "completed"
-    assert result.response_text == (
-        "Community Food Network can help. Call 503-555-0111."
-    )
+    assert result.response_text == ("Community Food Network can help. Call 503-555-0111.")
     assert result.audio == speech.audio
     assert [trace.stage for trace in result.traces] == [
         "transcription",
@@ -314,11 +305,7 @@ def test_tts_padded_tail_is_rejected_before_website_or_telephone_output() -> Non
     assert result.audio is None
     assert result.provenance.output_audio_sha256 is None
     assert "tts_failed" in result.fallback_reasons
-    synthesis = [
-        trace
-        for trace in result.traces
-        if trace.stage == "synthesis"
-    ]
+    synthesis = [trace for trace in result.traces if trace.stage == "synthesis"]
     assert synthesis[-1].status == "failed"
     assert "audio_trailing_silence_exceeded" in str(synthesis[-1].error)
 

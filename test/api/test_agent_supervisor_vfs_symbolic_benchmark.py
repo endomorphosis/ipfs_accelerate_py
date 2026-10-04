@@ -136,9 +136,7 @@ def _observation(
             exhaustive=True,
         ),
         caches=_cache_measurements(mode),
-        deterministic_stage_llm_calls=tuple(
-            (stage, 0) for stage in DETERMINISTIC_STAGE_NAMES
-        ),
+        deterministic_stage_llm_calls=tuple((stage, 0) for stage in DETERMINISTIC_STAGE_NAMES),
         findings=_findings(sample_index),
         invalidation=(
             InvalidationMeasurement(
@@ -208,9 +206,7 @@ def test_report_measures_full_symbolic_efficiency_population() -> None:
     assert report.failure_codes == ()
     assert all(gate.status is GateStatus.PASSED for gate in report.gates)
 
-    assert dict(report.sample_counts_by_mode) == {
-        mode: 3 for mode in REQUIRED_SCAN_MODES
-    }
+    assert dict(report.sample_counts_by_mode) == {mode: 3 for mode in REQUIRED_SCAN_MODES}
     assert report.observation_count == 12
     assert report.inventory_observed_paths == 120
     assert report.inventory_emitted_paths == 120
@@ -218,12 +214,8 @@ def test_report_measures_full_symbolic_efficiency_population() -> None:
     assert report.inventory_excluded_paths == 24
     assert report.inventory_omitted_paths == 0
     assert report.inventory_complete_observations == 12
-    assert dict(report.cache_lookups_by_stage) == {
-        stage: 48 for stage in REQUIRED_CACHE_STAGES
-    }
-    assert dict(report.cache_hits_by_stage) == {
-        stage: 30 for stage in REQUIRED_CACHE_STAGES
-    }
+    assert dict(report.cache_lookups_by_stage) == {stage: 48 for stage in REQUIRED_CACHE_STAGES}
+    assert dict(report.cache_hits_by_stage) == {stage: 30 for stage in REQUIRED_CACHE_STAGES}
     assert dict(report.cache_reused_artifacts_by_stage) == {
         stage: 30 for stage in REQUIRED_CACHE_STAGES
     }
@@ -234,12 +226,8 @@ def test_report_measures_full_symbolic_efficiency_population() -> None:
     assert report.invalidation_actual_count == 6
     assert report.invalidation_false_positive_count == 0
     assert report.invalidation_false_negative_count == 0
-    assert dict(report.seeded_expected_by_truth) == {
-        truth.value: 12 for truth in FindingTruth
-    }
-    assert dict(report.seeded_covered_by_truth) == {
-        truth.value: 12 for truth in FindingTruth
-    }
+    assert dict(report.seeded_expected_by_truth) == {truth.value: 12 for truth in FindingTruth}
+    assert dict(report.seeded_covered_by_truth) == {truth.value: 12 for truth in FindingTruth}
     assert report.counterexample_count == 12
     assert report.median_counterexample_time_ns == {
         "numerator": 1_000_002,
@@ -279,16 +267,12 @@ def test_report_measures_full_symbolic_efficiency_population() -> None:
 
 def test_observation_population_and_report_are_canonical_replay_artifacts() -> None:
     observation = _observation(ScanMode.COLD, 1)
-    replayed_observation = SymbolicBenchmarkObservation.from_json(
-        observation.to_json()
-    )
+    replayed_observation = SymbolicBenchmarkObservation.from_json(observation.to_json())
     assert replayed_observation == observation
     assert replayed_observation.observation_id == observation.observation_id
 
     population = _population()
-    replayed_population = SymbolicBenchmarkPopulation.from_json(
-        population.to_json()
-    )
+    replayed_population = SymbolicBenchmarkPopulation.from_json(population.to_json())
     assert replayed_population == population
     assert replayed_population.population_id == population.population_id
 
@@ -319,18 +303,9 @@ def test_insufficient_samples_never_make_a_promotion_claim() -> None:
     assert not report.completion_authoritative
     assert not report.promotion_authoritative
     assert report.failure_codes == ()
-    assert (
-        report.gate("sample-sufficiency").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
-    assert (
-        report.gate("provider-byte-reduction").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
-    assert (
-        report.gate("provider-token-reduction").status
-        is GateStatus.INSUFFICIENT_SAMPLES
-    )
+    assert report.gate("sample-sufficiency").status is GateStatus.INSUFFICIENT_SAMPLES
+    assert report.gate("provider-byte-reduction").status is GateStatus.INSUFFICIENT_SAMPLES
+    assert report.gate("provider-token-reduction").status is GateStatus.INSUFFICIENT_SAMPLES
 
 
 def test_failed_observations_fail_closed_across_required_gates() -> None:
@@ -397,21 +372,25 @@ def test_failed_observations_fail_closed_across_required_gates() -> None:
                 invalidation,
                 actual_invalidated_ids=("node:a",),
             )
-        changed.append(replace(
-            observation,
-            inventory=inventory,
-            caches=caches,
-            deterministic_stage_llm_calls=calls,
-            findings=findings,
-            invalidation=invalidation,
-            packet=packet,
-            resources=resources,
-        ))
+        changed.append(
+            replace(
+                observation,
+                inventory=inventory,
+                caches=caches,
+                deterministic_stage_llm_calls=calls,
+                findings=findings,
+                invalidation=invalidation,
+                packet=packet,
+                resources=resources,
+            )
+        )
 
-    report = evaluate_symbolic_efficiency(SymbolicBenchmarkPopulation(
-        profile=PROFILE,
-        observations=tuple(changed),
-    ))
+    report = evaluate_symbolic_efficiency(
+        SymbolicBenchmarkPopulation(
+            profile=PROFILE,
+            observations=tuple(changed),
+        )
+    )
 
     assert report.conclusion is BenchmarkConclusion.FAILED
     assert set(report.failure_codes) == {
@@ -426,10 +405,7 @@ def test_failed_observations_fail_closed_across_required_gates() -> None:
         "resource-ceilings",
         "seeded-finding-coverage",
     }
-    assert all(
-        report.gate(name).status is GateStatus.FAILED
-        for name in report.failure_codes
-    )
+    assert all(report.gate(name).status is GateStatus.FAILED for name in report.failure_codes)
     assert not report.passed
     assert not report.promotion_authoritative
 
@@ -441,9 +417,7 @@ def test_observation_contract_rejects_incomplete_or_unbounded_input() -> None:
     with pytest.raises(SymbolicBenchmarkError, match="all deterministic stages"):
         replace(
             observation,
-            deterministic_stage_llm_calls=(
-                observation.deterministic_stage_llm_calls[:-1]
-            ),
+            deterministic_stage_llm_calls=(observation.deterministic_stage_llm_calls[:-1]),
         )
 
     oversized_packet = replace(

@@ -138,15 +138,10 @@ def test_every_ir_family_normalizes_all_shared_sections_with_bounded_authority(
         IRNodeKind.RESULT_AUTHORITY,
     )
     assert all(
-        item.result_authority is _DECLARATION_AUTHORITY[family]
-        for item in normalized.declarations
+        item.result_authority is _DECLARATION_AUTHORITY[family] for item in normalized.declarations
     )
-    assert normalized.formal_views[0].result_authority is (
-        NormalizedResultAuthority.PROPOSAL_ONLY
-    )
-    assert normalized.assumptions[0].result_authority is (
-        NormalizedResultAuthority.CONTEXT_ONLY
-    )
+    assert normalized.formal_views[0].result_authority is (NormalizedResultAuthority.PROPOSAL_ONLY)
+    assert normalized.assumptions[0].result_authority is (NormalizedResultAuthority.CONTEXT_ONLY)
     assert normalized.result_authority[0].result_authority is (
         NormalizedResultAuthority.VERIFIED_INPUT
     )
@@ -308,9 +303,7 @@ def test_malformed_sections_missing_ids_and_every_adapter_bound_fail_closed() ->
             {"declaration_id": "declaration:two", "kind": "resource"},
         ),
     )
-    node_count = IRAdapterRegistry(
-        bounds=IRAdapterBounds(max_nodes=1)
-    ).normalize(two_nodes)
+    node_count = IRAdapterRegistry(bounds=IRAdapterBounds(max_nodes=1)).normalize(two_nodes)
     assert node_count.status is IRAdapterStatus.BOUNDS
 
     large_node = _verified_load(
@@ -323,9 +316,7 @@ def test_malformed_sections_missing_ids_and_every_adapter_bound_fail_closed() ->
             },
         ),
     )
-    node_bytes = IRAdapterRegistry(
-        bounds=IRAdapterBounds(max_node_bytes=256)
-    ).normalize(large_node)
+    node_bytes = IRAdapterRegistry(bounds=IRAdapterBounds(max_node_bytes=256)).normalize(large_node)
     assert node_bytes.status is IRAdapterStatus.BOUNDS
 
     too_many_references = _verified_load(
@@ -406,10 +397,7 @@ def test_capability_discovery_covers_all_families_without_import_or_process_star
         for item in capabilities
     )
     assert all(item.to_dict()["lazy"] is True for item in capabilities)
-    assert all(
-        item.to_dict()["grants_execution_authority"] is False
-        for item in capabilities
-    )
+    assert all(item.to_dict()["grants_execution_authority"] is False for item in capabilities)
     assert imported == []
     assert processes == []
     assert threads == []

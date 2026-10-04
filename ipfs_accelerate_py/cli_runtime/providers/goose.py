@@ -110,9 +110,7 @@ ALLOWED_OUTPUT_FORMATS: frozenset[str] = frozenset(
 )
 
 # Approval modes Goose understands (``GOOSE_MODE`` / slash ``/mode``).
-APPROVAL_MODES: frozenset[str] = frozenset(
-    {"chat", "auto", "approve", "smart_approve"}
-)
+APPROVAL_MODES: frozenset[str] = frozenset({"chat", "auto", "approve", "smart_approve"})
 
 _VERSION_RE = re.compile(
     r"(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?",
@@ -225,9 +223,7 @@ class GooseProviderError(CLIRuntimeError):
         retryable: bool = False,
         side_effects_started: bool = False,
     ) -> None:
-        record = make_goose_error(
-            kind, message, details=details, retryable=retryable
-        )
+        record = make_goose_error(kind, message, details=details, retryable=retryable)
         super().__init__(
             record.message,
             code=record.code,
@@ -291,8 +287,7 @@ class GooseVersionCapabilities:
         missing = self.missing_required_chat_flags()
         if missing:
             raise GooseProviderError(
-                "Goose version does not support required chat safety flags: "
-                + ", ".join(missing),
+                "Goose version does not support required chat safety flags: " + ", ".join(missing),
                 kind=GooseErrorKind.UNSUPPORTED_VERSION,
                 details={
                     "version": self.version,
@@ -379,9 +374,7 @@ def capabilities_from_help(help_text: str, *, version: str = "") -> GooseVersion
         supports_output_format="--output-format" in text,
         supports_max_turns="--max-turns" in text,
         supports_max_tool_repetitions="--max-tool-repetitions" in text,
-        supports_instructions_stdin=(
-            "--instructions" in text or "-i," in text or "-i " in text
-        ),
+        supports_instructions_stdin=("--instructions" in text or "-i," in text or "-i " in text),
         supports_provider_flag="--provider" in text,
         supports_model_flag="--model" in text,
         supports_with_builtin="--with-builtin" in text,
@@ -453,14 +446,10 @@ class GooseAgentPolicy:
             object.__setattr__(self, "session_id", sid)
 
         object.__setattr__(self, "builtins", _normalize_name_tuple(self.builtins, "builtin"))
-        object.__setattr__(
-            self, "extensions", _normalize_name_tuple(self.extensions, "extension")
-        )
+        object.__setattr__(self, "extensions", _normalize_name_tuple(self.extensions, "extension"))
 
         max_turns = _require_positive_int(self.max_turns, "max_turns")
-        max_reps = _require_positive_int(
-            self.max_tool_repetitions, "max_tool_repetitions"
-        )
+        max_reps = _require_positive_int(self.max_tool_repetitions, "max_tool_repetitions")
         timeout = float(self.timeout_seconds)
         if timeout <= 0:
             raise ContractValidationError("timeout_seconds must be positive")
@@ -496,17 +485,11 @@ class GooseAgentPolicy:
                 details={"cwd": cwd, "allowed_cwd_roots": ",".join(roots)},
             )
 
-        meta = {
-            str(k): _clip(v)
-            for k, v in dict(self.metadata or {}).items()
-            if str(k).strip()
-        }
+        meta = {str(k): _clip(v) for k, v in dict(self.metadata or {}).items() if str(k).strip()}
         object.__setattr__(self, "metadata", meta)
 
     @staticmethod
-    def _assert_path_under_root(
-        path: str, root: str, *, field_name: str
-    ) -> None:
+    def _assert_path_under_root(path: str, root: str, *, field_name: str) -> None:
         if not _is_relative_to(Path(path), Path(root)):
             raise PolicyDeniedError(
                 f"{field_name} must be under path_root / GOOSE_PATH_ROOT",
@@ -560,13 +543,9 @@ class GooseAgentPolicy:
             extensions=extensions,
             max_turns=int(payload.get("max_turns", DEFAULT_AGENT_MAX_TURNS)),
             max_tool_repetitions=int(
-                payload.get(
-                    "max_tool_repetitions", DEFAULT_AGENT_MAX_TOOL_REPETITIONS
-                )
+                payload.get("max_tool_repetitions", DEFAULT_AGENT_MAX_TOOL_REPETITIONS)
             ),
-            timeout_seconds=float(
-                payload.get("timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)
-            ),
+            timeout_seconds=float(payload.get("timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)),
             max_output_bytes=payload.get("max_output_bytes"),
             allowed_cwd_roots=roots,
             metadata=payload.get("metadata") or {},
@@ -605,9 +584,7 @@ def _require_positive_int(value: Any, field_name: str) -> int:
         try:
             value = int(value)
         except (TypeError, ValueError) as exc:
-            raise ContractValidationError(
-                f"{field_name} must be a positive integer"
-            ) from exc
+            raise ContractValidationError(f"{field_name} must be a positive integer") from exc
     if value < 1:
         raise ContractValidationError(f"{field_name} must be >= 1")
     return value
@@ -617,9 +594,7 @@ def _normalize_name_tuple(values: Any, field_name: str) -> tuple[str, ...]:
     if values is None:
         return ()
     if isinstance(values, (str, bytes)):
-        raise ContractValidationError(
-            f"{field_name}s must be a sequence of names, not a string"
-        )
+        raise ContractValidationError(f"{field_name}s must be a sequence of names, not a string")
     out: list[str] = []
     seen: set[str] = set()
     for item in values:
@@ -663,10 +638,7 @@ class GooseCommandPlan:
             return True
         joined = list(self.argv)
         # --instructions may appear as -i
-        has_instructions = (
-            "--instructions" in joined
-            or "-i" in joined
-        )
+        has_instructions = "--instructions" in joined or "-i" in joined
         checks = {
             "--no-session": "--no-session" in joined,
             "--no-profile": "--no-profile" in joined,
@@ -708,9 +680,7 @@ def build_goose_command(
         )
 
     exec_mode = (
-        mode
-        if isinstance(mode, ExecutionMode)
-        else ExecutionMode(str(mode).strip().lower())
+        mode if isinstance(mode, ExecutionMode) else ExecutionMode(str(mode).strip().lower())
     )
     caps = capabilities or capabilities_for_version(PINNED_GOOSE_VERSION)
 
@@ -754,9 +724,7 @@ def build_goose_command(
             raise PolicyDeniedError(
                 "agent mode requires allow_side_effects=True",
             )
-        turns = int(
-            max_turns if max_turns is not None else agent_policy.max_turns
-        )
+        turns = int(max_turns if max_turns is not None else agent_policy.max_turns)
         reps = int(
             max_tool_repetitions
             if max_tool_repetitions is not None
@@ -783,9 +751,7 @@ def build_goose_command(
     if streaming and fmt == OUTPUT_FORMAT_JSON:
         fmt = OUTPUT_FORMAT_STREAM_JSON
     if fmt not in ALLOWED_OUTPUT_FORMATS:
-        raise ContractValidationError(
-            f"unsupported output format: {output_format!r}"
-        )
+        raise ContractValidationError(f"unsupported output format: {output_format!r}")
     if fmt == OUTPUT_FORMAT_STREAM_JSON and not caps.supports_stream_json:
         raise GooseProviderError(
             "Goose version does not support stream-json output",
@@ -841,15 +807,9 @@ def build_goose_command(
         if effective_extensions and caps.supports_with_extension:
             for ext in effective_extensions:
                 argv.extend(["--with-extension", ext])
-        if (
-            agent_policy
-            and agent_policy.resume_session
-            and effective_session
-        ):
+        if agent_policy and agent_policy.resume_session and effective_session:
             argv.extend(["--resume", "--session-id", effective_session])
-        elif effective_session and not (
-            agent_policy and agent_policy.resume_session
-        ):
+        elif effective_session and not (agent_policy and agent_policy.resume_session):
             # Name a new session without resuming.
             argv.extend(["--name", effective_session])
 
@@ -1233,11 +1193,7 @@ def parse_goose_stream_json(
 
         elif etype in {"tool", "tool_call", "tool_use", "tool_result"}:
             tool_call_count += 1
-            kind = (
-                EventKind.TOOL_RESULT
-                if "result" in etype
-                else EventKind.TOOL_CALL
-            )
+            kind = EventKind.TOOL_RESULT if "result" in etype else EventKind.TOOL_CALL
             if len(events) < MAX_EVENT_COUNT:
                 events.append(
                     CLIEvent(
@@ -1284,9 +1240,7 @@ def parse_goose_stream_json(
     text_out = assistant_texts[-1] if assistant_texts else "".join(assistant_texts)
     # Prefer the last complete assistant message; if only deltas were collected
     # join them.
-    if len(assistant_texts) > 1 and all(
-        len(t) < 200 for t in assistant_texts
-    ):
+    if len(assistant_texts) > 1 and all(len(t) < 200 for t in assistant_texts):
         # Heuristic: many small deltas → join; otherwise last full message wins.
         joined = "".join(assistant_texts)
         if len(joined) <= max_text_chars and not any(
@@ -1399,9 +1353,7 @@ def classify_goose_failure(
         return GooseErrorKind.TIMEOUT, "Goose run timed out", False
     if spawn_error or not process_started:
         return (
-            GooseErrorKind.NOT_INSTALLED
-            if exit_code is None
-            else GooseErrorKind.SPAWN_FAILED,
+            GooseErrorKind.NOT_INSTALLED if exit_code is None else GooseErrorKind.SPAWN_FAILED,
             "Goose process failed to start",
             False,
         )
@@ -1447,9 +1399,7 @@ def goose_provider_spec() -> ProviderSpec:
         metadata={
             "pinned_version": PINNED_GOOSE_VERSION,
             "default_chat_max_turns": str(DEFAULT_CHAT_MAX_TURNS),
-            "default_chat_max_tool_repetitions": str(
-                DEFAULT_CHAT_MAX_TOOL_REPETITIONS
-            ),
+            "default_chat_max_tool_repetitions": str(DEFAULT_CHAT_MAX_TOOL_REPETITIONS),
         },
     )
 
@@ -1614,11 +1564,7 @@ class GooseCLIProvider:
         fmt = (
             output_format
             or request.metadata.get("output_format")
-            or (
-                OUTPUT_FORMAT_STREAM_JSON
-                if streaming
-                else OUTPUT_FORMAT_JSON
-            )
+            or (OUTPUT_FORMAT_STREAM_JSON if streaming else OUTPUT_FORMAT_JSON)
         )
 
         try:
@@ -1659,11 +1605,7 @@ class GooseCLIProvider:
 
         timeout = request.timeout_seconds
         if timeout is None:
-            timeout = (
-                policy.timeout_seconds
-                if policy is not None
-                else DEFAULT_CHAT_TIMEOUT_SECONDS
-            )
+            timeout = policy.timeout_seconds if policy is not None else DEFAULT_CHAT_TIMEOUT_SECONDS
 
         env_overlay = build_goose_process_env(plan, base_env=self.base_env)
         bounds = None
@@ -1763,9 +1705,7 @@ class GooseCLIProvider:
             or kwargs.pop("side_effecting", False)
             or kwargs.pop("with_tools", False)
         )
-        goose_provider = kwargs.pop("goose_provider", None) or kwargs.pop(
-            "provider_override", None
-        )
+        goose_provider = kwargs.pop("goose_provider", None) or kwargs.pop("provider_override", None)
         timeout = kwargs.pop("timeout", None)
         workspace = kwargs.pop("workspace", None) or kwargs.pop("cwd", None)
         session_id = kwargs.pop("session_id", None)
@@ -1775,14 +1715,10 @@ class GooseCLIProvider:
         output_format = kwargs.pop("output_format", None)
         cancel_token = kwargs.pop("cancel_token", None)
         policy_raw = kwargs.pop("agent_policy", None) or kwargs.pop("policy", None)
-        path_root = kwargs.pop("path_root", None) or kwargs.pop(
-            "GOOSE_PATH_ROOT", None
-        )
+        path_root = kwargs.pop("path_root", None) or kwargs.pop("GOOSE_PATH_ROOT", None)
         approval_mode = kwargs.pop("approval_mode", None)
         builtins = kwargs.pop("builtins", None) or kwargs.pop("with_builtin", None)
-        extensions = kwargs.pop("extensions", None) or kwargs.pop(
-            "with_extension", None
-        )
+        extensions = kwargs.pop("extensions", None) or kwargs.pop("with_extension", None)
         allow_side_effects = kwargs.pop("allow_side_effects", agent)
 
         # Swallow remaining unknown kwargs so callers can pass router noise.
@@ -1813,9 +1749,7 @@ class GooseCLIProvider:
                     max_tool_repetitions=int(
                         max_tool_repetitions or DEFAULT_AGENT_MAX_TOOL_REPETITIONS
                     ),
-                    timeout_seconds=float(
-                        timeout or DEFAULT_AGENT_TIMEOUT_SECONDS
-                    ),
+                    timeout_seconds=float(timeout or DEFAULT_AGENT_TIMEOUT_SECONDS),
                 )
 
         metadata: dict[str, str] = {}
@@ -1844,9 +1778,7 @@ class GooseCLIProvider:
             workspace=str(workspace) if workspace else None,
             metadata=metadata,
             capabilities=(
-                CLICapabilities.agent_defaults()
-                if agent
-                else CLICapabilities.chat_defaults()
+                CLICapabilities.agent_defaults() if agent else CLICapabilities.chat_defaults()
             ),
         )
         result = self.generate_result(
@@ -1858,9 +1790,7 @@ class GooseCLIProvider:
         )
         if not result.ok:
             kind_name = (result.metadata or {}).get("goose_error_kind") or (
-                result.error.details.get("goose_error_kind")
-                if result.error
-                else None
+                result.error.details.get("goose_error_kind") if result.error else None
             )
             kind = GooseErrorKind.INTERNAL
             if kind_name:
@@ -1921,33 +1851,25 @@ class GooseCLIProvider:
                 sequence=len(result.events),
                 message="goose completed",
                 payload={
-                    "side_effects_started": (
-                        "true" if result.had_side_effect_event else "false"
-                    )
+                    "side_effects_started": ("true" if result.had_side_effect_event else "false")
                 },
             )
         else:
             yield CLIEvent(
                 kind=EventKind.FAILED,
                 sequence=len(result.events),
-                message=(
-                    result.error.message if result.error else "goose failed"
-                ),
+                message=(result.error.message if result.error else "goose failed"),
             )
 
     # -- internals ---------------------------------------------------------
 
-    def _policy_from_request(
-        self, request: CLIRequest
-    ) -> Optional[GooseAgentPolicy]:
+    def _policy_from_request(self, request: CLIRequest) -> Optional[GooseAgentPolicy]:
         meta = request.metadata or {}
         if "agent_policy_json" in meta:
             try:
                 payload = json.loads(meta["agent_policy_json"])
             except json.JSONDecodeError as exc:
-                raise ContractValidationError(
-                    "agent_policy_json is not valid JSON"
-                ) from exc
+                raise ContractValidationError("agent_policy_json is not valid JSON") from exc
             if isinstance(payload, Mapping):
                 return GooseAgentPolicy.from_mapping(payload)
         if meta.get("allow_side_effects", "").lower() in {"1", "true", "yes"}:
@@ -1961,19 +1883,14 @@ class GooseCLIProvider:
                     approval_mode=meta.get("approval_mode", "approve"),
                     session_id=request.session_id,
                     builtins=request.tools,
-                    max_turns=int(
-                        meta.get("max_turns", DEFAULT_AGENT_MAX_TURNS)
-                    ),
+                    max_turns=int(meta.get("max_turns", DEFAULT_AGENT_MAX_TURNS)),
                     max_tool_repetitions=int(
                         meta.get(
                             "max_tool_repetitions",
                             DEFAULT_AGENT_MAX_TOOL_REPETITIONS,
                         )
                     ),
-                    timeout_seconds=float(
-                        request.timeout_seconds
-                        or DEFAULT_AGENT_TIMEOUT_SECONDS
-                    ),
+                    timeout_seconds=float(request.timeout_seconds or DEFAULT_AGENT_TIMEOUT_SECONDS),
                 )
         return None
 
@@ -1983,9 +1900,7 @@ class GooseCLIProvider:
         plan: GooseCommandPlan,
         proc: ProcessRunResult,
     ) -> CLIResult:
-        side_effects_started = bool(
-            plan.side_effecting or proc.had_side_effect_event
-        )
+        side_effects_started = bool(plan.side_effecting or proc.had_side_effect_event)
         meta: dict[str, str] = {
             **dict(plan.metadata),
             "process_started": "true" if proc.process_started else "false",
@@ -2045,9 +1960,7 @@ class GooseCLIProvider:
             OUTPUT_FORMAT_STREAM_JSON,
         }:
             try:
-                parsed = parse_goose_output(
-                    proc.stdout, output_format=plan.output_format
-                )
+                parsed = parse_goose_output(proc.stdout, output_format=plan.output_format)
             except MalformedOutputError as exc:
                 parse_error = exc
 
@@ -2133,9 +2046,7 @@ class GooseCLIProvider:
 
         # No structured parse available.
         if parse_error is not None or (
-            plan.output_format
-            in {OUTPUT_FORMAT_JSON, OUTPUT_FORMAT_STREAM_JSON}
-            and proc.ok
+            plan.output_format in {OUTPUT_FORMAT_JSON, OUTPUT_FORMAT_STREAM_JSON} and proc.ok
         ):
             return self._error_result(
                 request,

@@ -64,15 +64,11 @@ def test_compatibility_imports_remain_valid() -> None:
 
 
 def test_direct_module_imports() -> None:
-    goose = importlib.import_module(
-        "ipfs_accelerate_py.cli_integrations.goose_cli_integration"
-    )
+    goose = importlib.import_module("ipfs_accelerate_py.cli_integrations.goose_cli_integration")
     codex = importlib.import_module(
         "ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration"
     )
-    copilot = importlib.import_module(
-        "ipfs_accelerate_py.cli_integrations.copilot_cli_integration"
-    )
+    copilot = importlib.import_module("ipfs_accelerate_py.cli_integrations.copilot_cli_integration")
     assert hasattr(goose, "GooseCLIIntegration")
     assert hasattr(goose, "get_goose_cli_integration")
     assert hasattr(codex, "OpenAICodexCLIIntegration")
@@ -89,15 +85,19 @@ def test_direct_module_imports() -> None:
 def test_list_cli_integrations_is_metadata_only_no_instantiation() -> None:
     from ipfs_accelerate_py.cli_integrations import list_cli_integrations
 
-    with patch(
-        "ipfs_accelerate_py.cli_integrations.goose_cli_integration.GooseCLIIntegration",
-        side_effect=AssertionError("must not construct Goose"),
-    ), patch(
-        "ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration.OpenAICodexCLIIntegration",
-        side_effect=AssertionError("must not construct Codex"),
-    ), patch(
-        "ipfs_accelerate_py.cli_integrations.copilot_cli_integration.CopilotCLIIntegration",
-        side_effect=AssertionError("must not construct Copilot"),
+    with (
+        patch(
+            "ipfs_accelerate_py.cli_integrations.goose_cli_integration.GooseCLIIntegration",
+            side_effect=AssertionError("must not construct Goose"),
+        ),
+        patch(
+            "ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration.OpenAICodexCLIIntegration",
+            side_effect=AssertionError("must not construct Codex"),
+        ),
+        patch(
+            "ipfs_accelerate_py.cli_integrations.copilot_cli_integration.CopilotCLIIntegration",
+            side_effect=AssertionError("must not construct Copilot"),
+        ),
     ):
         listed = list_cli_integrations()
 
@@ -150,9 +150,7 @@ def test_get_all_cli_integrations_eager_emits_deprecation() -> None:
     with pytest.warns(DeprecationWarning, match="eagerly constructs"):
         with patch("subprocess.run") as mock_run:
             # Prevent real probes if any dual-mode wrappers still probe.
-            mock_run.return_value = types.SimpleNamespace(
-                returncode=1, stdout="", stderr=""
-            )
+            mock_run.return_value = types.SimpleNamespace(returncode=1, stdout="", stderr="")
             mapping = get_all_cli_integrations(instantiate=True)
 
     assert "goose" in mapping
@@ -172,14 +170,10 @@ def test_importing_cli_integrations_package_starts_no_subprocess() -> None:
     with patch("subprocess.run", side_effect=AssertionError("import-time probe")):
         # Importing symbols already loaded is fine; re-execute key modules.
         importlib.reload(
-            importlib.import_module(
-                "ipfs_accelerate_py.cli_integrations.base_cli_wrapper"
-            )
+            importlib.import_module("ipfs_accelerate_py.cli_integrations.base_cli_wrapper")
         )
         importlib.reload(
-            importlib.import_module(
-                "ipfs_accelerate_py.cli_integrations.goose_cli_integration"
-            )
+            importlib.import_module("ipfs_accelerate_py.cli_integrations.goose_cli_integration")
         )
         importlib.reload(
             importlib.import_module(
@@ -187,9 +181,7 @@ def test_importing_cli_integrations_package_starts_no_subprocess() -> None:
             )
         )
         importlib.reload(
-            importlib.import_module(
-                "ipfs_accelerate_py.cli_integrations.copilot_cli_integration"
-            )
+            importlib.import_module("ipfs_accelerate_py.cli_integrations.copilot_cli_integration")
         )
 
 
@@ -236,16 +228,15 @@ def test_unavailable_goose_is_detectable_without_crash() -> None:
         GooseCLIIntegration,
     )
 
-    with patch(
-        "ipfs_accelerate_py.cli_integrations.goose_cli_integration._discover_goose_executable",
-        return_value=None,
-    ), patch.dict(os.environ, {}, clear=False):
+    with (
+        patch(
+            "ipfs_accelerate_py.cli_integrations.goose_cli_integration._discover_goose_executable",
+            return_value=None,
+        ),
+        patch.dict(os.environ, {}, clear=False),
+    ):
         # Clear goose-related env keys for the check path
-        env_clear = {
-            k: ""
-            for k in list(os.environ)
-            if "GOOSE" in k.upper()
-        }
+        env_clear = {k: "" for k in list(os.environ) if "GOOSE" in k.upper()}
         with patch.dict(os.environ, env_clear, clear=False):
             integ = GooseCLIIntegration(goose_path="/nonexistent/goose-binary-xyz")
             assert integ.is_available(probe=False) is False
@@ -388,14 +379,15 @@ def test_codex_generate_code_runs_exec_with_stdin_and_no_retry() -> None:
         stderr="",
     )
 
-    with patch("subprocess.run", return_value=completed) as mock_run, patch(
-        "builtins.open",
-        create=True,
-    ) as mock_open:
+    with (
+        patch("subprocess.run", return_value=completed) as mock_run,
+        patch(
+            "builtins.open",
+            create=True,
+        ) as mock_open,
+    ):
         # Simulate last-message file content
-        mock_open.return_value.__enter__.return_value.read.return_value = (
-            "generated code"
-        )
+        mock_open.return_value.__enter__.return_value.read.return_value = "generated code"
         result = integ.generate_code("make a fib", model="m1")
 
     assert result["success"] is True
@@ -571,9 +563,7 @@ def test_base_wrapper_disables_cache_and_retry_when_side_effecting() -> None:
     cache.get.return_value = None
     completed = types.SimpleNamespace(returncode=1, stdout="", stderr="fail")
     with patch("subprocess.run", return_value=completed) as mock_run:
-        result = tool._run_command_with_retry(
-            ["hi"], "op", side_effecting=True
-        )
+        result = tool._run_command_with_retry(["hi"], "op", side_effecting=True)
 
     assert result["attempts"] == 1
     assert result["side_effecting"] is True

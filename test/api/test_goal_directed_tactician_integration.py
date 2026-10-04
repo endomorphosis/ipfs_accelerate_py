@@ -118,9 +118,7 @@ def _prove_ok(context: dict[str, Any]) -> dict[str, Any]:
 
 def test_interface_identity_and_default_utilities() -> None:
     assert GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE == "GoalDirectedProofTactician@1"
-    assert GoalDirectedProofTactician.interface == (
-        GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE
-    )
+    assert GoalDirectedProofTactician.interface == (GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE)
     assert GoalDirectedProofTactician.schema == GOAL_DIRECTED_PROOF_TACTICIAN_SCHEMA
     roles = {item.role for item in default_utility_bindings()}
     assert UtilityRole.FORMALIZATION in roles
@@ -267,16 +265,13 @@ def test_model_draft_claiming_authority_cannot_bypass_validation() -> None:
         independently_validated=True,
     )
 
-    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(
-        _request(model_draft=draft)
-    )
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(_request(model_draft=draft))
     # Model draft with authority claims is rejected before kernel path can admit.
     assert result.stop_reason is TacticianStopReason.MODEL_BYPASS_REJECTED
     assert not result.admitted
     assert not result.independently_validated
     assert any(
-        phase.phase is TacticianPhase.VALIDATE
-        and phase.status is PhaseStatus.REJECTED
+        phase.phase is TacticianPhase.VALIDATE and phase.status is PhaseStatus.REJECTED
         for phase in result.phases
     )
 
@@ -345,14 +340,11 @@ def test_validated_cache_hit_is_admissible() -> None:
 
 
 def test_prose_cannot_bypass_formalization() -> None:
-    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(
-        _request(formal_goal_id="")
-    )
+    result = GoalDirectedProofTactician(kernel=_kernel_ok).run(_request(formal_goal_id=""))
     assert result.stop_reason is TacticianStopReason.FORMALIZATION_REQUIRED
     assert not result.admitted
     assert any(
-        phase.phase is TacticianPhase.FORMALIZE
-        and phase.status is PhaseStatus.REJECTED
+        phase.phase is TacticianPhase.FORMALIZE and phase.status is PhaseStatus.REJECTED
         for phase in result.phases
     )
 
@@ -467,8 +459,7 @@ def test_proof_carrying_execution_is_resumable(tmp_path: Path) -> None:
     )
     assert second.admitted
     assert any(
-        phase.phase is TacticianPhase.LOAD_CHECKPOINT
-        and phase.status is PhaseStatus.RESUMED
+        phase.phase is TacticianPhase.LOAD_CHECKPOINT and phase.status is PhaseStatus.RESUMED
         for phase in second.phases
     )
 

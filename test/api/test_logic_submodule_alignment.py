@@ -60,9 +60,7 @@ def _write_required_modules(source: Path) -> None:
     (source / "ipfs_datasets_py" / "__init__.py").write_text("", encoding="utf-8")
     (logic / "__init__.py").write_text("", encoding="utf-8")
     (logic / "ir_core" / "__init__.py").write_text("", encoding="utf-8")
-    (logic / "backends" / "registry.py").write_text(
-        "REGISTRY = {}\n", encoding="utf-8"
-    )
+    (logic / "backends" / "registry.py").write_text("REGISTRY = {}\n", encoding="utf-8")
 
 
 def _aligned_repositories(tmp_path: Path) -> tuple[Path, Path, Path, Path, str]:
@@ -156,9 +154,7 @@ def test_sibling_discovery_prefers_nearest_enclosing_coordination_root(
 
 
 def test_remote_main_drift_fails_with_actionable_diagnostic(tmp_path: Path) -> None:
-    parent, embedded, sibling, source, published_commit = _aligned_repositories(
-        tmp_path
-    )
+    parent, embedded, sibling, source, published_commit = _aligned_repositories(tmp_path)
     (source / "published-next.txt").write_text("next\n", encoding="utf-8")
     _git(source, "add", "published-next.txt")
     _git(source, "commit", "-m", "advance published main")
@@ -172,9 +168,7 @@ def test_remote_main_drift_fails_with_actionable_diagnostic(tmp_path: Path) -> N
     assert report.embedded.origin_main != published_commit
     assert "gitlink_origin_main_mismatch" in _codes(report)
     diagnostic = next(
-        item
-        for item in report.diagnostics
-        if item.code == "gitlink_origin_main_mismatch"
+        item for item in report.diagnostics if item.code == "gitlink_origin_main_mismatch"
     )
     assert published_commit in diagnostic.message
     assert diagnostic.remediation
@@ -265,15 +259,18 @@ def test_json_cli_reports_contract_and_returns_nonzero_on_drift(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     parent, embedded, sibling, _, _ = _aligned_repositories(tmp_path)
-    assert checker.main(
-        [
-            "--repo-root",
-            str(parent),
-            "--sibling",
-            str(sibling),
-            "--json",
-        ]
-    ) == 0
+    assert (
+        checker.main(
+            [
+                "--repo-root",
+                str(parent),
+                "--sibling",
+                str(sibling),
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["interface"] == "LogicSubmoduleAlignment@1"
     assert payload["aligned"] is True
@@ -282,17 +279,18 @@ def test_json_cli_reports_contract_and_returns_nonzero_on_drift(
     assert payload["embedded"]["origin_main"]
 
     (embedded / "dirty.txt").write_text("dirty\n", encoding="utf-8")
-    assert checker.main(
-        [
-            "--repo-root",
-            str(parent),
-            "--sibling",
-            str(sibling),
-            "--json",
-        ]
-    ) == 1
+    assert (
+        checker.main(
+            [
+                "--repo-root",
+                str(parent),
+                "--sibling",
+                str(sibling),
+                "--json",
+            ]
+        )
+        == 1
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["aligned"] is False
-    assert "embedded_checkout_dirty" in {
-        item["code"] for item in payload["diagnostics"]
-    }
+    assert "embedded_checkout_dirty" in {item["code"] for item in payload["diagnostics"]}

@@ -28,38 +28,24 @@ from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile imp
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 POLICY_PATH = (
-    REPOSITORY_ROOT
-    / "data"
-    / "datasets_contract_analysis"
-    / "policy"
-    / "analyzer-profile-v1.json"
+    REPOSITORY_ROOT / "data" / "datasets_contract_analysis" / "policy" / "analyzer-profile-v1.json"
 )
 RESOURCE_BOUNDS_PATH = (
-    REPOSITORY_ROOT
-    / "data"
-    / "datasets_contract_analysis"
-    / "policy"
-    / "resource-bounds-v1.json"
+    REPOSITORY_ROOT / "data" / "datasets_contract_analysis" / "policy" / "resource-bounds-v1.json"
 )
 
 
 def _profile() -> AnalysisExecutionProfile:
-    return AnalysisExecutionProfile.load(
-        POLICY_PATH, repository_root=REPOSITORY_ROOT
-    )
+    return AnalysisExecutionProfile.load(POLICY_PATH, repository_root=REPOSITORY_ROOT)
 
 
-def _matching_snapshot(
-    profile: AnalysisExecutionProfile, repository: Path
-) -> CapabilitySnapshot:
+def _matching_snapshot(profile: AnalysisExecutionProfile, repository: Path) -> CapabilitySnapshot:
     return CapabilitySnapshot(
         tool_identities={tool.name: tool.identity for tool in profile.tools},
         lock_identities={lock.path: lock.identity for lock in profile.locks},
         environment_names=("LANG", "PATH", "PYTHONHASHSEED", "TZ"),
         read_paths=(str(repository / "ipfs_datasets_py"),),
-        write_paths=(
-            str(repository / "data/datasets_contract_analysis/runtime/result.json"),
-        ),
+        write_paths=(str(repository / "data/datasets_contract_analysis/runtime/result.json"),),
     )
 
 
@@ -69,10 +55,7 @@ def test_reviewed_policy_is_strict_canonical_and_binds_every_required_identity()
     assert profile.goal_id == GOAL_ID
     assert profile.to_dict()["schema"] == PROFILE_SCHEMA
     assert profile.objective_validation_repair is not None
-    assert (
-        profile.objective_validation_repair["evidence_term"]
-        == OBJECTIVE_VALIDATION_EVIDENCE
-    )
+    assert profile.objective_validation_repair["evidence_term"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert profile.to_dict()["resource_bounds"]["schema"] == RESOURCE_BOUNDS_SCHEMA
     assert (
         profile.resource_bounds_evidence
@@ -132,9 +115,7 @@ def test_resource_profile_enforces_every_objective_dimension_and_fails_closed() 
     assert profile.validate_usage(usage).ok
 
     for usage_name, field_name in ResourceBudget._USAGE_ALIASES.items():
-        result = profile.validate_usage(
-            {usage_name: getattr(budget, field_name) + 1}
-        )
+        result = profile.validate_usage({usage_name: getattr(budget, field_name) + 1})
         assert not result.ok
         assert result.disposition == "incomplete"
         assert result.exhausted_resources == (field_name,)
@@ -157,9 +138,7 @@ def test_standalone_resource_evidence_is_closed_and_exactly_bound() -> None:
 
     assert payload == profile.to_dict()["resource_bounds"]
     assert (
-        profile.validate_resource_bounds_evidence(
-            repository_root=REPOSITORY_ROOT
-        )
+        profile.validate_resource_bounds_evidence(repository_root=REPOSITORY_ROOT)
         == profile.resources
     )
 
@@ -246,9 +225,7 @@ def test_unsafe_ambient_capabilities_are_rejected_without_leaking_values(
 ) -> None:
     profile = _profile()
     repository = tmp_path / "repo"
-    (repository / "data/datasets_contract_analysis/runtime").mkdir(
-        parents=True, exist_ok=True
-    )
+    (repository / "data/datasets_contract_analysis/runtime").mkdir(parents=True, exist_ok=True)
     baseline = {
         "tool_identities": {tool.name: tool.identity for tool in profile.tools},
         "lock_identities": {lock.path: lock.identity for lock in profile.locks},
@@ -258,9 +235,7 @@ def test_unsafe_ambient_capabilities_are_rejected_without_leaking_values(
     }
     baseline.update(override)
 
-    result = profile.validate(
-        CapabilitySnapshot(**baseline), repository_root=repository
-    )
+    result = profile.validate(CapabilitySnapshot(**baseline), repository_root=repository)
 
     assert not result.safe
     assert not result.ok
@@ -371,9 +346,7 @@ def test_observer_only_records_capabilities_and_never_installs(
         environment={"LANG": "C.UTF-8", "OPENAI_API_KEY": "secret-value"},
     )
 
-    assert calls == [
-        tool.locator for tool in profile.tools if tool.kind == "executable"
-    ]
+    assert calls == [tool.locator for tool in profile.tools if tool.kind == "executable"]
     assert snapshot.tool_identities["cpython"].startswith("sha256:")
     assert "node" in snapshot.unavailable_tools
     assert "typescript-parser" in snapshot.unavailable_tools
@@ -404,9 +377,7 @@ def test_objective_validation_repair_proves_every_acceptance_dimension() -> None
     objective validation repair
     """
 
-    profile = verify_objective_validation_repair(
-        POLICY_PATH, repository_root=REPOSITORY_ROOT
-    )
+    profile = verify_objective_validation_repair(POLICY_PATH, repository_root=REPOSITORY_ROOT)
     contract = objective_validation_repair_contract()
 
     assert contract["evidence_term"] == OBJECTIVE_VALIDATION_EVIDENCE
@@ -414,12 +385,8 @@ def test_objective_validation_repair_proves_every_acceptance_dimension() -> None
     assert contract["task_id"] == VALIDATION_TASK_ID
     assert contract["command"] == OBJECTIVE_VALIDATION_COMMAND
     assert profile.goal_id == GOAL_ID
-    assert REQUIRED_TOOL_ROLES.issubset(
-        {role for tool in profile.tools for role in tool.roles}
-    )
-    assert REQUIRED_RESOURCE_DIMENSIONS.issubset(
-        profile.to_dict()["resource_bounds"]
-    )
+    assert REQUIRED_TOOL_ROLES.issubset({role for tool in profile.tools for role in tool.roles})
+    assert REQUIRED_RESOURCE_DIMENSIONS.issubset(profile.to_dict()["resource_bounds"])
     for name in REQUIRED_SANDBOX_DENIALS:
         assert getattr(profile.sandbox, name) == "deny"
     assert profile.objective_validation_repair == {
@@ -427,9 +394,7 @@ def test_objective_validation_repair_proves_every_acceptance_dimension() -> None
         "goal_id": GOAL_ID,
         "task_id": VALIDATION_TASK_ID,
         "command": OBJECTIVE_VALIDATION_COMMAND,
-        "validated_artifacts": list(
-            profile.objective_validation_repair["validated_artifacts"]
-        ),
+        "validated_artifacts": list(profile.objective_validation_repair["validated_artifacts"]),
         "fail_closed": True,
     }
 

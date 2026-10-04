@@ -58,23 +58,14 @@ G095_ACCEPTANCE_CRITERIA = (
     "Capability inspection is deterministic and side-effect free",
     "Dispatch lazily imports only a supported requested operation",
     "Provider policy is a non-expandable resource envelope",
-    (
-        "Capability and result payloads are canonical, bounded, compact, "
-        "and identity checked"
-    ),
-    (
-        "Timed-out non-cooperative backends cannot create unbounded "
-        "dispatch threads"
-    ),
+    ("Capability and result payloads are canonical, bounded, compact, and identity checked"),
+    ("Timed-out non-cooperative backends cannot create unbounded dispatch threads"),
     (
         "Unavailable, unsupported, disabled, unhealthy, timed-out, failed, "
         "malformed, and cancelled results state exact reasons and "
         "deterministic fallback"
     ),
-    (
-        "No provider result, including a backend-supplied authority claim, "
-        "is completion evidence"
-    ),
+    ("No provider result, including a backend-supplied authority claim, is completion evidence"),
 )
 
 
@@ -130,12 +121,8 @@ def _completion_quorum_member(
         "uncontradicted": True,
         "producer_id": member_id,
         "implementation": f"test-fixture:{member_id}",
-        "child_receipt_binding": (
-            f"{binding['tree_id']}:{receipt_cid}"
-        ),
-        "child_receipt_sha256": (
-            "sha256:" + sha256(receipt_cid.encode("utf-8")).hexdigest()
-        ),
+        "child_receipt_binding": (f"{binding['tree_id']}:{receipt_cid}"),
+        "child_receipt_sha256": ("sha256:" + sha256(receipt_cid.encode("utf-8")).hexdigest()),
         "aggregate_tree_binding": binding["tree_id"],
         "finished_at": finished_at.isoformat(),
     }
@@ -175,18 +162,11 @@ def test_exact_reuse_is_content_bound_and_emits_the_requirement(
     assert warm.safe_for_completion_reasoning
     assert warm.evidence_claim_references == (EXACT_TREE_REUSE_REQUIREMENT_ID,)
     assert warm.exact_tree_reuse_evidence is not None
-    assert (
-        warm.exact_tree_reuse_evidence.cache_key_id
-        == warm.request.cache_key.key_id
-    )
+    assert warm.exact_tree_reuse_evidence.cache_key_id == warm.request.cache_key.key_id
     assert warm.exact_tree_reuse_evidence.tree_id == request.tree_id
     assert warm.cache_lookup is not None
-    assert warm.exact_tree_reuse_evidence.proves_for(
-        warm.request, warm.packet, warm.cache_lookup
-    )
-    restored = ExactTreeReuseEvidence.from_dict(
-        warm.exact_tree_reuse_evidence.to_dict()
-    )
+    assert warm.exact_tree_reuse_evidence.proves_for(warm.request, warm.packet, warm.cache_lookup)
+    restored = ExactTreeReuseEvidence.from_dict(warm.exact_tree_reuse_evidence.to_dict())
     assert restored == warm.exact_tree_reuse_evidence
     assert restored.proves_for(warm.request, warm.packet, warm.cache_lookup)
     assert analyzer.calls == 1
@@ -275,9 +255,7 @@ def test_expired_success_is_attached_for_diagnostics_but_never_reused(
     first = pipeline.analyze(request)
     now[0] += 2
 
-    historical = cache.lookup(
-        first.request.cache_key, require_completion_evidence=True
-    )
+    historical = cache.lookup(first.request.cache_key, require_completion_evidence=True)
     assert historical.invalidated
     assert historical.entry is not None
     assert historical.entry.is_completion_evidence
@@ -299,9 +277,7 @@ def test_missing_packet_artifact_forces_recompute_instead_of_cache_authority(
     pipeline = AnalysisPipeline(cache, analyzer)
     request = _request()
     first = pipeline.analyze(request)
-    lookup = cache.lookup(
-        first.request.cache_key, require_completion_evidence=True
-    )
+    lookup = cache.lookup(first.request.cache_key, require_completion_evidence=True)
     assert lookup.receipt is not None
     artifact = lookup.receipt["artifact_refs"][0]
     Path(artifact["path"]).unlink()
@@ -327,9 +303,7 @@ def test_concurrent_invalid_artifact_repairs_remain_single_flight(
     pipeline = AnalysisPipeline(cache, analyzer)
     request = _request()
     cold = pipeline.analyze(request)
-    lookup = cache.lookup(
-        cold.request.cache_key, require_completion_evidence=True
-    )
+    lookup = cache.lookup(cold.request.cache_key, require_completion_evidence=True)
     assert lookup.receipt is not None
     Path(lookup.receipt["artifact_refs"][0]["path"]).unlink()
 
@@ -352,15 +326,11 @@ def test_concurrent_invalid_artifact_repairs_remain_single_flight(
 
     monkeypatch.setattr(pipeline._artifacts, "get", synchronized_get)
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(pipeline.analyze, request) for _ in range(workers)
-        ]
+        futures = [executor.submit(pipeline.analyze, request) for _ in range(workers)]
         repaired = [future.result(timeout=15) for future in futures]
 
     assert analyzer.calls == 2
-    assert sum(
-        item.cache_status is PipelineCacheStatus.PRODUCED for item in repaired
-    ) == 1
+    assert sum(item.cache_status is PipelineCacheStatus.PRODUCED for item in repaired) == 1
     assert all(
         item.cache_status
         in {
@@ -410,9 +380,7 @@ def test_declared_digests_cannot_hide_changed_analysis_inputs(
     pipeline = AnalysisPipeline(AnalysisCache(tmp_path), analyzer)
     pipeline.analyze(_request(query="first query", query_digest="claimed-same"))
 
-    changed_query = pipeline.analyze(
-        _request(query="second query", query_digest="claimed-same")
-    )
+    changed_query = pipeline.analyze(_request(query="second query", query_digest="claimed-same"))
     changed_analyzer = pipeline.analyze(
         _request(
             query="second query",
@@ -429,9 +397,7 @@ def test_declared_digests_cannot_hide_changed_analysis_inputs(
         )
     )
 
-    assert AnalysisCacheReason.QUERY_DIGEST_CHANGED.value in (
-        changed_query.cache_reason_codes
-    )
+    assert AnalysisCacheReason.QUERY_DIGEST_CHANGED.value in (changed_query.cache_reason_codes)
     assert AnalysisCacheReason.CONFIGURATION_DIGEST_CHANGED.value in (
         changed_analyzer.cache_reason_codes
     )
@@ -457,9 +423,7 @@ def test_pipeline_execution_policy_is_part_of_cache_authority(
     result = changed_pipeline.analyze(_request())
 
     assert result.cache_status is PipelineCacheStatus.PRODUCED
-    assert AnalysisCacheReason.POLICY_DIGEST_CHANGED.value in (
-        result.cache_reason_codes
-    )
+    assert AnalysisCacheReason.POLICY_DIGEST_CHANGED.value in (result.cache_reason_codes)
     assert analyzer.calls == 2
 
 
@@ -490,9 +454,7 @@ def test_negative_cache_policy_is_applied_inside_single_flight(
     assert calls == 2
     assert first.cache_status is PipelineCacheStatus.INCONCLUSIVE
     assert second.cache_status is PipelineCacheStatus.INCONCLUSIVE
-    assert cache.lookup(
-        first.request.cache_key, require_completion_evidence=False
-    ).miss
+    assert cache.lookup(first.request.cache_key, require_completion_evidence=False).miss
 
 
 def test_negative_cache_uses_configured_bounded_ttl(tmp_path: Path) -> None:
@@ -513,17 +475,13 @@ def test_negative_cache_uses_configured_bounded_ttl(tmp_path: Path) -> None:
         policy=AnalysisPipelinePolicy(negative_ttl_seconds=7),
     )
     result = pipeline.analyze(_request())
-    stored = cache.lookup(
-        result.request.cache_key, require_completion_evidence=False
-    )
+    stored = cache.lookup(result.request.cache_key, require_completion_evidence=False)
 
     assert stored.hit
     assert stored.entry is not None
     assert stored.entry.expires_at_ms == 32_000
     now[0] = 33.0
-    assert cache.lookup(
-        result.request.cache_key, require_completion_evidence=False
-    ).invalidated
+    assert cache.lookup(result.request.cache_key, require_completion_evidence=False).invalidated
 
 
 def test_exact_reuse_witness_cannot_be_forged_or_detached(
@@ -565,9 +523,7 @@ def test_exact_reuse_witness_cannot_be_forged_or_detached(
             entry_digest="sha256:" + ("f" * 64),
         ),
     )
-    assert not warm.exact_tree_reuse_evidence.proves_for(
-        warm.request, warm.packet, forged_lookup
-    )
+    assert not warm.exact_tree_reuse_evidence.proves_for(warm.request, warm.packet, forged_lookup)
     with pytest.raises(AnalysisBindingError, match="typed lookup"):
         AnalysisPipelineResult(
             request=warm.request,
@@ -667,10 +623,7 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
         futures = [executor.submit(pipeline.analyze, request) for _ in range(8)]
         assert entered.wait(5)
         deadline = time.monotonic() + 5
-        while (
-            pipeline.coordinator.metrics().followers < 7
-            and time.monotonic() < deadline
-        ):
+        while pipeline.coordinator.metrics().followers < 7 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert pipeline.coordinator.metrics().followers == 7
         release.set()
@@ -689,17 +642,12 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
     }
     assert len(evidence_ids) == 1
     assert all(
-        result.operational_evidence_claim_references
-        == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
+        result.operational_evidence_claim_references == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
         for result in results
     )
+    assert all(result.authoritative_evidence_claim_references == () for result in results)
     assert all(
-        result.authoritative_evidence_claim_references == ()
-        for result in results
-    )
-    assert all(
-        SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
-        in result.all_evidence_claim_references
+        SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID in result.all_evidence_claim_references
         for result in results
     )
     assert all(
@@ -709,9 +657,7 @@ def test_identical_concurrent_misses_collapse_before_expensive_analysis(
     )
 
     produced = next(
-        result
-        for result in results
-        if result.cache_status is PipelineCacheStatus.PRODUCED
+        result for result in results if result.cache_status is PipelineCacheStatus.PRODUCED
     )
     assert produced.single_flight_collapse_evidence is not None
     with pytest.raises(AnalysisBindingError, match="dropped"):
@@ -746,23 +692,14 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
         assert entered.wait(5)
         follower = executor.submit(pipeline.analyze, request)
         deadline = time.monotonic() + 5
-        while (
-            pipeline.coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while pipeline.coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert pipeline.coordinator.metrics().followers == 1
         release.set()
         cohort = (leader.result(timeout=10), follower.result(timeout=10))
 
-    result = next(
-        item
-        for item in cohort
-        if item.cache_status is PipelineCacheStatus.PRODUCED
-    )
-    assert result.operational_evidence_claim_references == (
-        SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
-    )
+    result = next(item for item in cohort if item.cache_status is PipelineCacheStatus.PRODUCED)
+    assert result.operational_evidence_claim_references == (SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,)
     assert SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA == (
         "Sync, async, and mixed facades share one keyed flight",
         (
@@ -824,19 +761,11 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
                 "verified": True,
                 "implementation": (
                     "ipfs_accelerate_py/agent_supervisor/"
-                    + (
-                        "analysis_pipeline.py"
-                        if index == 2
-                        else "cache_coordinator.py"
-                    )
+                    + ("analysis_pipeline.py" if index == 2 else "cache_coordinator.py")
                 ),
                 "validation": (
                     "test/api/test_agent_supervisor_"
-                    + (
-                        "analysis_pipeline.py"
-                        if index == 2
-                        else "cache_coordinator.py"
-                    )
+                    + ("analysis_pipeline.py" if index == 2 else "cache_coordinator.py")
                 ),
             }
             for index, criterion in enumerate(
@@ -900,9 +829,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
     assert provisional.gate.evaluated_evidence["analysis_result"] == {}
     assert "provisional_transition_required" in provisional.reason_codes
@@ -914,9 +841,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
     assert verified.state is GoalState.VERIFIED_COMPLETE
     assert verified.verified
 
-    with pytest.raises(
-        ValueError, match="required_exhaustive_receipts must be"
-    ):
+    with pytest.raises(ValueError, match="required_exhaustive_receipts must be"):
         result.evaluate_single_flight_collapse_completion(
             required_exhaustive_receipts=0,
             **values,
@@ -927,10 +852,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
         **{**values, "evidence": evidence[:-1]},
     )
     assert not missing.verified
-    assert (
-        SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA[-1]
-        in missing.missing_criteria
-    )
+    assert SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA[-1] in missing.missing_criteria
 
     failed = replace(
         evidence[0],
@@ -1033,10 +955,7 @@ def test_g096_completion_bridge_requires_fresh_bound_collapse_proof(
             **{**values, "exhaustion_quorum": invalid_quorum},
         )
         assert not no_quorum.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in no_quorum.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     foreign_tree = replace(
         evidence[0],
@@ -1106,10 +1025,7 @@ def test_incremental_ast_index_is_projected_into_live_retrieval(
     assert context.ast_index is not None
     assert result.ast_index_id == context.ast_index.index_id
     assert context.retrieval.results
-    assert any(
-        item.path == "src/analysis_cache.py"
-        for item in context.retrieval.results
-    )
+    assert any(item.path == "src/analysis_cache.py" for item in context.retrieval.results)
 
 
 def test_optional_provider_degrades_explicitly_without_poisoning_local_result(
@@ -1123,9 +1039,7 @@ def test_optional_provider_degrades_explicitly_without_poisoning_local_result(
         raise ModuleNotFoundError(name)
 
     provider = IpfsDatasetsAnalysisProvider(importer=unavailable)
-    pipeline = AnalysisPipeline(
-        AnalysisCache(tmp_path), analyzer, provider=provider
-    )
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path), analyzer, provider=provider)
     assert imports == []
 
     result = pipeline.analyze(_request())
@@ -1137,17 +1051,13 @@ def test_optional_provider_degrades_explicitly_without_poisoning_local_result(
     assert result.provider_policy is not None
     assert result.provider_result.proved_requirement_ids_for(
         result.provider_request, result.provider_policy
-    ) == (
-        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
-    )
+    ) == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
     assert result.advisory_evidence_claim_references == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
     assert result.authoritative_evidence_claim_references == ()
     assert result.evidence_claim_references == ()
-    assert result.all_evidence_claim_references == (
-        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
-    )
+    assert result.all_evidence_claim_references == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
     assert result.to_dict()["advisory_evidence_claim_references"] == [
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
     ]
@@ -1185,18 +1095,13 @@ def test_raising_optional_adapter_is_projected_and_local_analysis_continues(
             raise RuntimeError("optional backend is broken")
 
     analyzer = _Analyzer()
-    pipeline = AnalysisPipeline(
-        AnalysisCache(tmp_path), analyzer, provider=BrokenProvider()
-    )
+    pipeline = AnalysisPipeline(AnalysisCache(tmp_path), analyzer, provider=BrokenProvider())
 
     result = pipeline.analyze(_request())
 
     assert result.safe_for_completion_reasoning
     assert result.provider_result.status == "failed"
-    assert (
-        result.provider_result.reason_code
-        == "optional_provider_invocation_failed"
-    )
+    assert result.provider_result.reason_code == "optional_provider_invocation_failed"
     assert result.advisory_evidence_claim_references == ()
     assert result.evidence_claim_references == ()
     assert result.all_evidence_claim_references == ()
@@ -1275,9 +1180,7 @@ def test_only_exact_request_and_policy_bound_adapter_evidence_is_projected(
         limits=AnalysisPipelinePolicy().retrieval_limits,
     )
     detached = real_provider.analyze(detached_request)
-    assert detached.proved_requirement_ids_for(
-        detached_request, real_provider.policy
-    ) == (
+    assert detached.proved_requirement_ids_for(detached_request, real_provider.policy) == (
         IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     )
 
@@ -1341,9 +1244,9 @@ def test_advisory_provider_claim_cannot_be_replayed_from_another_query(
         limits=pipeline.policy.retrieval_limits,
     )
     detached_result = provider.analyze(detached_request)
-    assert detached_result.proved_requirement_ids_for(
-        detached_request, provider.policy
-    ) == (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+    assert detached_result.proved_requirement_ids_for(detached_request, provider.policy) == (
+        IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    )
 
     with pytest.raises(AnalysisBindingError, match="detached"):
         replace(
@@ -1438,15 +1341,9 @@ def test_hostile_optional_provider_inspection_never_aborts_local_analysis(
     ).analyze(_request())
 
     assert result.safe_for_completion_reasoning
-    assert (
-        result.provider_result.reason_code
-        == "optional_provider_inspection_failed"
-    )
+    assert result.provider_result.reason_code == "optional_provider_inspection_failed"
     assert serialization_result.safe_for_completion_reasoning
-    assert (
-        serialization_result.provider_result.reason_code
-        == "optional_provider_inspection_failed"
-    )
+    assert serialization_result.provider_result.reason_code == "optional_provider_inspection_failed"
     assert result.advisory_evidence_claim_references == ()
     assert serialization_result.advisory_evidence_claim_references == ()
 
@@ -1486,14 +1383,8 @@ def test_callable_authority_claim_and_awaitable_result_degrade_locally(
         provider=AsyncProvider(),
     ).analyze(_request())
 
-    assert (
-        authority.provider_result.reason_code
-        == "optional_provider_authority_claim_rejected"
-    )
-    assert (
-        awaitable.provider_result.reason_code
-        == "optional_provider_async_result_unsupported"
-    )
+    assert authority.provider_result.reason_code == "optional_provider_authority_claim_rejected"
+    assert awaitable.provider_result.reason_code == "optional_provider_async_result_unsupported"
     assert authority.safe_for_completion_reasoning
     assert awaitable.safe_for_completion_reasoning
     assert authority.advisory_evidence_claim_references == ()
@@ -1509,22 +1400,16 @@ def test_restart_preserves_ranked_retrieval_health_and_truncation_semantics(
             (
                 "src/cache.py",
                 build_python_ast_blob_record(
-                    "class RestartCache:\n"
-                    "    def lookup(self):\n"
-                    "        return 'warm'\n"
+                    "class RestartCache:\n    def lookup(self):\n        return 'warm'\n"
                 ),
             ),
         )
     )
     first_analyzer = _Analyzer()
-    cold = AnalysisPipeline(
-        AnalysisCache(cache_path), first_analyzer
-    ).analyze(request)
+    cold = AnalysisPipeline(AnalysisCache(cache_path), first_analyzer).analyze(request)
 
     restarted_analyzer = _Analyzer()
-    warm = AnalysisPipeline(
-        AnalysisCache(cache_path), restarted_analyzer
-    ).analyze(request)
+    warm = AnalysisPipeline(AnalysisCache(cache_path), restarted_analyzer).analyze(request)
 
     assert cold.cache_status is PipelineCacheStatus.PRODUCED
     assert warm.cache_status is PipelineCacheStatus.EXACT_HIT
@@ -1580,9 +1465,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
         AnalysisCache(tmp_path / "cache"),
         analyzer,
         provider=IpfsDatasetsAnalysisProvider(
-            importer=lambda name: (_ for _ in ()).throw(
-                ModuleNotFoundError(name)
-            )
+            importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
         ),
     )
     cold = pipeline.analyze(request)
@@ -1593,9 +1476,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
     assert cold.retrieval_response_id
     assert cold.provider_result is not None
     assert result.cache_status is PipelineCacheStatus.EXACT_HIT
-    assert result.evidence_claim_references == (
-        EXACT_TREE_REUSE_REQUIREMENT_ID,
-    )
+    assert result.evidence_claim_references == (EXACT_TREE_REUSE_REQUIREMENT_ID,)
     assert analyzer.calls == 1
 
     now = datetime(2026, 7, 24, 14, 0, tzinfo=timezone.utc)
@@ -1628,9 +1509,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 }
             },
         )
-        for index, criterion in enumerate(
-            EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1
-        )
+        for index, criterion in enumerate(EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1)
     )
     coverage = {
         "repository_tree": result.request.tree_id,
@@ -1642,27 +1521,17 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 "status": "verified",
                 "verified": True,
                 "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "analysis_pipeline.py"
+                    "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py"
                     if index != 5
-                    else (
-                        "ipfs_accelerate_py/agent_supervisor/"
-                        "cache_coordinator.py"
-                    )
+                    else ("ipfs_accelerate_py/agent_supervisor/cache_coordinator.py")
                 ),
                 "validation": (
-                    "test/api/test_agent_supervisor_"
-                    "analysis_pipeline.py"
+                    "test/api/test_agent_supervisor_analysis_pipeline.py"
                     if index != 5
-                    else (
-                        "test/api/test_agent_supervisor_"
-                        "cache_coordinator.py"
-                    )
+                    else ("test/api/test_agent_supervisor_cache_coordinator.py")
                 ),
             }
-            for index, criterion in enumerate(
-                EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1
-            )
+            for index, criterion in enumerate(EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA, start=1)
         ],
     }
     health = {
@@ -1720,9 +1589,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
     assert provisional.gate.evaluated_evidence["analysis_result"] == {}
     assert "provisional_transition_required" in provisional.reason_codes
@@ -1796,9 +1663,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
                 {
                     **quorum["members"][1],
                     "producer_id": quorum["members"][0]["producer_id"],
-                    "implementation": quorum["members"][0][
-                        "implementation"
-                    ],
+                    "implementation": quorum["members"][0]["implementation"],
                 },
             ],
         },
@@ -1860,10 +1725,7 @@ def test_g094_completion_bridge_requires_every_fresh_current_tree_proof(
             **{**values, "exhaustion_quorum": invalid_quorum},
         )
         assert not no_quorum.verified
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in no_quorum.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     foreign_tree = replace(
         evidence[0],
@@ -1888,9 +1750,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
         AnalysisCache(tmp_path / "cache"),
         _Analyzer(),
         provider=IpfsDatasetsAnalysisProvider(
-            importer=lambda name: (_ for _ in ()).throw(
-                ModuleNotFoundError(name)
-            )
+            importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
         ),
     ).analyze(_request())
     now = datetime(2026, 7, 24, 14, 0, tzinfo=timezone.utc)
@@ -1935,13 +1795,9 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
                 "status": "verified",
                 "verified": True,
                 "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "ipfs_datasets_analysis_provider.py"
+                    "ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py"
                 ),
-                "validation": (
-                    "test/api/test_agent_supervisor_"
-                    "ipfs_datasets_analysis_provider.py"
-                ),
+                "validation": ("test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py"),
             }
             for criterion in G095_ACCEPTANCE_CRITERIA
         ],
@@ -2034,10 +1890,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
     assert invalid_validation.verified is False
     assert invalid_validation.gate is not None
     assert "failed_validation" in invalid_validation.reason_codes
-    assert (
-        "validation_evidence_incomplete"
-        in invalid_validation.gate.fail_reason_codes
-    )
+    assert "validation_evidence_incomplete" in invalid_validation.gate.fail_reason_codes
 
     missing_criterion = result.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
@@ -2045,9 +1898,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
     )
     assert missing_criterion.state is GoalState.PROVISIONALLY_COMPLETE
     assert G095_ACCEPTANCE_CRITERIA[-1] in missing_criterion.missing_criteria
-    assert "validation_evidence_incomplete" in (
-        missing_criterion.gate.fail_reason_codes
-    )
+    assert "validation_evidence_incomplete" in (missing_criterion.gate.fail_reason_codes)
 
     unsafe_health = result.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
@@ -2078,9 +1929,7 @@ def test_g095_completion_bridge_requires_fresh_complete_current_tree_proof(
         **{**values, "exhaustion_quorum": duplicate_quorum},
     )
     assert insufficient_independence.state is GoalState.PROVISIONALLY_COMPLETE
-    assert "exhaustion_quorum_inconsistent" in (
-        insufficient_independence.reason_codes
-    )
+    assert "exhaustion_quorum_inconsistent" in (insufficient_independence.reason_codes)
 
     foreign_tree = replace(
         evidence[0],
@@ -2129,15 +1978,17 @@ def test_low_backlog_analysis_uses_pipeline_only_as_bounded_nomination_context(
     assert warm.pipeline_result["cache_status"] == "exact_hit"
     assert warm.pipeline_result["cache_lookup_status"] == "hit"
     assert "ast_index_id" in warm.pipeline_result
-    assert warm.pipeline_result["retrieval_response_id"] == cold.pipeline_result[
-        "retrieval_response_id"
-    ]
-    assert warm.pipeline_result["retrieval_backend_health"] == cold.pipeline_result[
-        "retrieval_backend_health"
-    ]
-    assert warm.pipeline_result["retrieval_truncation"] == cold.pipeline_result[
-        "retrieval_truncation"
-    ]
+    assert (
+        warm.pipeline_result["retrieval_response_id"]
+        == cold.pipeline_result["retrieval_response_id"]
+    )
+    assert (
+        warm.pipeline_result["retrieval_backend_health"]
+        == cold.pipeline_result["retrieval_backend_health"]
+    )
+    assert (
+        warm.pipeline_result["retrieval_truncation"] == cold.pipeline_result["retrieval_truncation"]
+    )
     assert warm.pipeline_result["nomination_only"] is True
     assert warm.pipeline_result["safe_for_completion_reasoning"] is False
     assert warm.safe_for_completion_reasoning is False
@@ -2160,9 +2011,7 @@ def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
             (
                 "src/analysis_cache.py",
                 build_python_ast_blob_record(
-                    "class AnalysisCache:\n"
-                    "    def lookup(self, key):\n"
-                    "        return key\n"
+                    "class AnalysisCache:\n    def lookup(self, key):\n        return key\n"
                 ),
             ),
         ),
@@ -2205,18 +2054,14 @@ def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
     assert cold.pipeline_result["cache_status"] == "produced"
     assert warm.pipeline_result["cache_status"] == "exact_hit"
     assert cold.pipeline_result["ast_index_id"]
-    assert warm.pipeline_result["ast_index_id"] == cold.pipeline_result[
-        "ast_index_id"
-    ]
-    assert warm.pipeline_result["retrieval_response_id"] == cold.pipeline_result[
-        "retrieval_response_id"
-    ]
+    assert warm.pipeline_result["ast_index_id"] == cold.pipeline_result["ast_index_id"]
+    assert (
+        warm.pipeline_result["retrieval_response_id"]
+        == cold.pipeline_result["retrieval_response_id"]
+    )
     assert len(prompts) == 2
     assert all(cold.pipeline_result["ast_index_id"] in prompt for prompt in prompts)
-    assert all(
-        cold.pipeline_result["retrieval_response_id"] in prompt
-        for prompt in prompts
-    )
+    assert all(cold.pipeline_result["retrieval_response_id"] in prompt for prompt in prompts)
     prompt_capsules = [json.loads(prompt) for prompt in prompts]
     pipeline_contexts = [
         json.loads(item["summary"])["analysis_pipeline"]
@@ -2226,8 +2071,7 @@ def test_live_objective_planner_receives_ast_index_and_retrieval_cache_context(
     ]
     assert len(pipeline_contexts) == 2
     assert all(
-        context["nomination_only"] is True
-        and context["safe_for_completion_reasoning"] is False
+        context["nomination_only"] is True and context["safe_for_completion_reasoning"] is False
         for context in pipeline_contexts
     )
     assert not cold.safe_for_completion_reasoning
@@ -2264,9 +2108,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
             (
                 "src/integrated.py",
                 build_python_ast_blob_record(
-                    "class AnalysisCache:\n"
-                    "    def lookup(self, key):\n"
-                    "        return key\n"
+                    "class AnalysisCache:\n    def lookup(self, key):\n        return key\n"
                 ),
             ),
         ),
@@ -2279,9 +2121,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         AnalysisCache(tmp_path / "g020-cache"),
         analyzer,
         provider=IpfsDatasetsAnalysisProvider(
-            importer=lambda name: (_ for _ in ()).throw(
-                ModuleNotFoundError(name)
-            )
+            importer=lambda name: (_ for _ in ()).throw(ModuleNotFoundError(name))
         ),
     )
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -2289,10 +2129,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         assert entered.wait(5)
         follower = executor.submit(pipeline.analyze, request)
         deadline = time.monotonic() + 5
-        while (
-            pipeline.coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while pipeline.coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert pipeline.coordinator.metrics().followers == 1
         release.set()
@@ -2301,11 +2138,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
             follower.result(timeout=10),
         )
 
-    live = next(
-        item
-        for item in cold_results
-        if item.cache_status is PipelineCacheStatus.PRODUCED
-    )
+    live = next(item for item in cold_results if item.cache_status is PipelineCacheStatus.PRODUCED)
     warm_results = [pipeline.analyze(request) for _ in range(8)]
     exact = warm_results[-1]
     assert exact.cache_status is PipelineCacheStatus.EXACT_HIT
@@ -2319,9 +2152,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         collapse_result=live,
         metrics=pipeline.metrics,
     )
-    restored = IntegratedAnalysisCompletionEvidence.from_dict(
-        operational.to_dict()
-    )
+    restored = IntegratedAnalysisCompletionEvidence.from_dict(operational.to_dict())
     assert restored == operational
     assert restored.proves_for(live)
     assert not restored.safe_for_completion_reasoning
@@ -2377,9 +2208,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
                         "ipfs_datasets_analysis_provider.py"
                         if index == 4
                         else (
-                            "cache_coordinator.py"
-                            if index in (2, 3, 5)
-                            else "analysis_pipeline.py"
+                            "cache_coordinator.py" if index in (2, 3, 5) else "analysis_pipeline.py"
                         )
                     )
                 ),
@@ -2388,11 +2217,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
                     + (
                         "ipfs_datasets_analysis_provider.py"
                         if index == 4
-                        else (
-                            "cache_coordinator.py"
-                            if index in (2, 3)
-                            else "analysis_pipeline.py"
-                        )
+                        else ("cache_coordinator.py" if index in (2, 3) else "analysis_pipeline.py")
                     )
                 ),
                 "validation_receipt_id": evidence[index - 1].provenance_cid,
@@ -2475,9 +2300,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert provisional.acceptance_criteria == (
-        INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
     assert provisional.gate.evaluated_evidence["analysis_result"] == {}
 
@@ -2547,10 +2370,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         **{**values, "exhaustion_quorum": duplicate_quorum},
     )
     assert not no_quorum.verified
-    assert any(
-        code.startswith("exhaustion_quorum")
-        for code in no_quorum.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     with pytest.raises(ValueError, match="configured ASI-G020 count"):
         live.evaluate_integrated_analysis_completion(
@@ -2564,9 +2384,7 @@ def test_g020_integrated_completion_requires_live_producer_cohort_and_closed_gat
         IntegratedAnalysisCompletionEvidence.from_dict(tampered)
 
     malformed_collapse = operational.to_dict()
-    malformed_collapse["single_flight_collapse_evidence"][
-        "follower_count"
-    ] = 0
+    malformed_collapse["single_flight_collapse_evidence"]["follower_count"] = 0
     malformed_operational = live.evaluate_integrated_analysis_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         **{**values, "operational_evidence": malformed_collapse},

@@ -25,10 +25,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger('universal_connectivity_test')
+logger = logging.getLogger("universal_connectivity_test")
 
 
 async def create_host(port: int = 9200):
@@ -46,7 +45,7 @@ async def create_host(port: int = 9200):
         return None
 
     # Create host listening on all interfaces
-    listen_addr = make_multiaddr(f'/ip4/0.0.0.0/tcp/{port}')
+    listen_addr = make_multiaddr(f"/ip4/0.0.0.0/tcp/{port}")
     host = await new_libp2p_host(listen_addrs=[listen_addr])
 
     peer_id = peer_id_text(host.get_id())
@@ -63,9 +62,9 @@ async def create_host(port: int = 9200):
 
 async def test_host_creation():
     """Test 1: Create libp2p host"""
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("TEST 1: Creating libp2p host")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         host = await create_host(port=9200)
@@ -78,15 +77,16 @@ async def test_host_creation():
     except Exception as e:
         logger.error(f"✗ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         return False, None
 
 
 async def test_peer_info(host):
     """Test 2: Display peer information for connectivity"""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("TEST 2: Peer Information")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         peer_id = host.get_id().pretty()
@@ -109,9 +109,9 @@ async def test_peer_info(host):
 
 async def test_listen_for_connections(host, duration: int = 10):
     """Test 3: Listen for incoming connections"""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("TEST 3: Listening for connections")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         logger.info(f"\nListening for {duration} seconds...")
@@ -139,9 +139,9 @@ async def test_listen_for_connections(host, duration: int = 10):
 
 async def test_connect_to_peer(host, peer_multiaddr: str):
     """Test 4: Connect to a specific peer"""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("TEST 4: Connecting to peer")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     try:
         from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import peerinfo_from_multiaddr
@@ -159,15 +159,16 @@ async def test_connect_to_peer(host, peer_multiaddr: str):
     except Exception as e:
         logger.error(f"✗ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
 async def run_interactive_mode():
     """Run in interactive mode for manual testing"""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("INTERACTIVE MODE: Universal Connectivity Test")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     # Create host
     success, host = await test_host_creation()
@@ -183,7 +184,7 @@ async def run_interactive_mode():
     try:
         user_input = input("Do you want to connect to a peer? (y/N): ").strip().lower()
 
-        if user_input == 'y':
+        if user_input == "y":
             peer_addr = input("Enter peer multiaddr: ").strip()
             if peer_addr:
                 await test_connect_to_peer(host, peer_addr)
@@ -196,18 +197,18 @@ async def run_interactive_mode():
     except KeyboardInterrupt:
         logger.info("\n\nInterrupted by user")
 
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("Test completed")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     return True
 
 
 async def run_automated_tests():
     """Run automated tests"""
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("AUTOMATED TESTS: Universal Connectivity")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     results = []
 
@@ -228,9 +229,9 @@ async def run_automated_tests():
     results.append(("Listen for Connections", success))
 
     # Print summary
-    logger.info("\n" + "="*70)
+    logger.info("\n" + "=" * 70)
     logger.info("TEST SUMMARY")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     passed = sum(1 for _, result in results if result)
     total = len(results)
@@ -240,7 +241,7 @@ async def run_automated_tests():
         logger.info(f"  {status}: {test_name}")
 
     logger.info(f"\nTotal: {passed}/{total} tests passed")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     return passed == total
 
@@ -262,21 +263,14 @@ Examples:
 
   # Specify custom port
   python test_universal_connectivity.py --port 9300
-        """
+        """,
     )
 
     parser.add_argument(
-        '--automated',
-        action='store_true',
-        help='Run automated tests instead of interactive mode'
+        "--automated", action="store_true", help="Run automated tests instead of interactive mode"
     )
 
-    parser.add_argument(
-        '--port',
-        type=int,
-        default=9200,
-        help='Port to listen on (default: 9200)'
-    )
+    parser.add_argument("--port", type=int, default=9200, help="Port to listen on (default: 9200)")
 
     args = parser.parse_args()
 

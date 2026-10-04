@@ -22,19 +22,20 @@ from template_database import TemplateDatabase, MODEL_FAMILIES, HARDWARE_PLATFOR
 # Setup logging
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
+
 def create_documentation_template(model_family: str, hardware_platform: str = None) -> str:
     """
     Create a comprehensive documentation template for a model family and hardware platform.
-    
+
     Args:
         model_family: The model family (text_embedding, vision, etc.)
         hardware_platform: Optional hardware platform (cpu, cuda, etc.)
-        
+
     Returns:
         Documentation template content
     """
@@ -136,7 +137,7 @@ This implementation is optimized for browser-based GPU acceleration with the fol
 - Progressive loading for large models
 - Shader precompilation for faster startup
 """
-    
+
     # Model family-specific template enhancements
     if model_family == "vision":
         doc_template += """
@@ -207,38 +208,41 @@ This multimodal model implementation handles multiple input types:
    - Combining information from multiple modalities
    - Task-specific formatting of outputs
 """
-    
+
     return doc_template
+
 
 def add_enhanced_documentation_templates():
     """Add enhanced documentation templates for all model families and hardware platforms."""
     # Get database instance
     db_path = os.path.join(script_dir, "template_database.duckdb")
     db = TemplateDatabase(db_path)
-    
+
     # First, create general templates for each model family
     for model_family in MODEL_FAMILIES:
         template_name = f"{model_family}_documentation"
         template_content = create_documentation_template(model_family)
-        
+
         try:
             template_id = db.add_template(
                 template_name=template_name,
                 template_type="documentation",
                 model_family=model_family,
                 template_content=template_content,
-                description=f"Enhanced documentation template for {model_family} models"
+                description=f"Enhanced documentation template for {model_family} models",
             )
-            logger.info(f"Added general documentation template for {model_family} (ID: {template_id})")
+            logger.info(
+                f"Added general documentation template for {model_family} (ID: {template_id})"
+            )
         except Exception as e:
             logger.error(f"Error adding {model_family} documentation template: {e}")
-    
+
     # Then create hardware-specific templates for each model family
     for model_family in MODEL_FAMILIES:
         for hardware in HARDWARE_PLATFORMS:
             template_name = f"{model_family}_{hardware}_documentation"
             template_content = create_documentation_template(model_family, hardware)
-            
+
             try:
                 template_id = db.add_template(
                     template_name=template_name,
@@ -246,27 +250,32 @@ def add_enhanced_documentation_templates():
                     model_family=model_family,
                     hardware_platform=hardware,
                     template_content=template_content,
-                    description=f"Enhanced documentation template for {model_family} models on {hardware}"
+                    description=f"Enhanced documentation template for {model_family} models on {hardware}",
                 )
-                logger.info(f"Added documentation template for {model_family} on {hardware} (ID: {template_id})")
+                logger.info(
+                    f"Added documentation template for {model_family} on {hardware} (ID: {template_id})"
+                )
             except Exception as e:
-                logger.error(f"Error adding {model_family} on {hardware} documentation template: {e}")
-    
+                logger.error(
+                    f"Error adding {model_family} on {hardware} documentation template: {e}"
+                )
+
     # List all documentation templates for verification
     templates = db.list_templates(template_type="documentation")
     logger.info(f"Total documentation templates: {len(templates)}")
-    
+
+
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Enhanced Documentation Template Generator")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    
+
     args = parser.parse_args()
-    
+
     # Configure logging
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
+
     # Add enhanced documentation templates
     add_enhanced_documentation_templates()

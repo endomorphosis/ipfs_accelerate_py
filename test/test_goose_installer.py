@@ -106,17 +106,19 @@ def _fake_run_version(version: str = PINNED_VERSION):
         import subprocess
 
         if command and str(command[0]).endswith(("goose", "goose.exe")) and "--version" in command:
-            return subprocess.CompletedProcess(
-                command, 0, stdout=f"goose {version}\n", stderr=""
-            )
+            return subprocess.CompletedProcess(command, 0, stdout=f"goose {version}\n", stderr="")
         if command and command[0] == "ldd":
-            return subprocess.CompletedProcess(command, 0, stdout="ldd (GNU libc) 2.39\n", stderr="")
+            return subprocess.CompletedProcess(
+                command, 0, stdout="ldd (GNU libc) 2.39\n", stderr=""
+            )
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     return run
 
 
-def _write_payload_download(payload: bytes, *, delay: float = 0.0, fail: Optional[Exception] = None):
+def _write_payload_download(
+    payload: bytes, *, delay: float = 0.0, fail: Optional[Exception] = None
+):
     calls = []
 
     def download(url: str, destination: Path, timeout_seconds: float) -> None:
@@ -248,9 +250,7 @@ def test_import_does_not_install(monkeypatch, tmp_path: Path):
     # Load via explicit path so offline trees without the packaged asset still
     # exercise the schema parser (and never trigger network/install).
     manifest_path = tmp_path / "goose_release_manifest.json"
-    manifest_path.write_text(
-        json.dumps(_packaged_style_manifest()), encoding="utf-8"
-    )
+    manifest_path.write_text(json.dumps(_packaged_style_manifest()), encoding="utf-8")
     loaded = load_release_manifest(manifest_path)
     assert loaded["pinned_version"]
     assert loaded["assets"]
@@ -267,9 +267,9 @@ def test_packaged_manifest_has_pinned_assets(tmp_path: Path):
         fixture.write_text(json.dumps(_packaged_style_manifest()), encoding="utf-8")
         manifest = load_release_manifest(fixture)
     assert str(manifest["pinned_version"]).lstrip("v")
-    assert manifest["pinned_version"].startswith("v") or str(
-        manifest["pinned_version"]
-    )[0].isdigit()
+    assert (
+        manifest["pinned_version"].startswith("v") or str(manifest["pinned_version"])[0].isdigit()
+    )
     # Normalize for assertion: production pins use leading ``v``.
     if not str(manifest["pinned_version"]).startswith("v"):
         # Accept either form but prefer v-prefixed in packaged files.
@@ -425,12 +425,10 @@ def test_disabled_installation(managed_root: Path):
 
 
 def test_auto_install_env_policy(managed_root: Path):
-    assert goose_auto_install_enabled(
-        environ={"IPFS_ACCELERATE_GOOSE_AUTO_INSTALL": "0"}
-    ) is False
-    assert goose_auto_install_enabled(
-        environ={"IPFS_ACCELERATE_GOOSE_AUTO_INSTALL": "true"}
-    ) is True
+    assert goose_auto_install_enabled(environ={"IPFS_ACCELERATE_GOOSE_AUTO_INSTALL": "0"}) is False
+    assert (
+        goose_auto_install_enabled(environ={"IPFS_ACCELERATE_GOOSE_AUTO_INSTALL": "true"}) is True
+    )
     result = ensure_goose(
         environ={"IPFS_ACCELERATE_GOOSE_AUTO_INSTALL": "false"},
         which=lambda _n: None,
@@ -491,7 +489,10 @@ def test_unsupported_platform(managed_root: Path):
 def test_unsupported_arch_and_variant():
     assert validate_platform("linux", "riscv64", "gnu", "standard") == "unsupported_arch:riscv64"
     assert validate_platform("linux", "x86_64", "gnu", "cuda") == "unsupported_variant:cuda"
-    assert validate_platform("windows", "aarch64", "msvc", "standard") == "unsupported_windows_arch:aarch64"
+    assert (
+        validate_platform("windows", "aarch64", "msvc", "standard")
+        == "unsupported_windows_arch:aarch64"
+    )
     assert validate_platform("windows", "x86_64", "msvc", "vulkan") == "unsupported_variant:vulkan"
 
 

@@ -26,17 +26,9 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BASELINE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_readiness_baseline.json"
-)
+BASELINE_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_readiness_baseline.json"
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
 
 INTERFACE = "FormalVerificationReadinessBaseline@1"
@@ -380,10 +372,7 @@ def test_lean_shim_toolchain_mismatch_detection(baseline: dict[str, Any]) -> Non
 
     findings = {item["id"]: item for item in baseline["known_findings"]}
     assert "lean_shim_toolchain_mismatch" in findings
-    assert (
-        findings["lean_shim_toolchain_mismatch"]["current_host_mismatch"]
-        is expected_mismatch
-    )
+    assert findings["lean_shim_toolchain_mismatch"]["current_host_mismatch"] is expected_mismatch
 
 
 def test_never_infer_usability_from_source_or_path_presence(
@@ -512,26 +501,20 @@ def test_summary_matches_ledger_contents(baseline: dict[str, Any]) -> None:
         assert capability["statuses"]["production_certified"] is False
 
     usable = {tool["tool_id"] for tool in tools if tool["statuses"]["usable"]}
-    unavailable = {
-        tool["tool_id"] for tool in tools if tool["statuses"]["unavailable"]
-    }
+    unavailable = {tool["tool_id"] for tool in tools if tool["statuses"]["unavailable"]}
     assert set(summary["usable_tools"]) == usable
     assert set(summary["unavailable_tools"]) == unavailable
 
     synthetic_ids = [
         capability["id"]
         for capability in capabilities
-        if capability["evidence_class"] == "synthetic"
-        or capability["evidence"]["synthetic"]
+        if capability["evidence_class"] == "synthetic" or capability["evidence"]["synthetic"]
     ]
     assert set(summary["synthetic_capability_ids"]) == set(synthetic_ids)
     assert summary["alignment_aligned"] is baseline["tree_alignment"]["aligned"]
 
     lean = next(tool for tool in tools if tool["tool_id"] == "lean")
-    assert (
-        summary["lean_shim_mismatch_on_host"]
-        is lean["identity"]["shim_toolchain_mismatch"]
-    )
+    assert summary["lean_shim_mismatch_on_host"] is lean["identity"]["shim_toolchain_mismatch"]
 
 
 def test_live_bounded_probes_do_not_claim_usability_from_path_alone(

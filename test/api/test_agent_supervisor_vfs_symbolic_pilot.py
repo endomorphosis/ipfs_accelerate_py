@@ -32,7 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot import (
 )
 
 
-def _config(tmp_path: Path, *, seed_broken: bool = True, seed_inconclusive: bool = True) -> PilotConfig:
+def _config(
+    tmp_path: Path, *, seed_broken: bool = True, seed_inconclusive: bool = True
+) -> PilotConfig:
     policy, swiss, accel = build_hermetic_pilot_forest_policy(
         tmp_path / "forest",
         seed_broken=seed_broken,
@@ -215,9 +217,7 @@ def test_inventory_accounts_for_every_admitted_swissknife_file(tmp_path: Path) -
         if entry.repository_alias != "swissknife":
             continue
         if entry.inclusion == "included" and entry.parser_eligible:
-            assert any(
-                item.entry_cid == entry.entry_cid for item in swiss
-            ), entry.relative_path
+            assert any(item.entry_cid == entry.entry_cid for item in swiss), entry.relative_path
 
 
 def test_report_round_trip_is_canonical(tmp_path: Path) -> None:

@@ -63,18 +63,10 @@ LEANSTRAL_GOAL_LIFECYCLE_RUN_SCHEMA: Final = (
 LEANSTRAL_GOAL_LIFECYCLE_AUDIT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/leanstral-goal-lifecycle-audit@1"
 )
-DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_AUDIT_FILE: Final = (
-    "leanstral-goal-lifecycle.audit.jsonl"
-)
-DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_STATE_FILE: Final = (
-    "leanstral-goal-lifecycle.state.json"
-)
-DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_METRICS_FILE: Final = (
-    "leanstral-goal-lifecycle.metrics.json"
-)
-DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_GENERATION_FILE: Final = (
-    "leanstral-goal-generation.json"
-)
+DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_AUDIT_FILE: Final = "leanstral-goal-lifecycle.audit.jsonl"
+DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_STATE_FILE: Final = "leanstral-goal-lifecycle.state.json"
+DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_METRICS_FILE: Final = "leanstral-goal-lifecycle.metrics.json"
+DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_GENERATION_FILE: Final = "leanstral-goal-generation.json"
 DEFAULT_LEANSTRAL_GOAL_LIFECYCLE_MAX_CANDIDATES: Final = 3
 MAX_LEANSTRAL_GOAL_LIFECYCLE_CANDIDATES: Final = 8
 
@@ -100,15 +92,18 @@ def _content_id(value: Mapping[str, Any], *, prefix: str) -> str:
     material.pop("run_id", None)
     material.pop("started_at", None)
     material.pop("finished_at", None)
-    return prefix + hashlib.sha256(
-        json.dumps(
-            material,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    ).hexdigest()
+    return (
+        prefix
+        + hashlib.sha256(
+            json.dumps(
+                material,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
 
 
 def _file_digest(path: Path | None) -> str:
@@ -185,9 +180,7 @@ class LeanstralGoalLifecycleConfig:
         try:
             raw_state_dir = os.fspath(self.state_dir)
         except TypeError as exc:
-            raise ContractValidationError(
-                "state_dir must be a filesystem path"
-            ) from exc
+            raise ContractValidationError("state_dir must be a filesystem path") from exc
         if not isinstance(raw_state_dir, str) or not raw_state_dir.strip():
             raise ContractValidationError("state_dir must not be empty")
         state_dir = Path(raw_state_dir)
@@ -205,8 +198,7 @@ class LeanstralGoalLifecycleConfig:
             or not 1 <= self.max_candidates <= MAX_LEANSTRAL_GOAL_LIFECYCLE_CANDIDATES
         ):
             raise ContractValidationError(
-                "max_candidates must be between 1 and "
-                f"{MAX_LEANSTRAL_GOAL_LIFECYCLE_CANDIDATES}"
+                f"max_candidates must be between 1 and {MAX_LEANSTRAL_GOAL_LIFECYCLE_CANDIDATES}"
             )
         for name in (
             "validator_id",
@@ -220,10 +212,7 @@ class LeanstralGoalLifecycleConfig:
             value = str(getattr(self, name) or "").strip()
             if not value:
                 raise ContractValidationError(f"{name} must not be empty")
-            if (
-                name.endswith("filename")
-                and (value in {".", ".."} or Path(value).name != value)
-            ):
+            if name.endswith("filename") and (value in {".", ".."} or Path(value).name != value):
                 raise ContractValidationError(f"{name} must be a plain file name")
             object.__setattr__(self, name, value)
         filenames = (
@@ -233,9 +222,7 @@ class LeanstralGoalLifecycleConfig:
             self.generation_filename,
         )
         if len(set(filenames)) != len(filenames):
-            raise ContractValidationError(
-                "goal lifecycle artifact filenames must be distinct"
-            )
+            raise ContractValidationError("goal lifecycle artifact filenames must be distinct")
         if not isinstance(self.queryable_metrics, bool):
             raise ContractValidationError("queryable_metrics must be a boolean")
         object.__setattr__(self, "state_dir", state_dir)
@@ -342,18 +329,12 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
         providers: Sequence[LeanstralGoalDevelopmentProvider | Any] = (),
     ) -> None:
         if not isinstance(config, LeanstralGoalLifecycleConfig):
-            raise ContractValidationError(
-                "config must be LeanstralGoalLifecycleConfig"
-            )
+            raise ContractValidationError("config must be LeanstralGoalLifecycleConfig")
         selected = tuple(providers) or (create_leanstral_goal_development_provider(),)
         if len(selected) > config.max_candidates:
-            raise ContractValidationError(
-                "configured providers exceed max_candidates"
-            )
+            raise ContractValidationError("configured providers exceed max_candidates")
         if any(not callable(getattr(item, "develop", None)) for item in selected):
-            raise ContractValidationError(
-                "every goal lifecycle provider must expose develop()"
-            )
+            raise ContractValidationError("every goal lifecycle provider must expose develop()")
         self.config = config
         self.providers = selected
 
@@ -370,13 +351,9 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
             elif isinstance(raw, Mapping):
                 result = GoalDevelopmentProviderResult.from_dict(raw)
             else:
-                raise TypeError(
-                    "goal-development provider returned an unsupported result type"
-                )
+                raise TypeError("goal-development provider returned an unsupported result type")
             if result.request_id != invocation.request_id:
-                raise ContractValidationError(
-                    "candidate changed the frozen request identity"
-                )
+                raise ContractValidationError("candidate changed the frozen request identity")
             accepted = result.status is GoalDevelopmentResultStatus.DRAFT
             reasons = (
                 ()
@@ -422,9 +399,7 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
         candidates: Sequence[_CandidateObservation],
     ) -> _CandidateObservation | None:
         drafts = [
-            item
-            for item in candidates
-            if item.schema_accepted and item.result.draft is not None
+            item for item in candidates if item.schema_accepted and item.result.draft is not None
         ]
         if not drafts:
             return None
@@ -471,9 +446,7 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
         objective_work: Iterable[Any] = (),
         completion_state_path: Path | str | None = None,
         generation_path: Path | str | None = None,
-        admission_receipt: (
-            GoalDevelopmentAdmissionReceipt | Mapping[str, Any] | None
-        ) = None,
+        admission_receipt: (GoalDevelopmentAdmissionReceipt | Mapping[str, Any] | None) = None,
         refinement_verification: Any = None,
         authoritative_receipts: Iterable[Any] | Mapping[str, Any] = (),
         required_authoritative_receipt_ids: Sequence[str] = (),
@@ -504,13 +477,9 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
             )
         repo = Path(repo_root)
         objective = Path(objective_path)
-        completion = (
-            None if completion_state_path is None else Path(completion_state_path)
-        )
+        completion = None if completion_state_path is None else Path(completion_state_path)
         generation = (
-            self.config.generation_path
-            if generation_path is None
-            else Path(generation_path)
+            self.config.generation_path if generation_path is None else Path(generation_path)
         )
         objective_records = tuple(objective_work)
         started_at = _utc_now()
@@ -520,9 +489,7 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
 
         candidates = tuple(
             self._candidate(index, provider, call)
-            for index, provider in enumerate(
-                self.providers[: self.config.max_candidates]
-            )
+            for index, provider in enumerate(self.providers[: self.config.max_candidates])
         )
         selected = self._select_candidate(candidates)
         draft = None if selected is None else selected.result.draft
@@ -539,35 +506,31 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
         if parsed_admission is not None and not isinstance(
             parsed_admission, GoalDevelopmentAdmissionReceipt
         ):
-            parsed_admission = GoalDevelopmentAdmissionReceipt.from_dict(
-                parsed_admission
-            )
+            parsed_admission = GoalDevelopmentAdmissionReceipt.from_dict(parsed_admission)
         if parsed_admission is None and proposal_receipt is not None:
             parsed_admission = self._non_admission_receipt(proposal_receipt)
 
-        admission: ObjectiveGenerationAdmissionResult = (
-            materialize_admitted_objective_work(
-                objective_records,
-                repo_root=repo,
-                objective_path=objective,
-                generation_path=generation,
-                mode=self.config.mode,
-                limits=limits,
-                root_goal_id=call.request.root_goal_id,
-                expected_root_content_id=call.request.root_goal_content_id,
-                expected_repository_tree_id=call.request.repository_tree_id,
-                lifecycle_owner=self.config.lifecycle_owner,
-                draft=draft,
-                proposal_receipt=proposal_receipt,
-                admission_receipt=parsed_admission,
-                refinement_verification=refinement_verification,
-                required_authoritative_receipt_ids=required_authoritative_receipt_ids,
-                authoritative_receipts=authoritative_receipts,
-                proposal_bindings=proposal_bindings,
-                new_assumption_ids=new_assumption_ids,
-                unsupported_semantics=unsupported_semantics,
-                hard_policy_gates=hard_policy_gates,
-            )
+        admission: ObjectiveGenerationAdmissionResult = materialize_admitted_objective_work(
+            objective_records,
+            repo_root=repo,
+            objective_path=objective,
+            generation_path=generation,
+            mode=self.config.mode,
+            limits=limits,
+            root_goal_id=call.request.root_goal_id,
+            expected_root_content_id=call.request.root_goal_content_id,
+            expected_repository_tree_id=call.request.repository_tree_id,
+            lifecycle_owner=self.config.lifecycle_owner,
+            draft=draft,
+            proposal_receipt=proposal_receipt,
+            admission_receipt=parsed_admission,
+            refinement_verification=refinement_verification,
+            required_authoritative_receipt_ids=required_authoritative_receipt_ids,
+            authoritative_receipts=authoritative_receipts,
+            proposal_bindings=proposal_bindings,
+            new_assumption_ids=new_assumption_ids,
+            unsupported_semantics=unsupported_semantics,
+            hard_policy_gates=hard_policy_gates,
         )
 
         objective_after = _file_digest(objective)
@@ -578,29 +541,22 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
             result = item.result
             attempts.append(
                 {
-                    "attempt_id": (
-                        f"{result.result_id}:candidate:{item.index}"
-                    ),
+                    "attempt_id": (f"{result.result_id}:candidate:{item.index}"),
                     "stage": "model_draft",
-                    "status": (
-                        "succeeded" if item.schema_accepted else "failed"
-                    ),
+                    "status": ("succeeded" if item.schema_accepted else "failed"),
                     "provider_id": result.provider_id,
                     "repository_tree_id": call.request.repository_tree_id,
                     "goal_cid": call.request.root_goal_content_id,
                     "resource_class": "accelerator-model-draft",
                     "availability_checked": True,
                     "availability_success": (
-                        result.fallback_reason
-                        is not GoalDevelopmentFallbackReason.UNAVAILABLE
+                        result.fallback_reason is not GoalDevelopmentFallbackReason.UNAVAILABLE
                     ),
                     "schema_validated": True,
                     "schema_accepted": item.schema_accepted,
                     "deterministic_fallback": result.used_fallback,
                     "input_token_count": 0,
-                    "output_token_count": (
-                        0 if result.draft is None else result.draft.token_count
-                    ),
+                    "output_token_count": (0 if result.draft is None else result.draft.token_count),
                 }
             )
         metrics: ProofMetricsSnapshot = build_proof_metrics_snapshot(
@@ -632,14 +588,8 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
             "candidate_count": len(candidates),
             "candidates": [item.to_dict() for item in candidates],
             "selected_draft_id": "" if draft is None else draft.draft_id,
-            "proposal_receipt": (
-                None if proposal_receipt is None else proposal_receipt.to_dict()
-            ),
-            "admission_receipt": (
-                None
-                if parsed_admission is None
-                else parsed_admission.to_dict()
-            ),
+            "proposal_receipt": (None if proposal_receipt is None else proposal_receipt.to_dict()),
+            "admission_receipt": (None if parsed_admission is None else parsed_admission.to_dict()),
             "objective_admission": admission.to_dict(),
             "objective_heap_before": objective_before,
             "objective_heap_after": objective_after,
@@ -650,9 +600,7 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
             "generation_state_before": generation_before,
             "generation_state_after": generation_after,
             "generation_state_unchanged": generation_before == generation_after,
-            "implementation_conformance": _json_copy(
-                dict(implementation_conformance or {})
-            ),
+            "implementation_conformance": _json_copy(dict(implementation_conformance or {})),
             "completion_decision": _json_copy(dict(completion_decision or {})),
             "metrics_path": str(self.config.metrics_path),
             "metrics_snapshot_id": metrics.snapshot_id,
@@ -687,8 +635,7 @@ class ConfiguredLeanstralGoalLifecycleSupervisor:
                 envelope = json.loads(line)
                 if (
                     isinstance(envelope, Mapping)
-                    and envelope.get("schema")
-                    == LEANSTRAL_GOAL_LIFECYCLE_AUDIT_SCHEMA
+                    and envelope.get("schema") == LEANSTRAL_GOAL_LIFECYCLE_AUDIT_SCHEMA
                     and isinstance(envelope.get("run"), Mapping)
                 ):
                     return LeanstralGoalLifecycleRun.from_dict(envelope["run"])

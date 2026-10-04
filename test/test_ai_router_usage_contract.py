@@ -61,9 +61,7 @@ from ipfs_accelerate_py.endpoint_usage.store import FakeClock, InMemoryUsageLedg
 
 
 FIXED_NOW = datetime(2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc)
-AI_ROUTER_USAGE_CONTRACT_REQUIREMENT_ID = (
-    "requirement:ai-router-usage-contract.v1"
-)
+AI_ROUTER_USAGE_CONTRACT_REQUIREMENT_ID = "requirement:ai-router-usage-contract.v1"
 
 _ROUTERS = (
     (llm_router, "llm_router", "text.chat"),
@@ -74,9 +72,7 @@ _ROUTERS = (
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _scope(key: str, operation: str = "text.chat") -> EndpointUsageScope:
@@ -131,9 +127,7 @@ def _snapshot(
                 state=state
                 if state is not AvailabilityState.AVAILABLE
                 else (
-                    AvailabilityState.AVAILABLE
-                    if available > 0
-                    else AvailabilityState.EXHAUSTED
+                    AvailabilityState.AVAILABLE if available > 0 else AvailabilityState.EXHAUSTED
                 ),
             ),
         ),
@@ -294,10 +288,7 @@ def test_hard_gates_cannot_be_offset_by_catalog_score() -> None:
         required=UsageVector.of(requests=1),
         now=_rfc(FIXED_NOW),
     )
-    assert (
-        score_cannot_bypass_hard_gate(high, exhausted, request, policy, now=FIXED_NOW)
-        is True
-    )
+    assert score_cannot_bypass_hard_gate(high, exhausted, request, policy, now=FIXED_NOW) is True
 
 
 # ---------------------------------------------------------------------------

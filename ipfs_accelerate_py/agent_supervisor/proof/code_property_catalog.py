@@ -27,12 +27,8 @@ from .proof_obligation_templates import (
 
 
 CODE_PROPERTY_CATALOG_INTERFACE: Final = "CodePropertyCatalog@1"
-CODE_PROPERTY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-property@1"
-)
-CODE_PROPERTY_CATALOG_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/code-property-catalog@1"
-)
+CODE_PROPERTY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-property@1"
+CODE_PROPERTY_CATALOG_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/code-property-catalog@1"
 CATALOG_VERSION: Final = "1"
 
 # Structural constraint tags shared with semantic-roundtrip StructuralAdmission.
@@ -62,9 +58,7 @@ def _sorted_unique_strings(
 ) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)):
         values = (values,)
-    result = tuple(
-        sorted({str(v).strip() for v in values if str(v).strip()})
-    )
+    result = tuple(sorted({str(v).strip() for v in values if str(v).strip()}))
     if required and not result:
         raise CodePropertyCatalogError(f"{field_name} must not be empty")
     return result
@@ -102,13 +96,9 @@ class CodeProperty:
         object.__setattr__(
             self,
             "template_semantic_hash",
-            _norm_id(
-                self.template_semantic_hash, field_name="template_semantic_hash"
-            ),
+            _norm_id(self.template_semantic_hash, field_name="template_semantic_hash"),
         )
-        object.__setattr__(
-            self, "code_shape", _norm_id(self.code_shape, field_name="code_shape")
-        )
+        object.__setattr__(self, "code_shape", _norm_id(self.code_shape, field_name="code_shape"))
         object.__setattr__(
             self,
             "sorts",
@@ -125,9 +115,7 @@ class CodeProperty:
         )
         if not isinstance(self.semantic_authority, bool):
             raise CodePropertyCatalogError("semantic_authority must be a boolean")
-        object.__setattr__(
-            self, "invariant_class", str(self.invariant_class or "").strip()
-        )
+        object.__setattr__(self, "invariant_class", str(self.invariant_class or "").strip())
         object.__setattr__(self, "title", str(self.title or "").strip())
         if not isinstance(self.metadata, Mapping):
             raise CodePropertyCatalogError("metadata must be a mapping")
@@ -187,18 +175,12 @@ class CodePropertyCatalog:
         if not isinstance(self.properties, tuple):
             object.__setattr__(self, "properties", tuple(self.properties))
         seen: set[str] = set()
-        ordered = tuple(
-            sorted(self.properties, key=lambda item: item.property_id)
-        )
+        ordered = tuple(sorted(self.properties, key=lambda item: item.property_id))
         for prop in ordered:
             if not isinstance(prop, CodeProperty):
-                raise CodePropertyCatalogError(
-                    "properties must be CodeProperty instances"
-                )
+                raise CodePropertyCatalogError("properties must be CodeProperty instances")
             if prop.property_id in seen:
-                raise CodePropertyCatalogError(
-                    f"duplicate property_id: {prop.property_id}"
-                )
+                raise CodePropertyCatalogError(f"duplicate property_id: {prop.property_id}")
             seen.add(prop.property_id)
         object.__setattr__(self, "properties", ordered)
         object.__setattr__(
@@ -209,9 +191,7 @@ class CodePropertyCatalog:
         object.__setattr__(
             self,
             "declared_tags",
-            _sorted_unique_strings(
-                self.declared_tags, field_name="declared_tags", required=True
-            ),
+            _sorted_unique_strings(self.declared_tags, field_name="declared_tags", required=True),
         )
         index = {prop.property_id: prop for prop in ordered}
         object.__setattr__(self, "_index", MappingProxyType(index))
@@ -233,9 +213,7 @@ class CodePropertyCatalog:
     def require(self, property_id: str) -> CodeProperty:
         prop = self.get(property_id)
         if prop is None:
-            raise UnknownCodePropertyError(
-                f"unknown code property id: {property_id!r}"
-            )
+            raise UnknownCodePropertyError(f"unknown code property id: {property_id!r}")
         return prop
 
     def property_ids(self) -> tuple[str, ...]:
@@ -328,9 +306,7 @@ def build_seed_code_properties(
         have = {p.code_shape for p in properties}
         missing = known_shapes - have
         if missing and ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value not in have:
-            raise CodePropertyCatalogError(
-                f"seed catalog missing shapes: {sorted(missing)}"
-            )
+            raise CodePropertyCatalogError(f"seed catalog missing shapes: {sorted(missing)}")
     return tuple(sorted(properties, key=lambda item: item.property_id))
 
 
@@ -366,14 +342,10 @@ def register_code_property(
         raise CodePropertyCatalogError(
             "semantic_authority=true is not allowed for registered properties"
         )
-    known_templates = {
-        template.template_id: template for template in registry._templates
-    }
+    known_templates = {template.template_id: template for template in registry._templates}
     template = known_templates.get(property_.template_id)
     if template is None:
-        raise CodePropertyCatalogError(
-            f"unknown reviewed template_id: {property_.template_id!r}"
-        )
+        raise CodePropertyCatalogError(f"unknown reviewed template_id: {property_.template_id!r}")
     shapes = set(template.supported_code_shapes or ())
     if property_.code_shape not in shapes:
         raise CodePropertyCatalogError(
@@ -381,9 +353,7 @@ def register_code_property(
             f"template {property_.template_id!r}"
         )
     if catalog.get(property_.property_id) is not None:
-        raise CodePropertyCatalogError(
-            f"property_id already registered: {property_.property_id}"
-        )
+        raise CodePropertyCatalogError(f"property_id already registered: {property_.property_id}")
     return CodePropertyCatalog(
         properties=catalog.properties + (property_,),
         catalog_version=catalog.catalog_version,

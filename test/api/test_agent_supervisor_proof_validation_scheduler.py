@@ -188,9 +188,7 @@ def test_independent_proof_and_test_checks_share_one_bounded_budget(
 
     def observe_leases() -> None:
         nonlocal lease_peak
-        lease_peak = max(
-            lease_peak, len(scheduler.resource_scheduler.active_leases)
-        )
+        lease_peak = max(lease_peak, len(scheduler.resource_scheduler.active_leases))
 
     def proof_executor(_context) -> None:
         nonlocal proof_active, proof_peak
@@ -245,9 +243,7 @@ def test_selection_explains_omission_escalation_and_fallbacks(
     )
     decisions = {item.spec.command: item for item in narrow.items if item.spec}
     assert decisions["git diff --check"].decision.value == "included"
-    assert decisions["pytest tests/test_alpha.py"].reason == (
-        "changed_path_matches_command_target"
-    )
+    assert decisions["pytest tests/test_alpha.py"].reason == ("changed_path_matches_command_target")
     assert decisions["pytest tests/test_beta.py"].decision.value == "omitted"
 
     escalated = select_validation_commands(
@@ -299,21 +295,18 @@ def test_selection_explains_omission_escalation_and_fallbacks(
     )
 
     assert calls == ["pytest tests/test_fallback.py"]
-    fallback_decisions = [
-        item
-        for item in report["selection"]["decisions"]
-        if item["fallback"]
-    ]
+    fallback_decisions = [item for item in report["selection"]["decisions"] if item["fallback"]]
     assert {item["validation_id"] for item in fallback_decisions} == {
         "focused:fallback",
         "manual:proof-review",
         "static:unresolved",
     }
-    assert next(
-        item
-        for item in fallback_decisions
-        if item["validation_id"] == "manual:proof-review"
-    )["executable"] is False
+    assert (
+        next(item for item in fallback_decisions if item["validation_id"] == "manual:proof-review")[
+            "executable"
+        ]
+        is False
+    )
     assert report["selection"]["unresolved_fallback_count"] == 2
 
 
@@ -365,9 +358,7 @@ def test_deterministic_failure_prevents_all_proof_and_test_work(
         proof_calls += 1
 
     def runner(*, spec, **_kwargs):
-        return _command_result(
-            spec, returncode=9 if spec.stage is ValidationStage.CHEAP else 0
-        )
+        return _command_result(spec, returncode=9 if spec.stage is ValidationStage.CHEAP else 0)
 
     report = ValidationScheduler(runner=runner).run_staged(
         ["git diff --check", "pytest tests/test_alpha.py"],
@@ -468,8 +459,6 @@ def test_blocking_fallback_runs_focused_check_but_stops_broad_gate(
     assert report["passed"] is False
     assert report["error"] == "proof_gate_failed"
     assert report["verdicts"]["test"]["verdict"] == "passed"
-    broad_stage = next(
-        item for item in report["stages"] if item["stage"] == "broad"
-    )
+    broad_stage = next(item for item in report["stages"] if item["stage"] == "broad")
     assert broad_stage["attempted"] is False
     assert broad_stage["reason"] == "prior_stage_failed"

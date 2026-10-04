@@ -9,14 +9,17 @@ import logging
 import pandas as pd
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 def view_performance_data(db_path):
     """View performance data in benchmark database"""
     try:
         conn = duckdb.connect(db_path, read_only=True)
-        
+
         # List updated performance data
         query = """
         SELECT 
@@ -40,7 +43,7 @@ def view_performance_data(db_path):
         ORDER BY
             pr.result_id
         """
-        
+
         try:
             result = conn.execute(query).fetchdf()
             if len(result) > 0:
@@ -50,12 +53,13 @@ def view_performance_data(db_path):
                 logger.info("No real benchmark results found")
         except Exception as e:
             logger.error(f"Error querying performance data: {e}")
-        
+
         conn.close()
         return True
     except Exception as e:
         logger.error(f"Error viewing database: {e}")
         return False
+
 
 if __name__ == "__main__":
     db_path = sys.argv[1] if len(sys.argv) > 1 else "./benchmark_db.duckdb"

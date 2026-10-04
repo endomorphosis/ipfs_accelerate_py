@@ -149,13 +149,9 @@ class RolloutThresholds:
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise FormalPlanningRolloutError(
-                    f"{name} must be a non-negative integer"
-                )
+                raise FormalPlanningRolloutError(f"{name} must be a non-negative integer")
         if self.max_memory_peak_bytes <= 0 or self.min_samples_per_mode <= 0:
-            raise FormalPlanningRolloutError(
-                "memory and sample thresholds must be positive"
-            )
+            raise FormalPlanningRolloutError("memory and sample thresholds must be positive")
         for name in ("max_queue_latency_ms", "max_cpu_saturation_percent"):
             try:
                 value = float(getattr(self, name))
@@ -165,25 +161,17 @@ class RolloutThresholds:
                 raise FormalPlanningRolloutError(f"{name} must be positive")
             object.__setattr__(self, name, value)
         if self.max_cpu_saturation_percent > 100:
-            raise FormalPlanningRolloutError(
-                "max_cpu_saturation_percent cannot exceed 100"
-            )
+            raise FormalPlanningRolloutError("max_cpu_saturation_percent cannot exceed 100")
         try:
-            object.__setattr__(
-                self, "minimum_assurance", AssuranceLevel(self.minimum_assurance)
-            )
+            object.__setattr__(self, "minimum_assurance", AssuranceLevel(self.minimum_assurance))
         except ValueError as exc:
             raise FormalPlanningRolloutError("invalid minimum assurance") from exc
         if not isinstance(self.require_cold_and_warm, bool):
-            raise FormalPlanningRolloutError(
-                "require_cold_and_warm must be a boolean"
-            )
+            raise FormalPlanningRolloutError("require_cold_and_warm must be a boolean")
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            name: (
-                value.value if isinstance(value := getattr(self, name), Enum) else value
-            )
+            name: (value.value if isinstance(value := getattr(self, name), Enum) else value)
             for name in self.__dataclass_fields__
         }
 
@@ -294,9 +282,7 @@ class FormalPlanningRolloutOverride:
         except ValueError as exc:
             raise FormalPlanningRolloutError("invalid override target mode") from exc
         if mode not in (RolloutMode.CANARY, RolloutMode.ENFORCEMENT):
-            raise FormalPlanningRolloutError(
-                "overrides apply only to canary or enforcement"
-            )
+            raise FormalPlanningRolloutError("overrides apply only to canary or enforcement")
         object.__setattr__(self, "target_mode", mode)
         reasons = tuple(
             sorted({_text(item, "waived_reason_code") for item in self.waived_reason_codes})
@@ -536,9 +522,7 @@ def _threshold_failures(
         thresholds.min_proof_support_rate
     ):
         failures.add("proof_support_below_threshold")
-    counterexample_cohorts = [
-        item for item in selected if item.get("counterexamples", 0) > 0
-    ]
+    counterexample_cohorts = [item for item in selected if item.get("counterexamples", 0) > 0]
     if (
         counterexample_cohorts
         and min(item.get("counterexample_quality", 0) for item in counterexample_cohorts)
@@ -546,10 +530,7 @@ def _threshold_failures(
     ):
         failures.add("counterexample_quality_below_threshold")
     warm = modes.get(BenchmarkMode.WARM.value)
-    if (
-        warm
-        and warm.get("cache_reuse_rate", 0) < thresholds.min_warm_cache_reuse_rate
-    ):
+    if warm and warm.get("cache_reuse_rate", 0) < thresholds.min_warm_cache_reuse_rate:
         failures.add("warm_cache_reuse_below_threshold")
     if max(item.get("queue_latency_ms_max", 0) for item in selected) > (
         thresholds.max_queue_latency_ms
@@ -584,9 +565,7 @@ class FormalPlanningRolloutGate:
         report: FormalPlanningBenchmarkReport | Mapping[str, Any],
         *,
         target_mode: RolloutMode | str,
-        overrides: Iterable[
-            FormalPlanningRolloutOverride | Mapping[str, Any]
-        ] = (),
+        overrides: Iterable[FormalPlanningRolloutOverride | Mapping[str, Any]] = (),
         now: datetime | str | None = None,
     ) -> FormalPlanningRolloutDecision:
         if not isinstance(report, FormalPlanningBenchmarkReport):
@@ -608,9 +587,7 @@ class FormalPlanningRolloutGate:
         lane_decisions: list[dict[str, Any]] = []
         for lane in report.matrix:
             lane_id = str(lane["lane_id"])
-            dimensions = FormalPlanningMetricDimensions.from_mapping(
-                lane["dimensions"]
-            )
+            dimensions = FormalPlanningMetricDimensions.from_mapping(lane["dimensions"])
             hard_advisory: list[str] = []
             if not lane.get("available", False):
                 hard_advisory.append("lane_unavailable")
@@ -654,21 +631,16 @@ class FormalPlanningRolloutGate:
                     "failure_reason_codes": failures,
                     "waived_reason_codes": waived,
                     "remaining_reason_codes": remaining,
-                    "override_receipt_ids": sorted(
-                        item.receipt_id for item in applicable
-                    ),
+                    "override_receipt_ids": sorted(item.receipt_id for item in applicable),
                     "degraded_reason_codes": sorted(
                         set(lane.get("degraded_reason_codes") or ()) | set(remaining)
                     ),
                 }
             )
 
-        eligible = [
-            item for item in lane_decisions if item["eligible_for_blocking"]
-        ]
+        eligible = [item for item in lane_decisions if item["eligible_for_blocking"]]
         allowed = bool(eligible) and all(
-            item["disposition"] == RolloutDisposition.PROMOTE.value
-            for item in eligible
+            item["disposition"] == RolloutDisposition.PROMOTE.value for item in eligible
         )
         material: dict[str, Any] = {
             "schema": FORMAL_PLANNING_ROLLOUT_SCHEMA,
@@ -685,11 +657,7 @@ class FormalPlanningRolloutGate:
             "advisory_lane_count": len(lane_decisions) - len(eligible),
             "lane_decisions": lane_decisions,
             "degraded_reason_codes": sorted(
-                {
-                    reason
-                    for item in lane_decisions
-                    for reason in item["degraded_reason_codes"]
-                }
+                {reason for item in lane_decisions for reason in item["degraded_reason_codes"]}
             ),
         }
         material["decision_id"] = _digest(
@@ -752,9 +720,7 @@ def build_formal_planning_operator_projection(
     if not isinstance(decision, FormalPlanningRolloutDecision):
         decision = FormalPlanningRolloutDecision(decision)
     if decision["benchmark_report_id"] != report.report_id:
-        raise FormalPlanningRolloutError(
-            "operator projection report and decision do not match"
-        )
+        raise FormalPlanningRolloutError("operator projection report and decision do not match")
     plans = _project_items(
         active_formal_plans,
         id_fields=("plan_id", "workflow_id", "id"),

@@ -273,12 +273,8 @@ def test_health_missing_when_not_installed(tmp_path: Path) -> None:
     assert health["ready"] is False
 
 
-def test_health_installed_without_auth(
-    fake_bin: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    exe = _write_fake_goose(
-        fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION)
-    )
+def test_health_installed_without_auth(fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = _write_fake_goose(fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION))
     # Clear auth env markers.
     for name in (
         "GOOSE_PROVIDER",
@@ -304,12 +300,8 @@ def test_health_installed_without_auth(
     assert health["ready"] is False
 
 
-def test_health_ready_with_auth(
-    fake_bin: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    exe = _write_fake_goose(
-        fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION)
-    )
+def test_health_ready_with_auth(fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = _write_fake_goose(fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
     adapter = GooseCLIAdapter("ready_g", cli_path=str(exe), config={})
     adapter._get_provider().discover_kwargs = {"manifest": _stub_manifest()}
@@ -324,9 +316,7 @@ def test_health_ready_with_auth(
 def test_health_configured_with_endpoint_config_only(
     fake_bin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    exe = _write_fake_goose(
-        fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION)
-    )
+    exe = _write_fake_goose(fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION))
     for name in (
         "GOOSE_PROVIDER",
         "OPENAI_API_KEY",
@@ -365,12 +355,8 @@ def test_health_unsupported_version(fake_bin: Path) -> None:
     assert health["ready"] is False
 
 
-def test_readiness_uses_assess_health(
-    fake_bin: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    exe = _write_fake_goose(
-        fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION)
-    )
+def test_readiness_uses_assess_health(fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = _write_fake_goose(fake_bin, script=_version_only_script(PINNED_GOOSE_VERSION))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     _register_goose(exe, "ready_probe")
     adapter = get_cli_endpoint("ready_probe")
@@ -409,9 +395,7 @@ def test_default_execute_uses_safe_chat_profile(
     adapter = get_cli_endpoint("chat_g")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     secret = "SECRET_PROMPT_MUST_NOT_LEAK"
@@ -448,9 +432,7 @@ def test_chat_envelope_fields(fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -
     adapter = get_cli_endpoint("fields_g")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     out = execute_cli_inference("fields_g", "hello", timeout=15)
@@ -485,9 +467,7 @@ def test_agent_requires_execution_mode_and_package_enable(
     adapter = get_cli_endpoint("agent_gate")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     # Missing package enable
@@ -517,9 +497,7 @@ def test_agent_requires_allow_side_effects(fake_bin: Path) -> None:
     adapter = get_cli_endpoint("agent_side")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
 
     out = adapter.execute(
         "do stuff",
@@ -540,9 +518,7 @@ def test_agent_requires_absolute_cwd_root(fake_bin: Path) -> None:
     adapter = get_cli_endpoint("agent_cwd")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
 
     out = adapter.execute(
         "do stuff",
@@ -564,9 +540,7 @@ def test_agent_execute_success(
     work.mkdir()
     root = tmp_path
     argv_path = fake_bin / "agent_argv.json"
-    exe = _write_fake_goose(
-        fake_bin, script=_json_success_script("agent-done", include_tool=True)
-    )
+    exe = _write_fake_goose(fake_bin, script=_json_success_script("agent-done", include_tool=True))
     monkeypatch.setenv("GOOSE_FAKE_ARGV_PATH", str(argv_path))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
@@ -578,9 +552,7 @@ def test_agent_execute_success(
     adapter = get_cli_endpoint("agent_ok")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     secret = "AGENT_SECRET_PROMPT"
@@ -659,9 +631,7 @@ def test_errors_never_echo_prompt_or_credentials(
     adapter = get_cli_endpoint("err_g")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     secret = "USER_PROMPT_CONFIDENTIAL_12345"
@@ -678,18 +648,14 @@ def test_errors_never_echo_prompt_or_credentials(
 # ---------------------------------------------------------------------------
 
 
-def test_stream_and_cancel_lifecycle(
-    fake_bin: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stream_and_cancel_lifecycle(fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     exe = _write_fake_goose(fake_bin, script=_json_success_script("streamed"))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     _register_goose(exe, "stream_g", config={"model": "m"})
     adapter = get_cli_endpoint("stream_g")
     assert isinstance(adapter, GooseCLIAdapter)
     adapter._get_provider().version = PINNED_GOOSE_VERSION
-    adapter._get_provider().capabilities = capabilities_for_version(
-        PINNED_GOOSE_VERSION
-    )
+    adapter._get_provider().capabilities = capabilities_for_version(PINNED_GOOSE_VERSION)
     adapter._get_provider().executable = str(exe)
 
     registry = get_default_endpoint_registry()
@@ -892,9 +858,7 @@ def test_acp_endpoint_session_lifecycle(fake_bin: Path, tmp_path: Path) -> None:
     assert stop.get("stopped") is True
 
     # Endpoint describe includes acp metadata when running
-    start2 = registry.acp_start(
-        "acp_ep", executable=str(exe), state_root=str(state_root)
-    )
+    start2 = registry.acp_start("acp_ep", executable=str(exe), state_root=str(state_root))
     assert start2["success"]
     listed = registry.list_endpoints(probe=False)
     acp_rows = [r for r in listed if r["endpoint_id"] == "acp_ep"]
@@ -961,9 +925,7 @@ def test_unregister_stops_acp_client(fake_bin: Path, tmp_path: Path) -> None:
         config={"acp_state_root": str(state_root), "cli_path": str(exe)},
     )
     registry = get_default_endpoint_registry()
-    start = registry.acp_start(
-        "acp_unreg", executable=str(exe), state_root=str(state_root)
-    )
+    start = registry.acp_start("acp_unreg", executable=str(exe), state_root=str(state_root))
     assert start["success"]
     record = registry.get_record("acp_unreg")
     assert record is not None
@@ -1013,7 +975,6 @@ def test_matrix_chat_safe_and_agent_requires_authorization(
     )
     assert denied.get("status") == "error"
     assert denied.get("error_code") == "policy_denied"
-
 
 
 # ---------------------------------------------------------------------------

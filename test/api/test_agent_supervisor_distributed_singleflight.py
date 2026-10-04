@@ -77,9 +77,7 @@ def _process_cache_worker(
                 "shared": result.shared,
                 "fencing_token": result.fencing_token,
                 "attestation_id": (
-                    result.attestation.attestation_id
-                    if result.attestation is not None
-                    else ""
+                    result.attestation.attestation_id if result.attestation is not None else ""
                 ),
             }
         )
@@ -92,9 +90,7 @@ def test_all_expensive_namespaces_collapse_paired_thread_misses(
 ) -> None:
     coordinator = NamespaceCacheCoordinator(tmp_path, lease_seconds=1)
     members_per_key = 10
-    barrier = threading.Barrier(
-        len(_COLLAPSED_NAMESPACES) * members_per_key
-    )
+    barrier = threading.Barrier(len(_COLLAPSED_NAMESPACES) * members_per_key)
     calls = {namespace: 0 for namespace in _COLLAPSED_NAMESPACES}
     lock = threading.Lock()
 
@@ -115,11 +111,7 @@ def test_all_expensive_namespaces_collapse_paired_thread_misses(
             require_completion_evidence=True,
         )
 
-    work = [
-        namespace
-        for namespace in _COLLAPSED_NAMESPACES
-        for _ in range(members_per_key)
-    ]
+    work = [namespace for namespace in _COLLAPSED_NAMESPACES for _ in range(members_per_key)]
     with ThreadPoolExecutor(max_workers=len(work)) as pool:
         results = list(pool.map(run, work))
 
@@ -127,13 +119,9 @@ def test_all_expensive_namespaces_collapse_paired_thread_misses(
     producer_count = sum(calls.values())
     ideal_count = len(_COLLAPSED_NAMESPACES)
     collapse_ratio = (request_count - producer_count) / request_count
-    duplicate_compute_ratio = (
-        (producer_count - ideal_count) / (request_count - ideal_count)
-    )
+    duplicate_compute_ratio = (producer_count - ideal_count) / (request_count - ideal_count)
 
-    assert calls == {
-        namespace: 1 for namespace in _COLLAPSED_NAMESPACES
-    }
+    assert calls == {namespace: 1 for namespace in _COLLAPSED_NAMESPACES}
     assert collapse_ratio >= 0.60
     assert duplicate_compute_ratio < 0.05
     assert sum(result.produced for result in results) == ideal_count
@@ -147,9 +135,7 @@ def test_all_expensive_namespaces_collapse_paired_thread_misses(
             if requested is namespace and result.attestation is not None
         ]
         assert cohort
-        assert len(
-            {result.attestation.attestation_id for result in cohort}
-        ) == 1
+        assert len({result.attestation.attestation_id for result in cohort}) == 1
         assert len({result.fencing_token for result in cohort}) == 1
         assert all(result.attested for result in cohort)
 
@@ -238,9 +224,7 @@ def test_owner_error_is_one_bounded_fail_closed_follower_outcome(
         raise RuntimeError(secret)
 
     owner = threading.Thread(
-        target=lambda: _capture_error(
-            owner_errors, lambda: coordinator.coordinate(key, fail)
-        )
+        target=lambda: _capture_error(owner_errors, lambda: coordinator.coordinate(key, fail))
     )
     owner.start()
     assert entered.wait(5)
@@ -261,9 +245,7 @@ def test_owner_error_is_one_bounded_fail_closed_follower_outcome(
 
     assert len(owner_errors) == len(follower_errors) == 1
     assert isinstance(owner_errors[0], RuntimeError)
-    assert isinstance(
-        follower_errors[0], DistributedSingleFlightExecutionError
-    )
+    assert isinstance(follower_errors[0], DistributedSingleFlightExecutionError)
     follower_error = follower_errors[0]
     assert isinstance(follower_error, DistributedSingleFlightExecutionError)
     assert follower_error.reason_code == "single_flight_execution_failed"
@@ -306,9 +288,7 @@ def test_follower_cancellation_and_deadline_do_not_cancel_owner(
         return {"receipt_id": "owner-completed"}
 
     owner = threading.Thread(
-        target=lambda: owner_results.append(
-            coordinator.coordinate(key, execute)
-        )
+        target=lambda: owner_results.append(coordinator.coordinate(key, execute))
     )
     owner.start()
     assert entered.wait(5)
@@ -369,19 +349,9 @@ def test_processes_share_one_attested_bounded_outcome(tmp_path: Path) -> None:
     assert invocations.value == 1
     assert sum(result["produced"] for result in results) == 1
     assert all(result["completion"] for result in results)
-    attested = {
-        result["attestation_id"]
-        for result in results
-        if result["attestation_id"]
-    }
+    attested = {result["attestation_id"] for result in results if result["attestation_id"]}
     assert len(attested) == 1
-    assert len(
-        {
-            result["fencing_token"]
-            for result in results
-            if result["fencing_token"]
-        }
-    ) == 1
+    assert len({result["fencing_token"] for result in results if result["fencing_token"]}) == 1
 
 
 def test_stale_authoritative_record_cannot_hide_behind_live_flight_outcome(

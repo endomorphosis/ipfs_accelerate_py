@@ -192,12 +192,13 @@ from ipfs_accelerate_py.error_handler import CLIErrorHandler
 
 # Initialize error handler
 handler = CLIErrorHandler(
-    repo='my-org/my-repo',
+    repo="my-org/my-repo",
     enable_auto_issue=True,
     enable_auto_pr=True,
     enable_auto_heal=True,
-    log_context_lines=50
+    log_context_lines=50,
 )
+
 
 # Wrap your CLI function
 @handler.wrap_cli_main
@@ -205,11 +206,12 @@ def my_cli_main():
     # Your CLI logic here
     pass
 
+
 # Or capture errors manually
 try:
     risky_operation()
 except Exception as e:
-    handler.capture_error(e, context={'operation': 'risky'})
+    handler.capture_error(e, context={"operation": "risky"})
     handler.create_issue_from_error(e)
 ```
 

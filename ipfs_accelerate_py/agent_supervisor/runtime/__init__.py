@@ -48,9 +48,7 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
 )
 
 # Dual-copied under this package in the current ASREF-011 batch.
-RUNTIME_LANDED_MODULES: Final[tuple[str, ...]] = (
-    "multi_supervisor_runner",
-)
+RUNTIME_LANDED_MODULES: Final[tuple[str, ...]] = ("multi_supervisor_runner",)
 
 # Packages that must not be imported by runtime (DAG / cycle guard).
 RUNTIME_FORBIDDEN_DEPENDENTS: Final[tuple[str, ...]] = (

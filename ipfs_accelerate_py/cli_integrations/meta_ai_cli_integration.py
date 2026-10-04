@@ -237,9 +237,7 @@ class MetaAICLIIntegration(DualModeWrapper):
             self.cache = get_llm_cache("meta_ai", api_key=self.api_key)
 
         self.base_url = (
-            base_url
-            or os.environ.get("ipfs_accelerate_py_META_AI_BASE_URL")
-            or _DEFAULT_BASE_URL
+            base_url or os.environ.get("ipfs_accelerate_py_META_AI_BASE_URL") or _DEFAULT_BASE_URL
         ).rstrip("/")
         self.headless = headless or (os.environ.get("META_AI_HEADLESS", "0") == "1")
 
@@ -268,9 +266,7 @@ class MetaAICLIIntegration(DualModeWrapper):
         try:
             import openai  # type: ignore[import]
         except ImportError:
-            raise ImportError(
-                "openai SDK not installed. Install with: pip install openai"
-            )
+            raise ImportError("openai SDK not installed. Install with: pip install openai")
         return openai.OpenAI(
             api_key=self.api_key or "",
             base_url=self.base_url,
@@ -294,9 +290,7 @@ class MetaAICLIIntegration(DualModeWrapper):
             try:
                 import openai  # type: ignore[import]
             except ImportError:
-                raise ImportError(
-                    "openai SDK not installed. Install with: pip install openai"
-                )
+                raise ImportError("openai SDK not installed. Install with: pip install openai")
             self._client_cache[effective_key] = openai.OpenAI(
                 api_key=effective_key,
                 base_url=self.base_url,
@@ -460,10 +454,7 @@ class MetaAICLIIntegration(DualModeWrapper):
             **kwargs,
         )
 
-        should_skip_approval = (
-            (auto_approve is True)
-            or (auto_approve is None and self.headless)
-        )
+        should_skip_approval = (auto_approve is True) or (auto_approve is None and self.headless)
 
         approved = should_skip_approval
         if not should_skip_approval:
@@ -503,10 +494,7 @@ class MetaAICLIIntegration(DualModeWrapper):
             **kwargs,
         )
 
-        should_skip_approval = (
-            (auto_approve is True)
-            or (auto_approve is None and self.headless)
-        )
+        should_skip_approval = (auto_approve is True) or (auto_approve is None and self.headless)
 
         approved = should_skip_approval
         if not should_skip_approval:
@@ -708,9 +696,7 @@ class MetaAICLIIntegration(DualModeWrapper):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Async version of :meth:`generate_code` – safe for Trio / Hypercorn."""
-        return await self.achat(
-            prompt, model=model, temperature=0.0, user_id=user_id, **kwargs
-        )
+        return await self.achat(prompt, model=model, temperature=0.0, user_id=user_id, **kwargs)
 
     def list_models(self) -> List[str]:
         """Return the list of known Meta AI model identifiers."""

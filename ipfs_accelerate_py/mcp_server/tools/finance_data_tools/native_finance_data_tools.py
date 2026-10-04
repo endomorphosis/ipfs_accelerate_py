@@ -132,7 +132,11 @@ def _load_finance_data_tools_api() -> Dict[str, Any]:
                 "topic": kwargs.get("topic"),
                 "start_date": kwargs.get("start_date"),
                 "end_date": kwargs.get("end_date"),
-                "sources": [item.strip() for item in str(kwargs.get("sources", "ap,reuters")).split(",") if item.strip()],
+                "sources": [
+                    item.strip()
+                    for item in str(kwargs.get("sources", "ap,reuters")).split(",")
+                    if item.strip()
+                ],
                 "total_articles": 0,
                 "articles": [],
                 "fallback": True,
@@ -265,14 +269,24 @@ def _error_result(message: str, **context: Any) -> Dict[str, Any]:
     return envelope
 
 
-def _validate_string_list(value: Any, field: str, *, normalize_upper: bool = False) -> tuple[Optional[List[str]], Optional[Dict[str, Any]]]:
-    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item.strip() for item in value):
-        return None, _error_result(f"{field} must be a non-empty list of non-empty strings", **{field: value})
+def _validate_string_list(
+    value: Any, field: str, *, normalize_upper: bool = False
+) -> tuple[Optional[List[str]], Optional[Dict[str, Any]]]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item.strip() for item in value)
+    ):
+        return None, _error_result(
+            f"{field} must be a non-empty list of non-empty strings", **{field: value}
+        )
     cleaned = [item.strip().upper() if normalize_upper else item.strip() for item in value]
     return cleaned, None
 
 
-def _clean_optional_string(value: Optional[str], field: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+def _clean_optional_string(
+    value: Optional[str], field: str
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     if value is None:
         return None, None
     if not isinstance(value, str) or not value.strip():
@@ -280,7 +294,9 @@ def _clean_optional_string(value: Optional[str], field: str) -> tuple[Optional[s
     return value.strip(), None
 
 
-def _clean_required_string(value: Any, field: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+def _clean_required_string(
+    value: Any, field: str
+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     if not isinstance(value, str) or not value.strip():
         return None, _error_result(f"{field} must be a non-empty string", **{field: value})
     return value.strip(), None
@@ -293,7 +309,9 @@ def _validate_iso_date(value: Any, field: str) -> tuple[Optional[str], Optional[
     try:
         datetime.fromisoformat(cleaned)
     except ValueError:
-        return None, _error_result(f"{field} must be a valid ISO date or datetime string", **{field: value})
+        return None, _error_result(
+            f"{field} must be a valid ISO date or datetime string", **{field: value}
+        )
     return cleaned, None
 
 
@@ -690,14 +708,18 @@ def analyze_embedding_market_correlation(
     n_clusters: int = 10,
 ) -> Dict[str, Any]:
     """Analyze correlation between embeddings and market movement."""
-    clean_news_articles_json, error = _json_string_argument(news_articles_json, "news_articles_json")
+    clean_news_articles_json, error = _json_string_argument(
+        news_articles_json, "news_articles_json"
+    )
     if error:
         return error
     clean_stock_data_json, error = _json_string_argument(stock_data_json, "stock_data_json")
     if error:
         return error
     if not isinstance(enable_multimodal, bool):
-        return _error_result("enable_multimodal must be a boolean", enable_multimodal=enable_multimodal)
+        return _error_result(
+            "enable_multimodal must be a boolean", enable_multimodal=enable_multimodal
+        )
     if not isinstance(time_window, int) or time_window < 1:
         return _error_result("time_window must be an integer >= 1", time_window=time_window)
     if not isinstance(n_clusters, int) or n_clusters < 1:
@@ -785,7 +807,11 @@ def register_native_finance_data_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "symbols": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                    },
                     "days": {"type": "integer", "minimum": 1, "default": 5},
                     "include_volume": {"type": "boolean", "default": True},
                 },
@@ -799,7 +825,11 @@ def register_native_finance_data_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "topics": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                    },
                     "max_articles": {"type": "integer", "minimum": 1, "default": 3},
                     "include_content": {"type": "boolean", "default": True},
                 },
@@ -940,7 +970,12 @@ def register_native_finance_data_tools(manager: Any) -> None:
                 "type": "object",
                 "properties": {
                     "historical_embeddings_json": {"type": "string", "minLength": 1},
-                    "min_correlation": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+                    "min_correlation": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.5,
+                    },
                     "lookback_days": {"type": "integer", "minimum": 1, "default": 30},
                 },
                 "required": ["historical_embeddings_json"],

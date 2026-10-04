@@ -158,9 +158,7 @@ def _result(
 
 def test_identity_binds_every_semantic_toolchain_and_trust_dimension() -> None:
     baseline = _key()
-    assert baseline.key_id == _key(
-        assumptions=("fair-scheduling", "finite-workers")
-    ).key_id
+    assert baseline.key_id == _key(assumptions=("fair-scheduling", "finite-workers")).key_id
 
     mutations = {
         "property_class": PropertyKind.FINITE_CONSTRAINT,
@@ -188,39 +186,26 @@ def test_lookup_fails_closed_for_stale_weak_model_only_and_nonconformant(
 ) -> None:
     now = [1_000.0]
     store = ProverEvidenceStore(tmp_path, clock=lambda: now[0])
-    strong = store.put(
-        _key(), _result(), conformance=_binding(), ttl_seconds=30
-    )
+    strong = store.put(_key(), _result(), conformance=_binding(), ttl_seconds=30)
     assert strong.stored
     assert store.lookup(_key()).status is EvidenceLookupStatus.HIT
 
-    too_strong = store.lookup(
-        _key(), required_assurance=AssuranceLevel.ATTESTED
-    )
-    assert EvidenceRejectionReason.INSUFFICIENT_ASSURANCE.value in (
-        too_strong.reason_codes
-    )
+    too_strong = store.lookup(_key(), required_assurance=AssuranceLevel.ATTESTED)
+    assert EvidenceRejectionReason.INSUFFICIENT_ASSURANCE.value in (too_strong.reason_codes)
 
     now[0] += 31
     stale = store.lookup(_key())
     assert EvidenceRejectionReason.STALE.value in stale.reason_codes
 
     model_store = ProverEvidenceStore(tmp_path / "model")
-    assert model_store.put(
-        _key(), _result(), conformance=_binding(), model_only=True
-    )
+    assert model_store.put(_key(), _result(), conformance=_binding(), model_only=True)
     model_only = model_store.lookup(_key())
     assert EvidenceRejectionReason.MODEL_ONLY.value in model_only.reason_codes
 
     conformance_store = ProverEvidenceStore(tmp_path / "nonconformant")
-    assert conformance_store.put(
-        _key(), _result(), conformance=_binding(passed=False)
-    )
+    assert conformance_store.put(_key(), _result(), conformance=_binding(passed=False))
     nonconformant = conformance_store.lookup(_key())
-    assert (
-        EvidenceRejectionReason.NON_CONFORMANT.value
-        in nonconformant.reason_codes
-    )
+    assert EvidenceRejectionReason.NON_CONFORMANT.value in nonconformant.reason_codes
 
     weak_store = ProverEvidenceStore(tmp_path / "weak")
     assert weak_store.put(
@@ -228,9 +213,7 @@ def test_lookup_fails_closed_for_stale_weak_model_only_and_nonconformant(
         _result(assurance=AssuranceLevel.SOLVER_CHECKED),
         conformance=_binding(assurance=AssuranceLevel.SOLVER_CHECKED),
     )
-    weak = weak_store.lookup(
-        _key(), required_assurance=AssuranceLevel.KERNEL_VERIFIED
-    )
+    weak = weak_store.lookup(_key(), required_assurance=AssuranceLevel.KERNEL_VERIFIED)
     assert EvidenceRejectionReason.INSUFFICIENT_ASSURANCE.value in weak.reason_codes
 
 

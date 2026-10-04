@@ -177,9 +177,7 @@ def _client_receipt(models=None):
             namespace="leanstral-local",
             details={
                 "registered": True,
-                "discovered_peers": [
-                    f"/ip4/127.0.0.1/tcp/32000/p2p/{CLIENT_PEER_ID}"
-                ],
+                "discovered_peers": [f"/ip4/127.0.0.1/tcp/32000/p2p/{CLIENT_PEER_ID}"],
             },
         )
     )
@@ -232,15 +230,13 @@ def test_assemble_emits_valid_path_free_cidv1_receipt():
     assert receipt["contract"]["p2p_port"] == 19001
     assert receipt["observation"]["http_port"] == 8080
     assert receipt["observation"]["server_instance_count"] == 1
-    assert {
-        probe["target"]
-        for probe in receipt["observation"]["bootstrap_exercises"]
-    } == {BOOTSTRAP, _multiaddrs()[0]}
+    assert {probe["target"] for probe in receipt["observation"]["bootstrap_exercises"]} == {
+        BOOTSTRAP,
+        _multiaddrs()[0],
+    }
     assert receipt["observation"]["served_models"][0]["id"] == "leanstral_local"
     assert receipt["observation"]["served_models"][0]["provider"] == "llamacpp"
-    assert "Leanstral-1.5" in receipt["observation"]["served_models"][0][
-        "transport_model_id"
-    ]
+    assert "Leanstral-1.5" in receipt["observation"]["served_models"][0]["transport_model_id"]
     assert receipt["observation"]["served_models"][0]["metadata"] == {}
     rendered = canonical_identity_json(receipt)
     assert "/must/not/enter/identity" not in rendered
@@ -258,9 +254,7 @@ def test_assemble_emits_valid_path_free_cidv1_receipt():
             "bootstrap_exercise_incomplete",
         ),
         (
-            lambda value: value["rendezvous_exercises"][0]["details"].update(
-                discovered_peers=[]
-            ),
+            lambda value: value["rendezvous_exercises"][0]["details"].update(discovered_peers=[]),
             "rendezvous_exercise_incomplete",
         ),
         (
@@ -342,9 +336,7 @@ def test_p2p_listing_must_match_independent_http_model_manager_probe():
     client = _client_receipt()
     identity = deepcopy(client)
     identity.pop("client_receipt_cid")
-    identity["model_listing"]["models"][0]["transport_model_id"] = (
-        "Other/Leanstral-transport"
-    )
+    identity["model_listing"]["models"][0]["transport_model_id"] = "Other/Leanstral-transport"
     client = _with_cid(identity, field_name="client_receipt_cid")
 
     with pytest.raises(
@@ -386,9 +378,7 @@ def test_client_success_receipt_cannot_embed_local_diagnostics():
     client = _client_receipt()
     identity = deepcopy(client)
     identity.pop("client_receipt_cid")
-    identity["rendezvous_exercises"][0]["details"]["source_path"] = (
-        "/srv/private/runtime.json"
-    )
+    identity["rendezvous_exercises"][0]["details"]["source_path"] = "/srv/private/runtime.json"
     client = _with_cid(identity, field_name="client_receipt_cid")
 
     with pytest.raises(
@@ -446,9 +436,7 @@ def test_main_keeps_lazy_dependency_logs_out_of_json_stdout(monkeypatch, capsys)
             level=logging.INFO,
             handlers=[logging.StreamHandler(sys.stdout)],
         )
-        logging.getLogger("synthetic.lazy.libp2p").warning(
-            "synthetic dependency diagnostic"
-        )
+        logging.getLogger("synthetic.lazy.libp2p").warning("synthetic dependency diagnostic")
         return _client_receipt()
 
     monkeypatch.setattr(topology_collector.trio, "run", fake_trio_run)

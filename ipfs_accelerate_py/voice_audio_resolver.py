@@ -70,9 +70,7 @@ def spoken_text_sha256(spoken_text: str) -> str:
 def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
     if not value:
         return MappingProxyType({})
-    return MappingProxyType(
-        json.loads(_canonical_json_bytes(dict(value)).decode("utf-8"))
-    )
+    return MappingProxyType(json.loads(_canonical_json_bytes(dict(value)).decode("utf-8")))
 
 
 def _require_text(label: str, value: object) -> str:
@@ -133,9 +131,7 @@ class SynthesisIdentity:
         if reference == "":
             reference = None
         object.__setattr__(self, "reference_audio_sha256", reference)
-        object.__setattr__(
-            self, "generation_settings", _freeze_mapping(self.generation_settings)
-        )
+        object.__setattr__(self, "generation_settings", _freeze_mapping(self.generation_settings))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -159,9 +155,7 @@ class SynthesisIdentity:
             provider=str(value.get("provider") or ""),
             model=str(value.get("model") or value.get("model_name") or ""),
             voice=str(value.get("voice") or ""),
-            provider_version=str(
-                value.get("provider_version") or value.get("version") or ""
-            ),
+            provider_version=str(value.get("provider_version") or value.get("version") or ""),
             locale=str(value.get("locale") or value.get("language") or "en-US"),
             codec=str(value.get("codec") or value.get("output_format") or "wav"),
             sample_rate_hz=int(value.get("sample_rate_hz") or value.get("sample_rate") or 24_000),
@@ -305,11 +299,7 @@ def _identity_from_audio_row(
             or (str(row.get("mime_type") or "").split("/")[-1] if row.get("mime_type") else "")
             or "wav"
         ),
-        sample_rate_hz=int(
-            row.get("sample_rate_hz")
-            or extras.get("sample_rate_hz")
-            or 24_000
-        ),
+        sample_rate_hz=int(row.get("sample_rate_hz") or extras.get("sample_rate_hz") or 24_000),
         channels=int(row.get("channels") or extras.get("channels") or 1),
         reference_audio_sha256=(
             reference_audio_sha256
@@ -405,9 +395,7 @@ class PrecomputedVoiceAudioResolver:
             identity = _identity_from_audio_row(
                 {**defaults, **row},
                 provider_version=str(
-                    row.get("provider_version")
-                    or defaults.get("provider_version")
-                    or ""
+                    row.get("provider_version") or defaults.get("provider_version") or ""
                 ),
                 generation_settings=(
                     row.get("generation_settings")
@@ -434,11 +422,7 @@ class PrecomputedVoiceAudioResolver:
                 # Refuse to index rows whose declared text hash does not match
                 # the spoken text — exact resolver integrity gate.
                 continue
-            metadata = (
-                dict(row["metadata"])
-                if isinstance(row.get("metadata"), Mapping)
-                else {}
-            )
+            metadata = dict(row["metadata"]) if isinstance(row.get("metadata"), Mapping) else {}
             for key in ("segment_kind", "slot_name", "slot_value"):
                 if row.get(key) is not None:
                     metadata[key] = row.get(key)
@@ -453,9 +437,7 @@ class PrecomputedVoiceAudioResolver:
                 ipfs_cid=str(row["ipfs_cid"]) if row.get("ipfs_cid") else None,
                 mime_type=str(row.get("mime_type") or "audio/wav"),
                 byte_length=(
-                    int(row["byte_length"])
-                    if row.get("byte_length") is not None
-                    else None
+                    int(row["byte_length"]) if row.get("byte_length") is not None else None
                 ),
                 template_id=str(row["template_id"]) if row.get("template_id") else None,
                 response_id=str(row["response_id"]) if row.get("response_id") else None,

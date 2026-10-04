@@ -19,7 +19,17 @@ from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 from ..merge.checkout_lock import serialized_lock_update
 from ..runtime.event_log import unique_backup_path
 from ..core.wrapper_utils import with_exclusive_flag_default
-from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
+from .core import (
+    now_iso,
+    parse_timestamp,
+    pid_alive,
+    process_args,
+    read_json,
+    read_pid_file,
+    remove_runtime_marker,
+    terminate_pid_tree,
+    write_json,
+)
 
 
 @dataclass
@@ -49,9 +59,7 @@ class RestartPolicy:
         if run_duration >= self.healthy_run_seconds:
             object.__setattr__(self, "_consecutive_failures", 0)
         else:
-            object.__setattr__(
-                self, "_consecutive_failures", self._consecutive_failures + 1
-            )
+            object.__setattr__(self, "_consecutive_failures", self._consecutive_failures + 1)
 
         if status in self.fast_restart_statuses:
             return max(0.0, float(self.fast_restart_backoff_seconds))
@@ -188,8 +196,9 @@ def launch_process_child(
 class SupervisorRuntimeEnsureCallback(Protocol):
     """Callable signature for launching a project-bound supervisor wrapper."""
 
-    def __call__(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
-        ...
+    def __call__(
+        self, argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -285,9 +294,7 @@ def repair_supervisor_runtime(
     except (OSError, RuntimeError) as exc:
         # Runtime repair is a recovery convenience, never authority to mutate
         # a lease whose ownership could not be inspected atomically.
-        repairs["implementation_lock_repair_error"] = (
-            f"{type(exc).__name__}: {exc}"
-        )
+        repairs["implementation_lock_repair_error"] = f"{type(exc).__name__}: {exc}"
 
     status_path = paths["supervisor_status"]
     status = read_json(status_path)
@@ -360,7 +367,9 @@ def supervisor_is_running(
             pid = int(candidate or 0)
         except (TypeError, ValueError):
             continue
-        if supervisor_pid_matches(pid, process_match_any=process_match_any, process_predicate=process_predicate):
+        if supervisor_pid_matches(
+            pid, process_match_any=process_match_any, process_predicate=process_predicate
+        ):
             return True
     return False
 
@@ -535,7 +544,9 @@ def build_supervisor_runtime_operations(
             implementation_lock_name=implementation_lock_name,
         )
 
-    def ensure_running(argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+    def ensure_running(
+        argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]:
         return ensure_supervisor_running(
             argv,
             state_dir=state_dir,
@@ -649,9 +660,7 @@ def supervised_child_succeeded(
     runner_terminated_child_ids: Sequence[str] = (),
     stop_requested: bool = False,
     allow_runner_terminated: bool = False,
-    runner_terminated_success_codes: frozenset[int] = frozenset(
-        {-signal.SIGTERM, -signal.SIGKILL}
-    ),
+    runner_terminated_success_codes: frozenset[int] = frozenset({-signal.SIGTERM, -signal.SIGKILL}),
 ) -> bool:
     """Return whether one supervised child should count as successful."""
 
@@ -660,10 +669,7 @@ def supervised_child_succeeded(
         return allow_runner_terminated or str(child_id) not in terminated_ids
     if not allow_runner_terminated or stop_requested:
         return False
-    return bool(
-        str(child_id) in terminated_ids
-        and exit_code in runner_terminated_success_codes
-    )
+    return bool(str(child_id) in terminated_ids and exit_code in runner_terminated_success_codes)
 
 
 def supervised_child_group_succeeded(
@@ -703,7 +709,7 @@ def child_summary_age_seconds(
         "started_at",
     ),
     now: Optional[float] = None,
-    ) -> Optional[float]:
+) -> Optional[float]:
     """Return the age of a child summary from known timestamps or mtime."""
 
     now_epoch = time.time() if now is None else float(now)
@@ -776,9 +782,7 @@ def summarize_child_summary_files(
         active_phase = str(data.get(spec.active_phase_field) or "")
         active_ids = data.get(spec.active_ids_field) or []
         has_active_work = bool(
-            active_phase in spec.active_phases
-            and isinstance(active_ids, list)
-            and active_ids
+            active_phase in spec.active_phases and isinstance(active_ids, list) and active_ids
         )
         if has_active_work:
             active_count += 1
@@ -883,17 +887,13 @@ def run_process_group_capture(
         if process is not None:
             terminate_process_group(process, signal.SIGTERM)
             try:
-                stdout, stderr = process.communicate(
-                    timeout=max(0.0, float(kill_wait_seconds))
-                )
+                stdout, stderr = process.communicate(timeout=max(0.0, float(kill_wait_seconds)))
             except subprocess.TimeoutExpired as term_exc:
                 stdout = term_exc.stdout if term_exc.stdout is not None else stdout
                 stderr = term_exc.stderr if term_exc.stderr is not None else stderr
                 terminate_process_group(process, signal.SIGKILL)
                 try:
-                    stdout, stderr = process.communicate(
-                        timeout=max(0.0, float(kill_wait_seconds))
-                    )
+                    stdout, stderr = process.communicate(timeout=max(0.0, float(kill_wait_seconds)))
                 except subprocess.TimeoutExpired as kill_exc:
                     stdout = kill_exc.stdout if kill_exc.stdout is not None else stdout
                     stderr = kill_exc.stderr if kill_exc.stderr is not None else stderr
@@ -940,15 +940,11 @@ def run_process_group_stream(
     idle_timeout: float | None = None
     hard_timeout: float | None = None
     poll_seconds: float | None = None
-    monitor_progress = (
-        progress_timeout_seconds is not None or on_progress is not None
-    )
+    monitor_progress = progress_timeout_seconds is not None or on_progress is not None
     if progress_timeout_seconds is not None:
         idle_timeout = float(progress_timeout_seconds)
         hard_timeout = float(
-            timeout_seconds
-            if max_timeout_seconds is None
-            else max_timeout_seconds
+            timeout_seconds if max_timeout_seconds is None else max_timeout_seconds
         )
         if (
             not math.isfinite(idle_timeout)
@@ -956,22 +952,12 @@ def run_process_group_stream(
             or idle_timeout <= 0
             or hard_timeout <= 0
         ):
-            raise ValueError(
-                "progress and maximum timeouts must be finite and positive"
-            )
+            raise ValueError("progress and maximum timeouts must be finite and positive")
         if hard_timeout < idle_timeout:
-            raise ValueError(
-                "max_timeout_seconds cannot be shorter than "
-                "progress_timeout_seconds"
-            )
+            raise ValueError("max_timeout_seconds cannot be shorter than progress_timeout_seconds")
         requested_poll_seconds = float(progress_poll_seconds)
-        if (
-            not math.isfinite(requested_poll_seconds)
-            or requested_poll_seconds <= 0
-        ):
-            raise ValueError(
-                "progress_poll_seconds must be finite and positive"
-            )
+        if not math.isfinite(requested_poll_seconds) or requested_poll_seconds <= 0:
+            raise ValueError("progress_poll_seconds must be finite and positive")
         poll_seconds = max(
             0.01,
             min(requested_poll_seconds, idle_timeout),
@@ -979,13 +965,8 @@ def run_process_group_stream(
     elif monitor_progress:
         hard_timeout = max(0.0, float(timeout_seconds))
         requested_poll_seconds = float(progress_poll_seconds)
-        if (
-            not math.isfinite(requested_poll_seconds)
-            or requested_poll_seconds <= 0
-        ):
-            raise ValueError(
-                "progress_poll_seconds must be finite and positive"
-            )
+        if not math.isfinite(requested_poll_seconds) or requested_poll_seconds <= 0:
+            raise ValueError("progress_poll_seconds must be finite and positive")
         poll_seconds = max(0.01, requested_poll_seconds)
     process = launch_process_child(
         command,
@@ -1008,11 +989,7 @@ def run_process_group_stream(
             assert poll_seconds is not None
             started = time.monotonic()
             hard_deadline = started + hard_timeout
-            idle_deadline = (
-                started + idle_timeout
-                if idle_timeout is not None
-                else None
-            )
+            idle_deadline = started + idle_timeout if idle_timeout is not None else None
             progress_marker = _stream_progress_marker(
                 stdout,
                 progress_paths=progress_paths,
@@ -1051,9 +1028,7 @@ def run_process_group_stream(
                 timeout_reason = ""
                 if now >= hard_deadline:
                     timeout_reason = (
-                        "hard_timeout"
-                        if idle_timeout is not None
-                        else "absolute_timeout"
+                        "hard_timeout" if idle_timeout is not None else "absolute_timeout"
                     )
                 elif idle_deadline is not None and now >= idle_deadline:
                     timeout_reason = "progress_idle_timeout"
@@ -1078,9 +1053,7 @@ def run_process_group_stream(
                     max(0.001, hard_deadline - now),
                 ]
                 if idle_deadline is not None:
-                    wait_deadlines.append(
-                        max(0.001, idle_deadline - now)
-                    )
+                    wait_deadlines.append(max(0.001, idle_deadline - now))
                 wait_seconds = min(wait_deadlines)
                 try:
                     process.wait(timeout=wait_seconds)
@@ -1100,9 +1073,7 @@ def run_process_group_stream(
                         try:
                             on_progress(
                                 {
-                                    "elapsed_seconds": max(
-                                        0.0, observed_at - started
-                                    ),
+                                    "elapsed_seconds": max(0.0, observed_at - started),
                                     "progress_events": progress_events,
                                     "progress_timeout_seconds": idle_timeout,
                                     "max_timeout_seconds": hard_timeout,
@@ -1140,6 +1111,7 @@ def run_process_group_stream(
             if hasattr(exc, attribute):
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
         raise timeout_exc from exc
+
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final
@@ -1198,9 +1170,7 @@ def _stream_progress_marker(
             marker.append((str(root), -1, -1))
             remaining -= 1
             continue
-        marker.append(
-            (str(root), int(root_stat.st_size), int(root_stat.st_mtime_ns))
-        )
+        marker.append((str(root), int(root_stat.st_size), int(root_stat.st_mtime_ns)))
         remaining -= 1
         if not root.is_dir() or root.is_symlink():
             continue
@@ -1308,9 +1278,7 @@ def terminate_processes_with_grace(
             pass
         final_exit_code = process.poll()
         if final_exit_code is None:
-            kill_candidates.append(
-                (child_key, process, initial_exit_code, terminate_sent)
-            )
+            kill_candidates.append((child_key, process, initial_exit_code, terminate_sent))
             continue
         results[child_key] = ProcessTerminationResult(
             pid=int(process.pid),
@@ -1321,9 +1289,7 @@ def terminate_processes_with_grace(
             timed_out=False,
         )
 
-    kill_results: list[
-        tuple[str, subprocess.Popen[Any], Optional[int], bool, bool]
-    ] = []
+    kill_results: list[tuple[str, subprocess.Popen[Any], Optional[int], bool, bool]] = []
     for child_key, process, initial_exit_code, terminate_sent in kill_candidates:
         kill_results.append(
             (
@@ -1372,7 +1338,9 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
 
     log_path = spec.resolve(spec.log_path)
     child_pid_path = spec.resolve(spec.child_pid_path)
-    latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    latest_log_path = (
+        spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
     _prepare_marker_path(log_path, remove_existing_file=False)
@@ -1428,7 +1396,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     command_line = process_args(pid)
     if not supervised_child_command_matches(command_line, spec.command):
         return None
-    latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    latest_log_path = (
+        spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    )
     log_path = spec.resolve(spec.log_path)
     if latest_log_path is not None:
         try:
@@ -1452,7 +1422,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     )
 
 
-def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: Optional[int] = None) -> bool:
+def clear_child_pid_file(
+    child: SupervisedChild | SupervisedChildSpec, *, pid: Optional[int] = None
+) -> bool:
     """Remove a child pid file if it still refers to the expected child."""
 
     child_pid_path = child.child_pid_path

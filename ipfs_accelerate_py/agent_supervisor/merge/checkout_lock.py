@@ -31,13 +31,9 @@ from ..proof.formal_verification_contracts import content_identity
 
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
 DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
-DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME = (
-    "agent-objective-admission-locks"
-)
+DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME = "agent-objective-admission-locks"
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
-GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
-    "[agent-supervisor:generated-protected-board]"
-)
+GENERATED_PROTECTED_BOARD_COMMIT_MARKER = "[agent-supervisor:generated-protected-board]"
 
 
 def generated_protected_board_commit_subject(subject: str) -> str:
@@ -65,9 +61,7 @@ def serialized_lock_update(
     """
 
     if fcntl is None and msvcrt is None:
-        raise RuntimeError(
-            "durable lock replacement requires an advisory file-lock backend"
-        )
+        raise RuntimeError("durable lock replacement requires an advisory file-lock backend")
     guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
     guard_path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_RDWR
@@ -76,9 +70,7 @@ def serialized_lock_update(
     fd = os.open(guard_path, flags, 0o600)
     locked = False
     deadline = (
-        None
-        if timeout_seconds is None
-        else time.monotonic() + max(0.0, float(timeout_seconds))
+        None if timeout_seconds is None else time.monotonic() + max(0.0, float(timeout_seconds))
     )
     try:
         if fcntl is not None:
@@ -92,12 +84,8 @@ def serialized_lock_update(
                     except BlockingIOError:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
-                            raise TimeoutError(
-                                "timed out serializing durable lock update"
-                            )
-                        time.sleep(
-                            min(max(0.001, float(poll_seconds)), remaining)
-                        )
+                            raise TimeoutError("timed out serializing durable lock update")
+                        time.sleep(min(max(0.001, float(poll_seconds)), remaining))
         else:
             assert msvcrt is not None
             if os.fstat(fd).st_size == 0:
@@ -114,13 +102,8 @@ def serialized_lock_update(
                         errno.EDEADLK,
                     }:
                         raise
-                    if (
-                        deadline is not None
-                        and deadline - time.monotonic() <= 0
-                    ):
-                        raise TimeoutError(
-                            "timed out serializing durable lock update"
-                        )
+                    if deadline is not None and deadline - time.monotonic() <= 0:
+                        raise TimeoutError("timed out serializing durable lock update")
                     sleep_seconds = max(0.001, float(poll_seconds))
                     if deadline is not None:
                         sleep_seconds = min(
@@ -128,9 +111,7 @@ def serialized_lock_update(
                             max(0.0, deadline - time.monotonic()),
                         )
                     if sleep_seconds <= 0:
-                        raise TimeoutError(
-                            "timed out serializing durable lock update"
-                        )
+                        raise TimeoutError("timed out serializing durable lock update")
                     time.sleep(sleep_seconds)
         locked = True
         yield
@@ -219,12 +200,13 @@ def objective_admission_lock_path(objective_path: Path) -> Path:
             common_dir = Path(lines[1])
             if not common_dir.is_absolute():
                 common_dir = (cwd / common_dir).resolve()
-            safe_name = "".join(
-                character
-                if character.isalnum() or character in "-._"
-                else "-"
-                for character in objective.name
-            ).strip("-") or "objective"
+            safe_name = (
+                "".join(
+                    character if character.isalnum() or character in "-._" else "-"
+                    for character in objective.name
+                ).strip("-")
+                or "objective"
+            )
             binding = f"{top}\0{objective}".encode("utf-8")
             digest = hashlib.sha256(binding).hexdigest()[:20]
             return (
@@ -243,14 +225,11 @@ def checkout_repository_id(repo_root: Path) -> str:
         identity_source = str(common_dir.resolve())
     except (OSError, RuntimeError):
         identity_source = str(common_dir)
-    return (
-        "repository:"
-        + content_identity(
-            {
-                "kind": "local-git-common-directory",
-                "path": identity_source,
-            }
-        )
+    return "repository:" + content_identity(
+        {
+            "kind": "local-git-common-directory",
+            "path": identity_source,
+        }
     )
 
 
@@ -271,10 +250,12 @@ def merge_target_queue_dir(
     repository_id = checkout_repository_id(repo_root)
     binding = f"{repository_id}\0{branch}".encode("utf-8")
     digest = hashlib.sha256(binding).hexdigest()[:20]
-    safe_branch = "".join(
-        character if character.isalnum() or character in "-._" else "-"
-        for character in branch
-    ).strip("-") or "target"
+    safe_branch = (
+        "".join(
+            character if character.isalnum() or character in "-._" else "-" for character in branch
+        ).strip("-")
+        or "target"
+    )
     return (
         git_common_dir(repo_root)
         / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
@@ -365,11 +346,7 @@ def read_checkout_mutation_lease(
     """Return a stable, fully published checkout lease when one exists."""
 
     metadata, identity = _read_checkout_lock(lock_path)
-    if (
-        metadata is None
-        or identity is None
-        or not str(metadata.get("lease_id") or "")
-    ):
+    if metadata is None or identity is None or not str(metadata.get("lease_id") or ""):
         return None
     return CheckoutMutationLease(
         lock_path=lock_path,
@@ -416,9 +393,7 @@ def _atomic_replace_checkout_mutation_lease(
         while offset < len(data):
             written = os.write(temp_fd, data[offset:])
             if written <= 0:
-                raise OSError(
-                    "short write while replacing checkout mutation lease"
-                )
+                raise OSError("short write while replacing checkout mutation lease")
             offset += written
         os.fsync(temp_fd)
         replacement_stat = os.fstat(temp_fd)
@@ -495,9 +470,7 @@ def adopt_inactive_checkout_mutation_lease(
                     return None
             except Exception:
                 return None
-            confirmed, confirmed_identity = _read_checkout_lock(
-                lease.lock_path
-            )
+            confirmed, confirmed_identity = _read_checkout_lock(lease.lock_path)
             if confirmed != current or confirmed_identity != identity:
                 return None
             return _atomic_replace_checkout_mutation_lease(
@@ -542,9 +515,7 @@ def _try_publish_checkout_mutation_lease(
         while offset < len(data):
             written = os.write(temp_fd, data[offset:])
             if written <= 0:
-                raise OSError(
-                    "short write while publishing checkout mutation lease"
-                )
+                raise OSError("short write while publishing checkout mutation lease")
             offset += written
         os.fsync(temp_fd)
         # Capture the identity from the file descriptor we exclusively own.
@@ -677,11 +648,7 @@ def remove_inactive_checkout_mutation_lock(
                 current is None
                 or identity is None
                 or current != expected
-                or (
-                    expected_lease_id
-                    and str(current.get("lease_id") or "")
-                    != expected_lease_id
-                )
+                or (expected_lease_id and str(current.get("lease_id") or "") != expected_lease_id)
             ):
                 return False
             try:

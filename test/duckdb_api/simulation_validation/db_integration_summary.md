@@ -95,7 +95,9 @@ A key enhancement to the database integration is the new **Visualization Integra
 The connector can be used to create various visualizations directly from the database:
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
 
 # Initialize the connector
@@ -108,14 +110,14 @@ chart_path = connector.create_mape_comparison_chart_from_db(
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
     output_path="mape_comparison.html",
-    interactive=True
+    interactive=True,
 )
 
 # Create a hardware comparison heatmap
 heatmap_path = connector.create_hardware_comparison_heatmap_from_db(
     metric_name="average_latency_ms",
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
-    output_path="hardware_heatmap.html"
+    output_path="hardware_heatmap.html",
 )
 
 # Create a comprehensive dashboard
@@ -123,14 +125,14 @@ dashboard_path = connector.create_comprehensive_dashboard_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     output_path="dashboard.html",
-    include_sections=["summary", "mape_by_hardware", "hardware_heatmap", "time_series"]
+    include_sections=["summary", "mape_by_hardware", "hardware_heatmap", "time_series"],
 )
 
 # Visualize calibration effectiveness
 viz_path = connector.visualize_calibration_effectiveness_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="calibration_effectiveness.html"
+    output_path="calibration_effectiveness.html",
 )
 ```
 

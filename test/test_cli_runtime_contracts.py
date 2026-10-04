@@ -46,9 +46,7 @@ from ipfs_accelerate_py.cli_runtime.errors import (
 
 
 class _StringProvider:
-    def generate(
-        self, prompt: str, *, model_name: str | None = None, **kwargs: object
-    ) -> str:
+    def generate(self, prompt: str, *, model_name: str | None = None, **kwargs: object) -> str:
         tools = kwargs.get("tools") or []
         return f"echo:{prompt}:{model_name}:{list(tools)}"
 
@@ -100,9 +98,7 @@ def test_capabilities_chat_and_agent_defaults_round_trip() -> None:
 
 def test_request_result_event_and_spec_round_trip() -> None:
     request = _chat_request(metadata={"trace_id": "t-1"})
-    event = CLIEvent(
-        kind=EventKind.TEXT_DELTA, sequence=1, message="hel", payload={"chunk": "lo"}
-    )
+    event = CLIEvent(kind=EventKind.TEXT_DELTA, sequence=1, message="hel", payload={"chunk": "lo"})
     result = CLIResult(
         text="hello world",
         ok=True,
@@ -135,9 +131,7 @@ def test_request_result_event_and_spec_round_trip() -> None:
     assert event2.kind is EventKind.TEXT_DELTA
     assert spec2.name == "goose_cli"
     assert "goose" in spec2.aliases
-    assert canonical_json_bytes(spec2.to_dict()) == canonical_json_bytes(
-        spec.to_dict()
-    )
+    assert canonical_json_bytes(spec2.to_dict()) == canonical_json_bytes(spec.to_dict())
     assert result2.to_dict()["contract_version"] == CONTRACT_VERSION
 
 
@@ -269,9 +263,7 @@ def test_result_side_effect_event_forces_non_cacheable() -> None:
         text="done",
         ok=True,
         cacheable=True,
-        events=(
-            CLIEvent(kind=EventKind.TOOL_CALL, sequence=1, message="tool"),
-        ),
+        events=(CLIEvent(kind=EventKind.TOOL_CALL, sequence=1, message="tool"),),
     )
     assert result.side_effecting is True
     assert result.cacheable is False

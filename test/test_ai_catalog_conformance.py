@@ -81,9 +81,7 @@ INVOKE_MCP_NAMES = frozenset(
         "voice_synthesize",
     }
 )
-MCP_COMPATIBILITY_NAMES = frozenset(
-    {"generate_text", "generate_embeddings", "generate_embedding"}
-)
+MCP_COMPATIBILITY_NAMES = frozenset({"generate_text", "generate_embeddings", "generate_embedding"})
 LEGACY_MODEL_MCP_NAMES = frozenset(
     {
         "model_search",
@@ -205,10 +203,7 @@ def _binding_rows() -> Tuple[_BindingConformanceRow, ...]:
         for binding in snapshot.bindings:
             provider = providers[binding.provider_id]
             model = models[binding.model_id]
-            assert (
-                RouterBinding.from_dict(binding.to_dict()).binding_id
-                == binding.binding_id
-            )
+            assert RouterBinding.from_dict(binding.to_dict()).binding_id == binding.binding_id
             for operation in binding.operations:
                 resolved = router.resolve_model(
                     _invocation_model(model, binding),
@@ -277,9 +272,7 @@ def test_router_manager_legacy_mcp_and_mcplusplus_identity_revision_parity(
         canonical_model = snapshot.models[0]
 
         mcp_models = _run(native_model_tools.model_catalog_list_models(limit=10))
-        mcp_services = _run(
-            native_model_tools.model_catalog_list_services(limit=10)
-        )
+        mcp_services = _run(native_model_tools.model_catalog_list_services(limit=10))
         advertisement = ServiceRecord(
             service_name="ipfs-accelerate-mcp",
             peer_id="conformance-peer",
@@ -300,10 +293,7 @@ def test_router_manager_legacy_mcp_and_mcplusplus_identity_revision_parity(
         assert legacy.resolve_model_id("openai/gpt-4") == canonical_model.model_id
         assert manager.list_catalog_models().items[0].model_id == canonical_model.model_id
         assert mcp_models["items"][0]["model_id"] == canonical_model.model_id
-        assert (
-            mcp_services["items"][0]["provider_id"]
-            == snapshot.providers[0].provider_id
-        )
+        assert mcp_services["items"][0]["provider_id"] == snapshot.providers[0].provider_id
         assert mcp_models["catalog_revision"] == manager.catalog_revision
         assert mcp_services["catalog_revision"] == manager.catalog_revision
         assert (
@@ -380,14 +370,8 @@ def test_public_python_mcp_and_mcplusplus_compatibility_fixture() -> None:
     assert voice_router.TTSProvider is voice_router.VoiceProvider
     assert voice_router.get_tts_provider is voice_router.get_voice_provider
     assert voice_router.register_tts_provider is voice_router.register_voice_provider
-    assert (
-        voice_router.clear_tts_router_caches
-        is voice_router.clear_voice_router_caches
-    )
-    assert (
-        multimodal_router.generate_text
-        is multimodal_router.generate_multimodal_text
-    )
+    assert voice_router.clear_tts_router_caches is voice_router.clear_voice_router_caches
+    assert multimodal_router.generate_text is multimodal_router.generate_multimodal_text
     assert ModelManager.refresh_catalog is ModelManager.refresh
     assert APIModelsRegistry is api_models
 
@@ -396,15 +380,11 @@ def test_public_python_mcp_and_mcplusplus_compatibility_fixture() -> None:
     text_embedding.register_native_ai_router_tools(recorder)
     vision_voice.register_native_ai_router_tools(recorder)
     assert (
-        CATALOG_MCP_NAMES
-        | INVOKE_MCP_NAMES
-        | MCP_COMPATIBILITY_NAMES
-        | LEGACY_MODEL_MCP_NAMES
+        CATALOG_MCP_NAMES | INVOKE_MCP_NAMES | MCP_COMPATIBILITY_NAMES | LEGACY_MODEL_MCP_NAMES
     ) <= set(recorder.tools)
 
     mcpp_operations = {
-        method["operation"]
-        for method in build_ai_catalog_v1_descriptor()["methods"]
+        method["operation"] for method in build_ai_catalog_v1_descriptor()["methods"]
     }
     assert mcpp_operations == CATALOG_MCP_NAMES | INVOKE_MCP_NAMES
     assert LEGACY_REGISTRY_DEPRECATION == {
@@ -636,16 +616,13 @@ def _live_modalities() -> frozenset[str]:
     raw = os.getenv("IPFS_ACCELERATE_PY_AI_CATALOG_LIVE", "")
     selected = {item.strip().casefold() for item in raw.split(",") if item.strip()}
     if selected & {"1", "all", "true", "yes"}:
-        return frozenset(
-            {"text", "embeddings", "multimodal", "transcription", "synthesis"}
-        )
+        return frozenset({"text", "embeddings", "multimodal", "transcription", "synthesis"})
     return frozenset(selected)
 
 
 def _live_value(modality: str, suffix: str) -> str | None:
     value = os.getenv(
-        "IPFS_ACCELERATE_PY_AI_CATALOG_LIVE_%s_%s"
-        % (modality.upper(), suffix.upper())
+        "IPFS_ACCELERATE_PY_AI_CATALOG_LIVE_%s_%s" % (modality.upper(), suffix.upper())
     )
     return value.strip() if value and value.strip() else None
 
@@ -668,10 +645,7 @@ def test_opt_in_live_provider_smoke(modality: str) -> None:
     """Exercise only explicitly selected modalities; unavailable ones may be omitted."""
 
     if modality not in _live_modalities():
-        pytest.skip(
-            "select this live smoke with "
-            "IPFS_ACCELERATE_PY_AI_CATALOG_LIVE=%s" % modality
-        )
+        pytest.skip("select this live smoke with IPFS_ACCELERATE_PY_AI_CATALOG_LIVE=%s" % modality)
     provider = _live_value(modality, "provider")
     model = _live_value(modality, "model")
 

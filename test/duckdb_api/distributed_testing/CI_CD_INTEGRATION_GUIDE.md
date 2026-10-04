@@ -163,13 +163,11 @@ integration = CICDIntegration(
     provider="generic",
     timeout=3600,
     poll_interval=15,
-    verbose=True
+    verbose=True,
 )
 
 exit_code = integration.run(
-    test_dir="./tests",
-    output_dir="./reports",
-    report_formats=["json", "md", "html"]
+    test_dir="./tests", output_dir="./reports", report_formats=["json", "md", "html"]
 )
 
 sys.exit(exit_code)
@@ -217,10 +215,9 @@ The integration leverages three main components in the TestResultReporter class:
    ```python
    # Automatic URL retrieval in collect_and_upload_artifacts
    artifacts = await reporter.collect_and_upload_artifacts(
-       test_run_id="test-123",
-       artifact_patterns=["./results/*.json", "./logs/*.log"]
+       test_run_id="test-123", artifact_patterns=["./results/*.json", "./logs/*.log"]
    )
-   
+
    # Each artifact includes its URL
    for artifact in artifacts:
        print(f"Artifact {artifact['name']} URL: {artifact.get('url')}")
@@ -230,10 +227,9 @@ The integration leverages three main components in the TestResultReporter class:
    ```python
    # Retrieve multiple artifact URLs in parallel
    artifact_urls = await reporter.get_artifact_urls(
-       test_run_id="test-123",
-       artifact_names=["test_results.json", "performance.csv", "test.log"]
+       test_run_id="test-123", artifact_names=["test_results.json", "performance.csv", "test.log"]
    )
-   
+
    # Use the URLs
    for name, url in artifact_urls.items():
        if url:
@@ -244,12 +240,9 @@ The integration leverages three main components in the TestResultReporter class:
    ```python
    # Add artifacts to test result metadata
    test_result.metadata["artifacts"] = artifacts
-   
+
    # Generate reports with artifact URLs included
-   report_files = await reporter.report_test_result(
-       test_result,
-       formats=["markdown", "html", "json"]
-   )
+   report_files = await reporter.report_test_result(test_result, formats=["markdown", "html", "json"])
    ```
 
 The integration workflow automatically:
@@ -264,30 +257,32 @@ The integration workflow automatically:
 The `get_artifact_urls` method uses AnyIO tasks to retrieve multiple URLs in parallel:
 
 ```python
-async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
+async def get_artifact_urls(
+    self, test_run_id: str, artifact_names: List[str]
+) -> Dict[str, Optional[str]]:
     """
     Retrieve URLs for multiple artifacts in bulk.
-    
+
     This method efficiently retrieves URLs for multiple artifacts in a single operation,
     which is more efficient than retrieving them one by one.
-    
+
     Args:
         test_run_id: Test run ID
         artifact_names: List of artifact names
-        
+
     Returns:
         Dictionary mapping artifact names to their URLs (or None if not found)
     """
-    if not self.ci_provider or not hasattr(self.ci_provider, 'get_artifact_url'):
+    if not self.ci_provider or not hasattr(self.ci_provider, "get_artifact_url"):
         logger.warning("CI provider doesn't support get_artifact_url method")
         return {name: None for name in artifact_names}
-    
+
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
         task = anyio.create_task_group()
         tasks.append((name, task))
-    
+
     # Wait for all tasks to complete
     urls = {}
     for name, task in tasks:
@@ -297,7 +292,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
         except Exception as e:
             logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
             urls[name] = None
-    
+
     return urls
 ```
 
@@ -378,16 +373,13 @@ from distributed_testing.ci.register_providers import register_all_providers
 register_all_providers()
 
 # Create a CI provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "YOUR_GITHUB_TOKEN",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "YOUR_GITHUB_TOKEN", "repository": "owner/repo"}
+)
 
 # Create a test result reporter
 reporter = TestResultReporter(
-    ci_provider=provider,
-    report_dir="./reports",
-    artifact_dir="./artifacts"
+    ci_provider=provider, report_dir="./reports", artifact_dir="./artifacts"
 )
 
 # Create a test result
@@ -401,27 +393,20 @@ test_result = TestRunResult(
     duration_seconds=45.6,
     metadata={
         "pr_number": "123",
-        "performance_metrics": {
-            "average_throughput": 125.4,
-            "average_latency_ms": 7.9
-        }
-    }
+        "performance_metrics": {"average_throughput": 125.4, "average_latency_ms": 7.9},
+    },
 )
 
 # Collect and upload artifacts with automatic URL retrieval
 artifacts = await reporter.collect_and_upload_artifacts(
-    test_run_id=test_result.test_run_id,
-    artifact_patterns=["./results/*.json", "./logs/*.log"]
+    test_run_id=test_result.test_run_id, artifact_patterns=["./results/*.json", "./logs/*.log"]
 )
 
 # Add artifacts to test result metadata
 test_result.metadata["artifacts"] = artifacts
 
 # Generate reports with artifact URLs included
-report_files = await reporter.report_test_result(
-    test_result,
-    formats=["markdown", "html", "json"]
-)
+report_files = await reporter.report_test_result(test_result, formats=["markdown", "html", "json"])
 ```
 
 #### Error Handling and Graceful Degradation
@@ -437,8 +422,7 @@ The artifact URL retrieval system includes robust error handling:
 ```python
 # Error handling example
 urls = await reporter.get_artifact_urls(
-    test_run_id=test_run_id,
-    artifact_names=["existing.json", "non_existent.json"]
+    test_run_id=test_run_id, artifact_names=["existing.json", "non_existent.json"]
 )
 
 # URLs for non-existent artifacts will be None, but the operation completes successfully

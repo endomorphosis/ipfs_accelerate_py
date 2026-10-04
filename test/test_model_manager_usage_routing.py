@@ -369,9 +369,7 @@ def test_hard_filter_rejects_exhausted_before_score():
     snap = _snapshot(
         scope.scope_id,
         state=AvailabilityState.EXHAUSTED,
-        limits=(
-            _limit(scope.scope_id, UsageDimension.REQUESTS, 10, used=10, remaining=0),
-        ),
+        limits=(_limit(scope.scope_id, UsageDimension.REQUESTS, 10, used=10, remaining=0),),
         next_eligible_at="2026-07-28T13:00:00Z",
     )
     cand = StaticCandidate(
@@ -523,15 +521,11 @@ def test_usage_snapshot_limits_headroom_side_effect_free(manager_factory):
     assert page.total == 2
     assert len(page.items) == 1
     assert page.next_cursor is not None
-    page2 = manager.list_usage_limits(
-        scope.scope_id, limit=1, cursor=page.next_cursor
-    )
+    page2 = manager.list_usage_limits(scope.scope_id, limit=1, cursor=page.next_cursor)
     assert len(page2.items) == 1
     assert page.items[0].limit_id != page2.items[0].limit_id
 
-    filtered = manager.list_usage_limits(
-        scope.scope_id, dimension=UsageDimension.REQUESTS
-    )
+    filtered = manager.list_usage_limits(scope.scope_id, dimension=UsageDimension.REQUESTS)
     assert filtered.total == 1
     assert filtered.items[0].dimension is UsageDimension.REQUESTS
 
@@ -541,9 +535,7 @@ def test_usage_snapshot_limits_headroom_side_effect_free(manager_factory):
     assert UsageDimension.REQUESTS in dims
     assert UsageDimension.INPUT_TOKENS in dims
 
-    only_req = manager.get_endpoint_headroom(
-        scope.scope_id, dimension=UsageDimension.REQUESTS
-    )
+    only_req = manager.get_endpoint_headroom(scope.scope_id, dimension=UsageDimension.REQUESTS)
     assert len(only_req) == 1
 
     # Static catalog CID/revision unchanged by usage reads.
@@ -756,9 +748,7 @@ def test_revision_mismatch_visible_not_silently_mixed(manager_factory):
     assert first.usage_revision != second.usage_revision
 
     with pytest.raises(RevisionMismatch):
-        manager.usage_snapshot(
-            scope.scope_id, expected_usage_revision=first.usage_revision
-        )
+        manager.usage_snapshot(scope.scope_id, expected_usage_revision=first.usage_revision)
 
     with pytest.raises(RevisionMismatch):
         manager.resolve_for_routing(

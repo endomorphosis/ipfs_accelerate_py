@@ -105,7 +105,10 @@ def test_profile_d_http_rest_endpoint_uses_canonical_datasets_evaluator() -> Non
             return {"type": "http.request", "body": body, "more_body": False}
 
         return await endpoint(
-            Request({"type": "http", "method": "POST", "path": "/mcp/policy/evaluate", "headers": []}, receive)
+            Request(
+                {"type": "http", "method": "POST", "path": "/mcp/policy/evaluate", "headers": []},
+                receive,
+            )
         )
 
     async def _empty_asgi(*_args):

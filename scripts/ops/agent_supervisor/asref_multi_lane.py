@@ -46,18 +46,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 
 TODO_RELATIVE = Path("docs/architecture/agent_supervisor_module_refactor.todo.md")
-OBJECTIVE_RELATIVE = Path(
-    "docs/architecture/agent_supervisor_module_refactor.objectives.md"
-)
+OBJECTIVE_RELATIVE = Path("docs/architecture/agent_supervisor_module_refactor.objectives.md")
 PLAN_RELATIVE = Path("docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md")
 BUNDLE_RELATIVE = Path("data/agent_supervisor/bundles/asref")
 DISCOVERY_RELATIVE = Path("data/agent_supervisor/discovery/asref")
 LAUNCH_RECIPE_RELATIVE = BUNDLE_RELATIVE / "launch_recipe.json"
 PROTECTED_PATHS_RELATIVE = BUNDLE_RELATIVE / "protected_paths.json"
 EVIDENCE_COVERAGE_RELATIVE = BUNDLE_RELATIVE / "evidence_coverage_asref_g100.md"
-ENTRY_RELATIVE = Path(
-    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py"
-)
+ENTRY_RELATIVE = Path("scripts/ops/agent_supervisor/implementation_supervisor_entry.py")
 
 TASK_PREFIX = "ASREF-"
 TASK_HEADER_PREFIX = f"## {TASK_PREFIX}"
@@ -95,11 +91,7 @@ def _runtime_root(namespace: str) -> Path:
     base = (
         Path(configured).expanduser()
         if configured
-        else Path.home()
-        / ".local"
-        / "share"
-        / "ipfs_accelerate_py"
-        / "agent-supervisor"
+        else Path.home() / ".local" / "share" / "ipfs_accelerate_py" / "agent-supervisor"
     )
     return base / namespace
 
@@ -165,22 +157,16 @@ def inspect_board(
         }
         for required in PROTECTED_PATHS:
             if required not in listed:
-                errors.append(
-                    f"protected_paths.json missing required path: {required}"
-                )
+                errors.append(f"protected_paths.json missing required path: {required}")
 
     recipe = _load_json(repo_root / LAUNCH_RECIPE_RELATIVE)
     if recipe is not None:
         recipe_protected = {
-            str(item).strip()
-            for item in (recipe.get("protected_paths") or [])
-            if str(item).strip()
+            str(item).strip() for item in (recipe.get("protected_paths") or []) if str(item).strip()
         }
         for required in PROTECTED_PATHS:
             if required not in recipe_protected:
-                errors.append(
-                    f"launch_recipe.json missing protected path: {required}"
-                )
+                errors.append(f"launch_recipe.json missing protected path: {required}")
         for term in EVIDENCE_TERMS:
             covered = {
                 str(item).strip()
@@ -188,9 +174,7 @@ def inspect_board(
                 if str(item).strip()
             }
             if term not in covered:
-                warnings.append(
-                    f"launch_recipe.json evidence_terms_covered missing {term}"
-                )
+                warnings.append(f"launch_recipe.json evidence_terms_covered missing {term}")
 
     branch = subprocess.run(
         ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
@@ -200,13 +184,9 @@ def inspect_board(
     )
     head_branch = (branch.stdout or "").strip()
     if head_branch and head_branch != merge_branch:
-        warnings.append(
-            f"repo HEAD is {head_branch!r}; expected {merge_branch!r} for ASREF"
-        )
+        warnings.append(f"repo HEAD is {head_branch!r}; expected {merge_branch!r} for ASREF")
 
-    tasks = (
-        parse_task_file(todo_path, TASK_HEADER_PREFIX) if todo_path.is_file() else []
-    )
+    tasks = parse_task_file(todo_path, TASK_HEADER_PREFIX) if todo_path.is_file() else []
     goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         if objective_path.is_file()
@@ -221,8 +201,7 @@ def inspect_board(
     completed_ids = {
         task.task_id
         for task in tasks
-        if str(getattr(task, "status", "")).lower()
-        in {"completed", "done", "closed"}
+        if str(getattr(task, "status", "")).lower() in {"completed", "done", "closed"}
     }
     task_ids = {task.task_id for task in tasks}
     ready_loose: list[str] = []
@@ -256,10 +235,7 @@ def inspect_board(
         "objective_path": str(objective_path),
         "plan_path": str(plan_path),
         "implementation_provider_env": IMPLEMENTATION_PROVIDER_ENV,
-        "implementation_provider": os.environ.get(
-            IMPLEMENTATION_PROVIDER_ENV, ""
-        ).strip()
-        or None,
+        "implementation_provider": os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip() or None,
     }
 
 
@@ -322,9 +298,7 @@ def verify_evidence(*, repo_root: Path = REPO_ROOT) -> dict[str, Any]:
             errors.append(f"protected_paths.json missing: {term}")
 
     coverage_doc = repo_root / EVIDENCE_COVERAGE_RELATIVE
-    coverage_text = (
-        coverage_doc.read_text(encoding="utf-8") if coverage_doc.is_file() else ""
-    )
+    coverage_text = coverage_doc.read_text(encoding="utf-8") if coverage_doc.is_file() else ""
     for term in EVIDENCE_TERMS:
         ok = term in coverage_text
         checks.append(
@@ -608,10 +582,7 @@ def launch(args: argparse.Namespace) -> int:
         "master_pid_path": str(runtime_root / "master" / "asref.pid"),
         "protected_paths": list(PROTECTED_PATHS),
         "evidence_terms_covered": list(EVIDENCE_TERMS),
-        "implementation_provider": os.environ.get(
-            IMPLEMENTATION_PROVIDER_ENV, ""
-        ).strip()
-        or None,
+        "implementation_provider": os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip() or None,
         "todo_path": str(REPO_ROOT / TODO_RELATIVE),
         "objective_path": str(REPO_ROOT / OBJECTIVE_RELATIVE),
         "plan_path": str(REPO_ROOT / PLAN_RELATIVE),

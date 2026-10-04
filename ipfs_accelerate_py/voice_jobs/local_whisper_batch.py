@@ -166,12 +166,8 @@ class LocalWhisperBatchSession:
             ``birthdates``→``birth dates``) on single-token vocabulary clips.
             """
 
-            hyp = normalized_text_identity(
-                normalize_indextts_spoken_text(transcript)
-            )
-            ref = normalized_text_identity(
-                normalize_indextts_spoken_text(expected)
-            )
+            hyp = normalized_text_identity(normalize_indextts_spoken_text(transcript))
+            ref = normalized_text_identity(normalize_indextts_spoken_text(expected))
             if ref and hyp == ref:
                 return True, 0
             wer = word_error_rate_bp(expected, transcript)

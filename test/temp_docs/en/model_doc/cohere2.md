@@ -26,7 +26,9 @@ model = AutoModelForCausalLM.from_pretrained(model_id)
 
 # Format message with the command-r chat template
 messages = [{"role": "user", "content": "Hello, how are you?"}]
-input_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+input_ids = tokenizer.apply_chat_template(
+    messages, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+)
 
 gen_tokens = model.generate(
     input_ids,

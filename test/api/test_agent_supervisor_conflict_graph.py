@@ -50,9 +50,7 @@ def test_conflict_history_is_idempotent_and_learns_every_surface_domain() -> Non
 def _edge(graph, left: str, right: str):
     pair = frozenset((left, right))
     return next(
-        edge
-        for edge in graph.edges
-        if frozenset((edge.left_task_cid, edge.right_task_cid)) == pair
+        edge for edge in graph.edges if frozenset((edge.left_task_cid, edge.right_task_cid)) == pair
     )
 
 
@@ -65,7 +63,9 @@ def _decision(graph, left: str, right: str):
     )
 
 
-def test_conflict_surface_collects_every_predicted_and_observed_change_domain(tmp_path: Path) -> None:
+def test_conflict_surface_collects_every_predicted_and_observed_change_domain(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "src" / "runtime_router.py"
     source.parent.mkdir(parents=True)
     source.write_text(
@@ -118,7 +118,9 @@ class CapabilityRouter:
     assert json.loads(json.dumps(surface.to_dict()))["task_cid"] == "cid-a"
 
 
-def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(tmp_path: Path) -> None:
+def test_conflict_graph_covers_all_surface_types_and_colors_only_blocking_edges(
+    tmp_path: Path,
+) -> None:
     tasks = [
         {
             "task_id": "BASE",

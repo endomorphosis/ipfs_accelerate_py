@@ -46,9 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OPS_WRAPPER = (
-    REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "prompt_workflow.py"
-)
+OPS_WRAPPER = REPO_ROOT / "scripts" / "ops" / "agent_supervisor" / "prompt_workflow.py"
 
 
 def _binding(repository_root: Path, state_root: Path) -> dict[str, Any]:
@@ -75,8 +73,7 @@ def _request(
         operation=operation,
         **_binding(repository_root, state_root),
         parameters=parameters,
-        dry_run=operation
-        in {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW},
+        dry_run=operation in {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW},
     )
 
 

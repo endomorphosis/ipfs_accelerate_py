@@ -44,18 +44,10 @@ from .repository_forest import (
 )
 
 
-CORPUS_INDEX_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-corpus-index@1"
-)
-CORPUS_ENTRY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-corpus-entry@1"
-)
-REPOSITORY_INVENTORY_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-inventory@1"
-)
-INVENTORY_LIMITS_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.repository-inventory-limits@1"
-)
+CORPUS_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-corpus-index@1"
+CORPUS_ENTRY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-corpus-entry@1"
+REPOSITORY_INVENTORY_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-inventory@1"
+INVENTORY_LIMITS_SCHEMA = "ipfs_accelerate_py.agent_supervisor.repository-inventory-limits@1"
 
 # Exact objective-heap discovery keys and supervisor-fed packet bindings.
 # Domain evidence owned by this module (VFS-G138).
@@ -72,12 +64,8 @@ OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
 OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
 # Repair task that owns the synthetic objective validation repair obligation.
 OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-064"
-GOAL_PACKET_ID: Final[str] = (
-    "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
-)
-OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
-)
+GOAL_PACKET_ID: Final[str] = "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,)
 # Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
 # Domain packet keys only — objective validation repair is appended by
 # :func:`objective_validation_repair_evidence_terms` / full discovery helpers.
@@ -163,9 +151,7 @@ _SOURCE_EXTENSIONS = frozenset(
         ".vue",
     }
 )
-_DOC_EXTENSIONS = frozenset(
-    {".md", ".mdx", ".rst", ".adoc", ".asciidoc", ".txt"}
-)
+_DOC_EXTENSIONS = frozenset({".md", ".mdx", ".rst", ".adoc", ".asciidoc", ".txt"})
 _SCHEMA_EXTENSIONS = frozenset(
     {".json", ".json5", ".jsonc", ".schema", ".proto", ".graphql", ".gql", ".xsd"}
 )
@@ -228,9 +214,7 @@ _BINARY_EXTENSIONS = frozenset(
         ".woff2",
     }
 )
-_GENERATED_SEGMENTS = frozenset(
-    {"generated", "gen", "codegen", "__generated__", "autogen"}
-)
+_GENERATED_SEGMENTS = frozenset({"generated", "gen", "codegen", "__generated__", "autogen"})
 _VENDORED_SEGMENTS = frozenset(
     {
         "vendor",
@@ -261,9 +245,7 @@ _BUILD_SEGMENTS = frozenset(
         "site-packages",
     }
 )
-_TEST_SEGMENTS = frozenset(
-    {"test", "tests", "__tests__", "spec", "specs"}
-)
+_TEST_SEGMENTS = frozenset({"test", "tests", "__tests__", "spec", "specs"})
 _FIXTURE_SEGMENTS = frozenset(
     {
         "fixture",
@@ -389,19 +371,11 @@ class InventoryLimits:
         defaults = cls()
         return cls(
             schema=str(payload.get("schema") or INVENTORY_LIMITS_SCHEMA),
-            max_repositories=int(
-                payload.get("max_repositories", defaults.max_repositories)
-            ),
+            max_repositories=int(payload.get("max_repositories", defaults.max_repositories)),
             max_entries=int(payload.get("max_entries", defaults.max_entries)),
-            max_manifest_bytes=int(
-                payload.get("max_manifest_bytes", defaults.max_manifest_bytes)
-            ),
-            max_parser_bytes=int(
-                payload.get("max_parser_bytes", defaults.max_parser_bytes)
-            ),
-            max_path_bytes=int(
-                payload.get("max_path_bytes", defaults.max_path_bytes)
-            ),
+            max_manifest_bytes=int(payload.get("max_manifest_bytes", defaults.max_manifest_bytes)),
+            max_parser_bytes=int(payload.get("max_parser_bytes", defaults.max_parser_bytes)),
+            max_path_bytes=int(payload.get("max_path_bytes", defaults.max_path_bytes)),
             git_timeout_seconds=int(
                 payload.get("git_timeout_seconds", defaults.git_timeout_seconds)
             ),
@@ -457,15 +431,11 @@ class CorpusEntry:
             raise RepositoryCorpusIndexError("unsupported_corpus_entry_schema")
         if not self.repository_id or not self.repository_alias:
             raise RepositoryCorpusIndexError("missing_repository_binding")
-        relative = _normalize_relative_path(
-            self.relative_path, max_path_bytes=1_048_576
-        )
+        relative = _normalize_relative_path(self.relative_path, max_path_bytes=1_048_576)
         canonical = str(self.canonical_path or "")
         if not canonical or "\x00" in canonical or canonical.startswith("/"):
             raise RepositoryCorpusIndexError("invalid_canonical_path")
-        origin = _enum_value(
-            self.origin, EntryOrigin, reason="unsupported_entry_origin"
-        )
+        origin = _enum_value(self.origin, EntryOrigin, reason="unsupported_entry_origin")
         inclusion = _enum_value(
             self.inclusion,
             InclusionDecision,
@@ -575,9 +545,7 @@ class CorpusEntry:
             size=int(payload.get("size") or 0),
             classifications=tuple(payload.get("classifications") or ()),
             parser_eligible=payload.get("parser_eligible", False),
-            inclusion=str(
-                payload.get("inclusion") or InclusionDecision.EXCLUDED.value
-            ),
+            inclusion=str(payload.get("inclusion") or InclusionDecision.EXCLUDED.value),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
 
@@ -602,9 +570,7 @@ class RepositoryInventory:
 
     def __post_init__(self) -> None:
         if self.schema != REPOSITORY_INVENTORY_SCHEMA:
-            raise RepositoryCorpusIndexError(
-                "unsupported_repository_inventory_schema"
-            )
+            raise RepositoryCorpusIndexError("unsupported_repository_inventory_schema")
         if not self.repository_id or not self.repository_alias or not self.descriptor_cid:
             raise RepositoryCorpusIndexError("missing_repository_inventory_binding")
         for name in (
@@ -629,7 +595,9 @@ class RepositoryInventory:
             raise RepositoryCorpusIndexError("forged_exhaustive_inventory")
         if not self.exhaustive and not reasons:
             raise RepositoryCorpusIndexError("incomplete_inventory_without_reason")
-        object.__setattr__(self, "classification_counts", _normalize_counts(self.classification_counts))
+        object.__setattr__(
+            self, "classification_counts", _normalize_counts(self.classification_counts)
+        )
         object.__setattr__(self, "origin_counts", _normalize_counts(self.origin_counts))
         object.__setattr__(self, "reason_codes", reasons)
 
@@ -664,9 +632,7 @@ class RepositoryInventory:
             omitted_entry_count=int(payload.get("omitted_entry_count") or 0),
             classification_counts=tuple(
                 (str(key), int(value))
-                for key, value in dict(
-                    payload.get("classification_counts") or {}
-                ).items()
+                for key, value in dict(payload.get("classification_counts") or {}).items()
             ),
             origin_counts=tuple(
                 (str(key), int(value))
@@ -712,9 +678,7 @@ class RepositoryCorpusIndex:
         if not isinstance(limits, InventoryLimits):
             raise RepositoryCorpusIndexError("invalid_inventory_limits")
         repositories = tuple(
-            item
-            if isinstance(item, RepositoryInventory)
-            else RepositoryInventory.from_dict(item)
+            item if isinstance(item, RepositoryInventory) else RepositoryInventory.from_dict(item)
             for item in self.repositories
         )
         repositories = tuple(sorted(repositories, key=lambda item: item.repository_alias))
@@ -726,26 +690,18 @@ class RepositoryCorpusIndex:
         aliases = [item.repository_alias for item in repositories]
         if len(aliases) != len(set(aliases)):
             raise RepositoryCorpusIndexError("duplicate_repository_inventory")
-        repository_by_alias = {
-            item.repository_alias: item for item in repositories
-        }
+        repository_by_alias = {item.repository_alias: item for item in repositories}
         if any(item.repository_alias not in repository_by_alias for item in entries):
             raise RepositoryCorpusIndexError("entry_without_repository_inventory")
         for summary in repositories:
             repository_entries = [
-                item
-                for item in entries
-                if item.repository_alias == summary.repository_alias
+                item for item in entries if item.repository_alias == summary.repository_alias
             ]
-            if any(
-                item.repository_id != summary.repository_id
-                for item in repository_entries
-            ):
+            if any(item.repository_id != summary.repository_id for item in repository_entries):
                 raise RepositoryCorpusIndexError("entry_repository_id_mismatch")
             if (
                 len(repository_entries) != summary.emitted_entry_count
-                or sum(item.included for item in repository_entries)
-                != summary.included_entry_count
+                or sum(item.included for item in repository_entries) != summary.included_entry_count
                 or sum(not item.included for item in repository_entries)
                 != summary.excluded_entry_count
             ):
@@ -757,18 +713,17 @@ class RepositoryCorpusIndex:
                     class_counts.update(item.classifications)
                     origin_counts.update((item.origin,))
                 if (
-                    tuple(sorted(class_counts.items()))
-                    != summary.classification_counts
+                    tuple(sorted(class_counts.items())) != summary.classification_counts
                     or tuple(sorted(origin_counts.items())) != summary.origin_counts
                 ):
-                    raise RepositoryCorpusIndexError(
-                        "repository_population_count_mismatch"
-                    )
+                    raise RepositoryCorpusIndexError("repository_population_count_mismatch")
         if len(repositories) > limits.max_repositories or len(entries) > limits.max_entries:
             raise RepositoryCorpusIndexError("manifest_bounds_violated")
-        if isinstance(self.reused_entry_count, bool) or not isinstance(
-            self.reused_entry_count, int
-        ) or not 0 <= self.reused_entry_count <= len(entries):
+        if (
+            isinstance(self.reused_entry_count, bool)
+            or not isinstance(self.reused_entry_count, int)
+            or not 0 <= self.reused_entry_count <= len(entries)
+        ):
             raise RepositoryCorpusIndexError("invalid_reuse_count")
         reasons = tuple(sorted({str(item) for item in self.reason_codes if str(item)}))
         if not isinstance(self.exhaustive, bool):
@@ -846,9 +801,7 @@ class RepositoryCorpusIndex:
             reason_codes=tuple(payload.get("reason_codes") or ()),
             reused_entry_count=int(payload.get("reused_entry_count") or 0),
         )
-        claimed = str(
-            payload.get("inventory_cid") or payload.get("receipt_cid") or ""
-        )
+        claimed = str(payload.get("inventory_cid") or payload.get("receipt_cid") or "")
         if claimed and claimed != result.inventory_cid:
             raise RepositoryCorpusIndexError("inventory_cid_mismatch")
         return result
@@ -915,9 +868,7 @@ def _git(
         raise RepositoryCorpusIndexError("git_command_unavailable") from exc
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise RepositoryCorpusIndexError(
-            "git_command_failed", detail[:512] or "Git command failed"
-        )
+        raise RepositoryCorpusIndexError("git_command_failed", detail[:512] or "Git command failed")
     return completed.stdout
 
 
@@ -928,9 +879,7 @@ def _decode_git_path(raw: bytes) -> str:
         raise RepositoryCorpusIndexError("invalid_path_encoding") from exc
 
 
-def _committed_tree(
-    descriptor: RepositoryDescriptor, limits: InventoryLimits
-) -> list[_TreeEntry]:
+def _committed_tree(descriptor: RepositoryDescriptor, limits: InventoryLimits) -> list[_TreeEntry]:
     output = _git(
         descriptor.root_path,
         ["ls-tree", "-r", "-z", "-l", "--full-tree", descriptor.commit],
@@ -1008,13 +957,9 @@ def _status_overlay(
             )
             index += 1
             if "R" in status_code:
-                result.append(
-                    _OverlayPath(path=source, status="R-", deleted=True)
-                )
+                result.append(_OverlayPath(path=source, status="R-", deleted=True))
         deleted = "D" in status_code
-        result.append(
-            _OverlayPath(path=destination, status=status_code, deleted=deleted)
-        )
+        result.append(_OverlayPath(path=destination, status=status_code, deleted=deleted))
     by_key: dict[tuple[str, bool], _OverlayPath] = {}
     for item in result:
         by_key[(item.path, item.deleted)] = item
@@ -1024,9 +969,7 @@ def _status_overlay(
     )
 
 
-def _ignored_paths(
-    descriptor: RepositoryDescriptor, limits: InventoryLimits
-) -> list[_OverlayPath]:
+def _ignored_paths(descriptor: RepositoryDescriptor, limits: InventoryLimits) -> list[_OverlayPath]:
     output = _git(
         descriptor.root_path,
         ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
@@ -1036,12 +979,8 @@ def _ignored_paths(
     for raw in output.split(b"\0"):
         if not raw:
             continue
-        path = _normalize_relative_path(
-            _decode_git_path(raw), max_path_bytes=limits.max_path_bytes
-        )
-        result.append(
-            _OverlayPath(path=path, status="!!", ignored=True)
-        )
+        path = _normalize_relative_path(_decode_git_path(raw), max_path_bytes=limits.max_path_bytes)
+        result.append(_OverlayPath(path=path, status="!!", ignored=True))
     return sorted(result, key=lambda item: item.path.encode("utf-8"))
 
 
@@ -1104,7 +1043,8 @@ def classify_corpus_path(
     schema_name = (
         suffix in _SCHEMA_EXTENSIONS
         or ".schema." in name
-        or name in {
+        or name
+        in {
             "openapi.yaml",
             "openapi.yml",
             "swagger.yaml",
@@ -1145,8 +1085,7 @@ def _looks_binary(content: bytes, relative_path: str) -> bool:
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
     return any(
-        fnmatch.fnmatchcase(path, pattern)
-        or PurePosixPath(path).match(pattern)
+        fnmatch.fnmatchcase(path, pattern) or PurePosixPath(path).match(pattern)
         for pattern in patterns
     )
 
@@ -1292,17 +1231,13 @@ def _entry_from_tree(
             object_type=item.object_type,
             blob_oid=item.oid,
             content_sha256=(
-                hashlib.sha256(content).hexdigest()
-                if item.object_type != "submodule"
-                else ""
+                hashlib.sha256(content).hexdigest() if item.object_type != "submodule" else ""
             ),
             size=item.size,
             classifications=classes,
             parser_eligible=eligible,
             inclusion=(
-                InclusionDecision.INCLUDED.value
-                if eligible
-                else InclusionDecision.EXCLUDED.value
+                InclusionDecision.INCLUDED.value if eligible else InclusionDecision.EXCLUDED.value
             ),
             reason_codes=reasons,
         ),
@@ -1355,11 +1290,7 @@ def _overlay_entry(
     base: _TreeEntry | None,
     object_format: str,
 ) -> CorpusEntry:
-    origin = (
-        EntryOrigin.IGNORED.value
-        if overlay.ignored
-        else EntryOrigin.DIRTY_OVERLAY.value
-    )
+    origin = EntryOrigin.IGNORED.value if overlay.ignored else EntryOrigin.DIRTY_OVERLAY.value
     if overlay.deleted:
         classes = classify_corpus_path(
             overlay.path,
@@ -1373,11 +1304,14 @@ def _overlay_entry(
             descriptor=descriptor,
             deleted=True,
         )
-        delete_id = "deleted:" + hashlib.sha256(
-            f"{descriptor.repository_id}\0{overlay.path}\0{base.oid if base else ''}".encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        delete_id = (
+            "deleted:"
+            + hashlib.sha256(
+                f"{descriptor.repository_id}\0{overlay.path}\0{base.oid if base else ''}".encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+        )
         return CorpusEntry(
             repository_id=descriptor.repository_id,
             repository_alias=descriptor.alias,
@@ -1403,11 +1337,12 @@ def _overlay_entry(
             mode=base.mode if base else "100644",
             max_parser_bytes=limits.max_parser_bytes,
         )
-        unreadable_id = "unreadable:" + hashlib.sha256(
-            f"{descriptor.repository_id}\0{overlay.path}\0{exc.reason_code}".encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        unreadable_id = (
+            "unreadable:"
+            + hashlib.sha256(
+                f"{descriptor.repository_id}\0{overlay.path}\0{exc.reason_code}".encode("utf-8")
+            ).hexdigest()
+        )
         return CorpusEntry(
             repository_id=descriptor.repository_id,
             repository_alias=descriptor.alias,
@@ -1427,11 +1362,16 @@ def _overlay_entry(
         )
     if base and base.mode == "160000" and stat.S_ISDIR(info.st_mode):
         try:
-            oid = _git(
-                descriptor.root_path / overlay.path,
-                ["rev-parse", "HEAD"],
-                timeout=limits.git_timeout_seconds,
-            ).decode("ascii").strip().lower()
+            oid = (
+                _git(
+                    descriptor.root_path / overlay.path,
+                    ["rev-parse", "HEAD"],
+                    timeout=limits.git_timeout_seconds,
+                )
+                .decode("ascii")
+                .strip()
+                .lower()
+            )
         except (RepositoryCorpusIndexError, UnicodeDecodeError):
             oid = base.oid
         mode, object_type, size = "160000", "submodule", 0
@@ -1476,17 +1416,13 @@ def _overlay_entry(
         blob_oid=oid,
         base_blob_oid=base.oid if base else "",
         content_sha256=(
-            hashlib.sha256(content).hexdigest()
-            if object_type in {"blob", "symlink"}
-            else ""
+            hashlib.sha256(content).hexdigest() if object_type in {"blob", "symlink"} else ""
         ),
         size=size,
         classifications=classes,
         parser_eligible=eligible,
         inclusion=(
-            InclusionDecision.INCLUDED.value
-            if eligible
-            else InclusionDecision.EXCLUDED.value
+            InclusionDecision.INCLUDED.value if eligible else InclusionDecision.EXCLUDED.value
         ),
         reason_codes=reasons,
     )
@@ -1619,9 +1555,7 @@ def _inventory_one(
     for item in tree:
         cached = cache.get((EntryOrigin.COMMITTED.value, item.path))
         try:
-            entry, was_reused = _entry_from_tree(
-                descriptor, item, limits, cached=cached
-            )
+            entry, was_reused = _entry_from_tree(descriptor, item, limits, cached=cached)
         except RepositoryCorpusIndexError:
             classes = classify_corpus_path(
                 item.path,
@@ -1648,11 +1582,15 @@ def _inventory_one(
             was_reused = False
         entries.append(entry)
         reused += int(was_reused)
-    object_format = _git(
-        descriptor.root_path,
-        ["rev-parse", "--show-object-format"],
-        timeout=limits.git_timeout_seconds,
-    ).decode("ascii", errors="strict").strip()
+    object_format = (
+        _git(
+            descriptor.root_path,
+            ["rev-parse", "--show-object-format"],
+            timeout=limits.git_timeout_seconds,
+        )
+        .decode("ascii", errors="strict")
+        .strip()
+    )
     overlay_by_path = {item.path: item for item in overlays}
     overlay_fingerprints: list[tuple[Any, ...]] = []
     for item in overlays:
@@ -1702,20 +1640,14 @@ def _inventory_one(
     if changed_paths:
         adjusted: list[CorpusEntry] = []
         for entry in entries:
-            if (
-                entry.origin == EntryOrigin.COMMITTED.value
-                and entry.relative_path in changed_paths
-            ):
+            if entry.origin == EntryOrigin.COMMITTED.value and entry.relative_path in changed_paths:
                 adjusted.append(
                     replace(
                         entry,
                         parser_eligible=False,
                         inclusion=InclusionDecision.EXCLUDED.value,
                         reason_codes=tuple(
-                            sorted(
-                                set(entry.reason_codes)
-                                | {"superseded_by_dirty_overlay"}
-                            )
+                            sorted(set(entry.reason_codes) | {"superseded_by_dirty_overlay"})
                         ),
                     )
                 )
@@ -1726,12 +1658,8 @@ def _inventory_one(
     # committed and overlay records for the same path.
     canonical_to_paths: dict[str, set[str]] = {}
     for entry in entries:
-        canonical_to_paths.setdefault(entry.canonical_path, set()).add(
-            entry.relative_path
-        )
-    collision_keys = {
-        key for key, paths in canonical_to_paths.items() if len(paths) > 1
-    }
+        canonical_to_paths.setdefault(entry.canonical_path, set()).add(entry.relative_path)
+    collision_keys = {key for key, paths in canonical_to_paths.items() if len(paths) > 1}
     if collision_keys:
         adjusted = []
         for entry in entries:
@@ -1752,9 +1680,7 @@ def _inventory_one(
         if descriptor.case_unicode_policy.reject_encoding_collisions:
             reasons.append("canonical_path_collision")
     for entry in entries:
-        reasons.extend(
-            reason for reason in entry.reason_codes if reason in _FATAL_ENTRY_REASONS
-        )
+        reasons.extend(reason for reason in entry.reason_codes if reason in _FATAL_ENTRY_REASONS)
     try:
         end = _fresh_descriptor(descriptor)
         end_overlays = _status_overlay(descriptor, limits)
@@ -1784,9 +1710,7 @@ def _forest_identity(
     if isinstance(forest_or_descriptors, RepositoryForest):
         return forest_or_descriptors.forest_id, forest_or_descriptors.descriptors
     descriptors = tuple(forest_or_descriptors)
-    if not descriptors or not all(
-        isinstance(item, RepositoryDescriptor) for item in descriptors
-    ):
+    if not descriptors or not all(isinstance(item, RepositoryDescriptor) for item in descriptors):
         raise RepositoryCorpusIndexError("missing_repository_descriptors")
     ordered = tuple(sorted(descriptors, key=lambda item: item.alias))
     aliases = [item.alias for item in ordered]
@@ -1848,9 +1772,7 @@ def _build_result_with_byte_bound(
 ) -> RepositoryCorpusIndex:
     emitted = list(entries)
     while True:
-        emitted_by_alias: dict[str, list[CorpusEntry]] = {
-            item.alias: [] for item in descriptors
-        }
+        emitted_by_alias: dict[str, list[CorpusEntry]] = {item.alias: [] for item in descriptors}
         for entry in emitted:
             emitted_by_alias[entry.repository_alias].append(entry)
         summaries = tuple(
@@ -1918,9 +1840,7 @@ def build_repository_corpus_index(
     reused = 0
     for descriptor in descriptors:
         try:
-            repo_entries, reasons, repo_reused = _inventory_one(
-                descriptor, limits_obj, previous
-            )
+            repo_entries, reasons, repo_reused = _inventory_one(descriptor, limits_obj, previous)
         except RepositoryCorpusIndexError as exc:
             repo_entries, reasons, repo_reused = [], [exc.reason_code], 0
         all_by_alias[descriptor.alias] = repo_entries
@@ -1975,9 +1895,7 @@ def inventory_repository_forest(
     limits: InventoryLimits | Mapping[str, Any] | None = None,
     previous_index: RepositoryCorpusIndex | Mapping[str, Any] | None = None,
 ) -> RepositoryCorpusIndex:
-    return build_repository_corpus_index(
-        forest, limits=limits, previous_index=previous_index
-    )
+    return build_repository_corpus_index(forest, limits=limits, previous_index=previous_index)
 
 
 # Additional verb aliases keep call sites readable.
@@ -2093,10 +2011,7 @@ def prove_objective_validation_repair(
         exhaustive = index.exhaustive
         reason_codes = list(index.reason_codes)
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "objective-validation-repair-claim@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/objective-validation-repair-claim@1"),
         "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
         "evidence_terms": list(objective_validation_repair_evidence_terms()),
         "domain_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),

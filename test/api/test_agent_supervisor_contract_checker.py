@@ -162,9 +162,7 @@ def source(
     )
 
 
-def observation_source(
-    *, artifact_id: str = "artifact:runtime"
-) -> SourceReference:
+def observation_source(*, artifact_id: str = "artifact:runtime") -> SourceReference:
     return SourceReference(
         source_kind=ContractSourceKind.IMPLEMENTATION_OBSERVATION,
         role=ProgramContractRole.OBSERVED,
@@ -268,18 +266,10 @@ def expected_contract(**kwargs) -> ExpectedProgramContract:
                 policies=("path-scope-v1",),
             ),
         ),
-        idempotence=kwargs.pop(
-            "idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)
-        ),
-        ordering=kwargs.pop(
-            "ordering", OrderingSpec(mode=OrderingMode.UNORDERED)
-        ),
-        atomicity=kwargs.pop(
-            "atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)
-        ),
-        consistency=kwargs.pop(
-            "consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)
-        ),
+        idempotence=kwargs.pop("idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)),
+        ordering=kwargs.pop("ordering", OrderingSpec(mode=OrderingMode.UNORDERED)),
+        atomicity=kwargs.pop("atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)),
+        consistency=kwargs.pop("consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)),
         resource_bounds=kwargs.pop(
             "resource_bounds",
             ResourceBounds(
@@ -306,14 +296,10 @@ def observed_contract(**kwargs) -> ObservedProgramContract:
         symbol=kwargs.pop("symbol", symbol()),
         interface=kwargs.pop("interface", interface()),
         policy_revision=kwargs.pop("policy_revision", POLICY),
-        repository_observation_id=kwargs.pop(
-            "repository_observation_id", OBS_ID
-        ),
+        repository_observation_id=kwargs.pop("repository_observation_id", OBS_ID),
         sources=kwargs.pop("sources", (observation_source(),)),
         inputs=kwargs.pop("inputs", (path_param(),)),
-        returns=kwargs.pop(
-            "returns", ReturnSpec(type_shape=bytes_type())
-        ),
+        returns=kwargs.pop("returns", ReturnSpec(type_shape=bytes_type())),
         errors=kwargs.pop(
             "errors",
             (ErrorSpec(error_name="NotFound", code="NOT_FOUND"),),
@@ -345,25 +331,15 @@ def observed_contract(**kwargs) -> ObservedProgramContract:
                 scopes=("repo:read",),
             ),
         ),
-        idempotence=kwargs.pop(
-            "idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)
-        ),
-        ordering=kwargs.pop(
-            "ordering", OrderingSpec(mode=OrderingMode.UNORDERED)
-        ),
-        atomicity=kwargs.pop(
-            "atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)
-        ),
-        consistency=kwargs.pop(
-            "consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)
-        ),
+        idempotence=kwargs.pop("idempotence", IdempotenceSpec(mode=IdempotenceMode.PURE)),
+        ordering=kwargs.pop("ordering", OrderingSpec(mode=OrderingMode.UNORDERED)),
+        atomicity=kwargs.pop("atomicity", AtomicitySpec(mode=AtomicityMode.ATOMIC)),
+        consistency=kwargs.pop("consistency", ConsistencySpec(mode=ConsistencyMode.STRONG)),
         resource_bounds=kwargs.pop(
             "resource_bounds",
             ResourceBounds(max_wall_time_ms=120, max_output_bytes=1024),
         ),
-        fallback=kwargs.pop(
-            "fallback", FallbackSpec(mode=DegradationMode.FAIL_CLOSED)
-        ),
+        fallback=kwargs.pop("fallback", FallbackSpec(mode=DegradationMode.FAIL_CLOSED)),
         unsupported=kwargs.pop("unsupported", ()),
         summary=kwargs.pop("summary", "Implementation returned bytes."),
         producer_id=kwargs.pop("producer_id", "static-observer"),
@@ -441,18 +417,13 @@ def test_objective_evidence_terms_are_emitted_on_result_and_witness() -> None:
     )
     assert CONTRACT_CHECK_RESULT_EVIDENCE == "vfs/contract-check-result@1"
     assert CONTRACT_COUNTEREXAMPLE_EVIDENCE == "vfs/contract-counterexample@1"
-    assert (
-        OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
-    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
     assert OBJECTIVE_GOAL_ID == "VFS-G051"
     assert result.evidence == CONTRACT_CHECK_RESULT_EVIDENCE
     assert result.to_dict()["evidence"] == CONTRACT_CHECK_RESULT_EVIDENCE
     assert result.counterexample is not None
     assert result.counterexample.evidence == CONTRACT_COUNTEREXAMPLE_EVIDENCE
-    assert (
-        result.counterexample.to_dict()["evidence"]
-        == CONTRACT_COUNTEREXAMPLE_EVIDENCE
-    )
+    assert result.counterexample.to_dict()["evidence"] == CONTRACT_COUNTEREXAMPLE_EVIDENCE
     # AST evidence surface for the objective query.
     assert Counterexample is ContractCounterexample
     assert isinstance(result.counterexample, Counterexample)
@@ -483,15 +454,9 @@ def test_objective_validation_repair_distinct_kinds_and_exact_binding() -> None:
         "stale",
     ):
         assert required in kind_values
-    assert ContractCheckResultKind.PROVED_COMPATIBLE.claim_level is (
-        ClaimLevel.MODEL_PROVED
-    )
-    assert ContractCheckResultKind.WITNESSED_MISMATCH.claim_level is (
-        ClaimLevel.MODEL_DISPROVED
-    )
-    assert ContractCheckResultKind.RUNTIME_WITNESS.claim_level is (
-        ClaimLevel.RUNTIME_WITNESSED
-    )
+    assert ContractCheckResultKind.PROVED_COMPATIBLE.claim_level is (ClaimLevel.MODEL_PROVED)
+    assert ContractCheckResultKind.WITNESSED_MISMATCH.claim_level is (ClaimLevel.MODEL_DISPROVED)
+    assert ContractCheckResultKind.RUNTIME_WITNESS.claim_level is (ClaimLevel.RUNTIME_WITNESSED)
     assert EXACT_BINDING_DIMENSIONS == (
         "repository",
         "symbol",
@@ -512,9 +477,7 @@ def test_objective_validation_repair_distinct_kinds_and_exact_binding() -> None:
     assert proved.claim_level is ClaimLevel.MODEL_PROVED
     assert proved.binding.subject_matches
     assert proved.binding.has_complete_binding_dimensions
-    assert set(proved.binding.exact_binding_dimensions) == set(
-        EXACT_BINDING_DIMENSIONS
-    )
+    assert set(proved.binding.exact_binding_dimensions) == set(EXACT_BINDING_DIMENSIONS)
     assert proved.binding.diverging_binding_dimensions() == ()
     assert proved.binding.cache_binding_freshness is CacheFreshness.CURRENT
 
@@ -546,18 +509,12 @@ def test_objective_validation_repair_distinct_kinds_and_exact_binding() -> None:
     assert obligation.kind is ContractCheckResultKind.WITNESSED_MISMATCH
     assert obligation.claim_level is ClaimLevel.MODEL_DISPROVED
     assert obligation.binding.binding_id == mismatch.binding.binding_id
-    assert set(obligation.exact_binding_dimensions) == set(
-        EXACT_BINDING_DIMENSIONS
-    )
-    assert obligation.counterexample_id == (
-        mismatch.counterexample.counterexample_id
-    )
+    assert set(obligation.exact_binding_dimensions) == set(EXACT_BINDING_DIMENSIONS)
+    assert obligation.counterexample_id == (mismatch.counterexample.counterexample_id)
     round_trip = CodeProofObligation.from_dict(obligation.to_dict())
     assert round_trip.obligation_id == obligation.obligation_id
 
-    via_result = mismatch.as_code_proof_obligation(
-        observation_layer=ObservationLayer.RUNTIME
-    )
+    via_result = mismatch.as_code_proof_obligation(observation_layer=ObservationLayer.RUNTIME)
     assert via_result.observation_layer is ObservationLayer.RUNTIME
     assert via_result.result_id == mismatch.result_id
 
@@ -682,12 +639,9 @@ def test_proved_compatible_on_closed_matching_contracts() -> None:
     assert result.kind is ContractCheckResultKind.PROVED_COMPATIBLE
     assert result.counterexample is None
     assert result.freshness is CacheFreshness.CURRENT
-    assert result.binding.expected_contract_id == (
-        expected_contract().expected_contract_id
-    )
+    assert result.binding.expected_contract_id == (expected_contract().expected_contract_id)
     assert all(
-        item.verdict
-        in {AspectVerdict.COMPATIBLE, AspectVerdict.NOT_APPLICABLE}
+        item.verdict in {AspectVerdict.COMPATIBLE, AspectVerdict.NOT_APPLICABLE}
         for item in result.aspect_results
         if item.closed_rule
     )
@@ -695,16 +649,12 @@ def test_proved_compatible_on_closed_matching_contracts() -> None:
 
 def test_compatible_refinement_tighter_bounds_and_stronger_idempotence() -> None:
     base = expected_contract(
-        resource_bounds=ResourceBounds(
-            max_wall_time_ms=10_000, max_output_bytes=1_000_000
-        ),
+        resource_bounds=ResourceBounds(max_wall_time_ms=10_000, max_output_bytes=1_000_000),
         idempotence=IdempotenceSpec(mode=IdempotenceMode.IDEMPOTENT),
         summary="base expectation",
     )
     refined = expected_contract(
-        resource_bounds=ResourceBounds(
-            max_wall_time_ms=1_000, max_output_bytes=1_000
-        ),
+        resource_bounds=ResourceBounds(max_wall_time_ms=1_000, max_output_bytes=1_000),
         idempotence=IdempotenceSpec(mode=IdempotenceMode.PURE),
         sources=(source(artifact_id="artifact:refined"),),
         summary="compatible refinement",
@@ -713,9 +663,7 @@ def test_compatible_refinement_tighter_bounds_and_stronger_idempotence() -> None
     assert aspect.verdict is AspectVerdict.COMPATIBLE
 
     observed = observed_contract(
-        resource_bounds=ResourceBounds(
-            max_wall_time_ms=500, max_output_bytes=512
-        ),
+        resource_bounds=ResourceBounds(max_wall_time_ms=500, max_output_bytes=512),
         idempotence=IdempotenceSpec(mode=IdempotenceMode.PURE),
     )
     result = compare_contracts(
@@ -770,9 +718,7 @@ def test_seeded_required_input_missing_and_optionality_flip() -> None:
     assert result.counterexample.aspect is SemanticAspect.INPUTS
     assert "missing" in result.counterexample.observed_fact
 
-    optionalized = observed_contract(
-        inputs=(path_param(optionality=Optionality.OPTIONAL),)
-    )
+    optionalized = observed_contract(inputs=(path_param(optionality=Optionality.OPTIONAL),))
     result2 = compare_contracts(
         expected,
         optionalized,
@@ -805,9 +751,7 @@ def test_seeded_forbidden_write_effect_and_error_code_drift() -> None:
     assert result.counterexample is not None
     assert result.counterexample.aspect is SemanticAspect.SIDE_EFFECTS
 
-    bad_errors = observed_contract(
-        errors=(ErrorSpec(error_name="NotFound", code="ENOENT"),)
-    )
+    bad_errors = observed_contract(errors=(ErrorSpec(error_name="NotFound", code="ENOENT"),))
     err_result = check_errors(expected, bad_errors)
     assert err_result.verdict is AspectVerdict.MISMATCH
 
@@ -828,41 +772,27 @@ def test_seeded_async_auth_idempotence_atomicity_bounds_degradation() -> None:
     # counterexample aspect is unambiguous.
     cases: list[tuple[ObservedProgramContract, SemanticAspect]] = [
         (
-            observed_contract(
-                sync_async=SyncAsyncSpec(mode=SyncMode.ASYNC, awaitable=True)
-            ),
+            observed_contract(sync_async=SyncAsyncSpec(mode=SyncMode.ASYNC, awaitable=True)),
             SemanticAspect.SYNC_ASYNC,
         ),
         (
-            observed_contract(
-                authorization=AuthorizationSpec(mode=AuthorizationMode.NONE)
-            ),
+            observed_contract(authorization=AuthorizationSpec(mode=AuthorizationMode.NONE)),
             SemanticAspect.AUTHORIZATION,
         ),
         (
-            observed_contract(
-                idempotence=IdempotenceSpec(
-                    mode=IdempotenceMode.NON_IDEMPOTENT
-                )
-            ),
+            observed_contract(idempotence=IdempotenceSpec(mode=IdempotenceMode.NON_IDEMPOTENT)),
             SemanticAspect.IDEMPOTENCE,
         ),
         (
-            observed_contract(
-                atomicity=AtomicitySpec(mode=AtomicityMode.NON_ATOMIC)
-            ),
+            observed_contract(atomicity=AtomicitySpec(mode=AtomicityMode.NON_ATOMIC)),
             SemanticAspect.ATOMICITY,
         ),
         (
-            observed_contract(
-                resource_bounds=ResourceBounds(max_wall_time_ms=10_000)
-            ),
+            observed_contract(resource_bounds=ResourceBounds(max_wall_time_ms=10_000)),
             SemanticAspect.RESOURCE_BOUNDS,
         ),
         (
-            observed_contract(
-                fallback=FallbackSpec(mode=DegradationMode.FAIL_OPEN)
-            ),
+            observed_contract(fallback=FallbackSpec(mode=DegradationMode.FAIL_OPEN)),
             SemanticAspect.FALLBACK_DEGRADATION,
         ),
     ]
@@ -962,9 +892,7 @@ def test_omitted_effects_required_is_mismatch_optional_allowance_ok() -> None:
             ),
         )
     )
-    assert (
-        check_side_effects(expected, present).verdict is AspectVerdict.COMPATIBLE
-    )
+    assert check_side_effects(expected, present).verdict is AspectVerdict.COMPATIBLE
 
 
 def test_path_traversal_is_witnessed_mismatch() -> None:
@@ -997,10 +925,7 @@ def test_cache_staleness_and_expired_authority() -> None:
     )
     assert stale_cache.kind is ContractCheckResultKind.STALE
     assert stale_cache.cache_freshness is CacheFreshness.STALE
-    assert (
-        stale_cache.binding.cache_binding_freshness
-        is CacheFreshness.STALE
-    )
+    assert stale_cache.binding.cache_binding_freshness is CacheFreshness.STALE
     assert stale_cache.counterexample is None
 
     expired = compare_contracts(
@@ -1053,8 +978,7 @@ def test_unsupported_aspect_blocks_proved_compatible() -> None:
     )
     assert result.kind is ContractCheckResultKind.UNSUPPORTED
     assert any(
-        item.aspect is SemanticAspect.ORDERING
-        and item.verdict is AspectVerdict.UNSUPPORTED
+        item.aspect is SemanticAspect.ORDERING and item.verdict is AspectVerdict.UNSUPPORTED
         for item in result.aspect_results
     )
 
@@ -1062,17 +986,14 @@ def test_unsupported_aspect_blocks_proved_compatible() -> None:
 def test_unknown_semantics_emit_explicit_unknown_result() -> None:
     result = compare_contracts(
         expected_contract(),
-        observed_contract(
-            fallback=FallbackSpec(mode=DegradationMode.UNKNOWN)
-        ),
+        observed_contract(fallback=FallbackSpec(mode=DegradationMode.UNKNOWN)),
         evaluated_at=EVALUATED,
         authority_expires_at=EXPIRES,
     )
     assert result.kind is ContractCheckResultKind.UNKNOWN
     assert result.counterexample is None
     assert any(
-        item.aspect is SemanticAspect.FALLBACK_DEGRADATION
-        and item.verdict is AspectVerdict.UNKNOWN
+        item.aspect is SemanticAspect.FALLBACK_DEGRADATION and item.verdict is AspectVerdict.UNKNOWN
         for item in result.aspect_results
     )
 
@@ -1118,15 +1039,11 @@ def test_adversarial_same_name_symbols_have_distinct_deterministic_ids() -> None
     )
     assert again.result_id == result.result_id
     assert again.binding.binding_id == result.binding.binding_id
-    assert again.counterexample.counterexample_id == (
-        result.counterexample.counterexample_id
-    )
+    assert again.counterexample.counterexample_id == (result.counterexample.counterexample_id)
 
 
 def test_same_name_interfaces_on_different_surfaces_do_not_bind() -> None:
-    expected = expected_contract(
-        interface=interface(name="vfs.read", surface="mcp++")
-    )
+    expected = expected_contract(interface=interface(name="vfs.read", surface="mcp++"))
     observed = observed_contract(
         interface=interface(name="vfs.read", surface="http"),
         sources=(observation_source(artifact_id="artifact:http"),),
@@ -1222,10 +1139,7 @@ def test_round_trip_serialization_and_forged_identity() -> None:
     restored = ContractCheckResult.from_dict(result.to_dict())
     assert restored.result_id == result.result_id
     assert restored.counterexample is not None
-    assert (
-        restored.counterexample.counterexample_id
-        == result.counterexample.counterexample_id
-    )
+    assert restored.counterexample.counterexample_id == result.counterexample.counterexample_id
 
     path = static_path()
     assert CallPath.from_dict(path.to_dict()).path_id == path.path_id
@@ -1300,9 +1214,7 @@ def test_scope_mismatch_on_call_path_repo() -> None:
     ("observed", "different_field"),
     (
         (
-            observed_contract(
-                symbol=symbol(repository_id="repository:other")
-            ),
+            observed_contract(symbol=symbol(repository_id="repository:other")),
             "repository",
         ),
         (
@@ -1416,9 +1328,7 @@ def test_freshness_is_bound_to_generations_and_witness_window() -> None:
     )
     assert current.binding.cache_generation == "gen:9"
     assert current.binding.expected_cache_generation == "gen:9"
-    assert (
-        current.binding.cache_binding_freshness is CacheFreshness.CURRENT
-    )
+    assert current.binding.cache_binding_freshness is CacheFreshness.CURRENT
 
     forged_generation = current.to_dict()
     forged_generation["binding"]["expected_cache_generation"] = "gen:10"
@@ -1428,9 +1338,7 @@ def test_freshness_is_bound_to_generations_and_witness_window() -> None:
     rebound_generation = current.to_dict()
     rebound_generation["binding"]["expected_cache_generation"] = "gen:10"
     rebound_generation["binding"]["cache_binding_freshness"] = "stale"
-    rebound_generation["binding"]["diverging_binding_dimensions"] = [
-        "freshness"
-    ]
+    rebound_generation["binding"]["diverging_binding_dimensions"] = ["freshness"]
     rebound_generation["binding"]["exact_binding_dimensions"] = (
         current.binding.exact_binding_dimensions
     )
@@ -1450,9 +1358,7 @@ def test_freshness_is_bound_to_generations_and_witness_window() -> None:
     )
     forged_window = mismatch.to_dict()
     assert forged_window["counterexample"] is not None
-    forged_window["counterexample"]["evaluated_at"] = (
-        "2026-07-29T12:01:00+00:00"
-    )
+    forged_window["counterexample"]["evaluated_at"] = "2026-07-29T12:01:00+00:00"
     with pytest.raises(StaleAuthorityError):
         ContractCheckResult.from_dict(forged_window)
 
@@ -1490,20 +1396,14 @@ def test_input_output_variance_helpers() -> None:
         )
     )
     # Observed accepts string path (same) — compatible.
-    assert (
-        check_inputs(expected, observed_contract()).verdict
-        is AspectVerdict.COMPATIBLE
-    )
+    assert check_inputs(expected, observed_contract()).verdict is AspectVerdict.COMPATIBLE
     # Observed path is int — cannot accept string values (contravariance fail).
-    narrow = observed_contract(
-        inputs=(path_param(type_shape=int_type()),)
-    )
+    narrow = observed_contract(inputs=(path_param(type_shape=int_type()),))
     assert check_inputs(expected, narrow).verdict is AspectVerdict.MISMATCH
 
     # Covariant outputs: bytes subtypes bytes.
     assert (
-        check_outputs(expected_contract(), observed_contract()).verdict
-        is AspectVerdict.COMPATIBLE
+        check_outputs(expected_contract(), observed_contract()).verdict is AspectVerdict.COMPATIBLE
     )
 
 

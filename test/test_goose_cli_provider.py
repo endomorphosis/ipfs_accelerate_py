@@ -639,9 +639,7 @@ def test_parse_stream_json_malformed_line():
 
 
 def test_parse_goose_output_dispatch():
-    assert parse_goose_output(
-        json.dumps(SAMPLE_JSON), output_format="json"
-    ).text == "Hi there."
+    assert parse_goose_output(json.dumps(SAMPLE_JSON), output_format="json").text == "Hi there."
     with pytest.raises(MalformedOutputError):
         parse_goose_output("hello", output_format="text")
 
@@ -656,16 +654,17 @@ def test_parse_goose_output_dispatch():
     [
         ("Authentication failed: 401 Unauthorized api key", GooseErrorKind.AUTHENTICATION),
         ("Rate limit exceeded / quota", GooseErrorKind.QUOTA_RATE_LIMIT),
-        ("Please run goose configure — provider not configured", GooseErrorKind.UNCONFIGURED_PROVIDER),
+        (
+            "Please run goose configure — provider not configured",
+            GooseErrorKind.UNCONFIGURED_PROVIDER,
+        ),
         ("Approval required before continuing", GooseErrorKind.APPROVAL_REQUIRED),
         ("Permission denied by policy", GooseErrorKind.POLICY_DENIAL),
         ("something blew up", GooseErrorKind.NONZERO_EXIT),
     ],
 )
 def test_classify_goose_failure_kinds(stderr: str, kind: GooseErrorKind):
-    got, message, _retry = classify_goose_failure(
-        stderr=stderr, exit_code=1, process_started=True
-    )
+    got, message, _retry = classify_goose_failure(stderr=stderr, exit_code=1, process_started=True)
     assert got is kind
     assert message
 
@@ -768,9 +767,7 @@ def test_not_installed(fake_bin: Path):
         discover_kwargs={"probe_version": False},
     )
     # Point discover away from real PATH goose.
-    result = provider.generate_result(
-        CLIRequest(prompt="x", mode=ExecutionMode.CHAT)
-    )
+    result = provider.generate_result(CLIRequest(prompt="x", mode=ExecutionMode.CHAT))
     # Either not installed from discover or spawn failure — both map cleanly.
     assert result.ok is False
     kind = result.metadata.get("goose_error_kind")
@@ -829,10 +826,7 @@ def test_unconfigured_provider(fake_bin: Path):
         capabilities=capabilities_for_version(PINNED_GOOSE_VERSION),
     )
     result = provider.generate_result(CLIRequest(prompt="x"))
-    assert (
-        result.metadata["goose_error_kind"]
-        == GooseErrorKind.UNCONFIGURED_PROVIDER.value
-    )
+    assert result.metadata["goose_error_kind"] == GooseErrorKind.UNCONFIGURED_PROVIDER.value
 
 
 def test_approval_required(fake_bin: Path):
@@ -921,9 +915,7 @@ def test_embedded_auth_error_in_json_assistant_text(fake_bin: Path):
 
 
 def test_side_effects_started_from_tool_use(fake_bin: Path):
-    exe = _write_fake_goose(
-        fake_bin, script=_json_success_script("used a tool", include_tool=True)
-    )
+    exe = _write_fake_goose(fake_bin, script=_json_success_script("used a tool", include_tool=True))
     provider = GooseCLIProvider(
         executable=str(exe),
         version=PINNED_GOOSE_VERSION,
@@ -986,9 +978,7 @@ def test_agent_without_policy_raises(fake_bin: Path):
         capabilities=capabilities_for_version(PINNED_GOOSE_VERSION),
     )
     with pytest.raises(PolicyDeniedError):
-        provider.generate_result(
-            CLIRequest(prompt="x", mode=ExecutionMode.AGENT, workspace="/tmp")
-        )
+        provider.generate_result(CLIRequest(prompt="x", mode=ExecutionMode.AGENT, workspace="/tmp"))
 
 
 def test_generate_agent_requires_policy_fields(fake_bin: Path):
@@ -1098,9 +1088,7 @@ def test_cancellation_before_start(fake_bin: Path):
         version=PINNED_GOOSE_VERSION,
         capabilities=capabilities_for_version(PINNED_GOOSE_VERSION),
     )
-    result = provider.generate_result(
-        CLIRequest(prompt="x", cancellation_requested=True)
-    )
+    result = provider.generate_result(CLIRequest(prompt="x", cancellation_requested=True))
     assert result.ok is False
     assert result.cancelled is True
     assert result.metadata["goose_error_kind"] == GooseErrorKind.CANCELLATION.value

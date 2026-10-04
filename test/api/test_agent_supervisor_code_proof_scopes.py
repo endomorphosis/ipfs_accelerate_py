@@ -98,8 +98,7 @@ def test_python_diff_compiles_every_typed_ast_scope_and_exact_source_binding() -
     assert compilation.changed_paths == ("src/runtime.py",)
     assert compilation.source_hashes[0].startswith("sha256:")
     assert all(
-        scope.after_source_hash == compilation.source_hashes[0]
-        for scope in compilation.scopes
+        scope.after_source_hash == compilation.source_hashes[0] for scope in compilation.scopes
     )
     assert len(compilation.by_kind(ProofScopeKind.CHANGED_PATH)) == 1
     assert compilation.conservative is False
@@ -332,7 +331,9 @@ def test_deletes_generated_syntax_failures_and_non_python_changes_fail_closed() 
         "generated_file",
         "non_python_change",
     }.issubset(compilation.conservative_reasons)
-    assert any(reason.startswith("after_syntax_error:") for reason in compilation.conservative_reasons)
+    assert any(
+        reason.startswith("after_syntax_error:") for reason in compilation.conservative_reasons
+    )
     conservative_paths = {
         scope.path for scope in compilation.by_kind(ProofScopeKind.CONSERVATIVE_FILE)
     }
@@ -347,11 +348,7 @@ def test_deletes_generated_syntax_failures_and_non_python_changes_fail_closed() 
         if scope.path == "src/deleted.py"
     }
     assert deleted_symbols == {"src.deleted.removed"}
-    assert all(
-        scope.conservative
-        for scope in compilation.scopes
-        if scope.path == "src/deleted.py"
-    )
+    assert all(scope.conservative for scope in compilation.scopes if scope.path == "src/deleted.py")
 
 
 def test_unified_diff_without_full_sources_is_explicitly_conservative() -> None:
@@ -536,20 +533,13 @@ def _bound_proof_receipt(obligation_set, *, metadata=None) -> ProofReceipt:
         resource_budget=ResourceBudget(wall_time_ms=60_000),
         verdict=ProofVerdict.PROVED,
         evidence=(evidence,),
-        metadata=(
-            obligation_set.binding.receipt_metadata()
-            if metadata is None
-            else metadata
-        ),
+        metadata=(obligation_set.binding.receipt_metadata() if metadata is None else metadata),
     )
 
 
 def test_fresh_implementation_obligations_cover_code_interfaces_effects_and_observations() -> None:
     obligation_set = _derive_implementation_obligations()
-    by_kind = {
-        kind: obligation_set.by_kind(kind)
-        for kind in ImplementationObligationKind
-    }
+    by_kind = {kind: obligation_set.by_kind(kind) for kind in ImplementationObligationKind}
 
     assert by_kind[ImplementationObligationKind.CHANGED_SYMBOL]
     assert by_kind[ImplementationObligationKind.INTERFACE]
@@ -557,20 +547,13 @@ def test_fresh_implementation_obligations_cover_code_interfaces_effects_and_obse
     assert by_kind[ImplementationObligationKind.TEST]
     assert by_kind[ImplementationObligationKind.RUNTIME_EVIDENCE]
     changed_symbols = set(
-        _implementation_scope_set()
-        .by_kind(ProofScopeKind.QUALIFIED_SYMBOL)[index]
-        .scope_id
+        _implementation_scope_set().by_kind(ProofScopeKind.QUALIFIED_SYMBOL)[index].scope_id
         for index in range(
-            len(
-                _implementation_scope_set().by_kind(
-                    ProofScopeKind.QUALIFIED_SYMBOL
-                )
-            )
+            len(_implementation_scope_set().by_kind(ProofScopeKind.QUALIFIED_SYMBOL))
         )
     )
     interface_scopes = {
-        scope.scope_id
-        for scope in _implementation_scope_set().by_kind(ProofScopeKind.INTERFACE)
+        scope.scope_id for scope in _implementation_scope_set().by_kind(ProofScopeKind.INTERFACE)
     }
     assert changed_symbols.issubset(
         set(by_kind[ImplementationObligationKind.CHANGED_SYMBOL][0].ast_scope_ids)
@@ -579,8 +562,7 @@ def test_fresh_implementation_obligations_cover_code_interfaces_effects_and_obse
         set(by_kind[ImplementationObligationKind.INTERFACE][0].ast_scope_ids)
     )
     assert all(
-        obligation.metadata["implementation_binding_id"]
-        == obligation_set.binding.binding_id
+        obligation.metadata["implementation_binding_id"] == obligation_set.binding.binding_id
         for obligation in obligation_set.obligations
     )
     assert {item.artifact_id for item in obligation_set.evidence} == {
@@ -623,21 +605,14 @@ def test_implementation_binding_is_canonical_and_binds_every_freshness_input() -
     assert metadata["assumptions_digest"]
     assert metadata["validation_bounds_digest"]
     assert tuple(metadata["test_evidence_ids"]) == first.binding.test_evidence_ids
-    assert (
-        tuple(metadata["runtime_evidence_ids"])
-        == first.binding.runtime_evidence_ids
-    )
+    assert tuple(metadata["runtime_evidence_ids"]) == first.binding.runtime_evidence_ids
     assert metadata["evidence_digests"] == first.binding.evidence_digests
-    assert set(metadata["evidence_digests"]) == {
-        item.evidence_id for item in first.evidence
-    }
+    assert set(metadata["evidence_digests"]) == {item.evidence_id for item in first.evidence}
 
     changed_inputs = (
         _derive_implementation_obligations(accepted_plan_id="plan:replacement"),
         _derive_implementation_obligations(repository_tree_id="git-tree:replacement"),
-        _derive_implementation_obligations(
-            assumptions={"network": "disabled", "workers": 2}
-        ),
+        _derive_implementation_obligations(assumptions={"network": "disabled", "workers": 2}),
         _derive_implementation_obligations(
             validation_bounds={
                 "commands": 2,
@@ -650,8 +625,7 @@ def test_implementation_binding_is_canonical_and_binds_every_freshness_input() -
         ),
     )
     assert all(
-        candidate.binding.binding_id != first.binding.binding_id
-        for candidate in changed_inputs
+        candidate.binding.binding_id != first.binding.binding_id for candidate in changed_inputs
     )
 
 
@@ -782,13 +756,9 @@ def test_obligation_compiler_uses_changed_ast_scopes_and_rejects_repo_wide_premi
     assert compilation.open_obligations()
     for obligation in compilation.open_obligations():
         assert obligation.ast_scope_ids
-        assert all(
-            scope_id in set(scope_set.scope_ids) for scope_id in obligation.ast_scope_ids
-        )
+        assert all(scope_id in set(scope_set.scope_ids) for scope_id in obligation.ast_scope_ids)
         # Path inventory / conservative scopes never become formal premises.
-        assert not any(
-            "conservative" in scope_id for scope_id in obligation.ast_scope_ids
-        )
+        assert not any("conservative" in scope_id for scope_id in obligation.ast_scope_ids)
 
     with pytest.raises(PremiseValidationError, match="repository-wide"):
         normalize_premise_ids(["repository_wide"])

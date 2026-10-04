@@ -56,9 +56,7 @@ from ipfs_accelerate_py.endpoint_usage.schema import (
 from .proof.formal_verification_contracts import CanonicalContract
 
 
-SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID: Final[str] = (
-    "requirement:supervisor-usage-envelope.v1"
-)
+SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID: Final[str] = "requirement:supervisor-usage-envelope.v1"
 SUPERVISOR_USAGE_ENVELOPE_GOAL_ID: Final[str] = "ASI-G510"
 PROVIDER_USAGE_CONTRACT_VERSION: Final[int] = 1
 SCHEMA_VERSION: Final[int] = PROVIDER_USAGE_CONTRACT_VERSION
@@ -382,9 +380,7 @@ class SupervisorBudgetLimit(_UsageContract):
     currency: Optional[str] = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "dimension", _enum(self.dimension, UsageDimension, "dimension")
-        )
+        object.__setattr__(self, "dimension", _enum(self.dimension, UsageDimension, "dimension"))
         object.__setattr__(
             self,
             "ceiling",
@@ -468,9 +464,7 @@ class SupervisorUsageBudget(_UsageContract):
         currencies: set[str] = set()
         for limit in parsed:
             if limit.key in seen:
-                _fail(
-                    f"duplicate budget limit for dimension {limit.dimension.value}"
-                )
+                _fail(f"duplicate budget limit for dimension {limit.dimension.value}")
             seen[limit.key] = limit
             if limit.currency is not None:
                 currencies.add(limit.currency)
@@ -605,9 +599,7 @@ class SupervisorUsageScope(_UsageContract):
     parent_scope_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "level", _enum(self.level, SupervisorUsageLevel, "level")
-        )
+        object.__setattr__(self, "level", _enum(self.level, SupervisorUsageLevel, "level"))
         for name in (
             "repository_id",
             "state_id",
@@ -1243,9 +1235,7 @@ class SupervisorUsageReceipt(_UsageContract):
             if not isinstance(value, bool):
                 _fail(f"{flag_name} must be boolean")
             if value is not expected:
-                _fail(
-                    f"{flag_name} cannot be true; usage receipts are operational only"
-                )
+                _fail(f"{flag_name} cannot be true; usage receipts are operational only")
         if self.scope.request_id != self.request_id:
             _fail("receipt request_id is foreign to supervisor scope")
         if self.scope.endpoint_scope_id != self.endpoint_scope_id:
@@ -1315,9 +1305,7 @@ class SupervisorUsageReceipt(_UsageContract):
             settled=payload.get("settled", {}),
             final_status=payload.get("final_status", ""),
             authorizes_usage=payload.get("authorizes_usage", False),
-            rewrites_provider_settlement=payload.get(
-                "rewrites_provider_settlement", False
-            ),
+            rewrites_provider_settlement=payload.get("rewrites_provider_settlement", False),
             is_completion_evidence=payload.get("is_completion_evidence", False),
             is_correctness_evidence=payload.get("is_correctness_evidence", False),
         )
@@ -1398,9 +1386,7 @@ class SupervisorUsageAttribution(_UsageContract):
             "attribution_id",
             "content_id",
         }
-        _closed(
-            payload, schema=cls.SCHEMA, allowed=allowed, name="usage attribution"
-        )
+        _closed(payload, schema=cls.SCHEMA, allowed=allowed, name="usage attribution")
         result = cls(
             scope=payload.get("scope", {}),
             endpoint_event_id=payload.get("endpoint_event_id", ""),
@@ -1437,9 +1423,7 @@ def consume_reconciled_endpoint_events_exactly_once(
             _fail("endpoint event population contains duplicated event_id")
         seen.add(event_id)
         if event.kind not in _SETTLEMENT_KINDS:
-            _fail(
-                f"endpoint event kind {event.kind.value} is not a reconciled settlement"
-            )
+            _fail(f"endpoint event kind {event.kind.value} is not a reconciled settlement")
         # Projected units must be finite and non-negative; unknown is not a charge.
         for entry in event.units.entries:
             if entry.amount.kind is QuantityKind.FINITE:
@@ -1492,9 +1476,7 @@ def finite_units(
 
     if dimension is UsageDimension.COST_MICROS and currency is None:
         matches = [
-            entry
-            for entry in vector.entries
-            if entry.dimension is UsageDimension.COST_MICROS
+            entry for entry in vector.entries if entry.dimension is UsageDimension.COST_MICROS
         ]
         if not matches:
             return 0
@@ -1523,9 +1505,7 @@ def discover_schemas() -> dict[str, str]:
         "request_bridge": SUPERVISOR_TO_ENDPOINT_REQUEST_SCHEMA,
         "receipt": SUPERVISOR_USAGE_RECEIPT_SCHEMA,
         "authorizes_usage": str(BRIDGE_AUTHORIZES_USAGE).lower(),
-        "rewrites_provider_settlement": str(
-            BRIDGE_REWRITES_PROVIDER_SETTLEMENT
-        ).lower(),
+        "rewrites_provider_settlement": str(BRIDGE_REWRITES_PROVIDER_SETTLEMENT).lower(),
         "is_completion_evidence": str(BRIDGE_IS_COMPLETION_EVIDENCE).lower(),
         "is_correctness_evidence": str(BRIDGE_IS_CORRECTNESS_EVIDENCE).lower(),
     }

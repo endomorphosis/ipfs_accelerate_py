@@ -44,9 +44,7 @@ from .ir_registry import (
 
 
 INTENT_CONSTRAINT_ADAPTER_VERSION: Final[int] = 1
-INTENT_CONSTRAINT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/intent-constraint@1"
-)
+INTENT_CONSTRAINT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/intent-constraint@1"
 INTENT_SOURCE_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-source-binding@1"
 )
@@ -267,9 +265,7 @@ def _plain(value: Any) -> Any:
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {str(key): _freeze(item) for key, item in sorted(value.items())}
-        )
+        return MappingProxyType({str(key): _freeze(item) for key, item in sorted(value.items())})
     if isinstance(value, (tuple, list)):
         return tuple(_freeze(item) for item in value)
     return value
@@ -337,9 +333,7 @@ def _ids(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (_text(value, "reference"),) if value else ()
     if isinstance(value, Sequence):
-        return tuple(
-            sorted({_text(item, "reference") for item in value if item != ""})
-        )
+        return tuple(sorted({_text(item, "reference") for item in value if item != ""}))
     raise IntentConstraintError("reference field must be a string or sequence")
 
 
@@ -367,19 +361,14 @@ def _canonical_root(value: Any, name: str) -> Mapping[str, str]:
         raise IntentConstraintError(
             f"{name} must contain exactly artifact_id, cid_v1, and supervisor_digest"
         )
-    root = {
-        key: _text(value[key], f"{name}.{key}")
-        for key in sorted(expected)
-    }
+    root = {key: _text(value[key], f"{name}.{key}") for key in sorted(expected)}
     return _freeze(root)
 
 
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     claimed = payload.get("schema")
     if claimed is not None and claimed != expected:
-        raise IntentConstraintError(
-            f"schema mismatch: expected {expected}, received {claimed}"
-        )
+        raise IntentConstraintError(f"schema mismatch: expected {expected}, received {claimed}")
 
 
 def _claimed(payload: Mapping[str, Any], name: str, expected: str) -> None:
@@ -409,9 +398,7 @@ class IntentAdapterBounds:
                 or value < 1
                 or value > maximum
             ):
-                raise IntentConstraintError(
-                    f"{name} must be an integer from 1 through {maximum}"
-                )
+                raise IntentConstraintError(f"{name} must be an integer from 1 through {maximum}")
 
 
 @dataclass(frozen=True)
@@ -450,9 +437,7 @@ class IntentSourceBinding:
         object.__setattr__(self, "grounded", _bool(self.grounded, "grounded"))
         object.__setattr__(self, "review_state", IRReviewState(self.review_state))
         object.__setattr__(self, "trust_state", IRTrustState(self.trust_state))
-        object.__setattr__(
-            self, "declared_authority", IRDeclaredAuthority(self.declared_authority)
-        )
+        object.__setattr__(self, "declared_authority", IRDeclaredAuthority(self.declared_authority))
         object.__setattr__(
             self, "result_authority", NormalizedResultAuthority(self.result_authority)
         )
@@ -485,9 +470,7 @@ class IntentSourceBinding:
             "artifact_id": self.artifact_id,
             "artifact_root": _plain(self.artifact_root),
             "source_references": [_plain(item) for item in self.source_references],
-            "provenance_references": [
-                _plain(item) for item in self.provenance_references
-            ],
+            "provenance_references": [_plain(item) for item in self.provenance_references],
             "grounded": self.grounded,
             "inferred": not self.grounded,
             "review_state": self.review_state.value,
@@ -511,18 +494,12 @@ class IntentSourceBinding:
             artifact_id=payload.get("artifact_id", ""),
             artifact_root=payload.get("artifact_root") or {},
             source_references=tuple(payload.get("source_references") or ()),
-            provenance_references=tuple(
-                payload.get("provenance_references") or ()
-            ),
+            provenance_references=tuple(payload.get("provenance_references") or ()),
             grounded=payload.get("grounded", True),
             review_state=payload.get("review_state", IRReviewState.UNREVIEWED),
             trust_state=payload.get("trust_state", IRTrustState.UNKNOWN),
-            declared_authority=payload.get(
-                "declared_authority", IRDeclaredAuthority.NONE
-            ),
-            result_authority=payload.get(
-                "result_authority", NormalizedResultAuthority.NONE
-            ),
+            declared_authority=payload.get("declared_authority", IRDeclaredAuthority.NONE),
+            result_authority=payload.get("result_authority", NormalizedResultAuthority.NONE),
         )
         _claimed(payload, "binding_id", result.binding_id)
         return result
@@ -552,9 +529,7 @@ class IntentConstraint:
         object.__setattr__(self, "expression", _freeze(dict(self.expression)))
         object.__setattr__(self, "required", _bool(self.required, "required"))
         object.__setattr__(self, "grounded", _bool(self.grounded, "grounded"))
-        object.__setattr__(
-            self, "context_only", _bool(self.context_only, "context_only")
-        )
+        object.__setattr__(self, "context_only", _bool(self.context_only, "context_only"))
         object.__setattr__(
             self,
             "source_binding_ids",
@@ -628,13 +603,9 @@ class IntentControlEdge:
         object.__setattr__(
             self,
             "before_action_ids",
-            _strings(
-                self.before_action_ids, "before_action_ids", required=True
-            ),
+            _strings(self.before_action_ids, "before_action_ids", required=True),
         )
-        object.__setattr__(
-            self, "after_action_id", _text(self.after_action_id, "after_action_id")
-        )
+        object.__setattr__(self, "after_action_id", _text(self.after_action_id, "after_action_id"))
         object.__setattr__(
             self,
             "source_constraint_id",
@@ -677,9 +648,7 @@ class IntentProofObligation:
     obligation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "obligation_kind", _text(self.obligation_kind, "obligation_kind")
-        )
+        object.__setattr__(self, "obligation_kind", _text(self.obligation_kind, "obligation_kind"))
         object.__setattr__(
             self,
             "subject_constraint_ids",
@@ -699,9 +668,7 @@ class IntentProofObligation:
             "required_evidence_ids",
             _strings(self.required_evidence_ids, "required_evidence_ids"),
         )
-        object.__setattr__(
-            self, "context_only", _bool(self.context_only, "context_only")
-        )
+        object.__setattr__(self, "context_only", _bool(self.context_only, "context_only"))
         expected = _identity("intent-proof-obligation", self._identity_payload())
         if self.obligation_id and self.obligation_id != expected:
             raise IntentConstraintError("proof obligation identity mismatch")
@@ -727,13 +694,9 @@ class IntentProofObligation:
         _schema(payload, INTENT_PROOF_OBLIGATION_SCHEMA)
         return cls(
             obligation_kind=payload.get("obligation_kind", ""),
-            subject_constraint_ids=tuple(
-                payload.get("subject_constraint_ids") or ()
-            ),
+            subject_constraint_ids=tuple(payload.get("subject_constraint_ids") or ()),
             source_binding_ids=tuple(payload.get("source_binding_ids") or ()),
-            required_evidence_ids=tuple(
-                payload.get("required_evidence_ids") or ()
-            ),
+            required_evidence_ids=tuple(payload.get("required_evidence_ids") or ()),
             context_only=payload.get("context_only", False),
             obligation_id=payload.get("obligation_id", ""),
         )
@@ -752,9 +715,7 @@ class IntentFinding:
         object.__setattr__(self, "code", IntentFindingCode(self.code))
         object.__setattr__(self, "message", _text(self.message, "message"))
         for name in ("constraint_id", "action_id", "source_node_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if not isinstance(self.details, Mapping):
             raise IntentConstraintError("finding details must be an object")
         object.__setattr__(self, "details", _freeze(dict(self.details)))
@@ -803,13 +764,9 @@ class IntentConstraintSet:
 
     def __post_init__(self) -> None:
         for name in ("intent_artifact_id", "formalization_artifact_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("intent_root", "formalization_root"):
-            object.__setattr__(
-                self, name, _canonical_root(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _canonical_root(getattr(self, name), name))
         object.__setattr__(
             self,
             "constraints",
@@ -823,9 +780,7 @@ class IntentConstraintSet:
         object.__setattr__(
             self,
             "proof_obligations",
-            tuple(
-                sorted(self.proof_obligations, key=lambda item: item.obligation_id)
-            ),
+            tuple(sorted(self.proof_obligations, key=lambda item: item.obligation_id)),
         )
         object.__setattr__(
             self,
@@ -846,9 +801,7 @@ class IntentConstraintSet:
             )
         )
         object.__setattr__(self, "contradictory_effect_groups", groups)
-        object.__setattr__(
-            self, "graph_truncated", _bool(self.graph_truncated, "graph_truncated")
-        )
+        object.__setattr__(self, "graph_truncated", _bool(self.graph_truncated, "graph_truncated"))
         self._validate_references()
 
     def _validate_references(self) -> None:
@@ -872,9 +825,7 @@ class IntentConstraintSet:
                 raise IntentConstraintError("control edge has an unknown target action")
         for obligation in self.proof_obligations:
             if not set(obligation.subject_constraint_ids) <= constraint_ids:
-                raise IntentConstraintError(
-                    "proof obligation has an unknown constraint"
-                )
+                raise IntentConstraintError("proof obligation has an unknown constraint")
             if not set(obligation.source_binding_ids) <= binding_ids:
                 raise IntentConstraintError("proof obligation has an unknown binding")
 
@@ -882,9 +833,7 @@ class IntentConstraintSet:
     def grants_execution_authority(self) -> bool:
         return False
 
-    def constraints_of_kind(
-        self, kind: IntentConstraintKind | str
-    ) -> tuple[IntentConstraint, ...]:
+    def constraints_of_kind(self, kind: IntentConstraintKind | str) -> tuple[IntentConstraint, ...]:
         selected = IntentConstraintKind(kind)
         return tuple(item for item in self.constraints if item.kind is selected)
 
@@ -939,9 +888,7 @@ class IntentConstraintSet:
     @property
     def parallel_joins(self) -> tuple[IntentControlEdge, ...]:
         return tuple(
-            item
-            for item in self.control_edges
-            if item.flow_kind is IntentControlFlowKind.JOIN
+            item for item in self.control_edges if item.flow_kind is IntentControlFlowKind.JOIN
         )
 
     @property
@@ -958,9 +905,7 @@ class IntentConstraintSet:
             "formalization_root": _plain(self.formalization_root),
             "constraints": [item.to_dict() for item in self.constraints],
             "control_edges": [item.to_dict() for item in self.control_edges],
-            "proof_obligations": [
-                item.to_dict() for item in self.proof_obligations
-            ],
+            "proof_obligations": [item.to_dict() for item in self.proof_obligations],
             "source_bindings": [item.to_dict() for item in self.source_bindings],
             "unsupported_node_ids": list(self.unsupported_node_ids),
             "contradictory_effect_groups": [
@@ -983,32 +928,24 @@ class IntentConstraintSet:
         result = cls(
             intent_artifact_id=payload.get("intent_artifact_id", ""),
             intent_root=payload.get("intent_root") or {},
-            formalization_artifact_id=payload.get(
-                "formalization_artifact_id", ""
-            ),
+            formalization_artifact_id=payload.get("formalization_artifact_id", ""),
             formalization_root=payload.get("formalization_root") or {},
             constraints=tuple(
-                IntentConstraint.from_dict(item)
-                for item in payload.get("constraints") or ()
+                IntentConstraint.from_dict(item) for item in payload.get("constraints") or ()
             ),
             control_edges=tuple(
-                IntentControlEdge.from_dict(item)
-                for item in payload.get("control_edges") or ()
+                IntentControlEdge.from_dict(item) for item in payload.get("control_edges") or ()
             ),
             proof_obligations=tuple(
                 IntentProofObligation.from_dict(item)
                 for item in payload.get("proof_obligations") or ()
             ),
             source_bindings=tuple(
-                IntentSourceBinding.from_dict(item)
-                for item in payload.get("source_bindings") or ()
+                IntentSourceBinding.from_dict(item) for item in payload.get("source_bindings") or ()
             ),
-            unsupported_node_ids=tuple(
-                payload.get("unsupported_node_ids") or ()
-            ),
+            unsupported_node_ids=tuple(payload.get("unsupported_node_ids") or ()),
             contradictory_effect_groups=tuple(
-                tuple(item)
-                for item in payload.get("contradictory_effect_groups") or ()
+                tuple(item) for item in payload.get("contradictory_effect_groups") or ()
             ),
             graph_truncated=payload.get("graph_truncated", False),
         )
@@ -1041,10 +978,7 @@ class IntentConstraintCompilationResult:
         )
         if self.status is IntentCompilationStatus.INVALID and self.constraint_set:
             raise IntentConstraintError("invalid compilation cannot carry constraints")
-        if (
-            self.status is not IntentCompilationStatus.INVALID
-            and not self.constraint_set
-        ):
+        if self.status is not IntentCompilationStatus.INVALID and not self.constraint_set:
             raise IntentConstraintError("non-invalid compilation requires constraints")
 
     @property
@@ -1073,12 +1007,9 @@ class IntentConstraintCompilationResult:
             "schema": INTENT_COMPILATION_RESULT_SCHEMA,
             "adapter_version": INTENT_CONSTRAINT_ADAPTER_VERSION,
             "status": self.status.value,
-            "constraint_set": (
-                self.constraint_set.to_dict() if self.constraint_set else None
-            ),
+            "constraint_set": (self.constraint_set.to_dict() if self.constraint_set else None),
             "findings": [
-                {**item.to_dict(), "finding_id": item.finding_id}
-                for item in self.findings
+                {**item.to_dict(), "finding_id": item.finding_id} for item in self.findings
             ],
         }
 
@@ -1090,9 +1021,7 @@ class IntentConstraintCompilationResult:
         return _encoded(self.to_dict())
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "IntentConstraintCompilationResult":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "IntentConstraintCompilationResult":
         _schema(payload, INTENT_COMPILATION_RESULT_SCHEMA)
         result = cls(
             status=payload.get("status", IntentCompilationStatus.INVALID),
@@ -1101,10 +1030,7 @@ class IntentConstraintCompilationResult:
                 if payload.get("constraint_set")
                 else None
             ),
-            findings=tuple(
-                IntentFinding.from_dict(item)
-                for item in payload.get("findings") or ()
-            ),
+            findings=tuple(IntentFinding.from_dict(item) for item in payload.get("findings") or ()),
         )
         _claimed(payload, "compilation_id", result.compilation_id)
         return result
@@ -1121,26 +1047,18 @@ def _normalized(
         artifact = value
     elif isinstance(value, VerifiedIRArtifact):
         graph_truncated = bool(value.payload.get("truncated", False))
-        adapter = (
-            IntentIRAdapter()
-            if family is IRFamily.INTENT
-            else FormalizationIRAdapter()
-        )
+        adapter = IntentIRAdapter() if family is IRFamily.INTENT else FormalizationIRAdapter()
         artifact = adapter.normalize(value).require_artifact()
     else:
         raise IntentConstraintError(
             "artifact must be verified, normalized, or a successful adapter result"
         )
     if artifact.family is not family:
-        raise IntentConstraintError(
-            f"expected {family.value}, received {artifact.family.value}"
-        )
+        raise IntentConstraintError(f"expected {family.value}, received {artifact.family.value}")
     return artifact, graph_truncated
 
 
-def _binding(
-    artifact: NormalizedIRArtifact, node: NormalizedIRNode
-) -> IntentSourceBinding:
+def _binding(artifact: NormalizedIRArtifact, node: NormalizedIRNode) -> IntentSourceBinding:
     return IntentSourceBinding(
         node_id=node.node_id,
         artifact_family=artifact.family,
@@ -1174,9 +1092,7 @@ def _constraint_from_node(
     formalization_ids.update(_ids(attributes.get("formalization_ids")))
     formalization_ids.update(_ids(attributes.get("formula_id")))
     expression = {
-        key: value
-        for key, value in attributes.items()
-        if key not in _EXPRESSION_IGNORED_KEYS
+        key: value for key, value in attributes.items() if key not in _EXPRESSION_IGNORED_KEYS
     }
     expression["declared_kind"] = node.declaration_kind
     required_value = attributes.get("required", True)
@@ -1209,9 +1125,7 @@ def _control_edges(
     if not sequence and flow is IntentControlFlowKind.SEQUENCE:
         sequence = _ids(expression.get("action_ids"))
     for before, after in zip(sequence, sequence[1:]):
-        result.append(
-            IntentControlEdge(flow, (before,), after, constraint.constraint_id)
-        )
+        result.append(IntentControlEdge(flow, (before,), after, constraint.constraint_id))
     before_ids = set(_ids(expression.get("before")))
     before_ids.update(_ids(expression.get("from")))
     before_ids.update(_ids(expression.get("source_action_id")))
@@ -1221,18 +1135,13 @@ def _control_edges(
     if before_ids and after_ids:
         for after in sorted(after_ids):
             result.append(
-                IntentControlEdge(
-                    flow, tuple(before_ids), after, constraint.constraint_id
-                )
+                IntentControlEdge(flow, tuple(before_ids), after, constraint.constraint_id)
             )
     members = set(_ids(expression.get("member_action_ids")))
     if flow in {IntentControlFlowKind.PARALLEL, IntentControlFlowKind.JOIN}:
         members.update(_ids(expression.get("action_ids")))
     join = str(
-        expression.get("join_action_id")
-        or expression.get("join")
-        or expression.get("after")
-        or ""
+        expression.get("join_action_id") or expression.get("join") or expression.get("after") or ""
     )
     if members and join:
         result.append(
@@ -1266,10 +1175,7 @@ def _action_dependency_edges(
 def _effect_signature(constraint: IntentConstraint) -> tuple[str, str]:
     expression = constraint.expression
     target = str(
-        expression.get("fluent_id")
-        or expression.get("event_id")
-        or expression.get("target")
-        or ""
+        expression.get("fluent_id") or expression.get("event_id") or expression.get("target") or ""
     )
     semantic = {
         key: _plain(expression.get(key))
@@ -1278,9 +1184,7 @@ def _effect_signature(constraint: IntentConstraint) -> tuple[str, str]:
     }
     return (
         target,
-        json.dumps(
-            semantic, sort_keys=True, separators=(",", ":"), allow_nan=False
-        ),
+        json.dumps(semantic, sort_keys=True, separators=(",", ":"), allow_nan=False),
     )
 
 
@@ -1319,15 +1223,11 @@ class IntentConstraintAdapter:
     def compile(
         self,
         intent: NormalizedIRArtifact | IRAdapterResult | VerifiedIRArtifact,
-        formalization: (
-            NormalizedIRArtifact | IRAdapterResult | VerifiedIRArtifact
-        ),
+        formalization: (NormalizedIRArtifact | IRAdapterResult | VerifiedIRArtifact),
     ) -> IntentConstraintCompilationResult:
         try:
             intent_artifact, intent_truncated = _normalized(intent, IRFamily.INTENT)
-            formal_artifact, formal_truncated = _normalized(
-                formalization, IRFamily.FORMALIZATION
-            )
+            formal_artifact, formal_truncated = _normalized(formalization, IRFamily.FORMALIZATION)
             nodes = tuple(intent_artifact.nodes + formal_artifact.nodes)
             if len(nodes) > self.bounds.max_nodes:
                 raise IntentConstraintError("IR node count exceeds compiler bound")
@@ -1359,9 +1259,7 @@ class IntentConstraintAdapter:
         bindings: list[IntentSourceBinding] = []
         bindings_by_node: dict[str, IntentSourceBinding] = {}
         constraints: list[IntentConstraint] = []
-        deferred_obligation_nodes: list[
-            tuple[NormalizedIRNode, IntentSourceBinding]
-        ] = []
+        deferred_obligation_nodes: list[tuple[NormalizedIRNode, IntentSourceBinding]] = []
         unsupported: list[str] = []
         findings: list[IntentFinding] = []
         node_artifacts: dict[str, NormalizedIRArtifact] = {}
@@ -1408,8 +1306,7 @@ class IntentConstraintAdapter:
             if node.node_kind is IRNodeKind.ASSUMPTION:
                 kind = IntentConstraintKind.ASSUMPTION
             if node.node_kind is IRNodeKind.OBLIGATION and not (
-                _ids(node.attributes.get("action_id"))
-                or _ids(node.attributes.get("action_ids"))
+                _ids(node.attributes.get("action_id")) or _ids(node.attributes.get("action_ids"))
             ):
                 deferred_obligation_nodes.append((node, binding))
                 continue
@@ -1445,16 +1342,12 @@ class IntentConstraintAdapter:
                 )
                 constraint = replace(
                     constraint,
-                    source_binding_ids=tuple(
-                        set(constraint.source_binding_ids) | linked_bindings
-                    ),
+                    source_binding_ids=tuple(set(constraint.source_binding_ids) | linked_bindings),
                     grounded=(
-                        constraint.grounded
-                        and all(item.grounded for item in linked_records)
+                        constraint.grounded and all(item.grounded for item in linked_records)
                     ),
                     context_only=(
-                        constraint.context_only
-                        or any(item.context_only for item in linked_records)
+                        constraint.context_only or any(item.context_only for item in linked_records)
                     ),
                     constraint_id="",
                 )
@@ -1465,8 +1358,7 @@ class IntentConstraintAdapter:
                 or (
                     linked_bindings
                     and any(
-                        not item.review_state.accepted
-                        or not item.trust_state.accepted
+                        not item.review_state.accepted or not item.trust_state.accepted
                         for item in linked_records
                     )
                 )
@@ -1560,9 +1452,7 @@ class IntentConstraintAdapter:
         unique_edges = {item.edge_id: item for item in control_edges}
         control_edges = [unique_edges[key] for key in sorted(unique_edges)]
         if len(control_edges) > self.bounds.max_edges:
-            raise IntentConstraintError(
-                "control-flow edge count exceeds compiler bound"
-            )
+            raise IntentConstraintError("control-flow edge count exceeds compiler bound")
 
         action_ids = {
             action_id
@@ -1640,14 +1530,10 @@ class IntentConstraintAdapter:
                     )
                 )
         for edge in control_edges:
-            unknown_actions = (
-                set(edge.before_action_ids) | {edge.after_action_id}
-            ) - action_ids
+            unknown_actions = (set(edge.before_action_ids) | {edge.after_action_id}) - action_ids
             if unknown_actions:
                 source = next(
-                    item
-                    for item in constraints
-                    if item.constraint_id == edge.source_constraint_id
+                    item for item in constraints if item.constraint_id == edge.source_constraint_id
                 )
                 unsupported.append(source.node_id)
                 findings.append(
@@ -1673,9 +1559,7 @@ class IntentConstraintAdapter:
                 if item.kind is IntentConstraintKind.CONTROL_FLOW
             )
 
-        formal_ids = {
-            node.node_id for node in formalization.nodes
-        } | {
+        formal_ids = {node.node_id for node in formalization.nodes} | {
             value
             for node in formalization.nodes
             for key, raw in node.attributes.items()
@@ -1696,9 +1580,7 @@ class IntentConstraintAdapter:
                     )
                 )
 
-        effect_groups: dict[str, dict[str, list[str]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
+        effect_groups: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
         for constraint in constraints:
             if constraint.kind is IntentConstraintKind.EFFECT:
                 target, semantic = _effect_signature(constraint)
@@ -1707,13 +1589,7 @@ class IntentConstraintAdapter:
                         constraint.constraint_id
                     )
         contradictory = tuple(
-            tuple(
-                sorted(
-                    constraint_id
-                    for ids in semantics.values()
-                    for constraint_id in ids
-                )
-            )
+            tuple(sorted(constraint_id for ids in semantics.values() for constraint_id in ids))
             for target, semantics in sorted(effect_groups.items())
             if target.rsplit("::", 1)[-1] and len(semantics) > 1
         )
@@ -1743,11 +1619,15 @@ class IntentConstraintAdapter:
                         context_only=True,
                     )
                 )
-            if constraint.kind in {
-                IntentConstraintKind.GUARD,
-                IntentConstraintKind.INVARIANT,
-                IntentConstraintKind.VERIFICATION,
-            } and constraint.required:
+            if (
+                constraint.kind
+                in {
+                    IntentConstraintKind.GUARD,
+                    IntentConstraintKind.INVARIANT,
+                    IntentConstraintKind.VERIFICATION,
+                }
+                and constraint.required
+            ):
                 obligations.append(
                     IntentProofObligation(
                         f"establish_{constraint.kind.value}",
@@ -1807,19 +1687,14 @@ class IntentConstraintAdapter:
                 continue
             obligations.append(
                 IntentProofObligation(
-                    str(
-                        attributes.get("obligation_kind")
-                        or "declared_proof"
-                    ),
+                    str(attributes.get("obligation_kind") or "declared_proof"),
                     tuple(subjects),
                     (binding.binding_id,),
                     _ids(attributes.get("evidence_ids")),
                     context_only=binding.context_only,
                 )
             )
-        unique_obligations = {
-            item.obligation_id: item for item in obligations
-        }
+        unique_obligations = {item.obligation_id: item for item in obligations}
 
         constraint_set = IntentConstraintSet(
             intent_artifact_id=intent.source_artifact_id,
@@ -1841,10 +1716,7 @@ class IntentConstraintAdapter:
             if unsupported
             or contradictory
             or graph_truncated
-            or any(
-                item.code is IntentFindingCode.CONTROL_FLOW_CYCLE
-                for item in findings
-            )
+            or any(item.code is IntentFindingCode.CONTROL_FLOW_CYCLE for item in findings)
             else IntentCompilationStatus.COMPILED
         )
         if graph_truncated:
@@ -1860,9 +1732,7 @@ class IntentConstraintAdapter:
             findings=tuple(findings),
         )
 
-    def conform(
-        self, request: "IntentConformanceRequest"
-    ) -> "IntentConformanceResult":
+    def conform(self, request: "IntentConformanceRequest") -> "IntentConformanceResult":
         return evaluate_intent_conformance(request, bounds=self.bounds)
 
 
@@ -1885,9 +1755,7 @@ def _candidate_record(candidate: Mapping[str, Any] | FormalWorkPlan) -> dict[str
                     ],
                     "effect_ids": list(task.effect_ids),
                     "effects": [
-                        effects[item].to_record()
-                        for item in task.effect_ids
-                        if item in effects
+                        effects[item].to_record() for item in task.effect_ids if item in effects
                     ],
                     "verification_ids": list(task.evidence_requirement_ids),
                 }
@@ -1900,9 +1768,7 @@ def _candidate_record(candidate: Mapping[str, Any] | FormalWorkPlan) -> dict[str
             "metadata": _plain(candidate.metadata),
         }
     if not isinstance(candidate, Mapping):
-        raise IntentConstraintError(
-            "candidate_plan must be a mapping or FormalWorkPlan"
-        )
+        raise IntentConstraintError("candidate_plan must be a mapping or FormalWorkPlan")
     return _plain(candidate)
 
 
@@ -1919,9 +1785,7 @@ class IntentConformanceRequest:
 
     def __post_init__(self) -> None:
         if not isinstance(self.constraint_set, IntentConstraintSet):
-            raise IntentConstraintError(
-                "constraint_set must be an IntentConstraintSet"
-            )
+            raise IntentConstraintError("constraint_set must be an IntentConstraintSet")
         candidate = _candidate_record(self.candidate_plan)
         object.__setattr__(self, "candidate_plan", _freeze(candidate))
         for name, fallback in (
@@ -1934,9 +1798,7 @@ class IntentConformanceRequest:
                 _canonical_root(getattr(self, name) or fallback, name),
             )
         if not isinstance(self.inferred_requirement_bindings, Mapping):
-            raise IntentConstraintError(
-                "inferred_requirement_bindings must be an object"
-            )
+            raise IntentConstraintError("inferred_requirement_bindings must be an object")
         object.__setattr__(
             self,
             "inferred_requirement_bindings",
@@ -1945,30 +1807,20 @@ class IntentConformanceRequest:
         object.__setattr__(
             self,
             "discharged_obligation_ids",
-            _strings(
-                self.discharged_obligation_ids, "discharged_obligation_ids"
-            ),
+            _strings(self.discharged_obligation_ids, "discharged_obligation_ids"),
         )
         object.__setattr__(
             self,
             "supported_statement_ids",
             _strings(self.supported_statement_ids, "supported_statement_ids"),
         )
-        object.__setattr__(
-            self, "graph_complete", _bool(self.graph_complete, "graph_complete")
-        )
-        known_obligations = {
-            item.obligation_id for item in self.constraint_set.proof_obligations
-        }
+        object.__setattr__(self, "graph_complete", _bool(self.graph_complete, "graph_complete"))
+        known_obligations = {item.obligation_id for item in self.constraint_set.proof_obligations}
         unknown_discharges = set(self.discharged_obligation_ids) - known_obligations
         if unknown_discharges:
-            raise IntentConstraintError(
-                "discharged_obligation_ids contains an unknown obligation"
-            )
+            raise IntentConstraintError("discharged_obligation_ids contains an unknown obligation")
         inferred_constraints = {
-            item.constraint_id: item
-            for item in self.constraint_set.constraints
-            if item.inferred
+            item.constraint_id: item for item in self.constraint_set.constraints if item.inferred
         }
         inferred_keys = set(inferred_constraints) | {
             item.node_id for item in inferred_constraints.values()
@@ -1977,12 +1829,8 @@ class IntentConformanceRequest:
             raise IntentConstraintError(
                 "inferred_requirement_bindings contains an unknown requirement"
             )
-        if set(self.supported_statement_ids) - set(
-            self.constraint_set.unsupported_node_ids
-        ):
-            raise IntentConstraintError(
-                "supported_statement_ids contains an unknown statement"
-            )
+        if set(self.supported_statement_ids) - set(self.constraint_set.unsupported_node_ids):
+            raise IntentConstraintError("supported_statement_ids contains an unknown statement")
         if len(self.canonical_bytes) > DEFAULT_MAX_CANONICAL_BYTES:
             raise IntentConstraintError("conformance request exceeds byte bound")
 
@@ -1999,9 +1847,7 @@ class IntentConformanceRequest:
             "candidate_plan": _plain(self.candidate_plan),
             "intent_root": _plain(self.intent_root),
             "formalization_root": _plain(self.formalization_root),
-            "inferred_requirement_bindings": _plain(
-                self.inferred_requirement_bindings
-            ),
+            "inferred_requirement_bindings": _plain(self.inferred_requirement_bindings),
             "discharged_obligation_ids": list(self.discharged_obligation_ids),
             "supported_statement_ids": list(self.supported_statement_ids),
             "graph_complete": self.graph_complete,
@@ -2024,24 +1870,15 @@ class IntentConformanceRequest:
         _schema(payload, INTENT_CONFORMANCE_REQUEST_SCHEMA)
         constraint_payload = payload.get("constraint_set")
         if not isinstance(constraint_payload, Mapping):
-            raise IntentConstraintError(
-                "canonical request requires its exact constraint_set"
-            )
+            raise IntentConstraintError("canonical request requires its exact constraint_set")
         result = cls(
             constraint_set=IntentConstraintSet.from_dict(constraint_payload),
             candidate_plan=payload.get("candidate_plan") or {},
             intent_root=payload.get("intent_root"),
             formalization_root=payload.get("formalization_root"),
-            inferred_requirement_bindings=payload.get(
-                "inferred_requirement_bindings"
-            )
-            or {},
-            discharged_obligation_ids=tuple(
-                payload.get("discharged_obligation_ids") or ()
-            ),
-            supported_statement_ids=tuple(
-                payload.get("supported_statement_ids") or ()
-            ),
+            inferred_requirement_bindings=payload.get("inferred_requirement_bindings") or {},
+            discharged_obligation_ids=tuple(payload.get("discharged_obligation_ids") or ()),
+            supported_statement_ids=tuple(payload.get("supported_statement_ids") or ()),
             graph_complete=payload.get("graph_complete", True),
         )
         _claimed(payload, "request_id", result.request_id)
@@ -2095,10 +1932,7 @@ class IntentConformanceResult:
         )
         if self.verdict is IntentConformanceVerdict.CONFORMANT and self.findings:
             raise IntentConstraintError("conformant result cannot carry findings")
-        if (
-            self.verdict is not IntentConformanceVerdict.CONFORMANT
-            and not self.findings
-        ):
+        if self.verdict is not IntentConformanceVerdict.CONFORMANT and not self.findings:
             raise IntentConstraintError("failed result requires findings")
 
     @property
@@ -2122,8 +1956,7 @@ class IntentConformanceResult:
             "candidate_plan_id": self.candidate_plan_id,
             "verdict": self.verdict.value,
             "findings": [
-                {**item.to_dict(), "finding_id": item.finding_id}
-                for item in self.findings
+                {**item.to_dict(), "finding_id": item.finding_id} for item in self.findings
             ],
             "checked_constraint_ids": list(self.checked_constraint_ids),
             "checked_obligation_ids": list(self.checked_obligation_ids),
@@ -2145,16 +1978,9 @@ class IntentConformanceResult:
             constraint_set_id=payload.get("constraint_set_id", ""),
             candidate_plan_id=payload.get("candidate_plan_id", ""),
             verdict=payload.get("verdict", IntentConformanceVerdict.INVALID),
-            findings=tuple(
-                IntentFinding.from_dict(item)
-                for item in payload.get("findings") or ()
-            ),
-            checked_constraint_ids=tuple(
-                payload.get("checked_constraint_ids") or ()
-            ),
-            checked_obligation_ids=tuple(
-                payload.get("checked_obligation_ids") or ()
-            ),
+            findings=tuple(IntentFinding.from_dict(item) for item in payload.get("findings") or ()),
+            checked_constraint_ids=tuple(payload.get("checked_constraint_ids") or ()),
+            checked_obligation_ids=tuple(payload.get("checked_obligation_ids") or ()),
         )
         _claimed(payload, "result_id", result.result_id)
         return result
@@ -2175,19 +2001,27 @@ def _candidate_actions(
             for key, value in raw.items()
         ]
     if isinstance(raw, (str, bytes)) or not isinstance(raw, Sequence):
-        return {}, {}, [
-            IntentFinding(
-                IntentFindingCode.INVALID_INPUT,
-                "candidate actions must be a bounded sequence or mapping",
-            )
-        ]
+        return (
+            {},
+            {},
+            [
+                IntentFinding(
+                    IntentFindingCode.INVALID_INPUT,
+                    "candidate actions must be a bounded sequence or mapping",
+                )
+            ],
+        )
     if len(raw) > bounds.max_candidate_actions:
-        return {}, {}, [
-            IntentFinding(
-                IntentFindingCode.INVALID_INPUT,
-                "candidate action count exceeds conformance bound",
-            )
-        ]
+        return (
+            {},
+            {},
+            [
+                IntentFinding(
+                    IntentFindingCode.INVALID_INPUT,
+                    "candidate action count exceeds conformance bound",
+                )
+            ],
+        )
     actions: dict[str, dict[str, Any]] = {}
     for item in raw:
         if not isinstance(item, Mapping):
@@ -2199,9 +2033,7 @@ def _candidate_actions(
             )
             continue
         action = _plain(item)
-        action_id = str(
-            action.get("action_id") or action.get("task_id") or action.get("id") or ""
-        )
+        action_id = str(action.get("action_id") or action.get("task_id") or action.get("id") or "")
         if not action_id:
             findings.append(
                 IntentFinding(
@@ -2254,83 +2086,67 @@ def _constraint_tokens(constraint: IntentConstraint) -> set[str]:
     return result
 
 
-_SATISFACTION_FIELDS: Final[Mapping[IntentConstraintKind, tuple[str, ...]]] = (
-    MappingProxyType(
-        {
-            IntentConstraintKind.PRECONDITION: (
-                "precondition_ids",
-                "preconditions",
-                "satisfied_precondition_ids",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.GUARD: (
-                "guard_ids",
-                "guards",
-                "satisfied_guard_ids",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.INVARIANT: (
-                "invariant_ids",
-                "invariants",
-                "satisfied_invariant_ids",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.POSTCONDITION: (
-                "postcondition_ids",
-                "postconditions",
-                "satisfied_postcondition_ids",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.ASSUMPTION: (
-                "assumption_ids",
-                "assumptions",
-                "satisfied_assumption_ids",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.FAILURE: (
-                "failure_ids",
-                "failure_contracts",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.RETRY: (
-                "retry_ids",
-                "retry_contracts",
-                "satisfied_constraint_ids",
-            ),
-            IntentConstraintKind.VERIFICATION: (
-                "verification_ids",
-                "verifications",
-                "evidence_ids",
-                "satisfied_constraint_ids",
-            ),
-        }
-    )
+_SATISFACTION_FIELDS: Final[Mapping[IntentConstraintKind, tuple[str, ...]]] = MappingProxyType(
+    {
+        IntentConstraintKind.PRECONDITION: (
+            "precondition_ids",
+            "preconditions",
+            "satisfied_precondition_ids",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.GUARD: (
+            "guard_ids",
+            "guards",
+            "satisfied_guard_ids",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.INVARIANT: (
+            "invariant_ids",
+            "invariants",
+            "satisfied_invariant_ids",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.POSTCONDITION: (
+            "postcondition_ids",
+            "postconditions",
+            "satisfied_postcondition_ids",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.ASSUMPTION: (
+            "assumption_ids",
+            "assumptions",
+            "satisfied_assumption_ids",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.FAILURE: (
+            "failure_ids",
+            "failure_contracts",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.RETRY: (
+            "retry_ids",
+            "retry_contracts",
+            "satisfied_constraint_ids",
+        ),
+        IntentConstraintKind.VERIFICATION: (
+            "verification_ids",
+            "verifications",
+            "evidence_ids",
+            "satisfied_constraint_ids",
+        ),
+    }
 )
-_UNSATISFIED_CODES: Final[Mapping[IntentConstraintKind, IntentFindingCode]] = (
-    MappingProxyType(
-        {
-            IntentConstraintKind.PRECONDITION: (
-                IntentFindingCode.UNSATISFIED_PRECONDITION
-            ),
-            IntentConstraintKind.GUARD: IntentFindingCode.UNSATISFIED_GUARD,
-            IntentConstraintKind.INVARIANT: IntentFindingCode.UNSATISFIED_INVARIANT,
-            IntentConstraintKind.POSTCONDITION: (
-                IntentFindingCode.UNSATISFIED_POSTCONDITION
-            ),
-            IntentConstraintKind.ASSUMPTION: (
-                IntentFindingCode.UNSATISFIED_ASSUMPTION
-            ),
-            IntentConstraintKind.FAILURE: (
-                IntentFindingCode.UNSATISFIED_FAILURE_CONTRACT
-            ),
-            IntentConstraintKind.RETRY: (
-                IntentFindingCode.UNSATISFIED_RETRY_CONTRACT
-            ),
-            IntentConstraintKind.VERIFICATION: (
-                IntentFindingCode.MISSING_VERIFICATION
-            ),
-        }
-    )
+_UNSATISFIED_CODES: Final[Mapping[IntentConstraintKind, IntentFindingCode]] = MappingProxyType(
+    {
+        IntentConstraintKind.PRECONDITION: (IntentFindingCode.UNSATISFIED_PRECONDITION),
+        IntentConstraintKind.GUARD: IntentFindingCode.UNSATISFIED_GUARD,
+        IntentConstraintKind.INVARIANT: IntentFindingCode.UNSATISFIED_INVARIANT,
+        IntentConstraintKind.POSTCONDITION: (IntentFindingCode.UNSATISFIED_POSTCONDITION),
+        IntentConstraintKind.ASSUMPTION: (IntentFindingCode.UNSATISFIED_ASSUMPTION),
+        IntentConstraintKind.FAILURE: (IntentFindingCode.UNSATISFIED_FAILURE_CONTRACT),
+        IntentConstraintKind.RETRY: (IntentFindingCode.UNSATISFIED_RETRY_CONTRACT),
+        IntentConstraintKind.VERIFICATION: (IntentFindingCode.MISSING_VERIFICATION),
+    }
 )
 
 
@@ -2372,10 +2188,7 @@ def _authorization_findings(
         if isinstance(value, Mapping):
             for key, item in value.items():
                 lowered = str(key).lower().replace("-", "_")
-                if any(
-                    marker in lowered
-                    for marker in _AUTHORIZATION_FIELD_MARKERS
-                ):
+                if any(marker in lowered for marker in _AUTHORIZATION_FIELD_MARKERS):
                     values = (
                         [item]
                         if isinstance(item, (str, bool))
@@ -2385,16 +2198,12 @@ def _authorization_findings(
                         if isinstance(item, Mapping)
                         else []
                     )
-                    normalized = {
-                        str(entry).strip().lower().replace("-", "_")
-                        for entry in values
-                    }
+                    normalized = {str(entry).strip().lower().replace("-", "_") for entry in values}
                     asserted = (
                         item is True
                         or (
                             isinstance(item, str)
-                            and item.strip().lower()
-                            not in {"", "false", "none", "no", "denied"}
+                            and item.strip().lower() not in {"", "false", "none", "no", "denied"}
                         )
                         or (
                             isinstance(item, (Mapping, Sequence))
@@ -2429,8 +2238,7 @@ def _authorization_findings(
                         findings.append(
                             IntentFinding(
                                 code,
-                                "candidate uses a context-only premise as "
-                                "authorization",
+                                "candidate uses a context-only premise as authorization",
                                 details={"path": f"{path}.{key}"},
                             )
                         )
@@ -2443,9 +2251,7 @@ def _authorization_findings(
     return findings
 
 
-def _inferred_binding_present(
-    bindings: Mapping[str, Any], constraint: IntentConstraint
-) -> bool:
+def _inferred_binding_present(bindings: Mapping[str, Any], constraint: IntentConstraint) -> bool:
     marker = object()
     value = bindings.get(constraint.constraint_id, marker)
     if value is marker:
@@ -2481,11 +2287,9 @@ def evaluate_intent_conformance(
                 "conformance request exceeds the selected byte bound",
             )
         )
-    if _root_key(request.intent_root or {}) != _root_key(
-        constraint_set.intent_root
-    ) or _root_key(request.formalization_root or {}) != _root_key(
-        constraint_set.formalization_root
-    ):
+    if _root_key(request.intent_root or {}) != _root_key(constraint_set.intent_root) or _root_key(
+        request.formalization_root or {}
+    ) != _root_key(constraint_set.formalization_root):
         findings.append(
             IntentFinding(
                 IntentFindingCode.ROOT_CHANGED,
@@ -2499,8 +2303,7 @@ def evaluate_intent_conformance(
         and _root_key(candidate_intent_root) != _root_key(constraint_set.intent_root)
     ) or (
         isinstance(candidate_formal_root, Mapping)
-        and _root_key(candidate_formal_root)
-        != _root_key(constraint_set.formalization_root)
+        and _root_key(candidate_formal_root) != _root_key(constraint_set.formalization_root)
     ):
         findings.append(
             IntentFinding(
@@ -2619,9 +2422,7 @@ def evaluate_intent_conformance(
                     )
         elif constraint.kind in _SATISFACTION_FIELDS:
             applicable_actions = (
-                constraint.action_ids
-                if constraint.action_ids
-                else tuple(sorted(actions))
+                constraint.action_ids if constraint.action_ids else tuple(sorted(actions))
             )
             expected = _constraint_tokens(constraint)
             for action_id in applicable_actions:
@@ -2633,8 +2434,7 @@ def evaluate_intent_conformance(
                     findings.append(
                         IntentFinding(
                             _UNSATISFIED_CODES[constraint.kind],
-                            "candidate does not establish required "
-                            f"{constraint.kind.value}",
+                            f"candidate does not establish required {constraint.kind.value}",
                             constraint_id=constraint.constraint_id,
                             action_id=action_id,
                             source_node_id=constraint.node_id,
@@ -2656,8 +2456,7 @@ def evaluate_intent_conformance(
             findings.append(
                 IntentFinding(
                     code,
-                    "candidate action dependencies do not satisfy declared "
-                    "control flow",
+                    "candidate action dependencies do not satisfy declared control flow",
                     constraint_id=edge.source_constraint_id,
                     action_id=edge.after_action_id,
                     details={"missing_dependencies": sorted(missing)},
@@ -2746,9 +2545,7 @@ def evaluate_intent_conformance(
             subjects = set(obligation.subject_constraint_ids)
             bound = bool(
                 any(
-                    _inferred_binding_present(
-                        request.inferred_requirement_bindings, constraint
-                    )
+                    _inferred_binding_present(request.inferred_requirement_bindings, constraint)
                     for constraint in constraint_set.constraints
                     if constraint.constraint_id in subjects
                 )
@@ -2786,9 +2583,7 @@ def evaluate_intent_conformance(
         candidate_plan_id=candidate_id,
         verdict=verdict,
         findings=ordered,
-        checked_constraint_ids=tuple(
-            item.constraint_id for item in constraint_set.constraints
-        ),
+        checked_constraint_ids=tuple(item.constraint_id for item in constraint_set.constraints),
         checked_obligation_ids=tuple(
             item.obligation_id for item in constraint_set.proof_obligations
         ),

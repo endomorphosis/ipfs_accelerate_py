@@ -68,7 +68,9 @@ def test_versioned_properties_cover_the_runtime_contract_without_claiming_proof(
     policy = TemporalMonitorPolicy()
 
     assert {item.kind for item in policy.properties} == set(TemporalPropertyKind)
-    assert all(item.version >= 1 and item.property_id and item.formula for item in policy.properties)
+    assert all(
+        item.version >= 1 and item.property_id and item.formula for item in policy.properties
+    )
     assert policy.policy_id == TemporalMonitorPolicy().policy_id
 
     report = monitor_event_trace(_safe_trace(), policy=policy, now="2026-01-01T00:00:20Z")
@@ -125,16 +127,15 @@ def test_event_ordering_lease_expiration_stop_and_proof_before_merge_are_indepen
         TemporalPropertyKind.NO_ACTION_AFTER_STOP,
         TemporalPropertyKind.PROOF_BEFORE_MERGE,
     } <= kinds
-    assert len(load_temporal_counterexamples(counterexamples)) == len(
-        report.counterexamples
-    )
+    assert len(load_temporal_counterexamples(counterexamples)) == len(report.counterexamples)
     assert len(reopened) == len(report.counterexamples)
-    reopen_records = [
-        json.loads(line) for line in reopens.read_text(encoding="utf-8").splitlines()
-    ]
+    reopen_records = [json.loads(line) for line in reopens.read_text(encoding="utf-8").splitlines()]
     assert {item["status"] for item in reopen_records} == {"reopened"}
     assert {item["task_id"] for item in reopen_records} == {"REF-287"}
-    assert all(item["schema"] == RUNTIME_TEMPORAL_COUNTEREXAMPLE_SCHEMA for item in load_temporal_counterexamples(counterexamples))
+    assert all(
+        item["schema"] == RUNTIME_TEMPORAL_COUNTEREXAMPLE_SCHEMA
+        for item in load_temporal_counterexamples(counterexamples)
+    )
     assert all(item["is_proof"] is False for item in load_temporal_counterexamples(counterexamples))
 
     # Replaying the same trace finds the same violation identities but does not
@@ -154,12 +155,8 @@ def test_event_ordering_lease_expiration_stop_and_proof_before_merge_are_indepen
         reopen_path=reopens,
     )
     assert replay.verdict is MonitorVerdict.VIOLATED
-    assert len(load_temporal_counterexamples(counterexamples)) == len(
-        report.counterexamples
-    )
-    assert len(reopens.read_text(encoding="utf-8").splitlines()) == len(
-        report.counterexamples
-    )
+    assert len(load_temporal_counterexamples(counterexamples)) == len(report.counterexamples)
+    assert len(reopens.read_text(encoding="utf-8").splitlines()) == len(report.counterexamples)
 
 
 def test_bounded_retry_eventual_terminal_and_resource_release_deadlines() -> None:
@@ -241,9 +238,7 @@ def test_reordering_duplicate_missing_timestamp_and_restart_epochs_are_explicit(
 
 
 def test_event_older_than_committed_watermark_is_not_retroactively_evaluated() -> None:
-    monitor = RuntimeTemporalMonitor(
-        config=TemporalMonitorConfig(out_of_order_window_seconds=1)
-    )
+    monitor = RuntimeTemporalMonitor(config=TemporalMonitorConfig(out_of_order_window_seconds=1))
     monitor.ingest(
         _event(
             "lease_acquired",
@@ -259,16 +254,12 @@ def test_event_older_than_committed_watermark_is_not_retroactively_evaluated() -
 
     assert report.verdict is MonitorVerdict.INCONCLUSIVE
     assert report.counterexamples == ()
-    assert NoticeCode.OUT_OF_ORDER_WINDOW_EXCEEDED in {
-        item.code for item in report.notices
-    }
+    assert NoticeCode.OUT_OF_ORDER_WINDOW_EXCEEDED in {item.code for item in report.notices}
     assert report.events_evaluated == 3
 
 
 def test_open_eventual_obligation_is_inconclusive_and_finalize_is_idempotent() -> None:
-    monitor = RuntimeTemporalMonitor(
-        config=TemporalMonitorConfig(out_of_order_window_seconds=0)
-    )
+    monitor = RuntimeTemporalMonitor(config=TemporalMonitorConfig(out_of_order_window_seconds=0))
     monitor.ingest(
         _event(
             "lease_acquired",
@@ -358,9 +349,7 @@ def test_streaming_state_is_bounded_and_partitioned_by_all_four_identities() -> 
     assert report.active_partitions == 2
     assert NoticeCode.PARTITION_EVICTED in {item.code for item in report.notices}
     assert report.verdict is MonitorVerdict.INCONCLUSIVE
-    assert all(
-        item.partition.policy_id == policy.policy_id for item in report.notices
-    )
+    assert all(item.partition.policy_id == policy.policy_id for item in report.notices)
 
 
 def test_foreign_policy_and_unknown_task_are_isolated_and_not_evaluated() -> None:
@@ -411,9 +400,7 @@ def test_lifecycle_events_follow_the_control_plane_transition_graph() -> None:
         state.value: frozenset(target.value for target in targets)
         for state, targets in LEGAL_LIFECYCLE_TRANSITIONS.items()
     }
-    monitor = RuntimeTemporalMonitor(
-        config=TemporalMonitorConfig(out_of_order_window_seconds=0)
-    )
+    monitor = RuntimeTemporalMonitor(config=TemporalMonitorConfig(out_of_order_window_seconds=0))
     base = {
         "schema": "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1",
         "target_id": "supervisor:test",
@@ -460,9 +447,7 @@ def test_illegal_lifecycle_transition_is_a_temporal_counterexample() -> None:
     report = monitor_event_trace(
         [
             {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"
-                ),
+                "schema": ("ipfs_accelerate_py/agent-supervisor/lifecycle-event@1"),
                 "target_id": "supervisor:test",
                 "event_id": "lifecycle:illegal",
                 "sequence": 1,
@@ -475,7 +460,7 @@ def test_illegal_lifecycle_transition_is_a_temporal_counterexample() -> None:
         now=2,
     )
 
-    assert {
-        item.property_kind for item in report.counterexamples
-    } == {TemporalPropertyKind.EVENT_ORDERING}
+    assert {item.property_kind for item in report.counterexamples} == {
+        TemporalPropertyKind.EVENT_ORDERING
+    }
     assert "stopped -> healthy" in report.counterexamples[0].reason

@@ -244,8 +244,7 @@ def _bridge(
         endpoint_scope_id=scope.endpoint_scope_id,
         catalog_revision=scope.catalog_revision,
         usage_revision=scope.usage_revision,
-        estimated=estimated
-        or UsageVector.of(requests=1, input_tokens=80, output_tokens=40),
+        estimated=estimated or UsageVector.of(requests=1, input_tokens=80, output_tokens=40),
         request_id=scope.request_id,
         attempt=scope.attempt,
         idempotency_key=scope.idempotency_key,
@@ -270,19 +269,12 @@ def _execution_request(
 ) -> ProviderExecutionRequest:
     request_env = _request_envelope()
     scope = request_env.scope
-    if (
-        attempt is not None
-        or idempotency_key is not None
-        or request_id is not None
-    ):
+    if attempt is not None or idempotency_key is not None or request_id is not None:
         # Rebuild request-level scope with overrides via child envelope helpers.
         parent = None
         lineage = _lineage()
         for node in lineage.walk():
-            if (
-                node.scope.level is SupervisorUsageLevel.LANE
-                and node.scope.lane == scope.lane
-            ):
+            if node.scope.level is SupervisorUsageLevel.LANE and node.scope.lane == scope.lane:
                 parent = node
                 break
         assert parent is not None
@@ -588,9 +580,7 @@ def test_off_mode_invokes_without_reservation() -> None:
         return {"status": "ok"}
 
     gateway = ProviderExecutionGateway(coordinator=coordinator, invoker=invoker)
-    result = gateway.execute(
-        _execution_request(mode=ProviderExecutionMode.OFF)
-    )
+    result = gateway.execute(_execution_request(mode=ProviderExecutionMode.OFF))
     assert result.phase is ProviderExecutionPhase.SETTLED
     assert "off_mode" in result.reason_codes
     assert calls["n"] == 1
@@ -742,9 +732,7 @@ print("ok")
     )
     assert completed.returncode == 0, completed.stderr
     assert "ok" in completed.stdout
-    module = importlib.import_module(
-        "ipfs_accelerate_py.agent_supervisor.provider_execution"
-    )
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.provider_execution")
     for name in (
         "ProviderExecutionRequest",
         "ProviderExecutionResult",
@@ -757,9 +745,7 @@ print("ok")
 
 def test_simulated_path_without_coordinator_is_offline() -> None:
     gateway = ProviderExecutionGateway()
-    result = gateway.execute(
-        _execution_request(coordination_state=CoordinationState.AVAILABLE)
-    )
+    result = gateway.execute(_execution_request(coordination_state=CoordinationState.AVAILABLE))
     # No coordinator → simulated reserve path.
     assert result.phase is ProviderExecutionPhase.SETTLED
     assert result.reservation_id.startswith("sim:")

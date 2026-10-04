@@ -102,9 +102,7 @@ def _sample(
         baseline_accepted_tasks_per_second=baseline_throughput,
         available=available,
         low_value=low_value,
-        advisory_reason_codes=(
-            ("provider_unavailable",) if not available else ()
-        ),
+        advisory_reason_codes=(("provider_unavailable",) if not available else ()),
     )
 
 
@@ -193,9 +191,7 @@ def test_enforcement_promotes_only_when_assurance_and_throughput_pass() -> None:
 
     assert decision.promotion_allowed
     assert decision["lane_decisions"][0]["disposition"] == "promote"
-    assert decision["thresholds"] == DEFAULT_ROLLOUT_THRESHOLDS[
-        RolloutMode.ENFORCEMENT
-    ].to_dict()
+    assert decision["thresholds"] == DEFAULT_ROLLOUT_THRESHOLDS[RolloutMode.ENFORCEMENT].to_dict()
     assert set(decision["all_thresholds"]) == {"shadow", "canary", "enforcement"}
 
 
@@ -259,15 +255,11 @@ def test_unavailable_and_low_value_lanes_remain_advisory() -> None:
 
     assert decision.promotion_allowed
     advisory = next(
-        item
-        for item in decision["lane_decisions"]
-        if item["lane_id"] == unavailable.lane_id
+        item for item in decision["lane_decisions"] if item["lane_id"] == unavailable.lane_id
     )
     assert advisory["disposition"] == RolloutDisposition.ADVISORY.value
     assert not advisory["eligible_for_blocking"]
-    assert {"lane_unavailable", "lane_low_value"} <= set(
-        advisory["remaining_reason_codes"]
-    )
+    assert {"lane_unavailable", "lane_low_value"} <= set(advisory["remaining_reason_codes"])
 
 
 def test_all_advisory_matrix_cannot_claim_rollout_success() -> None:
@@ -316,9 +308,7 @@ def test_override_is_durable_expiring_and_exactly_lane_scoped(tmp_path) -> None:
         "cpu_saturation_above_threshold"
     ]
 
-    other = _report(
-        dimensions=_dimensions(property_class="authorization"), cpu=90
-    )
+    other = _report(dimensions=_dimensions(property_class="authorization"), cpu=90)
     not_cross_lane = FormalPlanningRolloutGate().evaluate(
         other,
         target_mode=RolloutMode.ENFORCEMENT,
@@ -330,9 +320,7 @@ def test_override_is_durable_expiring_and_exactly_lane_scoped(tmp_path) -> None:
 
 def test_override_cannot_promote_an_unavailable_lane() -> None:
     dimensions = _dimensions()
-    report = _report(
-        dimensions=dimensions, available=False, low_value=True, supported=0
-    )
+    report = _report(dimensions=dimensions, available=False, low_value=True, supported=0)
     override = FormalPlanningRolloutOverride.create(
         policy_id="formal-planning-rollout-v1",
         dimensions=dimensions,
@@ -411,9 +399,7 @@ def test_collector_is_initialized_bounded_and_rejects_duplicate_records() -> Non
     collector.record(_sample(BenchmarkMode.WARM))
     assert collector.report(generated_at=NOW)["sample_count"] == 2
     with pytest.raises(FormalPlanningMetricsError, match="bound"):
-        collector.record(
-            _sample(BenchmarkMode.COLD, sample_id="third")
-        )
+        collector.record(_sample(BenchmarkMode.COLD, sample_id="third"))
 
 
 def test_report_identity_and_private_field_boundaries_fail_closed() -> None:

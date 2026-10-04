@@ -93,9 +93,7 @@ _AUTH_ENV_NAMES = (
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", "disabled"})
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on", "enabled"})
 _INSTALL_LOCK = threading.Lock()
-_VERSION_RE = re.compile(
-    r"(?P<version>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)"
-)
+_VERSION_RE = re.compile(r"(?P<version>\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.]+)?)")
 
 LINUX_VARIANTS = frozenset({"standard", "vulkan", "musl"})
 WINDOWS_VARIANTS = frozenset({"standard", "cuda"})
@@ -224,9 +222,9 @@ def assess_goose_readiness(
     authenticated = goose_auth_available(environ=environ)
     installed = bool(install_result.available and install_result.executable)
     reason = install_result.reason or (
-        "ready" if installed and authenticated else (
-            "missing_auth" if installed else "not_installed"
-        )
+        "ready"
+        if installed and authenticated
+        else ("missing_auth" if installed else "not_installed")
     )
     if installed and not authenticated:
         reason = "missing_auth"
@@ -260,9 +258,7 @@ def load_release_manifest(
     try:
         raw = manifest_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise FileNotFoundError(
-            f"Goose release manifest not found: {manifest_path}"
-        ) from exc
+        raise FileNotFoundError(f"Goose release manifest not found: {manifest_path}") from exc
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -493,14 +489,8 @@ def managed_executable_path(
     environ: Optional[Mapping[str, str]] = None,
     managed_root: Optional[Union[str, Path]] = None,
 ) -> Path:
-    root = managed_install_root(
-        version=version, environ=environ, managed_root=managed_root
-    )
-    exe = (
-        GOOSE_EXECUTABLE_WINDOWS
-        if normalize_os(os_name) == "windows"
-        else GOOSE_EXECUTABLE
-    )
+    root = managed_install_root(version=version, environ=environ, managed_root=managed_root)
+    exe = GOOSE_EXECUTABLE_WINDOWS if normalize_os(os_name) == "windows" else GOOSE_EXECUTABLE
     return root / "bin" / exe
 
 
@@ -603,7 +593,9 @@ def discover_goose(
     # 2. Operator argv (first token if it is a path-like executable)
     if operator_argv:
         path = _normalize_candidate(operator_argv)
-        if path is not None and (path.is_absolute() or os.sep in str(path) or str(path).startswith(".")):
+        if path is not None and (
+            path.is_absolute() or os.sep in str(path) or str(path).startswith(".")
+        ):
             candidates.append(("operator_argv", path))
 
     # 3. PATH lookup
@@ -728,7 +720,11 @@ def _safe_extract_archive(
                     if not _is_safe_member_name(member, allowed_members):
                         # Allow only goose binary (+ optional .dll next to it on Windows)
                         base = Path(member.replace("\\", "/")).name
-                        if not (base.lower().endswith(".dll") and ".." not in member and not member.startswith("/")):
+                        if not (
+                            base.lower().endswith(".dll")
+                            and ".." not in member
+                            and not member.startswith("/")
+                        ):
                             raise ValueError(f"disallowed or unsafe archive member: {member}")
                     target = (destination / Path(member).name).resolve()
                     if not str(target).startswith(str(destination.resolve())):
@@ -804,9 +800,7 @@ def _atomic_replace_with_rollback(src: Path, dest: Path) -> None:
 def _process_install_lock(
     lock_path: Optional[Path] = None,
 ) -> Iterator[None]:
-    path = lock_path or (
-        Path(tempfile.gettempdir()) / "ipfs-accelerate-goose-install.lock"
-    )
+    path = lock_path or (Path(tempfile.gettempdir()) / "ipfs-accelerate-goose-install.lock")
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+", encoding="utf-8")
     try:
@@ -829,8 +823,7 @@ def _process_install_lock(
 
 def _asset_download_url(manifest: Mapping[str, Any], asset_name: str) -> str:
     base = str(
-        manifest.get("download_base_url")
-        or f"https://github.com/{DEFAULT_REPO}/releases/download"
+        manifest.get("download_base_url") or f"https://github.com/{DEFAULT_REPO}/releases/download"
     ).rstrip("/")
     tag = str(manifest.get("release_tag") or manifest.get("pinned_version") or "").strip()
     if not tag:
@@ -890,9 +883,7 @@ def install_goose_from_manifest(
             },
         )
 
-    asset = select_release_asset(
-        data, os_name=os_n, arch=arch_n, libc=libc_n, variant=variant_n
-    )
+    asset = select_release_asset(data, os_name=os_n, arch=arch_n, libc=libc_n, variant=variant_n)
     if asset is None:
         return GooseInstallResult(
             available=False,
@@ -925,8 +916,10 @@ def install_goose_from_manifest(
     )
     download_fn = _default_download if download is None else download
 
-    stage_root = Path(staging_dir) if staging_dir is not None else Path(
-        tempfile.mkdtemp(prefix="goose-install-")
+    stage_root = (
+        Path(staging_dir)
+        if staging_dir is not None
+        else Path(tempfile.mkdtemp(prefix="goose-install-"))
     )
     created_stage = staging_dir is None
     try:
@@ -947,7 +940,11 @@ def install_goose_from_manifest(
             )
         except (URLError, OSError, RuntimeError) as exc:
             message = str(exc).lower()
-            reason = "download_timeout" if "timed out" in message or "timeout" in message else "offline_or_download_failed"
+            reason = (
+                "download_timeout"
+                if "timed out" in message or "timeout" in message
+                else "offline_or_download_failed"
+            )
             return GooseInstallResult(
                 available=False,
                 method="download",
@@ -997,9 +994,7 @@ def install_goose_from_manifest(
             )
 
         try:
-            extracted = _safe_extract_archive(
-                archive_path, extract_dir, allowed_members=allowed
-            )
+            extracted = _safe_extract_archive(archive_path, extract_dir, allowed_members=allowed)
         except ValueError as exc:
             text = str(exc).lower()
             if "traversal" in text or "disallowed" in text or "unsafe" in text:

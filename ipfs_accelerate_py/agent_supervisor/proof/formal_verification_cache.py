@@ -76,9 +76,7 @@ FORMAL_VERIFICATION_FLIGHT_SCHEMA: Final = (
 FORMAL_VERIFICATION_ATTESTATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-verification-attestation-entry@1"
 )
-FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA: Final = (
-    FORMAL_VERIFICATION_ATTESTATION_SCHEMA
-)
+FORMAL_VERIFICATION_ATTESTATION_CACHE_SCHEMA: Final = FORMAL_VERIFICATION_ATTESTATION_SCHEMA
 DEFAULT_CACHE_TTL_SECONDS: Final = 24 * 60 * 60
 DEFAULT_LEASE_SECONDS: Final = 5 * 60
 DEFAULT_WAIT_TIMEOUT_SECONDS: Final = 10 * 60
@@ -179,11 +177,7 @@ def _sha256(value: Any) -> str:
 
 
 def _rfc3339_from_ms(value: int) -> str:
-    return (
-        datetime.fromtimestamp(value / 1000, tz=timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _timestamp_ms(value: str) -> int:
@@ -409,20 +403,14 @@ class DraftCacheKey:
                     value.get("repository_tree_id", value.get("tree")),
                 ),
             ),
-            vocabulary_digest=value.get(
-                "vocabulary_digest", value.get("vocabulary")
-            ),
+            vocabulary_digest=value.get("vocabulary_digest", value.get("vocabulary")),
             compiler_digest=value.get("compiler_digest", value.get("compiler")),
             model_route_digest=value.get(
                 "model_route_digest",
                 value.get("route_digest", value.get("model_route")),
             ),
-            model_version=value.get(
-                "model_version", value.get("model_route_version")
-            ),
-            assumptions_digest=value.get(
-                "assumptions_digest", value.get("assumptions")
-            ),
+            model_version=value.get("model_version", value.get("model_route_version")),
+            assumptions_digest=value.get("assumptions_digest", value.get("assumptions")),
             bounds_digest=value.get("bounds_digest", value.get("bounds")),
             policy_digest=value.get("policy_digest", value.get("policy")),
         )
@@ -435,13 +423,9 @@ def _one_identity(
     supplied = [value for value in values if value is not None]
     if not supplied:
         return None
-    canonical = canonical_json(
-        _identity_component(supplied[0], field_name=canonical_name)
-    )
+    canonical = canonical_json(_identity_component(supplied[0], field_name=canonical_name))
     for value in supplied[1:]:
-        if canonical_json(
-            _identity_component(value, field_name=canonical_name)
-        ) != canonical:
+        if canonical_json(_identity_component(value, field_name=canonical_name)) != canonical:
             raise ValueError(f"{canonical_name} aliases disagree")
     return supplied[0]
 
@@ -481,24 +465,16 @@ def build_draft_cache_key(
             repository_tree_id,
             tree,
         ),
-        vocabulary_digest=_one_identity(
-            "vocabulary_digest", vocabulary_digest, vocabulary
-        ),
-        compiler_digest=_one_identity(
-            "compiler_digest", compiler_digest, compiler
-        ),
+        vocabulary_digest=_one_identity("vocabulary_digest", vocabulary_digest, vocabulary),
+        compiler_digest=_one_identity("compiler_digest", compiler_digest, compiler),
         model_route_digest=_one_identity(
             "model_route_digest",
             model_route_digest,
             route_digest,
             model_route,
         ),
-        model_version=_one_identity(
-            "model_version", model_version, model_route_version
-        ),
-        assumptions_digest=_one_identity(
-            "assumptions_digest", assumptions_digest, assumptions
-        ),
+        model_version=_one_identity("model_version", model_version, model_route_version),
+        assumptions_digest=_one_identity("assumptions_digest", assumptions_digest, assumptions),
         bounds_digest=_one_identity("bounds_digest", bounds_digest, bounds),
         policy_digest=_one_identity("policy_digest", policy_digest, policy),
     )
@@ -516,12 +492,8 @@ class CacheRequirements:
     max_age_seconds: int | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "required_assurance", AssuranceLevel(self.required_assurance)
-        )
-        object.__setattr__(
-            self, "required_freshness", EvidenceFreshness(self.required_freshness)
-        )
+        object.__setattr__(self, "required_assurance", AssuranceLevel(self.required_assurance))
+        object.__setattr__(self, "required_freshness", EvidenceFreshness(self.required_freshness))
         if self.max_age_seconds is not None and (
             isinstance(self.max_age_seconds, bool)
             or not isinstance(self.max_age_seconds, int)
@@ -638,10 +610,7 @@ def _draft_claims_authority(value: Any) -> bool:
                 return True
             if name in _DRAFT_ASSURANCE_CLAIMS:
                 normalized = (
-                    str(getattr(item, "value", item) or "")
-                    .strip()
-                    .casefold()
-                    .replace("-", "_")
+                    str(getattr(item, "value", item) or "").strip().casefold().replace("-", "_")
                 )
                 if normalized not in _UNTRUSTED_CLAIM_VALUES:
                     return True
@@ -937,19 +906,11 @@ class CacheLookupResult:
 
     @property
     def attestation(self) -> PersistedAttestationRecord | None:
-        return (
-            self.attestation_entry.record
-            if self.attestation_entry is not None
-            else None
-        )
+        return self.attestation_entry.record if self.attestation_entry is not None else None
 
     @property
     def verification(self) -> AttestationVerification | None:
-        return (
-            self.attestation.verification
-            if self.attestation is not None
-            else None
-        )
+        return self.attestation.verification if self.attestation is not None else None
 
     @property
     def kernel_assurance(self) -> AssuranceLevel:
@@ -971,11 +932,7 @@ class CacheLookupResult:
 
     @property
     def actionable_reason(self) -> str:
-        return (
-            bounded_rejection_reason(self.reason_code)
-            if self.reason_code
-            else ""
-        )
+        return bounded_rejection_reason(self.reason_code) if self.reason_code else ""
 
 
 @dataclass(frozen=True)
@@ -994,11 +951,7 @@ class CacheStoreResult:
 
     @property
     def actionable_reason(self) -> str:
-        return (
-            bounded_rejection_reason(self.reason_code)
-            if self.reason_code
-            else ""
-        )
+        return bounded_rejection_reason(self.reason_code) if self.reason_code else ""
 
 
 @dataclass(frozen=True)
@@ -1030,11 +983,7 @@ class AttestationCacheLookupResult:
 
     @property
     def authoritative_assurance(self) -> AssuranceLevel:
-        return (
-            AssuranceLevel.ATTESTED
-            if self.hit and self.reproduced
-            else self.kernel_assurance
-        )
+        return AssuranceLevel.ATTESTED if self.hit and self.reproduced else self.kernel_assurance
 
     effective_assurance = authoritative_assurance
 
@@ -1044,11 +993,7 @@ class AttestationCacheLookupResult:
 
     @property
     def actionable_reason(self) -> str:
-        return (
-            bounded_rejection_reason(self.reason_code)
-            if self.reason_code
-            else ""
-        )
+        return bounded_rejection_reason(self.reason_code) if self.reason_code else ""
 
 
 @dataclass(frozen=True)
@@ -1067,11 +1012,7 @@ class AttestationCacheStoreResult:
 
     @property
     def actionable_reason(self) -> str:
-        return (
-            bounded_rejection_reason(self.reason_code)
-            if self.reason_code
-            else ""
-        )
+        return bounded_rejection_reason(self.reason_code) if self.reason_code else ""
 
 
 @dataclass(frozen=True)
@@ -1143,9 +1084,7 @@ def _contains_private_flight_material(value: Any) -> bool:
         for raw_key, item in value.items():
             key = str(raw_key).strip().lower().replace("-", "_")
             if any(
-                key == marker
-                or key.endswith("_" + marker)
-                or marker in key
+                key == marker or key.endswith("_" + marker) or marker in key
                 for marker in _PRIVATE_FLIGHT_FIELDS
             ):
                 return True
@@ -1190,9 +1129,7 @@ def _obligation_identifier(value: Any) -> str:
 def _premise_identifiers(values: Sequence[Any]) -> tuple[str, ...]:
     identifiers = []
     for value in values:
-        identifier = _component_identifier(
-            value, "premise_id", "content_id", "id"
-        )
+        identifier = _component_identifier(value, "premise_id", "content_id", "id")
         if not identifier and isinstance(value, str):
             identifier = value
         if identifier:
@@ -1208,9 +1145,8 @@ def _binding_reasons(key: ProofCacheKey, receipt: ProofReceipt) -> set[str]:
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
     expected_premises = _premise_identifiers(key.premises)
-    if (
-        len(expected_premises) != len(key.premises)
-        or expected_premises != tuple(sorted(receipt.premise_ids))
+    if len(expected_premises) != len(key.premises) or expected_premises != tuple(
+        sorted(receipt.premise_ids)
     ):
         reasons.add(CacheRejectionReason.BINDING_MISMATCH.value)
 
@@ -1271,8 +1207,7 @@ def _trust_reasons(
         reasons.add(CacheRejectionReason.PARTIAL_ENTRY.value)
 
     simulated_attestation = any(
-        evidence.kind is EvidenceKind.CRYPTOGRAPHIC_ATTESTATION
-        and evidence.simulated
+        evidence.kind is EvidenceKind.CRYPTOGRAPHIC_ATTESTATION and evidence.simulated
         for evidence in receipt.evidence
     )
     if simulated_attestation:
@@ -1316,9 +1251,7 @@ class FormalVerificationCache:
             or not isinstance(default_draft_ttl_seconds, int)
             or default_draft_ttl_seconds <= 0
         ):
-            raise ValueError(
-                "default_draft_ttl_seconds must be a positive integer or None"
-            )
+            raise ValueError("default_draft_ttl_seconds must be a positive integer or None")
         if (
             isinstance(max_draft_bytes, bool)
             or not isinstance(max_draft_bytes, int)
@@ -1326,9 +1259,7 @@ class FormalVerificationCache:
         ):
             raise ValueError("max_draft_bytes must be a positive integer")
         timeout_seconds = (
-            sqlite_timeout_seconds
-            if sqlite_timeout_seconds is not None
-            else duckdb_timeout_seconds
+            sqlite_timeout_seconds if sqlite_timeout_seconds is not None else duckdb_timeout_seconds
         )
         if timeout_seconds <= 0:
             raise ValueError("duckdb_timeout_seconds must be positive")
@@ -1340,9 +1271,7 @@ class FormalVerificationCache:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
         self.default_draft_ttl_seconds = int(
-            default_ttl_seconds
-            if default_draft_ttl_seconds is None
-            else default_draft_ttl_seconds
+            default_ttl_seconds if default_draft_ttl_seconds is None else default_draft_ttl_seconds
         )
         self.max_draft_bytes = int(max_draft_bytes)
         self._clock = clock
@@ -1441,14 +1370,8 @@ class FormalVerificationCache:
     def _coerce_key(self, key: ProofCacheKey | Mapping[str, Any]) -> ProofCacheKey:
         return key if isinstance(key, ProofCacheKey) else ProofCacheKey.from_dict(key)
 
-    def _coerce_draft_key(
-        self, key: DraftCacheKey | Mapping[str, Any]
-    ) -> DraftCacheKey:
-        return (
-            key
-            if isinstance(key, DraftCacheKey)
-            else DraftCacheKey.from_dict(key)
-        )
+    def _coerce_draft_key(self, key: DraftCacheKey | Mapping[str, Any]) -> DraftCacheKey:
+        return key if isinstance(key, DraftCacheKey) else DraftCacheKey.from_dict(key)
 
     def _coerce_coordination_key(
         self,
@@ -1500,9 +1423,7 @@ class FormalVerificationCache:
             return DraftCacheStoreResult(
                 False,
                 cache_key,
-                reason_codes=(
-                    CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,
-                ),
+                reason_codes=(CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,),
             )
         encoded_draft = canonical_json(normalized).encode("utf-8")
         if len(encoded_draft) > self.max_draft_bytes:
@@ -1511,11 +1432,7 @@ class FormalVerificationCache:
                 cache_key,
                 reason_codes=(CacheRejectionReason.DRAFT_TOO_LARGE.value,),
             )
-        ttl = (
-            self.default_draft_ttl_seconds
-            if ttl_seconds is None
-            else ttl_seconds
-        )
+        ttl = self.default_draft_ttl_seconds if ttl_seconds is None else ttl_seconds
         if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
             raise ValueError("ttl_seconds must be a positive integer")
         now = self._now_ms()
@@ -1609,9 +1526,7 @@ class FormalVerificationCache:
             or int(row["expires_at_ms"]) != entry.expires_at_ms
         )
         if _draft_binding_mismatch(key, entry.draft):
-            return None, (
-                CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,
-            )
+            return None, (CacheRejectionReason.DRAFT_BINDING_MISMATCH.value,)
         if poisoned:
             return None, (CacheRejectionReason.DRAFT_POISONED.value,)
         return entry, ()
@@ -1654,8 +1569,7 @@ class FormalVerificationCache:
             )
         now = self._now_ms()
         if now >= entry.expires_at_ms or (
-            max_age_seconds is not None
-            and now - entry.created_at_ms > max_age_seconds * 1000
+            max_age_seconds is not None and now - entry.created_at_ms > max_age_seconds * 1000
         ):
             return DraftCacheLookupResult(
                 CacheLookupStatus.REJECTED,
@@ -1672,9 +1586,7 @@ class FormalVerificationCache:
     ) -> Mapping[str, Any] | None:
         return self.lookup_draft(key, **requirements).draft
 
-    def delete_draft(
-        self, key: DraftCacheKey | Mapping[str, Any]
-    ) -> bool:
+    def delete_draft(self, key: DraftCacheKey | Mapping[str, Any]) -> bool:
         cache_key = self._coerce_draft_key(key)
         connection = self._connect()
         try:
@@ -1699,9 +1611,7 @@ class FormalVerificationCache:
         cache_key = self._coerce_key(key)
         try:
             typed_receipt = (
-                receipt
-                if isinstance(receipt, ProofReceipt)
-                else ProofReceipt.from_dict(receipt)
+                receipt if isinstance(receipt, ProofReceipt) else ProofReceipt.from_dict(receipt)
             )
         except (TypeError, ValueError, ContractValidationError):
             return CacheStoreResult(
@@ -1713,14 +1623,10 @@ class FormalVerificationCache:
             cache_key,
             typed_receipt,
             complete=complete,
-            requirements=CacheRequirements(
-                required_assurance=AssuranceLevel.KERNEL_VERIFIED
-            ),
+            requirements=CacheRequirements(required_assurance=AssuranceLevel.KERNEL_VERIFIED),
         )
         if reasons:
-            return CacheStoreResult(
-                False, cache_key, reason_codes=tuple(sorted(reasons))
-            )
+            return CacheStoreResult(False, cache_key, reason_codes=tuple(sorted(reasons)))
         ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
         if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
             raise ValueError("ttl_seconds must be a positive integer")
@@ -1745,8 +1651,7 @@ class FormalVerificationCache:
                 previous_entry, _ = self._decode_entry(cache_key, previous)
                 if (
                     previous_entry is None
-                    or previous_entry.receipt.receipt_id
-                    != typed_receipt.receipt_id
+                    or previous_entry.receipt.receipt_id != typed_receipt.receipt_id
                 ):
                     # A sidecar is bound to one immutable receipt identity.
                     # Replacing that receipt must atomically remove the old
@@ -1789,11 +1694,7 @@ class FormalVerificationCache:
     def put_attestation(
         self,
         key: ProofCacheKey | Mapping[str, Any],
-        attestation: (
-            AttestationVerification
-            | PersistedAttestationRecord
-            | Mapping[str, Any]
-        ),
+        attestation: (AttestationVerification | PersistedAttestationRecord | Mapping[str, Any]),
         *,
         receipt: ProofReceipt | Mapping[str, Any] | None = None,
         ttl_seconds: int | None = None,
@@ -1818,9 +1719,7 @@ class FormalVerificationCache:
             return AttestationCacheStoreResult(
                 False,
                 cache_key,
-                reason_codes=(
-                    CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
-                ),
+                reason_codes=(CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,),
             )
         if receipt is not None:
             try:
@@ -1833,17 +1732,13 @@ class FormalVerificationCache:
                 return AttestationCacheStoreResult(
                     False,
                     cache_key,
-                    reason_codes=(
-                        CacheRejectionReason.ATTESTATION_MALFORMED.value,
-                    ),
+                    reason_codes=(CacheRejectionReason.ATTESTATION_MALFORMED.value,),
                 )
             if supplied_receipt.receipt_id != base_receipt.receipt_id:
                 return AttestationCacheStoreResult(
                     False,
                     cache_key,
-                    reason_codes=(
-                        CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
-                    ),
+                    reason_codes=(CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,),
                 )
 
         now = self._now_ms()
@@ -1868,23 +1763,14 @@ class FormalVerificationCache:
                     record = PersistedAttestationRecord.from_dict(attestation)
                 else:
                     verification = AttestationVerification.from_dict(attestation)
-                    ttl = (
-                        self.default_ttl_seconds
-                        if ttl_seconds is None
-                        else ttl_seconds
-                    )
-                    if (
-                        isinstance(ttl, bool)
-                        or not isinstance(ttl, int)
-                        or ttl <= 0
-                    ):
+                    ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
+                    if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
                         raise ValueError("ttl_seconds must be a positive integer")
                     record = build_persisted_attestation_record(
                         base_receipt,
                         verification,
                         created_at=created_at or _rfc3339_from_ms(now),
-                        expires_at=expires_at
-                        or _rfc3339_from_ms(now + ttl * 1000),
+                        expires_at=expires_at or _rfc3339_from_ms(now + ttl * 1000),
                     )
             else:
                 raise AttestationValidationError("invalid attestation value")
@@ -1904,9 +1790,7 @@ class FormalVerificationCache:
             return AttestationCacheStoreResult(
                 False,
                 cache_key,
-                reason_codes=(
-                    CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
-                ),
+                reason_codes=(CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,),
             )
         try:
             record_expires_ms = _timestamp_ms(record.expires_at)
@@ -1955,8 +1839,7 @@ class FormalVerificationCache:
             )
             if (
                 current_parent is None
-                or current_parent.receipt.receipt_id
-                != record.proof_receipt_id
+                or current_parent.receipt.receipt_id != record.proof_receipt_id
                 or parent_reasons
                 or commit_now >= current_parent.expires_at_ms
                 or commit_now >= record_expires_ms
@@ -1965,9 +1848,7 @@ class FormalVerificationCache:
                 return AttestationCacheStoreResult(
                     False,
                     cache_key,
-                    reason_codes=(
-                        CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
-                    ),
+                    reason_codes=(CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,),
                 )
             connection.execute(
                 """
@@ -2106,12 +1987,9 @@ class FormalVerificationCache:
             return entry, (CacheRejectionReason.ATTESTATION_EXPIRED.value,)
         if (
             expected_backend_policy is not None
-            and entry.record.backend_policy.policy_id
-            != expected_backend_policy.policy_id
+            and entry.record.backend_policy.policy_id != expected_backend_policy.policy_id
         ):
-            return entry, (
-                CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,
-            )
+            return entry, (CacheRejectionReason.ATTESTATION_BINDING_MISMATCH.value,)
         return entry, ()
 
     def lookup_attestation(
@@ -2147,9 +2025,7 @@ class FormalVerificationCache:
             if row is None:
                 # There is no key object to return for a receipt-only miss.
                 # A deterministic lookup key cannot be invented safely.
-                raise KeyError(
-                    "no cached proof attestation for receipt %s" % receipt_id
-                )
+                raise KeyError("no cached proof attestation for receipt %s" % receipt_id)
             payload = _strict_json_loads(str(row["key_json"]))
             if not isinstance(payload, Mapping):
                 raise ValueError("cached proof key is malformed")
@@ -2176,11 +2052,7 @@ class FormalVerificationCache:
                 reason_codes=base.reason_codes,
             )
         try:
-            checked_at_ms = (
-                self._now_ms()
-                if checked_at is None
-                else _timestamp_ms(checked_at)
-            )
+            checked_at_ms = self._now_ms() if checked_at is None else _timestamp_ms(checked_at)
         except (TypeError, ValueError):
             raise ValueError("checked_at must be an RFC3339 timestamp") from None
         entry, reasons = self._attestation_for_receipt(
@@ -2189,9 +2061,7 @@ class FormalVerificationCache:
             now_ms=checked_at_ms,
             expected_backend_policy=expected_backend_policy,
         )
-        if entry is None and reasons == (
-            CacheRejectionReason.ATTESTATION_MISS.value,
-        ):
+        if entry is None and reasons == (CacheRejectionReason.ATTESTATION_MISS.value,):
             return AttestationCacheLookupResult(
                 CacheLookupStatus.MISS,
                 cache_key,
@@ -2222,9 +2092,7 @@ class FormalVerificationCache:
                     cache_key,
                     receipt=receipt,
                     entry=entry,
-                    reason_codes=(
-                        CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value,
-                    ),
+                    reason_codes=(CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value,),
                 )
             reproduced_ok = True
         return AttestationCacheLookupResult(
@@ -2346,9 +2214,7 @@ class FormalVerificationCache:
             reasons.add(CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value)
         attestation_entry: AttestationCacheEntry | None = None
         attestation_reasons: tuple[str, ...] = ()
-        base_blockers = reasons - {
-            CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
-        }
+        base_blockers = reasons - {CacheRejectionReason.INSUFFICIENT_ASSURANCE.value}
         if _include_attestation and not base_blockers:
             attestation_entry, attestation_reasons = self._attestation_for_receipt(
                 cache_key,
@@ -2356,9 +2222,7 @@ class FormalVerificationCache:
                 now_ms=now,
             )
             if attestation_entry is not None and not attestation_reasons:
-                replay_verifier = (
-                    attestation_verifier or self._attestation_verifier
-                )
+                replay_verifier = attestation_verifier or self._attestation_verifier
                 attestation_reproduced = False
                 if replay_verifier is not None:
                     reproduced = reproduce_attestation_verification(
@@ -2373,19 +2237,12 @@ class FormalVerificationCache:
                             CacheRejectionReason.ATTESTATION_VERIFICATION_FAILED.value,
                         )
                 elif requested.required_assurance is AssuranceLevel.ATTESTED:
-                    attestation_reasons = (
-                        CacheRejectionReason.ATTESTATION_REPLAY_REQUIRED.value,
-                    )
+                    attestation_reasons = (CacheRejectionReason.ATTESTATION_REPLAY_REQUIRED.value,)
                 if attestation_reproduced and assurance_satisfies(
                     AssuranceLevel.ATTESTED, requested.required_assurance
                 ):
-                    reasons.discard(
-                        CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
-                    )
-            if (
-                attestation_reasons
-                and requested.required_assurance is AssuranceLevel.ATTESTED
-            ):
+                    reasons.discard(CacheRejectionReason.INSUFFICIENT_ASSURANCE.value)
+            if attestation_reasons and requested.required_assurance is AssuranceLevel.ATTESTED:
                 reasons.update(attestation_reasons)
         if reasons:
             return CacheLookupResult(
@@ -2393,25 +2250,18 @@ class FormalVerificationCache:
                 cache_key,
                 entry=entry,
                 reason_codes=tuple(sorted(reasons)),
-                attestation_entry=(
-                    attestation_entry if not attestation_reasons else None
-                ),
+                attestation_entry=(attestation_entry if not attestation_reasons else None),
                 attestation_reproduced=False,
             )
         return CacheLookupResult(
             CacheLookupStatus.HIT,
             cache_key,
             entry=entry,
-            attestation_entry=(
-                attestation_entry if not attestation_reasons else None
-            ),
+            attestation_entry=(attestation_entry if not attestation_reasons else None),
             attestation_reproduced=bool(
                 attestation_entry
                 and not attestation_reasons
-                and (
-                    attestation_verifier is not None
-                    or self._attestation_verifier is not None
-                )
+                and (attestation_verifier is not None or self._attestation_verifier is not None)
             ),
         )
 
@@ -2450,9 +2300,7 @@ class FormalVerificationCache:
 
     delete_receipt = delete
 
-    def delete_attestation(
-        self, key: ProofCacheKey | Mapping[str, Any] | str
-    ) -> bool:
+    def delete_attestation(self, key: ProofCacheKey | Mapping[str, Any] | str) -> bool:
         """Delete only the optional sidecar, never the trusted proof receipt."""
 
         connection = self._connect()
@@ -2501,12 +2349,8 @@ class FormalVerificationCache:
                 "DELETE FROM proof_draft_cache_entries WHERE expires_at_ms<=?",
                 (now,),
             ).rowcount
-            connection.execute(
-                "DELETE FROM proof_flight_outcomes WHERE expires_at_ms<=?", (now,)
-            )
-            connection.execute(
-                "DELETE FROM proof_single_flights WHERE expires_at_ms<=?", (now,)
-            )
+            connection.execute("DELETE FROM proof_flight_outcomes WHERE expires_at_ms<=?", (now,))
+            connection.execute("DELETE FROM proof_single_flights WHERE expires_at_ms<=?", (now,))
             connection.commit()
             return first + drafts
         except BaseException:
@@ -2797,9 +2641,7 @@ class FormalVerificationCache:
                 if isinstance(error, Mapping)
                 else "single_flight_execution_failed"
             )
-            raise SingleFlightExecutionError(
-                bounded_rejection_reason(reason_code)
-            )
+            raise SingleFlightExecutionError(bounded_rejection_reason(reason_code))
         return True, payload.get("value")
 
     def single_flight(
@@ -2822,20 +2664,12 @@ class FormalVerificationCache:
 
         if not callable(execute):
             raise ValueError("execute must be callable")
-        if (
-            wait_timeout_seconds <= 0
-            or poll_interval_seconds <= 0
-            or outcome_ttl_seconds <= 0
-        ):
-            raise ValueError(
-                "wait timeout, poll interval, and outcome TTL must be positive"
-            )
+        if wait_timeout_seconds <= 0 or poll_interval_seconds <= 0 or outcome_ttl_seconds <= 0:
+            raise ValueError("wait timeout, poll interval, and outcome TTL must be positive")
         cache_key = self._coerce_coordination_key(key)
         deadline = time.monotonic() + wait_timeout_seconds
         while True:
-            lease = self.acquire_lease(
-                cache_key, owner_id=owner_id, lease_seconds=lease_seconds
-            )
+            lease = self.acquire_lease(cache_key, owner_id=owner_id, lease_seconds=lease_seconds)
             if lease.acquired:
                 heartbeat_stop = threading.Event()
                 heartbeat_failures: list[BaseException] = []
@@ -2844,9 +2678,7 @@ class FormalVerificationCache:
                     interval = max(0.1, lease_seconds / 3)
                     while not heartbeat_stop.wait(interval):
                         try:
-                            self.renew_lease(
-                                lease, lease_seconds=lease_seconds
-                            )
+                            self.renew_lease(lease, lease_seconds=lease_seconds)
                         except BaseException as exc:
                             heartbeat_failures.append(exc)
                             return
@@ -2906,9 +2738,7 @@ class FormalVerificationCache:
 
             observed_fence = lease.fencing_token
             while time.monotonic() < deadline:
-                found, value = self._read_outcome(
-                    cache_key.key_id, observed_fence
-                )
+                found, value = self._read_outcome(cache_key.key_id, observed_fence)
                 if found:
                     return value
                 connection = self._connect()
@@ -2930,9 +2760,7 @@ class FormalVerificationCache:
                     break
                 time.sleep(poll_interval_seconds)
             if time.monotonic() >= deadline:
-                raise SingleFlightTimeout(
-                    bounded_rejection_reason("single_flight_timeout")
-                )
+                raise SingleFlightTimeout(bounded_rejection_reason("single_flight_timeout"))
 
     execute_single_flight = single_flight
     run_single_flight = single_flight

@@ -366,9 +366,7 @@ def _client(
     policy = kwargs.pop("restart_policy", None) or ACPRestartPolicy(
         enabled=kwargs.pop("restart_enabled", True),
         max_restarts=bounds.max_restarts,
-        restart_on_unexpected_exit=kwargs.pop(
-            "restart_on_unexpected_exit", False
-        ),
+        restart_on_unexpected_exit=kwargs.pop("restart_on_unexpected_exit", False),
     )
     return GooseACPClient(
         str(exe),
@@ -398,9 +396,7 @@ def test_partial_frame_buffering() -> None:
     lines, residual = split_ndjson_buffer(b'{"a":1', max_line_bytes=1024)
     assert lines == []
     assert residual == b'{"a":1'
-    lines, residual = split_ndjson_buffer(
-        residual + b'}\n{"b":2}\n', max_line_bytes=1024
-    )
+    lines, residual = split_ndjson_buffer(residual + b'}\n{"b":2}\n', max_line_bytes=1024)
     assert len(lines) == 2
     assert residual == b""
     assert json.loads(lines[0])["a"] == 1
@@ -452,9 +448,7 @@ def test_start_with_explicit_executable_and_isolated_state_root(
         assert client.state is ACPClientState.STOPPED
 
 
-def test_rejects_work_before_initialize(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_rejects_work_before_initialize(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     with pytest.raises(ACPNotReadyError):
@@ -462,9 +456,7 @@ def test_rejects_work_before_initialize(
     client.stop()
 
 
-def test_clean_shutdown_clears_pending_and_sessions(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_clean_shutdown_clears_pending_and_sessions(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     client.start()
@@ -482,9 +474,7 @@ def test_clean_shutdown_clears_pending_and_sessions(
 # ---------------------------------------------------------------------------
 
 
-def test_session_prompt_and_event_correlation(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_session_prompt_and_event_correlation(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     client.start()
@@ -509,12 +499,8 @@ def test_session_prompt_and_event_correlation(
         client.stop()
 
 
-def test_concurrent_sessions_no_cross_leakage(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(slow_updates=3)
-    )
+def test_concurrent_sessions_no_cross_leakage(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(slow_updates=3))
     client = _client(exe, state_root)
     client.start()
     try:
@@ -546,9 +532,7 @@ def test_concurrent_sessions_no_cross_leakage(
         client.stop()
 
 
-def test_session_load_when_supported(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_session_load_when_supported(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     client.start()
@@ -561,9 +545,7 @@ def test_session_load_when_supported(
         client.stop()
 
 
-def test_session_bound_capacity(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_session_bound_capacity(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(
         exe,
@@ -580,12 +562,8 @@ def test_session_bound_capacity(
         client.stop()
 
 
-def test_unknown_response_id_dropped(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(unknown_id_noise=True)
-    )
+def test_unknown_response_id_dropped(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(unknown_id_noise=True))
     client = _client(exe, state_root)
     # Should still initialize successfully despite orphan response id.
     out = client.start()
@@ -598,24 +576,16 @@ def test_unknown_response_id_dropped(
 # ---------------------------------------------------------------------------
 
 
-def test_partial_frames_from_server(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(partial_frame=True)
-    )
+def test_partial_frames_from_server(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(partial_frame=True))
     client = _client(exe, state_root)
     out = client.start()
     assert out["success"] is True
     client.stop()
 
 
-def test_malformed_message_does_not_crash_client(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(malformed_once=True)
-    )
+def test_malformed_message_does_not_crash_client(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(malformed_once=True))
     client = _client(exe, state_root)
     out = client.start()
     assert out["success"] is True
@@ -630,12 +600,8 @@ def test_malformed_message_does_not_crash_client(
 # ---------------------------------------------------------------------------
 
 
-def test_cancellation_cleans_pending_state(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(hang_on_prompt=True)
-    )
+def test_cancellation_cleans_pending_state(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(hang_on_prompt=True))
     client = _client(
         exe,
         state_root,
@@ -666,9 +632,7 @@ def test_cancellation_cleans_pending_state(
         # Either cancelled stopReason or cancelled error.
         item = result_box[0]
         if isinstance(item, dict):
-            assert item.get("stop_reason") in {"cancelled", "end_turn"} or item.get(
-                "success"
-            )
+            assert item.get("stop_reason") in {"cancelled", "end_turn"} or item.get("success")
         # Pending cleared.
         assert client.get_session(sid) is not None
         sess = client.get_session(sid)
@@ -678,9 +642,7 @@ def test_cancellation_cleans_pending_state(
         client.stop()
 
 
-def test_session_close_cancels_and_frees_capacity(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_session_close_cancels_and_frees_capacity(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(
         exe,
@@ -704,9 +666,7 @@ def test_session_close_cancels_and_frees_capacity(
 # ---------------------------------------------------------------------------
 
 
-def test_crash_fails_with_uncertain_side_effect(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_crash_fails_with_uncertain_side_effect(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(
         fake_bin,
         script=_base_fake_acp_script(exit_after_init=False, crash_after_prompt=True),
@@ -735,13 +695,9 @@ def test_crash_fails_with_uncertain_side_effect(
         client.stop()
 
 
-def test_unexpected_exit_during_prompt_is_uncertain(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_unexpected_exit_during_prompt_is_uncertain(fake_bin: Path, state_root: Path) -> None:
     """Server exits immediately after initialize; in-flight path is uncertain."""
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(exit_after_init=True)
-    )
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(exit_after_init=True))
     client = _client(
         exe,
         state_root,
@@ -773,9 +729,7 @@ def test_unexpected_exit_during_prompt_is_uncertain(
         client.stop()
 
 
-def test_restart_does_not_replay_agent_work(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_restart_does_not_replay_agent_work(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(
         exe,
@@ -801,9 +755,7 @@ def test_restart_does_not_replay_agent_work(
         client.stop()
 
 
-def test_restart_exhaustion(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_restart_exhaustion(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(
         exe,
@@ -822,12 +774,8 @@ def test_restart_exhaustion(
         client.stop()
 
 
-def test_pending_request_backpressure(
-    fake_bin: Path, state_root: Path
-) -> None:
-    exe = _write_fake_acp(
-        fake_bin, script=_base_fake_acp_script(hang_on_prompt=True)
-    )
+def test_pending_request_backpressure(fake_bin: Path, state_root: Path) -> None:
+    exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script(hang_on_prompt=True))
     client = _client(
         exe,
         state_root,
@@ -870,9 +818,7 @@ def test_pending_request_backpressure(
         client.stop()
 
 
-def test_stream_prompt_events(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_stream_prompt_events(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     client.start()
@@ -887,9 +833,7 @@ def test_stream_prompt_events(
         client.stop()
 
 
-def test_create_factory_does_not_start_process(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_create_factory_does_not_start_process(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = create_goose_acp_client(str(exe), str(state_root))
     assert client.state is ACPClientState.CREATED
@@ -897,9 +841,7 @@ def test_create_factory_does_not_start_process(
     client.stop()
 
 
-def test_context_manager(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_context_manager(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     with _client(exe, state_root) as client:
         assert client.is_ready
@@ -908,9 +850,7 @@ def test_context_manager(
     assert client.state is ACPClientState.STOPPED
 
 
-def test_describe_exposes_bounds_and_no_auto_replay(
-    fake_bin: Path, state_root: Path
-) -> None:
+def test_describe_exposes_bounds_and_no_auto_replay(fake_bin: Path, state_root: Path) -> None:
     exe = _write_fake_acp(fake_bin, script=_base_fake_acp_script())
     client = _client(exe, state_root)
     client.start()

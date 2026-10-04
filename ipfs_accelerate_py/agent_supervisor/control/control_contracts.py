@@ -39,9 +39,7 @@ SCHEMA_VERSION = CONTROL_CONTRACT_VERSION
 CONTROL_CATALOG_VERSION = 2
 OPERATION_CATALOG_VERSION = CONTROL_CATALOG_VERSION
 
-OPERATION_CATALOG_V2_REQUIREMENT_ID: Final[str] = (
-    "294719425747343997526263348545558645762"
-)
+OPERATION_CATALOG_V2_REQUIREMENT_ID: Final[str] = "294719425747343997526263348545558645762"
 
 CONTROL_BOUNDS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/control-bounds@1"
 EXPECTED_EFFECT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/expected-effect@1"
@@ -50,32 +48,18 @@ IDEMPOTENCY_KEY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/idempotency-key@1"
 AUTHORIZATION_DECISION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-authorization-decision@1"
 )
-OPERATION_REQUEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/operation-request@1"
-)
+OPERATION_REQUEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/operation-request@1"
 OPERATION_ERROR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/operation-error@1"
-DRY_RUN_PREVIEW_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/dry-run-preview@1"
-)
+DRY_RUN_PREVIEW_SCHEMA = "ipfs_accelerate_py/agent-supervisor/dry-run-preview@1"
 OPERATION_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/operation-result@1"
-OPERATION_CAPABILITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/operation-capability@1"
-)
-CAPABILITY_REPORT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/capability-report@1"
-)
-CONTROL_TARGET_DESCRIPTOR_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-target-descriptor@2"
-)
-CONTROL_PAGINATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-pagination@2"
-)
+OPERATION_CAPABILITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/operation-capability@1"
+CAPABILITY_REPORT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/capability-report@1"
+CONTROL_TARGET_DESCRIPTOR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/control-target-descriptor@2"
+CONTROL_PAGINATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/control-pagination@2"
 CONTROL_OPERATION_DESCRIPTOR_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-operation-descriptor@2"
 )
-CONTROL_OPERATION_CATALOG_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2"
-)
+CONTROL_OPERATION_CATALOG_SCHEMA = "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2"
 CONTROL_CATALOG_NEGOTIATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-catalog-negotiation@2"
 )
@@ -106,16 +90,12 @@ CONTROL_DISCOVERY_SAFETY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-discovery-safety-evidence@1"
 )
 CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-discovery-completion-quorum-evidence@2"
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-completion-quorum-evidence@2"
 )
 CONTROL_DISCOVERY_COMPLETION_MEMBER_HEALTH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-discovery-completion-member-health@1"
+    "ipfs_accelerate_py/agent-supervisor/control-discovery-completion-member-health@1"
 )
-LIFECYCLE_COMMAND_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
-)
+LIFECYCLE_COMMAND_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lifecycle-command@1"
 CONTROL_SURFACE_PARITY_CASE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-parity-case@1"
 )
@@ -123,26 +103,20 @@ CONTROL_SURFACE_PARITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-surface-parity-evidence@2"
 )
 CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-surface-parity-completion-quorum-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-completion-quorum-evidence@1"
 )
 CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-surface-parity-completion-member-health@1"
+    "ipfs_accelerate_py/agent-supervisor/control-surface-parity-completion-member-health@1"
 )
-MUTATION_GUARD_REJECTION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@2"
-)
+MUTATION_GUARD_REJECTION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/mutation-guard-rejection@2"
 CONTROL_MUTATION_GUARD_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-guard-evidence@3"
 )
 CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-mutation-completion-quorum-evidence@2"
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-completion-quorum-evidence@2"
 )
 CONTROL_MUTATION_COMPLETION_MEMBER_HEALTH_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "control-mutation-completion-member-health@1"
+    "ipfs_accelerate_py/agent-supervisor/control-mutation-completion-member-health@1"
 )
 CONTROL_MUTATION_RUNTIME_STATE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/control-mutation-runtime-state@1"
@@ -154,30 +128,20 @@ MUTATION_GUARD_EXECUTION_OBSERVATION_SCHEMA = (
 # ASI-G070/ASI-G103: the requirement is emitted only by a validated
 # ControlSurfaceParityEvidence record.  Merely mentioning this opaque ID is
 # intentionally not completion evidence.
-CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = (
-    "031486194157679117987393491870400400279"
-)
+CONTROL_SURFACE_PARITY_REQUIREMENT_ID: Final[str] = "031486194157679117987393491870400400279"
 CONTROL_SURFACE_PARITY_OBJECTIVE_ID: Final[str] = "ASI-G103"
 CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION: Final[str] = "ASI-G103@asi-078"
-CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION: Final[str] = (
-    "asi-g103-objective-validation@1"
-)
+CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION: Final[str] = "asi-g103-objective-validation@1"
 CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
     "unified-control-surface-parity-completion@1"
 )
 CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS: Final[int] = 2
 CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     "The shared schema describes all operations",
-    (
-        "every CLI/MCP adapter decodes and dispatches the canonical request "
-        "directly"
-    ),
+    ("every CLI/MCP adapter decodes and dispatches the canonical request directly"),
     "canonical records are exactly equal to Python behavior",
     "bounded reads and watches cannot exceed contract limits",
-    (
-        "unsafe CLI defaults and unconfigured MCP mutation authority fail "
-        "closed"
-    ),
+    ("unsafe CLI defaults and unconfigured MCP mutation authority fail closed"),
     (
         "and the exact requirement ID appears only in a "
         "tree/objective/policy-bound parity evidence record that rejects any "
@@ -186,9 +150,7 @@ CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
 )
 UNIFIED_CONTROL_OBJECTIVE_ID: Final[str] = "ASI-G070"
 UNIFIED_CONTROL_OBJECTIVE_REVISION: Final[str] = "ASI-G070@asi-085"
-UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION: Final[str] = (
-    "asi-g070-objective-validation@1"
-)
+UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION: Final[str] = "asi-g070-objective-validation@1"
 UNIFIED_CONTROL_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
     "unified-control-parent-completion@1"
 )
@@ -206,8 +168,7 @@ UNIFIED_CONTROL_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
     "ASI-G105",
 )
 UNIFIED_CONTROL_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
-    "Shared operations have schema and behavior parity across Python, CLI, "
-    "and MCP",
+    "Shared operations have schema and behavior parity across Python, CLI, and MCP",
     "read operations are bounded",
     (
         "mutations require authorization, explicit roots, dry-run/preview, "
@@ -216,16 +177,10 @@ UNIFIED_CONTROL_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     "lifecycle state and errors are consistent",
     "tool discovery has no provider or process-start side effects",
 )
-CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = (
-    "184125100306462690646212311073240043804"
-)
+CONTROL_MUTATION_GUARD_REQUIREMENT_ID: Final[str] = "184125100306462690646212311073240043804"
 CONTROL_MUTATION_GUARD_OBJECTIVE_ID: Final[str] = "ASI-G104"
-CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION: Final[str] = (
-    "ASI-G104@asi-077"
-)
-CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION: Final[str] = (
-    "asi-g104-objective-validation@1"
-)
+CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION: Final[str] = "ASI-G104@asi-077"
+CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION: Final[str] = "asi-g104-objective-validation@1"
 CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
     "unified-control-mutation-completion@1"
 )
@@ -252,16 +207,10 @@ CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "matrix emits the exact requirement ID."
     ),
 )
-CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = (
-    "186773143401179107362964063059661378722"
-)
+CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID: Final[str] = "186773143401179107362964063059661378722"
 CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID: Final[str] = "ASI-G105"
-CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION: Final[str] = (
-    "ASI-G105@asi-076"
-)
-CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION: Final[str] = (
-    "asi-g105-objective-validation@1"
-)
+CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION: Final[str] = "ASI-G105@asi-076"
+CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION: Final[str] = "asi-g105-objective-validation@1"
 CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION: Final[str] = (
     "unified-control-discovery-completion@1"
 )
@@ -278,16 +227,11 @@ CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     ),
     "agent CLI discovery does not construct unrelated runtime state",
     "only tool execution can increment MCP service resolution",
-    (
-        "and only the complete current-tree three-surface evidence emits the "
-        "exact requirement ID."
-    ),
+    ("and only the complete current-tree three-surface evidence emits the exact requirement ID."),
 )
 # Compatibility spelling for callers which describe this boundary as
 # discovery isolation rather than discovery safety.
-CONTROL_DISCOVERY_ISOLATION_REQUIREMENT_ID: Final[str] = (
-    CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
-)
+CONTROL_DISCOVERY_ISOLATION_REQUIREMENT_ID: Final[str] = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
 
 ABSOLUTE_MAX_CONTROL_BYTES = 1_048_576
 ABSOLUTE_MAX_CONTROL_ITEMS = 4_096
@@ -353,14 +297,10 @@ class _ControlCanonicalContract(CanonicalContract):
         except (TypeError, json.JSONDecodeError) as exc:
             raise ControlContractError("control contract JSON is malformed") from exc
         if not isinstance(value, Mapping):
-            raise ControlContractError(
-                "control contract JSON must contain an object"
-            )
+            raise ControlContractError("control contract JSON must contain an object")
         decoder = getattr(cls, "from_dict", None)
         if decoder is None:
-            raise ControlContractError(
-                f"{cls.__name__} does not support from_dict"
-            )
+            raise ControlContractError(f"{cls.__name__} does not support from_dict")
         return decoder(value)
 
 
@@ -490,14 +430,12 @@ PROMPT_CONTROL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
 DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS: Final[frozenset[Operation]] = frozenset(
     {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW}
 )
-OPERATION_AUTHORITIES: Final[Mapping[Operation, OperationAuthority]] = (
-    MappingProxyType(
-        {
-            **{item: OperationAuthority.READ for item in READ_OPERATIONS},
-            **{item: OperationAuthority.PROPOSAL for item in PROPOSAL_OPERATIONS},
-            **{item: OperationAuthority.MUTATION for item in MUTATION_OPERATIONS},
-        }
-    )
+OPERATION_AUTHORITIES: Final[Mapping[Operation, OperationAuthority]] = MappingProxyType(
+    {
+        **{item: OperationAuthority.READ for item in READ_OPERATIONS},
+        **{item: OperationAuthority.PROPOSAL for item in PROPOSAL_OPERATIONS},
+        **{item: OperationAuthority.MUTATION for item in MUTATION_OPERATIONS},
+    }
 )
 
 
@@ -644,17 +582,13 @@ def _schema(payload: Mapping[str, Any], expected: str) -> None:
         raise ControlContractError("control contract payload must be an object")
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ControlContractError(
-            f"unsupported control schema {supplied!r}; expected {expected}"
-        )
+        raise ControlContractError(f"unsupported control schema {supplied!r}; expected {expected}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, CONTROL_CONTRACT_VERSION):
         raise ControlContractError("unsupported control contract version")
 
 
-def _reject_unknown(
-    payload: Mapping[str, Any], allowed: Iterable[str], noun: str
-) -> None:
+def _reject_unknown(payload: Mapping[str, Any], allowed: Iterable[str], noun: str) -> None:
     if set(payload).difference(allowed):
         raise ControlContractError(
             f"{noun} contains unsupported fields; rebuild its canonical payload"
@@ -709,9 +643,7 @@ def _strings(
         source: Any = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ControlContractError(f"{name} must be a sequence of strings")
@@ -724,9 +656,7 @@ def _strings(
 
 
 def _paths(values: Any, name: str) -> tuple[str, ...]:
-    return tuple(
-        sorted(_relative_path(item, name) for item in _strings(values, name))
-    )
+    return tuple(sorted(_relative_path(item, name) for item in _strings(values, name)))
 
 
 _PATH_KEYS: Final[frozenset[str]] = frozenset(
@@ -747,9 +677,7 @@ _PATH_KEYS: Final[frozenset[str]] = frozenset(
 )
 
 
-_PROMPT_CONTROL_PARAMETER_FIELDS: Final[
-    Mapping[Operation, frozenset[str]]
-] = MappingProxyType(
+_PROMPT_CONTROL_PARAMETER_FIELDS: Final[Mapping[Operation, frozenset[str]]] = MappingProxyType(
     {
         Operation.WORKFLOW_PREVIEW: frozenset(
             {
@@ -876,33 +804,20 @@ def _validate_prompt_control_parameters(
         raise ControlContractError("target must be an object")
 
     if operation is Operation.WORKFLOW_PREVIEW:
-        missing = {
-            name
-            for name in ("directory", "prompt_source")
-            if name not in parameters
-        }
+        missing = {name for name in ("directory", "prompt_source") if name not in parameters}
         if missing:
             raise ControlContractError(
-                "workflow_preview requires parameters: "
-                + ", ".join(sorted(missing))
+                "workflow_preview requires parameters: " + ", ".join(sorted(missing))
             )
         directory = parameters.get("directory")
         if directory is not None:
-            selected_directory = _text(directory, "directory").replace(
-                "\\", "/"
-            )
+            selected_directory = _text(directory, "directory").replace("\\", "/")
             if selected_directory.startswith("/"):
-                normalized_directory = _absolute_root(
-                    selected_directory, "directory"
-                )
+                normalized_directory = _absolute_root(selected_directory, "directory")
                 try:
-                    PurePosixPath(normalized_directory).relative_to(
-                        PurePosixPath(repository_root)
-                    )
+                    PurePosixPath(normalized_directory).relative_to(PurePosixPath(repository_root))
                 except ValueError as exc:
-                    raise PathEscapeError(
-                        "directory lies outside repository_root"
-                    ) from exc
+                    raise PathEscapeError("directory lies outside repository_root") from exc
             else:
                 _relative_path(selected_directory, "directory")
         source = parameters.get("prompt_source")
@@ -910,14 +825,10 @@ def _validate_prompt_control_parameters(
             if not isinstance(source, Mapping):
                 raise ControlContractError("prompt_source must be an object")
             if set(source).difference(_PROMPT_SOURCE_FIELDS):
-                raise ControlContractError(
-                    "prompt_source contains unsupported fields"
-                )
+                raise ControlContractError("prompt_source contains unsupported fields")
         output_mode = parameters.get("output_mode")
         if output_mode not in (None, "markdown", "duckdb", "both"):
-            raise ControlContractError(
-                "output_mode must be markdown, duckdb, or both"
-            )
+            raise ControlContractError("output_mode must be markdown, duckdb, or both")
 
     if operation is Operation.WORKFLOW_MATERIALIZE:
         required_preview_fields = {
@@ -930,21 +841,14 @@ def _validate_prompt_control_parameters(
             "preview_policy_id",
             "preview_policy_revision",
         }
-        missing = {
-            name
-            for name in required_preview_fields
-            if not parameters.get(name)
-        }
+        missing = {name for name in required_preview_fields if not parameters.get(name)}
         if missing:
             raise ControlContractError(
-                "workflow_materialize requires preview bindings: "
-                + ", ".join(sorted(missing))
+                "workflow_materialize requires preview bindings: " + ", ".join(sorted(missing))
             )
         output_mode = parameters.get("output_mode")
         if output_mode not in (None, "markdown", "duckdb", "both"):
-            raise ControlContractError(
-                "output_mode must be markdown, duckdb, or both"
-            )
+            raise ControlContractError("output_mode must be markdown, duckdb, or both")
 
     if operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
         required_incident_fields = {
@@ -957,15 +861,10 @@ def _validate_prompt_control_parameters(
             "incident_policy_id",
             "incident_policy_revision",
         }
-        missing = {
-            name
-            for name in required_incident_fields
-            if not parameters.get(name)
-        }
+        missing = {name for name in required_incident_fields if not parameters.get(name)}
         if missing:
             raise ControlContractError(
-                f"{operation.value} requires incident bindings: "
-                + ", ".join(sorted(missing))
+                f"{operation.value} requires incident bindings: " + ", ".join(sorted(missing))
             )
 
     if operation is Operation.RESCUE:
@@ -981,19 +880,14 @@ def _validate_prompt_control_parameters(
         }
         if missing:
             raise ControlContractError(
-                "rescue requires plan bindings: "
-                + ", ".join(sorted(missing))
+                "rescue requires plan bindings: " + ", ".join(sorted(missing))
             )
         plan_incident = parameters.get("rescue_plan_incident_cid")
         if plan_incident not in (None, parameters.get("incident_cid")):
-            raise AuthorizationBindingError(
-                "rescue plan belongs to a different incident"
-            )
+            raise AuthorizationBindingError("rescue plan belongs to a different incident")
         plan_tree = parameters.get("rescue_plan_tree_id")
         if plan_tree not in (None, tree_id):
-            raise AuthorizationBindingError(
-                "rescue plan belongs to a different tree"
-            )
+            raise AuthorizationBindingError("rescue plan belongs to a different tree")
 
     for name in (
         "action_index",
@@ -1004,10 +898,7 @@ def _validate_prompt_control_parameters(
     ):
         if name in parameters:
             _nonnegative(parameters[name], name)
-    if (
-        "max_actions" in parameters
-        and parameters["max_actions"] > 64
-    ):
+    if "max_actions" in parameters and parameters["max_actions"] > 64:
         raise ControlBoundsError("max_actions exceeds the catalog bound")
     if "allow_llm_fallback" in parameters and not isinstance(
         parameters["allow_llm_fallback"], bool
@@ -1061,14 +952,8 @@ def _freeze_value(
         if isinstance(item, int) and not isinstance(item, bool):
             return item
         if isinstance(item, str):
-            text = _text(
-                item, name, required=False, max_bytes=max_text_bytes
-            )
-            if (
-                check_paths
-                and key_name in _PATH_KEYS
-                and not key_name.endswith("paths")
-            ):
+            text = _text(item, name, required=False, max_bytes=max_text_bytes)
+            if check_paths and key_name in _PATH_KEYS and not key_name.endswith("paths"):
                 return _relative_path(text, key_name, required=False)
             return text
         if isinstance(item, Enum):
@@ -1078,9 +963,7 @@ def _freeze_value(
                 raise ControlContractError(f"{name} object keys must be strings")
             frozen: dict[str, Any] = {}
             for key in sorted(item):
-                normalized_key = _text(
-                    key, f"{name} key", max_bytes=max_text_bytes
-                )
+                normalized_key = _text(key, f"{name} key", max_bytes=max_text_bytes)
                 raw = item[key]
                 if (
                     check_paths
@@ -1088,24 +971,16 @@ def _freeze_value(
                     and normalized_key.endswith("paths")
                 ):
                     if isinstance(raw, str) or not isinstance(raw, Sequence):
-                        raise PathEscapeError(
-                            f"{normalized_key} must be a sequence of paths"
-                        )
+                        raise PathEscapeError(f"{normalized_key} must be a sequence of paths")
                     frozen[normalized_key] = tuple(
                         _relative_path(member, normalized_key) for member in raw
                     )
                 else:
-                    frozen[normalized_key] = visit(
-                        raw, depth + 1, normalized_key
-                    )
+                    frozen[normalized_key] = visit(raw, depth + 1, normalized_key)
             return MappingProxyType(frozen)
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return tuple(visit(member, depth + 1, key_name) for member in item)
-        raise ControlContractError(
-            f"{name} contains unsupported value type {type(item).__name__}"
-        )
+        raise ControlContractError(f"{name} contains unsupported value type {type(item).__name__}")
 
     return visit(value, 0)
 
@@ -1120,15 +995,11 @@ def _coerce_tuple(
 ) -> tuple[Any, ...]:
     if value is None:
         return ()
-    if isinstance(value, (str, bytes, bytearray, memoryview)) or not isinstance(
-        value, Sequence
-    ):
+    if isinstance(value, (str, bytes, bytearray, memoryview)) or not isinstance(value, Sequence):
         raise ControlContractError(f"{name} must be a sequence")
     if len(value) > maximum:
         raise ControlBoundsError(f"{name} exceeds its count bound")
-    return tuple(
-        item if isinstance(item, kind) else decoder(item) for item in value
-    )
+    return tuple(item if isinstance(item, kind) else decoder(item) for item in value)
 
 
 def _bounded_record(
@@ -1169,17 +1040,13 @@ class ControlBounds(_ControlCanonicalContract):
         if self.max_items > ABSOLUTE_MAX_CONTROL_ITEMS:
             raise ControlBoundsError("max_items exceeds the absolute limit")
         if self.max_serialized_bytes > ABSOLUTE_MAX_CONTROL_BYTES:
-            raise ControlBoundsError(
-                "max_serialized_bytes exceeds the absolute limit"
-            )
+            raise ControlBoundsError("max_serialized_bytes exceeds the absolute limit")
         if self.max_depth > ABSOLUTE_MAX_CONTROL_DEPTH:
             raise ControlBoundsError("max_depth exceeds the absolute limit")
         if self.max_text_bytes > ABSOLUTE_MAX_CONTROL_TEXT_BYTES:
             raise ControlBoundsError("max_text_bytes exceeds the absolute limit")
         if self.max_paths > self.max_items or self.max_effects > self.max_items:
-            raise ControlBoundsError(
-                "path and effect limits cannot exceed max_items"
-            )
+            raise ControlBoundsError("path and effect limits cannot exceed max_items")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1222,9 +1089,7 @@ class ControlBounds(_ControlCanonicalContract):
                 payload.get("max_bytes", defaults.max_serialized_bytes),
             ),
             max_depth=payload.get("max_depth", defaults.max_depth),
-            max_text_bytes=payload.get(
-                "max_text_bytes", defaults.max_text_bytes
-            ),
+            max_text_bytes=payload.get("max_text_bytes", defaults.max_text_bytes),
             max_paths=payload.get("max_paths", defaults.max_paths),
             max_effects=payload.get("max_effects", defaults.max_effects),
             timeout_ms=payload.get("timeout_ms", defaults.timeout_ms),
@@ -1299,12 +1164,11 @@ class ExpectedEffect(_ControlCanonicalContract):
             description=payload.get("description", ""),
         )
         claimed_authority = payload.get("authority")
-        if claimed_authority not in (None, "") and _authority(
-            claimed_authority
-        ) is not result.authority:
-            raise AuthorityViolationError(
-                "expected effect authority does not match its kind"
-            )
+        if (
+            claimed_authority not in (None, "")
+            and _authority(claimed_authority) is not result.authority
+        ):
+            raise AuthorityViolationError("expected effect authority does not match its kind")
         _identity(payload, result.content_id, "expected effect")
         return result
 
@@ -1330,18 +1194,14 @@ class EffectClaim(_ControlCanonicalContract):
         if not isinstance(self.applied, bool):
             raise ControlContractError("applied must be a boolean")
         if self.applied and self.kind.authority is not OperationAuthority.MUTATION:
-            raise AuthorityViolationError(
-                "only mutation effects may be claimed as applied"
-            )
+            raise AuthorityViolationError("only mutation effects may be claimed as applied")
         object.__setattr__(
             self,
             "receipt_id",
             _text(self.receipt_id, "receipt_id", required=False),
         )
         if self.applied and not self.receipt_id:
-            raise ControlContractError(
-                "an applied effect claim requires an audit receipt identity"
-            )
+            raise ControlContractError("an applied effect claim requires an audit receipt identity")
         _bounded_record(self, "effect claim")
 
     @property
@@ -1389,12 +1249,11 @@ class EffectClaim(_ControlCanonicalContract):
             receipt_id=payload.get("receipt_id", ""),
         )
         claimed_authority = payload.get("authority")
-        if claimed_authority not in (None, "") and _authority(
-            claimed_authority
-        ) is not result.authority:
-            raise AuthorityViolationError(
-                "effect claim authority does not match its kind"
-            )
+        if (
+            claimed_authority not in (None, "")
+            and _authority(claimed_authority) is not result.authority
+        ):
+            raise AuthorityViolationError("effect claim authority does not match its kind")
         _identity(payload, result.content_id, "effect claim")
         return result
 
@@ -1503,9 +1362,7 @@ class AuthorizationDecision(_ControlCanonicalContract):
             "repository_root",
             _absolute_root(self.repository_root, "repository_root"),
         )
-        object.__setattr__(
-            self, "state_root", _absolute_root(self.state_root, "state_root")
-        )
+        object.__setattr__(self, "state_root", _absolute_root(self.state_root, "state_root"))
         for name in (
             "repository_id",
             "tree_id",
@@ -1516,9 +1373,7 @@ class AuthorizationDecision(_ControlCanonicalContract):
             "caller",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "lease_id", _text(self.lease_id, "lease_id", required=False)
-        )
+        object.__setattr__(self, "lease_id", _text(self.lease_id, "lease_id", required=False))
         if self.fencing_epoch is not None:
             object.__setattr__(
                 self,
@@ -1531,8 +1386,7 @@ class AuthorizationDecision(_ControlCanonicalContract):
             _strings(
                 self.authorized_effect_ids,
                 "authorized_effect_ids",
-                required=self.verdict is AuthorizationVerdict.PERMIT
-                and self.operation.mutating,
+                required=self.verdict is AuthorizationVerdict.PERMIT and self.operation.mutating,
             ),
         )
         object.__setattr__(
@@ -1544,9 +1398,7 @@ class AuthorizationDecision(_ControlCanonicalContract):
                 required=self.verdict is AuthorizationVerdict.DENY,
             ),
         )
-        object.__setattr__(
-            self, "grant_ids", _strings(self.grant_ids, "grant_ids")
-        )
+        object.__setattr__(self, "grant_ids", _strings(self.grant_ids, "grant_ids"))
         object.__setattr__(
             self,
             "evaluated_at_ms",
@@ -1559,22 +1411,16 @@ class AuthorizationDecision(_ControlCanonicalContract):
                 _nonnegative(self.expires_at_ms, "expires_at_ms"),
             )
             if self.expires_at_ms <= self.evaluated_at_ms:
-                raise ControlContractError(
-                    "expires_at_ms must follow evaluated_at_ms"
-                )
+                raise ControlContractError("expires_at_ms must follow evaluated_at_ms")
         if self.verdict is AuthorizationVerdict.PERMIT:
             if self.granted_authority is None:
-                raise AuthorizationBindingError(
-                    "permit decisions require granted_authority"
-                )
+                raise AuthorizationBindingError("permit decisions require granted_authority")
             if not self.operation.authority.allows(self.granted_authority):
                 raise AuthorityViolationError(
                     "authorization grants more authority than the operation"
                 )
         elif self.granted_authority is not None:
-            raise AuthorizationBindingError(
-                "deny decisions must not grant authority"
-            )
+            raise AuthorizationBindingError("deny decisions must not grant authority")
         _bounded_record(self, "authorization decision")
 
     @property
@@ -1695,9 +1541,7 @@ class OperationRequest(_ControlCanonicalContract):
             "repository_root",
             _absolute_root(self.repository_root, "repository_root"),
         )
-        object.__setattr__(
-            self, "state_root", _absolute_root(self.state_root, "state_root")
-        )
+        object.__setattr__(self, "state_root", _absolute_root(self.state_root, "state_root"))
         for name in (
             "repository_id",
             "tree_id",
@@ -1737,24 +1581,15 @@ class OperationRequest(_ControlCanonicalContract):
         )
         for effect in effects:
             if not maximum_authority.allows(effect.authority):
-                raise AuthorityViolationError(
-                    "expected effect lies outside the request authority"
-                )
+                raise AuthorityViolationError("expected effect lies outside the request authority")
         if self.operation.mutating and not self.dry_run and not effects:
-            raise AuthorityViolationError(
-                "mutation requests must declare expected effects"
-            )
+            raise AuthorityViolationError("mutation requests must declare expected effects")
         if (
             self.operation.mutating
             and not self.dry_run
-            and not any(
-                effect.authority is OperationAuthority.MUTATION
-                for effect in effects
-            )
+            and not any(effect.authority is OperationAuthority.MUTATION for effect in effects)
         ):
-            raise AuthorityViolationError(
-                "mutation requests must declare a mutation effect"
-            )
+            raise AuthorityViolationError("mutation requests must declare a mutation effect")
         object.__setattr__(
             self,
             "expected_effects",
@@ -1783,9 +1618,7 @@ class OperationRequest(_ControlCanonicalContract):
         )
         if not isinstance(self.dry_run, bool):
             raise ControlContractError("dry_run must be a boolean")
-        object.__setattr__(
-            self, "lease_id", _text(self.lease_id, "lease_id", required=False)
-        )
+        object.__setattr__(self, "lease_id", _text(self.lease_id, "lease_id", required=False))
         if self.fencing_epoch is not None:
             object.__setattr__(
                 self,
@@ -1795,19 +1628,13 @@ class OperationRequest(_ControlCanonicalContract):
         idempotency = self.idempotency
         if idempotency is not None and not isinstance(idempotency, IdempotencyKey):
             if not isinstance(idempotency, Mapping):
-                raise ControlContractError(
-                    "idempotency must be an IdempotencyKey"
-                )
+                raise ControlContractError("idempotency must be an IdempotencyKey")
             idempotency = IdempotencyKey.from_dict(idempotency)
         object.__setattr__(self, "idempotency", idempotency)
         authorization = self.authorization
-        if authorization is not None and not isinstance(
-            authorization, AuthorizationDecision
-        ):
+        if authorization is not None and not isinstance(authorization, AuthorizationDecision):
             if not isinstance(authorization, Mapping):
-                raise ControlContractError(
-                    "authorization must be an AuthorizationDecision"
-                )
+                raise ControlContractError("authorization must be an AuthorizationDecision")
             authorization = AuthorizationDecision.from_dict(authorization)
         object.__setattr__(self, "authorization", authorization)
         if self.operation.mutating and not self.dry_run:
@@ -1818,9 +1645,7 @@ class OperationRequest(_ControlCanonicalContract):
             if authorization is not None:
                 self._validate_optional_authorization(authorization)
         if len(self.canonical_bytes()) > bounds.max_serialized_bytes:
-            raise ControlBoundsError(
-                "operation request exceeds its serialized-byte bound"
-            )
+            raise ControlBoundsError("operation request exceeds its serialized-byte bound")
 
     @property
     def authority(self) -> OperationAuthority:
@@ -1854,28 +1679,21 @@ class OperationRequest(_ControlCanonicalContract):
             key.objective_id,
         )
         if actual != expected:
-            raise MissingIdempotencyError(
-                "idempotency key scope does not match the request"
-            )
+            raise MissingIdempotencyError("idempotency key scope does not match the request")
 
     def _validate_mutation_bindings(self) -> None:
         if self.idempotency is None:
-            raise MissingIdempotencyError(
-                "mutation requests require an idempotency key"
-            )
+            raise MissingIdempotencyError("mutation requests require an idempotency key")
         self._validate_idempotency(self.idempotency)
         if not self.lease_id or self.fencing_epoch is None:
-            raise AuthorizationBindingError(
-                "mutation requests require lease_id and fencing_epoch"
-            )
+            raise AuthorizationBindingError("mutation requests require lease_id and fencing_epoch")
         decision = self.authorization
         if decision is None or not decision.permitted:
             raise AuthorizationBindingError(
                 "mutation requests require a permit authorization decision"
             )
-        if (
-            decision.granted_authority is None
-            or not decision.granted_authority.allows(OperationAuthority.MUTATION)
+        if decision.granted_authority is None or not decision.granted_authority.allows(
+            OperationAuthority.MUTATION
         ):
             raise AuthorizationBindingError(
                 "mutation authorization does not grant mutation authority"
@@ -1894,10 +1712,7 @@ class OperationRequest(_ControlCanonicalContract):
             "lease_id",
             "fencing_epoch",
         )
-        if any(
-            getattr(decision, name) != getattr(self, name)
-            for name in binding_names
-        ):
+        if any(getattr(decision, name) != getattr(self, name) for name in binding_names):
             raise AuthorizationBindingError(
                 "authorization decision binding does not match the request"
             )
@@ -1909,9 +1724,7 @@ class OperationRequest(_ControlCanonicalContract):
                 "every expected effect declared by the request"
             )
 
-    def _validate_optional_authorization(
-        self, decision: AuthorizationDecision
-    ) -> None:
+    def _validate_optional_authorization(self, decision: AuthorizationDecision) -> None:
         """Validate a supplied decision even when the operation does not need it."""
 
         if not decision.permitted or decision.granted_authority is None:
@@ -1930,38 +1743,22 @@ class OperationRequest(_ControlCanonicalContract):
             "policy_revision",
             "caller",
         )
-        if any(
-            getattr(decision, name) != getattr(self, name)
-            for name in binding_names
-        ):
+        if any(getattr(decision, name) != getattr(self, name) for name in binding_names):
             raise AuthorizationBindingError(
                 "authorization decision binding does not match the request"
             )
         if not decision.granted_authority.allows(self.effective_authority):
-            raise AuthorizationBindingError(
-                "authorization does not grant the request authority"
-            )
+            raise AuthorizationBindingError("authorization does not grant the request authority")
         if self.lease_id and decision.lease_id != self.lease_id:
-            raise AuthorizationBindingError(
-                "authorization lease does not match the request"
-            )
-        if (
-            self.fencing_epoch is not None
-            and decision.fencing_epoch != self.fencing_epoch
-        ):
+            raise AuthorizationBindingError("authorization lease does not match the request")
+        if self.fencing_epoch is not None and decision.fencing_epoch != self.fencing_epoch:
             raise AuthorizationBindingError(
                 "authorization fencing epoch does not match the request"
             )
         expected_ids = {item.effect_id for item in self.expected_effects}
         allowed_ids = set(decision.authorized_effect_ids)
-        if (
-            expected_ids
-            and "*" not in allowed_ids
-            and not expected_ids.issubset(allowed_ids)
-        ):
-            raise AuthorizationBindingError(
-                "authorization does not cover every expected effect"
-            )
+        if expected_ids and "*" not in allowed_ids and not expected_ids.issubset(allowed_ids):
+            raise AuthorizationBindingError("authorization does not cover every expected effect")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1979,17 +1776,11 @@ class OperationRequest(_ControlCanonicalContract):
             "policy_revision": self.policy_revision,
             "caller": self.caller,
             "bounds": self.bounds.to_record(),
-            "expected_effects": tuple(
-                item.to_record() for item in self.expected_effects
-            ),
+            "expected_effects": tuple(item.to_record() for item in self.expected_effects),
             "parameters": self.parameters,
             "dry_run": self.dry_run,
-            "idempotency": (
-                self.idempotency.to_record() if self.idempotency else None
-            ),
-            "authorization": (
-                self.authorization.to_record() if self.authorization else None
-            ),
+            "idempotency": (self.idempotency.to_record() if self.idempotency else None),
+            "authorization": (self.authorization.to_record() if self.authorization else None),
             "lease_id": self.lease_id,
             "fencing_epoch": self.fencing_epoch,
         }
@@ -2061,9 +1852,7 @@ class OperationRequest(_ControlCanonicalContract):
         ):
             claimed = payload.get(name)
             if claimed not in (None, "") and _authority(claimed) is not actual:
-                raise AuthorityViolationError(
-                    f"request {name} does not match its operation"
-                )
+                raise AuthorityViolationError(f"request {name} does not match its operation")
         _identity(payload, result.content_id, "operation request")
         return result
 
@@ -2082,14 +1871,10 @@ class OperationError(_ControlCanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "code", _enum(self.code, ErrorCode, "code"))
-        object.__setattr__(
-            self, "message", _text(self.message, "message", max_bytes=2_048)
-        )
+        object.__setattr__(self, "message", _text(self.message, "message", max_bytes=2_048))
         if not isinstance(self.retryable, bool):
             raise ControlContractError("retryable must be a boolean")
-        object.__setattr__(
-            self, "field", _text(self.field, "field", required=False)
-        )
+        object.__setattr__(self, "field", _text(self.field, "field", required=False))
         if not isinstance(self.details, Mapping):
             raise ControlContractError("error details must be a mapping")
         details = _freeze_value(
@@ -2178,9 +1963,7 @@ class DryRunPreview(_ControlCanonicalContract):
             ExpectedEffect.from_dict,
             "expected_effects",
         )
-        if any(
-            effect.authority is OperationAuthority.READ for effect in effects
-        ):
+        if any(effect.authority is OperationAuthority.READ for effect in effects):
             raise AuthorityViolationError(
                 "a dry-run preview cannot present observations as changes"
             )
@@ -2190,9 +1973,7 @@ class DryRunPreview(_ControlCanonicalContract):
             tuple(sorted(effects, key=lambda item: item.effect_id)),
         )
         object.__setattr__(self, "checks", _strings(self.checks, "checks"))
-        object.__setattr__(
-            self, "warnings", _strings(self.warnings, "warnings")
-        )
+        object.__setattr__(self, "warnings", _strings(self.warnings, "warnings"))
         if not isinstance(self.would_change, bool):
             raise ControlContractError("would_change must be a boolean")
         _bounded_record(self, "dry-run preview")
@@ -2212,9 +1993,7 @@ class DryRunPreview(_ControlCanonicalContract):
             "objective_id": self.objective_id,
             "policy_id": self.policy_id,
             "caller": self.caller,
-            "expected_effects": tuple(
-                item.to_record() for item in self.expected_effects
-            ),
+            "expected_effects": tuple(item.to_record() for item in self.expected_effects),
             "checks": self.checks,
             "warnings": self.warnings,
             "would_change": self.would_change,
@@ -2256,12 +2035,8 @@ class DryRunPreview(_ControlCanonicalContract):
             would_change=payload.get("would_change", False),
         )
         claimed = payload.get("authority")
-        if claimed not in (None, "") and _authority(
-            claimed
-        ) is not OperationAuthority.PROPOSAL:
-            raise AuthorityViolationError(
-                "dry-run previews have proposal authority only"
-            )
+        if claimed not in (None, "") and _authority(claimed) is not OperationAuthority.PROPOSAL:
+            raise AuthorityViolationError("dry-run previews have proposal authority only")
         _identity(payload, result.content_id, "dry-run preview")
         return result
 
@@ -2294,12 +2069,8 @@ class OperationResult(_ControlCanonicalContract):
         object.__setattr__(self, "operation", _operation(self.operation))
         object.__setattr__(self, "authority", _authority(self.authority))
         if not self.operation.authority.allows(self.authority):
-            raise AuthorityViolationError(
-                "result authority lies outside the operation authority"
-            )
-        object.__setattr__(
-            self, "status", _enum(self.status, OperationStatus, "status")
-        )
+            raise AuthorityViolationError("result authority lies outside the operation authority")
+        object.__setattr__(self, "status", _enum(self.status, OperationStatus, "status"))
         for name in (
             "repository_id",
             "tree_id",
@@ -2327,9 +2098,7 @@ class OperationResult(_ControlCanonicalContract):
                 max_text_bytes=bounds.max_text_bytes,
             ),
         )
-        effects = _coerce_tuple(
-            self.effects, EffectClaim, EffectClaim.from_dict, "effects"
-        )
+        effects = _coerce_tuple(self.effects, EffectClaim, EffectClaim.from_dict, "effects")
         if len(effects) > bounds.max_effects:
             raise ControlBoundsError("result exceeds its effect-count bound")
         if sum(len(item.paths) for item in effects) > bounds.max_paths:
@@ -2339,16 +2108,10 @@ class OperationResult(_ControlCanonicalContract):
             raise ControlContractError("result effect IDs must be unique")
         for effect in effects:
             if not self.authority.allows(effect.authority):
-                raise AuthorityViolationError(
-                    "result effect claim lies outside result authority"
-                )
+                raise AuthorityViolationError("result effect claim lies outside result authority")
             if effect.applied and self.authority is not OperationAuthority.MUTATION:
-                raise AuthorityViolationError(
-                    "non-mutation results cannot claim applied effects"
-                )
-        object.__setattr__(
-            self, "effects", tuple(sorted(effects, key=lambda item: item.effect_id))
-        )
+                raise AuthorityViolationError("non-mutation results cannot claim applied effects")
+        object.__setattr__(self, "effects", tuple(sorted(effects, key=lambda item: item.effect_id)))
         error = self.error
         if error is not None and not isinstance(error, OperationError):
             if not isinstance(error, Mapping):
@@ -2371,9 +2134,7 @@ class OperationResult(_ControlCanonicalContract):
                 or preview.request_id != self.request_id
                 or preview.operation is not self.operation
             ):
-                raise AuthorityViolationError(
-                    "preview does not match the proposal result"
-                )
+                raise AuthorityViolationError("preview does not match the proposal result")
         for name in ("idempotency_key", "audit_receipt_id"):
             object.__setattr__(
                 self,
@@ -2381,20 +2142,11 @@ class OperationResult(_ControlCanonicalContract):
                 _text(getattr(self, name), name, required=False),
             )
         if any(effect.applied for effect in effects) and not self.audit_receipt_id:
-            raise ControlContractError(
-                "applied mutation results require an audit receipt"
-            )
-        if any(
-            effect.applied and effect.receipt_id != self.audit_receipt_id
-            for effect in effects
-        ):
-            raise ControlContractError(
-                "applied effect receipt must match the result audit receipt"
-            )
+            raise ControlContractError("applied mutation results require an audit receipt")
+        if any(effect.applied and effect.receipt_id != self.audit_receipt_id for effect in effects):
+            raise ControlContractError("applied effect receipt must match the result audit receipt")
         if len(self.canonical_bytes()) > bounds.max_serialized_bytes:
-            raise ControlBoundsError(
-                "operation result exceeds its serialized-byte bound"
-            )
+            raise ControlBoundsError("operation result exceeds its serialized-byte bound")
 
     @property
     def result_id(self) -> str:
@@ -2426,21 +2178,15 @@ class OperationResult(_ControlCanonicalContract):
         for claim in self.effects:
             declared = expected.get(claim.effect_id)
             if declared is None:
-                raise AuthorityViolationError(
-                    "result claims an effect not declared by the request"
-                )
+                raise AuthorityViolationError("result claims an effect not declared by the request")
             if (
                 claim.kind is not declared.kind
                 or claim.resource != declared.resource
                 or claim.paths != declared.paths
             ):
-                raise AuthorityViolationError(
-                    "result effect claim exceeds its declared shape"
-                )
+                raise AuthorityViolationError("result effect claim exceeds its declared shape")
         if request.dry_run and any(item.applied for item in self.effects):
-            raise AuthorityViolationError(
-                "dry-run results cannot claim applied effects"
-            )
+            raise AuthorityViolationError("dry-run results cannot claim applied effects")
         if request.operation.mutating and not request.dry_run:
             if self.idempotency_key != request.idempotency_key:
                 raise AuthorityViolationError(
@@ -2533,15 +2279,11 @@ class OperationCapability(_ControlCanonicalContract):
         object.__setattr__(self, "operation", _operation(self.operation))
         object.__setattr__(self, "authority", _authority(self.authority))
         if self.authority is not self.operation.authority:
-            raise AuthorityViolationError(
-                "capability authority must match the operation registry"
-            )
+            raise AuthorityViolationError("capability authority must match the operation registry")
         if not isinstance(self.bounds, ControlBounds):
             if not isinstance(self.bounds, Mapping):
                 raise ControlContractError("bounds must be ControlBounds")
-            object.__setattr__(
-                self, "bounds", ControlBounds.from_dict(self.bounds)
-            )
+            object.__setattr__(self, "bounds", ControlBounds.from_dict(self.bounds))
         for name in (
             "supports_dry_run",
             "requires_idempotency",
@@ -2551,18 +2293,13 @@ class OperationCapability(_ControlCanonicalContract):
                 raise ControlContractError(f"{name} must be a boolean")
         if self.operation.mutating:
             if not (
-                self.supports_dry_run
-                and self.requires_idempotency
-                and self.requires_authorization
+                self.supports_dry_run and self.requires_idempotency and self.requires_authorization
             ):
                 raise ControlContractError(
-                    "mutation capabilities must advertise dry-run, "
-                    "idempotency, and authorization"
+                    "mutation capabilities must advertise dry-run, idempotency, and authorization"
                 )
         elif self.requires_idempotency:
-            raise ControlContractError(
-                "non-mutation capabilities must not require idempotency"
-            )
+            raise ControlContractError("non-mutation capabilities must not require idempotency")
         _bounded_record(self, "operation capability")
 
     def _payload(self) -> dict[str, Any]:
@@ -2598,9 +2335,7 @@ class OperationCapability(_ControlCanonicalContract):
             bounds=payload.get("bounds") or ControlBounds(),
             supports_dry_run=payload.get("supports_dry_run", False),
             requires_idempotency=payload.get("requires_idempotency", False),
-            requires_authorization=payload.get(
-                "requires_authorization", False
-            ),
+            requires_authorization=payload.get("requires_authorization", False),
         )
         _identity(payload, result.content_id, "operation capability")
         return result
@@ -2634,21 +2369,14 @@ class CapabilityReport(_ControlCanonicalContract):
         )
         operations = [item.operation for item in capabilities]
         if len(operations) != len(set(operations)):
-            raise ControlContractError(
-                "capability report contains duplicate operations"
-            )
+            raise ControlContractError("capability report contains duplicate operations")
         object.__setattr__(
             self,
             "capabilities",
             tuple(sorted(capabilities, key=lambda item: item.operation.value)),
         )
         versions = tuple(
-            sorted(
-                {
-                    _positive(item, "contract version")
-                    for item in self.contract_versions
-                }
-            )
+            sorted({_positive(item, "contract version") for item in self.contract_versions})
         )
         if not versions:
             raise ControlContractError("contract_versions must not be empty")
@@ -2666,16 +2394,10 @@ class CapabilityReport(_ControlCanonicalContract):
         selected = _operation(operation)
         return selected in self.supported_operations
 
-    def capability_for(
-        self, operation: Operation | str
-    ) -> OperationCapability | None:
+    def capability_for(self, operation: Operation | str) -> OperationCapability | None:
         selected = _operation(operation)
         return next(
-            (
-                capability
-                for capability in self.capabilities
-                if capability.operation is selected
-            ),
+            (capability for capability in self.capabilities if capability.operation is selected),
             None,
         )
 
@@ -2684,9 +2406,7 @@ class CapabilityReport(_ControlCanonicalContract):
             "contract_version": CONTROL_CONTRACT_VERSION,
             "service_id": self.service_id,
             "service_version": self.service_version,
-            "capabilities": tuple(
-                item.to_record() for item in self.capabilities
-            ),
+            "capabilities": tuple(item.to_record() for item in self.capabilities),
             "contract_versions": self.contract_versions,
             "optional_providers_loaded": self.optional_providers_loaded,
             "processes_started": self.processes_started,
@@ -2712,12 +2432,8 @@ class CapabilityReport(_ControlCanonicalContract):
             service_id=payload.get("service_id", ""),
             service_version=payload.get("service_version", ""),
             capabilities=payload.get("capabilities", ()),
-            contract_versions=payload.get(
-                "contract_versions", (CONTROL_CONTRACT_VERSION,)
-            ),
-            optional_providers_loaded=payload.get(
-                "optional_providers_loaded", False
-            ),
+            contract_versions=payload.get("contract_versions", (CONTROL_CONTRACT_VERSION,)),
+            optional_providers_loaded=payload.get("optional_providers_loaded", False),
             processes_started=payload.get("processes_started", False),
         )
         _identity(payload, result.content_id, "capability report")
@@ -2778,9 +2494,7 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
     allowed_roots: tuple[ControlRoot, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ControlTargetKind, "target kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ControlTargetKind, "target kind"))
         selectors = _strings(
             self.required_selectors,
             "required_selectors",
@@ -2807,30 +2521,22 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
             }
         )
         if not set(selectors).issubset(allowed_selector_names):
-            raise ControlContractError(
-                "target descriptor contains an unknown selector"
-            )
+            raise ControlContractError("target descriptor contains an unknown selector")
         object.__setattr__(self, "required_selectors", selectors)
         try:
             roots = tuple(
                 sorted(
                     {
-                        item
-                        if isinstance(item, ControlRoot)
-                        else ControlRoot(str(item))
+                        item if isinstance(item, ControlRoot) else ControlRoot(str(item))
                         for item in self.allowed_roots
                     },
                     key=lambda item: item.value,
                 )
             )
         except (TypeError, ValueError) as exc:
-            raise ControlContractError(
-                "allowed_roots contains an unknown root"
-            ) from exc
+            raise ControlContractError("allowed_roots contains an unknown root") from exc
         if not roots:
-            raise ControlContractError(
-                "target descriptor must declare at least one allowed root"
-            )
+            raise ControlContractError("target descriptor must declare at least one allowed root")
         object.__setattr__(self, "allowed_roots", roots)
         _bounded_record(self, "control target descriptor")
 
@@ -2848,9 +2554,7 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlTargetDescriptor":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlTargetDescriptor":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -2866,12 +2570,8 @@ class ControlTargetDescriptor(_ControlCanonicalContract):
             },
             "control target descriptor",
         )
-        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
-            CONTROL_CATALOG_VERSION
-        ):
-            raise UnsupportedCatalogVersionError(
-                "unsupported target descriptor catalog version"
-            )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (CONTROL_CATALOG_VERSION):
+            raise UnsupportedCatalogVersionError("unsupported target descriptor catalog version")
         result = cls(
             kind=payload.get("kind", ""),
             required_selectors=payload.get("required_selectors", ()),
@@ -2893,19 +2593,11 @@ class ControlPagination(_ControlCanonicalContract):
     cursor_schema: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, PaginationKind, "pagination kind")
-        )
-        object.__setattr__(
-            self, "default_limit", _positive(self.default_limit, "default_limit")
-        )
-        object.__setattr__(
-            self, "max_limit", _positive(self.max_limit, "max_limit")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, PaginationKind, "pagination kind"))
+        object.__setattr__(self, "default_limit", _positive(self.default_limit, "default_limit"))
+        object.__setattr__(self, "max_limit", _positive(self.max_limit, "max_limit"))
         if self.default_limit > self.max_limit:
-            raise ControlBoundsError(
-                "pagination default_limit cannot exceed max_limit"
-            )
+            raise ControlBoundsError("pagination default_limit cannot exceed max_limit")
         object.__setattr__(
             self,
             "cursor_schema",
@@ -2921,14 +2613,10 @@ class ControlPagination(_ControlCanonicalContract):
                     "non-paginated operations cannot declare a cursor schema"
                 )
             if self.default_limit != 1 or self.max_limit != 1:
-                raise ControlBoundsError(
-                    "non-paginated operations must use a one-item bound"
-                )
+                raise ControlBoundsError("non-paginated operations must use a one-item bound")
         elif self.kind is PaginationKind.EVENT_CURSOR:
             if self.cursor_schema != EVENT_CURSOR_SCHEMA:
-                raise ControlContractError(
-                    "event pagination must use the canonical event cursor"
-                )
+                raise ControlContractError("event pagination must use the canonical event cursor")
         _bounded_record(self, "control pagination")
 
     @property
@@ -2971,12 +2659,8 @@ class ControlPagination(_ControlCanonicalContract):
             },
             "control pagination",
         )
-        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
-            CONTROL_CATALOG_VERSION
-        ):
-            raise UnsupportedCatalogVersionError(
-                "unsupported pagination catalog version"
-            )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (CONTROL_CATALOG_VERSION):
+            raise UnsupportedCatalogVersionError("unsupported pagination catalog version")
         result = cls(
             kind=payload.get("kind", ""),
             default_limit=payload.get("default_limit", 0),
@@ -3007,9 +2691,7 @@ class EventCursor(_ControlCanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stream_id", _text(self.stream_id, "stream_id"))
-        object.__setattr__(
-            self, "position", _nonnegative(self.position, "position")
-        )
+        object.__setattr__(self, "position", _nonnegative(self.position, "position"))
         object.__setattr__(
             self,
             "last_event_id",
@@ -3022,23 +2704,16 @@ class EventCursor(_ControlCanonicalContract):
         )
         if self.catalog_version != CONTROL_CATALOG_VERSION:
             raise UnsupportedCatalogVersionError(
-                f"unsupported event cursor catalog version "
-                f"{self.catalog_version!r}"
+                f"unsupported event cursor catalog version {self.catalog_version!r}"
             )
         if self.position == 0 and self.last_event_id:
-            raise EventCursorError(
-                "an initial event cursor cannot name a last event"
-            )
+            raise EventCursorError("an initial event cursor cannot name a last event")
         if self.position > 0 and not self.last_event_id:
-            raise EventCursorError(
-                "a non-initial event cursor must name its last event"
-            )
+            raise EventCursorError("a non-initial event cursor must name its last event")
         _bounded_record(self, "event cursor", maximum=16_384)
 
     @classmethod
-    def initial(
-        cls, stream_id: str, *, snapshot_id: str = ""
-    ) -> "EventCursor":
+    def initial(cls, stream_id: str, *, snapshot_id: str = "") -> "EventCursor":
         return cls(stream_id=stream_id, snapshot_id=snapshot_id)
 
     @property
@@ -3058,14 +2733,10 @@ class EventCursor(_ControlCanonicalContract):
     ) -> "EventCursor":
         selected = _nonnegative(position, "position")
         if selected <= self.position:
-            raise CursorReplayError(
-                "event cursor advancement must be strictly monotonic"
-            )
+            raise CursorReplayError("event cursor advancement must be strictly monotonic")
         next_snapshot = self.snapshot_id if snapshot_id is None else snapshot_id
         if self.snapshot_id and next_snapshot != self.snapshot_id:
-            raise CursorReplayError(
-                "event cursor snapshot binding cannot change during replay"
-            )
+            raise CursorReplayError("event cursor snapshot binding cannot change during replay")
         return EventCursor(
             stream_id=self.stream_id,
             position=selected,
@@ -3083,30 +2754,20 @@ class EventCursor(_ControlCanonicalContract):
         snapshot_id: str = "",
     ) -> None:
         if _text(stream_id, "stream_id") != self.stream_id:
-            raise CursorReplayError(
-                "event cursor belongs to a different stream"
-            )
+            raise CursorReplayError("event cursor belongs to a different stream")
         earliest = _nonnegative(earliest_position, "earliest_position")
         latest = _nonnegative(latest_position, "latest_position")
         if earliest > latest:
-            raise EventCursorError(
-                "earliest event position cannot exceed latest position"
-            )
+            raise EventCursorError("earliest event position cannot exceed latest position")
         # An initial position is replayable even when the first retained event
         # is position one.  Any later cursor older than the retained prefix is
         # expired.
         if self.position and self.position < max(0, earliest - 1):
-            raise CursorReplayError(
-                "event cursor predates the retained replay window"
-            )
+            raise CursorReplayError("event cursor predates the retained replay window")
         if self.position > latest:
-            raise CursorReplayError(
-                "event cursor is ahead of the event stream"
-            )
+            raise CursorReplayError("event cursor is ahead of the event stream")
         if self.snapshot_id and snapshot_id and self.snapshot_id != snapshot_id:
-            raise CursorReplayError(
-                "event cursor snapshot does not match the event stream"
-            )
+            raise CursorReplayError("event cursor snapshot does not match the event stream")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -3121,9 +2782,9 @@ class EventCursor(_ControlCanonicalContract):
     def to_token(self) -> str:
         """Encode a bounded, transport-neutral cursor with its content ID."""
 
-        encoded = base64.urlsafe_b64encode(
-            canonical_control_json_bytes(self.to_record())
-        ).rstrip(b"=")
+        encoded = base64.urlsafe_b64encode(canonical_control_json_bytes(self.to_record())).rstrip(
+            b"="
+        )
         return encoded.decode("ascii")
 
     encode = to_token
@@ -3178,9 +2839,7 @@ class EventCursor(_ControlCanonicalContract):
             position=payload.get("position", 0),
             last_event_id=payload.get("last_event_id", ""),
             snapshot_id=payload.get("snapshot_id", ""),
-            catalog_version=payload.get(
-                "catalog_version", CONTROL_CATALOG_VERSION
-            ),
+            catalog_version=payload.get("catalog_version", CONTROL_CATALOG_VERSION),
         )
         try:
             _identity(payload, result.content_id, "event cursor")
@@ -3219,12 +2878,8 @@ class EventPage(_ControlCanonicalContract):
         object.__setattr__(self, "events", tuple(frozen_events))
         if not isinstance(self.next_cursor, EventCursor):
             if not isinstance(self.next_cursor, Mapping):
-                raise EventCursorError(
-                    "next_cursor must be an EventCursor"
-                )
-            object.__setattr__(
-                self, "next_cursor", EventCursor.from_dict(self.next_cursor)
-            )
+                raise EventCursorError("next_cursor must be an EventCursor")
+            object.__setattr__(self, "next_cursor", EventCursor.from_dict(self.next_cursor))
         if not isinstance(self.has_more, bool):
             raise EventCursorError("has_more must be a boolean")
         _bounded_record(self, "event page")
@@ -3263,12 +2918,8 @@ class EventPage(_ControlCanonicalContract):
             },
             "event page",
         )
-        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
-            CONTROL_CATALOG_VERSION
-        ):
-            raise UnsupportedCatalogVersionError(
-                "unsupported event page catalog version"
-            )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (CONTROL_CATALOG_VERSION):
+            raise UnsupportedCatalogVersionError("unsupported event page catalog version")
         result = cls(
             events=payload.get("events", ()),
             next_cursor=payload.get("next_cursor", {}),
@@ -3320,23 +2971,15 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
             current = getattr(self, name)
             if not isinstance(current, kind):
                 if not isinstance(current, Mapping):
-                    raise ControlContractError(
-                        f"{name} must be a {kind.__name__}"
-                    )
+                    raise ControlContractError(f"{name} must be a {kind.__name__}")
                 object.__setattr__(self, name, decoder(current))
         if self.pagination.max_limit > self.bounds.max_items:
-            raise ControlBoundsError(
-                "pagination maximum exceeds operation max_items"
-            )
+            raise ControlBoundsError("pagination maximum exceeds operation max_items")
         for name in ("request_schema", "result_schema"):
             schema = getattr(self, name)
             if not isinstance(schema, Mapping):
                 raise ControlContractError(f"{name} must be an object")
-            expected_operation = (
-                schema.get("properties", {})
-                .get("operation", {})
-                .get("const")
-            )
+            expected_operation = schema.get("properties", {}).get("operation", {}).get("const")
             if expected_operation != self.operation.value:
                 raise ControlContractError(
                     f"{name} is not bound to operation {self.operation.value}"
@@ -3452,9 +3095,7 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
     ) -> ControlBounds:
         if not isinstance(requested, ControlBounds):
             if not isinstance(requested, Mapping):
-                raise ControlBoundsError(
-                    "requested bounds must be a ControlBounds object"
-                )
+                raise ControlBoundsError("requested bounds must be a ControlBounds object")
             try:
                 requested = ControlBounds(**dict(requested))
             except (TypeError, ControlContractError) as exc:
@@ -3470,8 +3111,7 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
         ):
             if getattr(requested, field_name) > getattr(self.bounds, field_name):
                 raise ControlBoundsError(
-                    f"{field_name} exceeds the catalog bound for "
-                    f"{self.operation.value}"
+                    f"{field_name} exceeds the catalog bound for {self.operation.value}"
                 )
         self.pagination.validate_limit(page_limit)
         return requested
@@ -3500,9 +3140,7 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlOperationDescriptor":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlOperationDescriptor":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -3532,12 +3170,8 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
             },
             "control operation descriptor",
         )
-        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (
-            CONTROL_CATALOG_VERSION
-        ):
-            raise UnsupportedCatalogVersionError(
-                "unsupported operation descriptor catalog version"
-            )
+        if payload.get("catalog_version", CONTROL_CATALOG_VERSION) != (CONTROL_CATALOG_VERSION):
+            raise UnsupportedCatalogVersionError("unsupported operation descriptor catalog version")
         result = cls(
             operation=payload.get("operation", ""),
             request_schema=payload.get("request_schema", {}),
@@ -3547,12 +3181,8 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
             bounds=payload.get("bounds", {}),
             pagination=payload.get("pagination", {}),
             supports_dry_run=payload.get("supports_dry_run", False),
-            requires_idempotency=payload.get(
-                "requires_idempotency", False
-            ),
-            requires_authorization=payload.get(
-                "requires_authorization", False
-            ),
+            requires_idempotency=payload.get("requires_idempotency", False),
+            requires_authorization=payload.get("requires_authorization", False),
             requires_lease=payload.get("requires_lease", False),
             requires_fencing=payload.get("requires_fencing", False),
             backend_capability=payload.get("backend_capability", ""),
@@ -3562,9 +3192,7 @@ class ControlOperationDescriptor(_ControlCanonicalContract):
         )
         claimed_roots = payload.get("allowed_roots")
         if claimed_roots not in (None, ()) and tuple(claimed_roots) != result.roots:
-            raise ControlContractError(
-                "operation allowed_roots do not match its target descriptor"
-            )
+            raise ControlContractError("operation allowed_roots do not match its target descriptor")
         _identity(payload, result.content_id, "control operation descriptor")
         return result
 
@@ -3584,16 +3212,10 @@ class CatalogNegotiation(_ControlCanonicalContract):
         for name in ("client_versions", "service_versions"):
             raw = getattr(self, name)
             if isinstance(raw, (str, bytes)) or not isinstance(raw, Sequence):
-                raise CatalogVersionNegotiationError(
-                    f"{name} must be a sequence of versions"
-                )
-            versions = tuple(
-                sorted({_positive(item, "catalog version") for item in raw})
-            )
+                raise CatalogVersionNegotiationError(f"{name} must be a sequence of versions")
+            versions = tuple(sorted({_positive(item, "catalog version") for item in raw}))
             if not versions:
-                raise CatalogVersionNegotiationError(
-                    f"{name} must not be empty"
-                )
+                raise CatalogVersionNegotiationError(f"{name} must not be empty")
             object.__setattr__(self, name, versions)
         selected = _positive(self.selected_version, "selected_version")
         mutual = set(self.client_versions).intersection(self.service_versions)
@@ -3664,21 +3286,15 @@ class CapabilityResolution(_ControlCanonicalContract):
             "backend_capability",
             _text(self.backend_capability, "backend_capability"),
         )
-        if not isinstance(self.supported, bool) or not isinstance(
-            self.degraded, bool
-        ):
-            raise ControlContractError(
-                "capability supported and degraded flags must be booleans"
-            )
+        if not isinstance(self.supported, bool) or not isinstance(self.degraded, bool):
+            raise ControlContractError("capability supported and degraded flags must be booleans")
         object.__setattr__(
             self,
             "degradation",
             _enum(self.degradation, CapabilityDegradation, "degradation"),
         )
         if self.supported and self.degraded:
-            raise ControlContractError(
-                "a supported capability cannot also be degraded"
-            )
+            raise ControlContractError("a supported capability cannot also be degraded")
         if not self.supported and not self.degraded:
             raise UnsupportedCapabilityError(
                 "unsupported capability must fail or declare degradation"
@@ -3743,16 +3359,11 @@ class OperationCatalog(_ControlCanonicalContract):
             )
         versions = tuple(
             sorted(
-                {
-                    _positive(item, "supported catalog version")
-                    for item in self.supported_versions
-                }
+                {_positive(item, "supported catalog version") for item in self.supported_versions}
             )
         )
         if self.catalog_version not in versions:
-            raise CatalogVersionNegotiationError(
-                "catalog version must be in supported_versions"
-            )
+            raise CatalogVersionNegotiationError("catalog version must be in supported_versions")
         object.__setattr__(self, "supported_versions", versions)
         descriptors = _coerce_tuple(
             self.operation_descriptors,
@@ -3762,9 +3373,7 @@ class OperationCatalog(_ControlCanonicalContract):
         )
         operations = tuple(item.operation for item in descriptors)
         if len(operations) != len(set(operations)):
-            raise ControlContractError(
-                "operation catalog contains duplicate operations"
-            )
+            raise ControlContractError("operation catalog contains duplicate operations")
         expected = frozenset(Operation)
         actual = frozenset(operations)
         if actual != expected:
@@ -3807,12 +3416,7 @@ class OperationCatalog(_ControlCanonicalContract):
 
     @property
     def by_name(self) -> Mapping[str, ControlOperationDescriptor]:
-        return MappingProxyType(
-            {
-                item.operation.value: item
-                for item in self.operation_descriptors
-            }
-        )
+        return MappingProxyType({item.operation.value: item for item in self.operation_descriptors})
 
     @property
     def catalog_id(self) -> str:
@@ -3824,9 +3428,7 @@ class OperationCatalog(_ControlCanonicalContract):
     def __len__(self) -> int:
         return len(self.operation_descriptors)
 
-    def operation(
-        self, operation: Operation | str
-    ) -> ControlOperationDescriptor:
+    def operation(self, operation: Operation | str) -> ControlOperationDescriptor:
         selected = _operation(operation)
         for descriptor in self.operation_descriptors:
             if descriptor.operation is selected:
@@ -3841,26 +3443,15 @@ class OperationCatalog(_ControlCanonicalContract):
     def negotiate(self, client_versions: Iterable[int]) -> CatalogNegotiation:
         try:
             client = tuple(
-                sorted(
-                    {
-                        _positive(item, "client catalog version")
-                        for item in client_versions
-                    }
-                )
+                sorted({_positive(item, "client catalog version") for item in client_versions})
             )
         except TypeError as exc:
-            raise CatalogVersionNegotiationError(
-                "client_versions must be iterable"
-            ) from exc
+            raise CatalogVersionNegotiationError("client_versions must be iterable") from exc
         if not client:
-            raise CatalogVersionNegotiationError(
-                "client_versions must not be empty"
-            )
+            raise CatalogVersionNegotiationError("client_versions must not be empty")
         mutual = set(client).intersection(self.supported_versions)
         if not mutual:
-            raise UnsupportedCatalogVersionError(
-                "no mutually supported control catalog version"
-            )
+            raise UnsupportedCatalogVersionError("no mutually supported control catalog version")
         return CatalogNegotiation(
             selected_version=max(mutual),
             client_versions=client,
@@ -3885,9 +3476,7 @@ class OperationCatalog(_ControlCanonicalContract):
                 )
             )
         except TypeError as exc:
-            raise UnsupportedCapabilityError(
-                "available_capabilities must be iterable"
-            ) from exc
+            raise UnsupportedCapabilityError("available_capabilities must be iterable") from exc
         if descriptor.backend_capability not in available:
             raise UnsupportedCapabilityError(
                 f"operation {descriptor.operation.value} requires backend "
@@ -3910,9 +3499,7 @@ class OperationCatalog(_ControlCanonicalContract):
     ) -> CapabilityResolution:
         descriptor = self.operation(operation)
         try:
-            return self.require_backend_capability(
-                descriptor.operation, available_capabilities
-            )
+            return self.require_backend_capability(descriptor.operation, available_capabilities)
         except UnsupportedCapabilityError:
             if descriptor.degradation in {
                 CapabilityDegradation.LOCAL_READ_ONLY,
@@ -3936,9 +3523,7 @@ class OperationCatalog(_ControlCanonicalContract):
         *,
         page_limit: int | None = None,
     ) -> ControlBounds:
-        return self.operation(operation).validate_bounds(
-            requested, page_limit=page_limit
-        )
+        return self.operation(operation).validate_bounds(requested, page_limit=page_limit)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -3946,9 +3531,7 @@ class OperationCatalog(_ControlCanonicalContract):
             "catalog_version": self.catalog_version,
             "supported_versions": self.supported_versions,
             "requirement_id": self.requirement_id,
-            "operation_descriptors": tuple(
-                item.to_record() for item in self.operation_descriptors
-            ),
+            "operation_descriptors": tuple(item.to_record() for item in self.operation_descriptors),
         }
 
     @classmethod
@@ -3969,20 +3552,12 @@ class OperationCatalog(_ControlCanonicalContract):
             },
             "operation catalog",
         )
-        descriptors = payload.get(
-            "operation_descriptors", payload.get("operations", ())
-        )
+        descriptors = payload.get("operation_descriptors", payload.get("operations", ()))
         result = cls(
             operation_descriptors=descriptors,
-            catalog_version=payload.get(
-                "catalog_version", CONTROL_CATALOG_VERSION
-            ),
-            supported_versions=payload.get(
-                "supported_versions", (CONTROL_CATALOG_VERSION,)
-            ),
-            requirement_id=payload.get(
-                "requirement_id", OPERATION_CATALOG_V2_REQUIREMENT_ID
-            ),
+            catalog_version=payload.get("catalog_version", CONTROL_CATALOG_VERSION),
+            supported_versions=payload.get("supported_versions", (CONTROL_CATALOG_VERSION,)),
+            requirement_id=payload.get("requirement_id", OPERATION_CATALOG_V2_REQUIREMENT_ID),
         )
         _identity(payload, result.content_id, "operation catalog")
         return result
@@ -4003,18 +3578,14 @@ def replay_event_page(
     closed so replay cannot silently skip or apply an event twice.
     """
 
-    selected_cursor = (
-        EventCursor.from_token(cursor) if isinstance(cursor, str) else cursor
-    )
+    selected_cursor = EventCursor.from_token(cursor) if isinstance(cursor, str) else cursor
     if not isinstance(selected_cursor, EventCursor):
         raise EventCursorError("cursor must be an EventCursor or token")
     selected_limit = _positive(limit, "limit")
     if selected_limit > ABSOLUTE_MAX_CONTROL_ITEMS:
         raise ControlBoundsError("event replay limit exceeds the absolute bound")
     selected_stream = (
-        selected_cursor.stream_id
-        if stream_id is None
-        else _text(stream_id, "stream_id")
+        selected_cursor.stream_id if stream_id is None else _text(stream_id, "stream_id")
     )
     normalized: list[tuple[int, str, Mapping[str, Any]]] = []
     previous = 0
@@ -4024,9 +3595,7 @@ def replay_event_page(
         position = raw_event.get("sequence", raw_event.get("position"))
         position = _positive(position, "event sequence")
         if position <= previous:
-            raise CursorReplayError(
-                "event replay population must be strictly ordered and unique"
-            )
+            raise CursorReplayError("event replay population must be strictly ordered and unique")
         previous = position
         event_id = raw_event.get("event_id", raw_event.get("content_id", ""))
         if not event_id:
@@ -4044,29 +3613,16 @@ def replay_event_page(
         raise CursorReplayError("event cursor belongs to a different stream")
     if selected_cursor.position:
         anchor = next(
-            (
-                item
-                for item in normalized
-                if item[0] == selected_cursor.position
-            ),
+            (item for item in normalized if item[0] == selected_cursor.position),
             None,
         )
         if anchor is not None and anchor[1] != selected_cursor.last_event_id:
-            raise CursorReplayError(
-                "event cursor anchor does not match the replay population"
-            )
+            raise CursorReplayError("event cursor anchor does not match the replay population")
     pending = [item for item in normalized if item[0] > selected_cursor.position]
     if pending and pending[0][0] != selected_cursor.position + 1:
-        raise CursorReplayError(
-            "event replay contains a gap after the supplied cursor"
-        )
-    if any(
-        current[0] != previous[0] + 1
-        for previous, current in zip(pending, pending[1:])
-    ):
-        raise CursorReplayError(
-            "event replay contains a gap in the pending population"
-        )
+        raise CursorReplayError("event replay contains a gap after the supplied cursor")
+    if any(current[0] != previous[0] + 1 for previous, current in zip(pending, pending[1:])):
+        raise CursorReplayError("event replay contains a gap in the pending population")
     page_population = pending[:selected_limit]
     next_cursor = selected_cursor
     if page_population:
@@ -4205,15 +3761,12 @@ def _catalog_target(operation: Operation) -> ControlTargetDescriptor:
         operation,
         (
             ControlTargetKind.SERVICE,
-            ("repository_id",)
-            if operation in lifecycle
-            else ("repository_id", "tree_id"),
+            ("repository_id",) if operation in lifecycle else ("repository_id", "tree_id"),
         ),
     )
     roots = (
         (*base_roots, ControlRoot.ARTIFACT)
-        if operation
-        in {Operation.ARTIFACT_QUERY, Operation.VALIDATION_REPLAY}
+        if operation in {Operation.ARTIFACT_QUERY, Operation.VALIDATION_REPLAY}
         else base_roots
     )
     return ControlTargetDescriptor(
@@ -4276,9 +3829,7 @@ def _build_operation_catalog() -> OperationCatalog:
                 max_effects=64,
                 timeout_ms=120_000,
             ),
-            Operation.WORKFLOW_MATERIALIZE: ControlBounds(
-                timeout_ms=120_000
-            ),
+            Operation.WORKFLOW_MATERIALIZE: ControlBounds(timeout_ms=120_000),
             Operation.RESTART: ControlBounds(timeout_ms=120_000),
             Operation.RESCUE_PREVIEW: ControlBounds(
                 max_items=512,
@@ -4328,9 +3879,7 @@ def _build_operation_catalog() -> OperationCatalog:
                 PaginationKind.CURSOR,
                 default_limit=50,
                 max_limit=256,
-                cursor_schema=(
-                    "ipfs_accelerate_py/agent-supervisor/query-cursor@2"
-                ),
+                cursor_schema=("ipfs_accelerate_py/agent-supervisor/query-cursor@2"),
             )
         else:
             pagination = ControlPagination(
@@ -4391,9 +3940,7 @@ def get_operation_catalog(
     """Return the immutable local catalog without resolving a backend."""
 
     if version != CONTROL_CATALOG_VERSION:
-        raise UnsupportedCatalogVersionError(
-            f"unsupported control catalog version {version!r}"
-        )
+        raise UnsupportedCatalogVersionError(f"unsupported control catalog version {version!r}")
     return OPERATION_CATALOG_V2
 
 
@@ -4415,20 +3962,12 @@ def negotiate_catalog_version(
         client = tuple(client_versions)
         service = tuple(service_versions)
     except TypeError as exc:
-        raise CatalogVersionNegotiationError(
-            "catalog versions must be iterable"
-        ) from exc
-    client_normalized = {
-        _positive(item, "client catalog version") for item in client
-    }
-    service_normalized = {
-        _positive(item, "service catalog version") for item in service
-    }
+        raise CatalogVersionNegotiationError("catalog versions must be iterable") from exc
+    client_normalized = {_positive(item, "client catalog version") for item in client}
+    service_normalized = {_positive(item, "service catalog version") for item in service}
     mutual = client_normalized.intersection(service_normalized)
     if not mutual:
-        raise UnsupportedCatalogVersionError(
-            "no mutually supported control catalog version"
-        )
+        raise UnsupportedCatalogVersionError("no mutually supported control catalog version")
     return max(mutual)
 
 
@@ -4459,9 +3998,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
     SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_MANIFEST_SCHEMA
 
     surface: ControlSurface
-    operations: tuple[Operation, ...] = tuple(
-        sorted(Operation, key=lambda item: item.value)
-    )
+    operations: tuple[Operation, ...] = tuple(sorted(Operation, key=lambda item: item.value))
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -4487,9 +4024,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
     def request_schema_ids(self) -> Mapping[str, str]:
         return MappingProxyType(
             {
-                operation.value: content_identity(
-                    operation_request_json_schema(operation)
-                )
+                operation.value: content_identity(operation_request_json_schema(operation))
                 for operation in self.operations
             }
         )
@@ -4498,9 +4033,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
     def result_schema_ids(self) -> Mapping[str, str]:
         return MappingProxyType(
             {
-                operation.value: content_identity(
-                    operation_result_json_schema(operation)
-                )
+                operation.value: content_identity(operation_result_json_schema(operation))
                 for operation in self.operations
             }
         )
@@ -4511,9 +4044,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
 
         return content_identity(
             {
-                "operations": tuple(
-                    operation.value for operation in self.operations
-                ),
+                "operations": tuple(operation.value for operation in self.operations),
                 "request_schema_ids": dict(self.request_schema_ids),
                 "result_schema_ids": dict(self.result_schema_ids),
             }
@@ -4529,9 +4060,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoveryManifest":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoveryManifest":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -4557,9 +4086,7 @@ class ControlDiscoveryManifest(_ControlCanonicalContract):
         ):
             claimed = payload.get(name)
             if claimed not in (None, ""):
-                if not isinstance(claimed, Mapping) or dict(claimed) != dict(
-                    actual
-                ):
+                if not isinstance(claimed, Mapping) or dict(claimed) != dict(actual):
                     raise ControlContractError(
                         f"discovery manifest {name} does not match shared schemas"
                     )
@@ -4595,35 +4122,22 @@ class ControlDiscoveryRuntimeState(_ControlCanonicalContract):
             ),
         )
         if isinstance(self.child_process_ids, (str, bytes, bytearray)):
-            raise ControlContractError(
-                "child_process_ids must be a sequence of integers"
-            )
+            raise ControlContractError("child_process_ids must be a sequence of integers")
         try:
             process_ids = tuple(
-                sorted(
-                    {
-                        _positive(item, "child process ID")
-                        for item in self.child_process_ids
-                    }
-                )
+                sorted({_positive(item, "child process ID") for item in self.child_process_ids})
             )
         except TypeError as exc:
-            raise ControlContractError(
-                "child_process_ids must be a sequence of integers"
-            ) from exc
+            raise ControlContractError("child_process_ids must be a sequence of integers") from exc
         if len(process_ids) > ABSOLUTE_MAX_CONTROL_ITEMS:
-            raise ControlBoundsError(
-                "child_process_ids exceeds its count bound"
-            )
+            raise ControlBoundsError("child_process_ids exceeds its count bound")
         object.__setattr__(self, "child_process_ids", process_ids)
         for name in (
             "service_resolution_count",
             "optional_provider_load_count",
             "process_start_count",
         ):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         _bounded_record(self, "control discovery runtime state")
 
     def _payload(self) -> dict[str, Any]:
@@ -4637,9 +4151,7 @@ class ControlDiscoveryRuntimeState(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoveryRuntimeState":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoveryRuntimeState":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -4657,16 +4169,10 @@ class ControlDiscoveryRuntimeState(_ControlCanonicalContract):
             "control discovery runtime state",
         )
         result = cls(
-            optional_provider_modules=payload.get(
-                "optional_provider_modules", ()
-            ),
+            optional_provider_modules=payload.get("optional_provider_modules", ()),
             child_process_ids=payload.get("child_process_ids", ()),
-            service_resolution_count=payload.get(
-                "service_resolution_count", 0
-            ),
-            optional_provider_load_count=payload.get(
-                "optional_provider_load_count", 0
-            ),
+            service_resolution_count=payload.get("service_resolution_count", 0),
+            optional_provider_load_count=payload.get("optional_provider_load_count", 0),
             process_start_count=payload.get("process_start_count", 0),
         )
         _identity(payload, result.content_id, "control discovery runtime state")
@@ -4713,9 +4219,7 @@ class ControlDiscoveryObservation(_ControlCanonicalContract):
             value = getattr(self, name)
             if not isinstance(value, kind):
                 if not isinstance(value, Mapping):
-                    raise ControlContractError(
-                        f"{name} must be a {kind.__name__}"
-                    )
+                    raise ControlContractError(f"{name} must be a {kind.__name__}")
                 value = decoder(value)
             object.__setattr__(self, name, value)
         assert isinstance(self.first_manifest, ControlDiscoveryManifest)
@@ -4726,16 +4230,9 @@ class ControlDiscoveryObservation(_ControlCanonicalContract):
             self.first_manifest.surface is not surface
             or self.second_manifest.surface is not surface
         ):
-            raise ControlContractError(
-                "discovery manifest surface does not match its observation"
-            )
-        if (
-            self.first_manifest.canonical_bytes()
-            != self.second_manifest.canonical_bytes()
-        ):
-            raise ControlContractError(
-                "repeated control discovery is not byte-deterministic"
-            )
+            raise ControlContractError("discovery manifest surface does not match its observation")
+        if self.first_manifest.canonical_bytes() != self.second_manifest.canonical_bytes():
+            raise ControlContractError("repeated control discovery is not byte-deterministic")
         for name in (
             "optional_provider_modules",
             "child_process_ids",
@@ -4774,9 +4271,7 @@ class ControlDiscoveryObservation(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoveryObservation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoveryObservation":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -4795,9 +4290,7 @@ class ControlDiscoveryObservation(_ControlCanonicalContract):
             "control discovery observation",
         )
         if payload.get("side_effect_free") not in (None, True):
-            raise ControlContractError(
-                "discovery observation cannot claim a failed safety result"
-            )
+            raise ControlContractError("discovery observation cannot claim a failed safety result")
         result = cls(
             surface=payload.get("surface", ""),
             first_manifest=payload.get("first_manifest") or {},
@@ -4836,23 +4329,15 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
                 "discovery evidence requirement_id is not the ASI-G105 requirement"
             )
         if self.objective_id != CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID:
-            raise ControlContractError(
-                "discovery evidence objective_id is not ASI-G105"
-            )
+            raise ControlContractError("discovery evidence objective_id is not ASI-G105")
         report = self.capability_report
         if not isinstance(report, CapabilityReport):
             if not isinstance(report, Mapping):
-                raise ControlContractError(
-                    "capability_report must be a CapabilityReport"
-                )
+                raise ControlContractError("capability_report must be a CapabilityReport")
             report = CapabilityReport.from_dict(report)
-        expected_operations = tuple(
-            sorted(Operation, key=lambda item: item.value)
-        )
+        expected_operations = tuple(sorted(Operation, key=lambda item: item.value))
         if report.supported_operations != expected_operations:
-            raise ControlContractError(
-                "discovery evidence requires complete capabilities"
-            )
+            raise ControlContractError("discovery evidence requires complete capabilities")
         if report.optional_providers_loaded or report.processes_started:
             raise ControlContractError(
                 "capability discovery reports provider or process side effects"
@@ -4870,19 +4355,13 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
                 key=lambda item: item.value,
             )
         )
-        expected_surfaces = tuple(
-            sorted(ControlSurface, key=lambda item: item.value)
-        )
+        expected_surfaces = tuple(sorted(ControlSurface, key=lambda item: item.value))
         if surfaces != expected_surfaces:
             raise ControlContractError(
                 "discovery evidence requires one Python, CLI, and MCP observation"
             )
-        if len(
-            {item.manifest.schema_population_id for item in observations}
-        ) != 1:
-            raise ControlContractError(
-                "Python, CLI, and MCP discovery schema populations differ"
-            )
+        if len({item.manifest.schema_population_id for item in observations}) != 1:
+            raise ControlContractError("Python, CLI, and MCP discovery schema populations differ")
         object.__setattr__(
             self,
             "observations",
@@ -4936,22 +4415,13 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
             objective_id=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID,
             requirement_id=CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
             objective_revision=CONTROL_DISCOVERY_SAFETY_OBJECTIVE_REVISION,
-            analyzer_version=(
-                CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION
-            ),
-            configuration_revision=(
-                CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION
-            ),
-            acceptance_criteria=(
-                CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA
-            ),
-            required_exhaustive_receipts=(
-                CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            analyzer_version=(CONTROL_DISCOVERY_SAFETY_COMPLETION_ANALYZER_VERSION),
+            configuration_revision=(CONTROL_DISCOVERY_SAFETY_COMPLETION_CONFIGURATION_REVISION),
+            acceptance_criteria=(CONTROL_DISCOVERY_SAFETY_ACCEPTANCE_CRITERIA),
+            required_exhaustive_receipts=(CONTROL_DISCOVERY_SAFETY_REQUIRED_EXHAUSTIVE_RECEIPTS),
             quorum_evidence_type=ControlDiscoveryCompletionQuorumEvidence,
             operational_complete=bool(
-                self.proved_requirement_ids
-                == (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
+                self.proved_requirement_ids == (CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,)
                 and tuple(item.surface for item in self.observations)
                 == tuple(sorted(ControlSurface, key=lambda item: item.value))
                 and all(item.side_effect_free for item in self.observations)
@@ -4982,15 +4452,11 @@ class ControlDiscoverySafetyEvidence(_ControlCanonicalContract):
             "policy_id": self.policy_id,
             "policy_revision": self.policy_revision,
             "capability_report": self.capability_report.to_record(),
-            "observations": tuple(
-                item.to_record() for item in self.observations
-            ),
+            "observations": tuple(item.to_record() for item in self.observations),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoverySafetyEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoverySafetyEvidence":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -5047,15 +4513,11 @@ class ControlDiscoveryCompletionMemberHealth(_ControlCanonicalContract):
             "member_id": self.member_id,
             "receipt_cid": self.receipt_cid,
             "healthy": self.healthy,
-            "safe_for_completion_reasoning": (
-                self.safe_for_completion_reasoning
-            ),
+            "safe_for_completion_reasoning": (self.safe_for_completion_reasoning),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoveryCompletionMemberHealth":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoveryCompletionMemberHealth":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -5075,9 +4537,7 @@ class ControlDiscoveryCompletionMemberHealth(_ControlCanonicalContract):
             member_id=payload.get("member_id", ""),
             receipt_cid=payload.get("receipt_cid", ""),
             healthy=payload.get("healthy", False),
-            safe_for_completion_reasoning=payload.get(
-                "safe_for_completion_reasoning", False
-            ),
+            safe_for_completion_reasoning=payload.get("safe_for_completion_reasoning", False),
         )
         _identity(
             payload,
@@ -5091,17 +4551,13 @@ class ControlDiscoveryCompletionMemberHealth(_ControlCanonicalContract):
 class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
     """Bind a generic exhaustive quorum to one G105 operational witness."""
 
-    SCHEMA: ClassVar[str] = (
-        CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
-    )
+    SCHEMA: ClassVar[str] = CONTROL_DISCOVERY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
 
     validation_policy_id: str
     policy_revision: str
     operational_receipt_id: str
     quorum: Any
-    member_health: tuple[
-        ControlDiscoveryCompletionMemberHealth | Mapping[str, Any], ...
-    ]
+    member_health: tuple[ControlDiscoveryCompletionMemberHealth | Mapping[str, Any], ...]
     objective_id: str = CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID
     requirement_id: str = CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID
 
@@ -5117,9 +4573,7 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.objective_id != CONTROL_DISCOVERY_SAFETY_OBJECTIVE_ID:
-            raise ControlContractError(
-                "completion quorum objective_id is not ASI-G105"
-            )
+            raise ControlContractError("completion quorum objective_id is not ASI-G105")
         if self.requirement_id != CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID:
             raise ControlContractError(
                 "completion quorum requirement_id is not the ASI-G105 requirement"
@@ -5133,9 +4587,7 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
             try:
                 quorum = ExhaustionQuorumResult.from_dict(quorum)
             except (TypeError, ValueError) as exc:
-                raise ControlContractError(
-                    "completion quorum is malformed"
-                ) from exc
+                raise ControlContractError("completion quorum is malformed") from exc
         object.__setattr__(self, "quorum", quorum)
         member_health = _coerce_tuple(
             self.member_health,
@@ -5143,24 +4595,14 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
             ControlDiscoveryCompletionMemberHealth.from_dict,
             "member_health",
         )
-        expected_members = {
-            (member.member_id, member.receipt_cid)
-            for member in quorum.members
-        }
-        attested_members = {
-            (member.member_id, member.receipt_cid)
-            for member in member_health
-        }
-        if (
-            len(member_health) != len(attested_members)
-            or attested_members != expected_members
-        ):
+        expected_members = {(member.member_id, member.receipt_cid) for member in quorum.members}
+        attested_members = {(member.member_id, member.receipt_cid) for member in member_health}
+        if len(member_health) != len(attested_members) or attested_members != expected_members:
             raise ControlContractError(
                 "completion member health must cover every quorum receipt exactly"
             )
         if not all(
-            member.healthy and member.safe_for_completion_reasoning
-            for member in member_health
+            member.healthy and member.safe_for_completion_reasoning for member in member_health
         ):
             raise ControlContractError(
                 "every exhaustive receipt must be explicitly healthy and "
@@ -5187,15 +4629,11 @@ class ControlDiscoveryCompletionQuorumEvidence(_ControlCanonicalContract):
             "policy_revision": self.policy_revision,
             "operational_receipt_id": self.operational_receipt_id,
             "quorum": quorum,
-            "member_health": tuple(
-                item.to_record() for item in self.member_health
-            ),
+            "member_health": tuple(item.to_record() for item in self.member_health),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlDiscoveryCompletionQuorumEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlDiscoveryCompletionQuorumEvidence":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -5300,9 +4738,7 @@ def _evaluate_control_objective_completion(
         and receipt.objective_id == objective_id
         and receipt.requirement_id == requirement_id
     )
-    expected_criteria = {
-        criterion_key(item) for item in acceptance_criteria
-    }
+    expected_criteria = {criterion_key(item) for item in acceptance_criteria}
 
     evidence_records: list[dict[str, Any]] = []
     validation_ids_by_criterion: dict[str, set[str]] = {}
@@ -5323,8 +4759,7 @@ def _evaluate_control_objective_completion(
             validation_ids_by_criterion.setdefault(key, set()).add(identity)
 
     validation_bindings_complete = bool(
-        operational_complete
-        and len(evidence_records) == len(expected_criteria)
+        operational_complete and len(evidence_records) == len(expected_criteria)
     )
     evidence_criteria: list[str] = []
     for record in evidence_records:
@@ -5355,30 +4790,18 @@ def _evaluate_control_objective_completion(
             projected = coverage_projection(objective_id)
         except (TypeError, ValueError):
             projected = {}
-        coverage_value = (
-            dict(projected) if isinstance(projected, Mapping) else {}
-        )
+        coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
     else:
         coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
-    row_keys = [
-        criterion_key(row) if isinstance(row, Mapping) else ""
-        for row in rows
-    ]
+    row_keys = [criterion_key(row) if isinstance(row, Mapping) else "" for row in rows]
 
     def validation_bound(row: Mapping[str, Any]) -> bool:
         raw_ids = row.get("validation_receipt_ids")
-        if not (
-            isinstance(raw_ids, Sequence)
-            and not isinstance(raw_ids, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw_ids, Sequence) and not isinstance(raw_ids, (str, bytes, bytearray))):
             return False
-        row_receipts = {
-            str(item or "").strip()
-            for item in raw_ids
-            if str(item or "").strip()
-        }
+        row_receipts = {str(item or "").strip() for item in raw_ids if str(item or "").strip()}
         return bool(
             row_receipts
             and row_receipts.intersection(
@@ -5394,8 +4817,7 @@ def _evaluate_control_objective_completion(
         binding = binding if isinstance(binding, Mapping) else {}
         canonical_coverage_complete = bool(
             coverage_value.get("verified") is True
-            and coverage_value.get("repository_tree")
-            == receipt.repository_tree
+            and coverage_value.get("repository_tree") == receipt.repository_tree
             and freshness.get("all_receipts_fresh") is True
             and binding.get("all_receipts_bound") is True
             and binding.get("repository_tree") == receipt.repository_tree
@@ -5449,38 +4871,23 @@ def _evaluate_control_objective_completion(
             "requirement_id": exhaustion_quorum.requirement_id,
             "validation_policy_id": exhaustion_quorum.validation_policy_id,
             "policy_revision": exhaustion_quorum.policy_revision,
-            "operational_receipt_id": (
-                exhaustion_quorum.operational_receipt_id
-            ),
+            "operational_receipt_id": (exhaustion_quorum.operational_receipt_id),
         }
     else:
         quorum_value = payload(exhaustion_quorum)
         artifact_quorum_binding = {}
     quorum_binding = quorum_value.get("binding")
-    quorum_binding = (
-        quorum_binding if isinstance(quorum_binding, Mapping) else {}
-    )
+    quorum_binding = quorum_binding if isinstance(quorum_binding, Mapping) else {}
     health_value = payload(analyzer_health)
     health_metrics = health_value.get("metrics")
-    health_metrics = (
-        health_metrics if isinstance(health_metrics, Mapping) else {}
-    )
+    health_metrics = health_metrics if isinstance(health_metrics, Mapping) else {}
     reported_analyzer_version = str(
-        health_value.get("analyzer_version")
-        or health_metrics.get("analyzer_version")
-        or ""
+        health_value.get("analyzer_version") or health_metrics.get("analyzer_version") or ""
     ).strip()
     health_binding_complete = bool(
         reported_analyzer_version == analyzer_version
-        and (
-            health_value.get("objective_id")
-            or health_metrics.get("objective_id")
-        )
-        == objective_id
-        and (
-            health_value.get("repository_tree")
-            or health_metrics.get("repository_tree")
-        )
+        and (health_value.get("objective_id") or health_metrics.get("objective_id")) == objective_id
+        and (health_value.get("repository_tree") or health_metrics.get("repository_tree"))
         == receipt.repository_tree
     )
     if not (
@@ -5528,11 +4935,7 @@ def _evaluate_control_objective_completion(
             {
                 **member,
                 "binding": {
-                    **(
-                        member.get("binding")
-                        if isinstance(member.get("binding"), Mapping)
-                        else {}
-                    ),
+                    **(member.get("binding") if isinstance(member.get("binding"), Mapping) else {}),
                     **artifact_quorum_binding,
                 },
                 **(
@@ -5563,14 +4966,10 @@ def _evaluate_control_objective_completion(
         ]
     required_binding = artifact_binding
     member_ids = [
-        str(item.get("member_id") or "").strip()
-        for item in members
-        if isinstance(item, Mapping)
+        str(item.get("member_id") or "").strip() for item in members if isinstance(item, Mapping)
     ]
     receipt_ids = [
-        str(item.get("receipt_cid") or "").strip()
-        for item in members
-        if isinstance(item, Mapping)
+        str(item.get("receipt_cid") or "").strip() for item in members if isinstance(item, Mapping)
     ]
     channels = [
         str(item.get("evidence_channel") or "").strip()
@@ -5579,19 +4978,14 @@ def _evaluate_control_objective_completion(
     ]
 
     def independent(values: Sequence[str]) -> bool:
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     evaluated_members_complete = bool(
         evaluated_quorum
         and quorum_value.get("satisfied") is True
         and all(
             isinstance(member, Mapping)
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+            and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
             and (
                 not hasattr(exhaustion_quorum, "member_health")
                 or (
@@ -5603,17 +4997,12 @@ def _evaluate_control_objective_completion(
         )
     )
     quorum_complete = bool(
-        quorum_value.get("required_members")
-        == required_exhaustive_receipts
+        quorum_value.get("required_members") == required_exhaustive_receipts
         and quorum_value.get("member_count") == len(members)
-        and len(members)
-        >= required_exhaustive_receipts
+        and len(members) >= required_exhaustive_receipts
         and quorum_value.get("satisfied") is True
         and quorum_value.get("quorum_met") is True
-        and all(
-            quorum_binding.get(name) == value
-            for name, value in required_binding.items()
-        )
+        and all(quorum_binding.get(name) == value for name, value in required_binding.items())
         and independent(member_ids)
         and independent(receipt_ids)
         and independent(channels)
@@ -5621,8 +5010,7 @@ def _evaluate_control_objective_completion(
             isinstance(member, Mapping)
             and isinstance(member.get("binding"), Mapping)
             and all(
-                member["binding"].get(name) == value
-                for name, value in required_binding.items()
+                member["binding"].get(name) == value for name, value in required_binding.items()
             )
             for member in members
         )
@@ -5632,8 +5020,7 @@ def _evaluate_control_objective_completion(
                 isinstance(member, Mapping)
                 and member.get("healthy") is True
                 and member.get("safe_for_completion_reasoning") is True
-                and str(member.get("scan_mode") or "").strip().lower()
-                == "exhaustive"
+                and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
                 for member in members
             )
         )
@@ -5680,9 +5067,7 @@ def evaluate_unified_control_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float = 3600.0,
     clock_skew_seconds: float = 300.0,
@@ -5708,8 +5093,7 @@ def evaluate_unified_control_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured ASI-G070 "
@@ -5734,9 +5118,7 @@ def evaluate_unified_control_completion(
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -5754,9 +5136,7 @@ def evaluate_unified_control_completion(
         "objective_id": UNIFIED_CONTROL_OBJECTIVE_ID,
         "objective_revision": UNIFIED_CONTROL_OBJECTIVE_REVISION,
         "analyzer_version": UNIFIED_CONTROL_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            UNIFIED_CONTROL_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (UNIFIED_CONTROL_COMPLETION_CONFIGURATION_REVISION),
     }
 
     successful_task_states = frozenset(
@@ -5771,19 +5151,14 @@ def evaluate_unified_control_completion(
         }
     )
     task_values = [payload(item) for item in producing_tasks]
-    task_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in task_values
-    ]
+    task_ids = [str(item.get("task_id", item.get("id", "")) or "").strip() for item in task_values]
     producer_population_complete = bool(
         repository_id
         and repository_tree
         and len(task_ids) == len(set(task_ids))
-        and tuple(sorted(task_ids))
-        == tuple(sorted(UNIFIED_CONTROL_PRODUCING_TASK_IDS))
+        and tuple(sorted(task_ids)) == tuple(sorted(UNIFIED_CONTROL_PRODUCING_TASK_IDS))
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in successful_task_states
+            normalized(item.get("status", item.get("state", ""))) in successful_task_states
             for item in task_values
         )
     )
@@ -5836,23 +5211,14 @@ def evaluate_unified_control_completion(
         )
         if isinstance(raw, str):
             raw = (raw,)
-        if not (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in raw
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
     coverage_value = payload(coverage)
     rows_value = coverage_value.get("criteria")
     rows = rows_value if isinstance(rows_value, list) else []
-    expected_criteria = {
-        normalized(item) for item in UNIFIED_CONTROL_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {normalized(item) for item in UNIFIED_CONTROL_ACCEPTANCE_CRITERIA}
     row_keys = [
         normalized(
             row.get(
@@ -5896,26 +5262,15 @@ def evaluate_unified_control_completion(
             **coverage_value,
             "verified": False,
             "passed": False,
-            "reason_codes": list(
-                dict.fromkeys(
-                    [*reasons, "coverage_validation_receipt_unbound"]
-                )
-            ),
+            "reason_codes": list(dict.fromkeys([*reasons, "coverage_validation_receipt_unbound"])),
         }
 
     health_value = payload(analyzer_health)
     raw_health_binding = health_value.get("binding")
-    health_binding = (
-        dict(raw_health_binding)
-        if isinstance(raw_health_binding, Mapping)
-        else {}
-    )
+    health_binding = dict(raw_health_binding) if isinstance(raw_health_binding, Mapping) else {}
     health_valid = bool(
         all(expected_binding.values())
-        and all(
-            health_binding.get(name) == value
-            for name, value in expected_binding.items()
-        )
+        and all(health_binding.get(name) == value for name, value in expected_binding.items())
         and normalized(health_value.get("status")) == "healthy"
         and health_value.get("healthy") is True
         and health_value.get("safe_for_completion_reasoning") is True
@@ -5932,38 +5287,24 @@ def evaluate_unified_control_completion(
         if observed is None:
             return False
         return bool(
-            observed
-            <= current
-            + timedelta(seconds=max(0.0, float(clock_skew_seconds)))
-            and current - observed
-            <= timedelta(seconds=max(0.0, float(freshness_seconds)))
+            observed <= current + timedelta(seconds=max(0.0, float(clock_skew_seconds)))
+            and current - observed <= timedelta(seconds=max(0.0, float(freshness_seconds)))
         )
 
     quorum_value = payload(exhaustion_quorum)
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     raw_quorum_binding = quorum_value.get("binding")
-    quorum_binding = (
-        dict(raw_quorum_binding)
-        if isinstance(raw_quorum_binding, Mapping)
-        else {}
-    )
+    quorum_binding = dict(raw_quorum_binding) if isinstance(raw_quorum_binding, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
-        quorum_value.get("required_members")
-        == UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) == UNIFIED_CONTROL_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -5995,9 +5336,7 @@ def evaluate_unified_control_completion(
         gate_value = child.get("completion_gate", child.get("gate"))
         gate = gate_value if isinstance(gate_value, Mapping) else {}
         evaluated_value = gate.get("evaluated_evidence")
-        evaluated = (
-            evaluated_value if isinstance(evaluated_value, Mapping) else {}
-        )
+        evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
         validations = evaluated.get("validation_evidence")
         proof_requirements = child.get(
             "proof_requirements",
@@ -6006,10 +5345,7 @@ def evaluate_unified_control_completion(
         if isinstance(proof_requirements, Mapping):
             proof_requirements = (proof_requirements,)
         return bool(
-            normalized(
-                child.get("state", child.get("next_state", ""))
-            )
-            == "verified_complete"
+            normalized(child.get("state", child.get("next_state", ""))) == "verified_complete"
             and child.get("verified") is True
             and gate.get("passed") is True
             and evaluated.get("repository_tree") == repository_tree
@@ -6021,8 +5357,7 @@ def evaluate_unified_control_completion(
                 isinstance(item, Mapping)
                 and item.get("valid") is True
                 and isinstance(item.get("evidence"), Mapping)
-                and item["evidence"].get("repository_tree")
-                == repository_tree
+                and item["evidence"].get("repository_tree") == repository_tree
                 and item["evidence"].get("repository_id") == repository_id
                 for item in validations
             )
@@ -6034,10 +5369,8 @@ def evaluate_unified_control_completion(
                 and str(item.get("provenance_id") or "").strip()
                 and item.get("assurance_satisfied") is True
                 and item.get("contradicted") is not True
-                and normalized(item.get("proof_verdict"))
-                in {"proved", "verified", "valid"}
-                and normalized(item.get("freshness"))
-                in {"current", "fresh"}
+                and normalized(item.get("proof_verdict")) in {"proved", "verified", "valid"}
+                and normalized(item.get("freshness")) in {"current", "fresh"}
                 and not item.get("reason_codes")
                 for item in proof_requirements
             )
@@ -6045,13 +5378,11 @@ def evaluate_unified_control_completion(
 
     child_values = [payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
     child_population_complete = bool(
         len(child_ids) == len(set(child_ids))
-        and tuple(sorted(child_ids))
-        == tuple(sorted(UNIFIED_CONTROL_CHILD_GOAL_IDS))
+        and tuple(sorted(child_ids)) == tuple(sorted(UNIFIED_CONTROL_CHILD_GOAL_IDS))
         and all(child_is_current(item) for item in child_values)
     )
     if not child_population_complete:
@@ -6062,9 +5393,7 @@ def evaluate_unified_control_completion(
                 "verified": False,
                 "completion_gate": {
                     "passed": False,
-                    "reason_code": (
-                        "required_child_population_or_binding_incomplete"
-                    ),
+                    "reason_code": ("required_child_population_or_binding_incomplete"),
                 },
             }
         )
@@ -6112,15 +5441,11 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
     mcp_result: OperationResult | Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "scenario", _text(self.scenario, "scenario", max_bytes=128)
-        )
+        object.__setattr__(self, "scenario", _text(self.scenario, "scenario", max_bytes=128))
         request = self.request
         if not isinstance(request, OperationRequest):
             if not isinstance(request, Mapping):
-                raise ControlContractError(
-                    "parity case request must be an OperationRequest"
-                )
+                raise ControlContractError("parity case request must be an OperationRequest")
             request = OperationRequest.from_dict(request)
         object.__setattr__(self, "request", request)
 
@@ -6129,18 +5454,14 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
             result = getattr(self, field_name)
             if not isinstance(result, OperationResult):
                 if not isinstance(result, Mapping):
-                    raise ControlContractError(
-                        f"{field_name} must be an OperationResult"
-                    )
+                    raise ControlContractError(f"{field_name} must be an OperationResult")
                 result = OperationResult.from_dict(result)
             result.validate_against(request)
             object.__setattr__(self, field_name, result)
             decoded.append(result)
         records = [item.to_record() for item in decoded]
         if records[1:] != records[:-1]:
-            raise ControlContractError(
-                "Python, CLI, and MCP results are not canonically identical"
-            )
+            raise ControlContractError("Python, CLI, and MCP results are not canonically identical")
         _bounded_record(
             self,
             "control surface parity case",
@@ -6170,16 +5491,11 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
         assert isinstance(self.python_result, OperationResult)
         if not self.python_result.succeeded:
             if self.python_result.error is None:
-                raise ControlContractError(
-                    "failed parity result must carry a stable typed error"
-                )
+                raise ControlContractError("failed parity result must carry a stable typed error")
             return ControlBehaviorClass.STABLE_FAILURE
         if self.request.operation.mutating and not self.request.dry_run:
-            if (
-                not self.python_result.audit_receipt_id
-                or not any(
-                    effect.applied for effect in self.python_result.effects
-                )
+            if not self.python_result.audit_receipt_id or not any(
+                effect.applied for effect in self.python_result.effects
             ):
                 raise ControlContractError(
                     "successful mutation parity case must be audited and applied"
@@ -6187,9 +5503,7 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
             return ControlBehaviorClass.MUTATION_SUCCESS
         if self.request.effective_authority is OperationAuthority.PROPOSAL:
             if self.python_result.preview is None:
-                raise ControlContractError(
-                    "successful proposal parity case must carry a preview"
-                )
+                raise ControlContractError("successful proposal parity case must carry a preview")
             return ControlBehaviorClass.PROPOSAL_SUCCESS
         return ControlBehaviorClass.READ_SUCCESS
 
@@ -6211,9 +5525,7 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlSurfaceParityCase":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlSurfaceParityCase":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -6241,28 +5553,28 @@ class ControlSurfaceParityCase(_ControlCanonicalContract):
             mcp_result=payload.get("mcp_result") or {},
         )
         claimed_operation = payload.get("operation")
-        if claimed_operation not in (None, "") and _operation(
-            claimed_operation
-        ) is not result.operation:
-            raise ControlContractError(
-                "parity case operation does not match its request"
-            )
+        if (
+            claimed_operation not in (None, "")
+            and _operation(claimed_operation) is not result.operation
+        ):
+            raise ControlContractError("parity case operation does not match its request")
         claimed_behavior = payload.get("behavior_class")
-        if claimed_behavior not in (None, "") and _enum(
-            claimed_behavior,
-            ControlBehaviorClass,
-            "behavior_class",
-        ) is not result.behavior_class:
-            raise ControlContractError(
-                "parity case behavior_class does not match its result"
+        if (
+            claimed_behavior not in (None, "")
+            and _enum(
+                claimed_behavior,
+                ControlBehaviorClass,
+                "behavior_class",
             )
+            is not result.behavior_class
+        ):
+            raise ControlContractError("parity case behavior_class does not match its result")
         claimed_status = payload.get("status")
-        if claimed_status not in (None, "") and _enum(
-            claimed_status, OperationStatus, "status"
-        ) is not result.status:
-            raise ControlContractError(
-                "parity case status does not match its result"
-            )
+        if (
+            claimed_status not in (None, "")
+            and _enum(claimed_status, OperationStatus, "status") is not result.status
+        ):
+            raise ControlContractError("parity case status does not match its result")
         _identity(payload, result.content_id, "control surface parity case")
         return result
 
@@ -6279,9 +5591,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
     policy_revision: str
     capability_report: CapabilityReport | Mapping[str, Any]
     cases: tuple[ControlSurfaceParityCase, ...]
-    operations: tuple[Operation, ...] = tuple(
-        sorted(Operation, key=lambda item: item.value)
-    )
+    operations: tuple[Operation, ...] = tuple(sorted(Operation, key=lambda item: item.value))
     surfaces: tuple[ControlSurface, ...] = tuple(ControlSurface)
     requirement_id: str = CONTROL_SURFACE_PARITY_REQUIREMENT_ID
 
@@ -6298,15 +5608,11 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                 "parity evidence requirement_id is not the ASI-G103 requirement"
             )
         if self.objective_id != CONTROL_SURFACE_PARITY_OBJECTIVE_ID:
-            raise ControlContractError(
-                "parity evidence objective_id is not ASI-G103"
-            )
+            raise ControlContractError("parity evidence objective_id is not ASI-G103")
         report = self.capability_report
         if not isinstance(report, CapabilityReport):
             if not isinstance(report, Mapping):
-                raise ControlContractError(
-                    "capability_report must be a CapabilityReport"
-                )
+                raise ControlContractError("capability_report must be a CapabilityReport")
             report = CapabilityReport.from_dict(report)
         object.__setattr__(self, "capability_report", report)
 
@@ -6317,19 +5623,14 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
             "cases",
         )
         if not cases:
-            raise ControlContractError(
-                "parity evidence requires independently invoked cases"
-            )
+            raise ControlContractError("parity evidence requires independently invoked cases")
         scenarios = [item.scenario for item in cases]
         if len(scenarios) != len(set(scenarios)):
             raise ControlContractError("parity case scenarios must be unique")
         behavior_classes = {item.behavior_class for item in cases}
         required_behavior_classes = set(ControlBehaviorClass)
         if behavior_classes != required_behavior_classes:
-            missing = sorted(
-                item.value
-                for item in required_behavior_classes - behavior_classes
-            )
+            missing = sorted(item.value for item in required_behavior_classes - behavior_classes)
             raise ControlContractError(
                 "parity evidence requires the complete behavior matrix"
                 + (": missing " + ", ".join(missing) if missing else "")
@@ -6353,9 +5654,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                 key=lambda item: item.value,
             )
         )
-        expected_operations = tuple(
-            sorted(Operation, key=lambda item: item.value)
-        )
+        expected_operations = tuple(sorted(Operation, key=lambda item: item.value))
         if operations != expected_operations:
             raise ControlContractError(
                 "parity evidence must bind the complete operation vocabulary"
@@ -6372,13 +5671,9 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
                 key=lambda item: item.value,
             )
         )
-        expected_surfaces = tuple(
-            sorted(ControlSurface, key=lambda item: item.value)
-        )
+        expected_surfaces = tuple(sorted(ControlSurface, key=lambda item: item.value))
         if surfaces != expected_surfaces:
-            raise ControlContractError(
-                "parity evidence requires Python, CLI, and MCP observations"
-            )
+            raise ControlContractError("parity evidence requires Python, CLI, and MCP observations")
         object.__setattr__(self, "surfaces", surfaces)
         _bounded_record(
             self,
@@ -6400,9 +5695,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
 
         return MappingProxyType(
             {
-                operation.value: content_identity(
-                    operation_request_json_schema(operation)
-                )
+                operation.value: content_identity(operation_request_json_schema(operation))
                 for operation in self.operations
             }
         )
@@ -6413,9 +5706,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
 
         return MappingProxyType(
             {
-                operation.value: content_identity(
-                    operation_result_json_schema(operation)
-                )
+                operation.value: content_identity(operation_result_json_schema(operation))
                 for operation in self.operations
             }
         )
@@ -6426,9 +5717,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
 
         return content_identity(
             {
-                "operations": tuple(
-                    operation.value for operation in self.operations
-                ),
+                "operations": tuple(operation.value for operation in self.operations),
                 "request_schema_ids": dict(self.request_schema_ids),
                 "result_schema_ids": dict(self.result_schema_ids),
             }
@@ -6469,41 +5758,26 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
         independent exhaustive quorum must bind this exact witness and policy.
         """
 
-        expected_operations = tuple(
-            sorted(Operation, key=lambda item: item.value)
-        )
-        expected_surfaces = tuple(
-            sorted(ControlSurface, key=lambda item: item.value)
-        )
+        expected_operations = tuple(sorted(Operation, key=lambda item: item.value))
+        expected_surfaces = tuple(sorted(ControlSurface, key=lambda item: item.value))
         return _evaluate_control_objective_completion(
             self,
             objective_id=CONTROL_SURFACE_PARITY_OBJECTIVE_ID,
             requirement_id=CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
             objective_revision=CONTROL_SURFACE_PARITY_OBJECTIVE_REVISION,
-            analyzer_version=(
-                CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION
-            ),
-            configuration_revision=(
-                CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION
-            ),
+            analyzer_version=(CONTROL_SURFACE_PARITY_COMPLETION_ANALYZER_VERSION),
+            configuration_revision=(CONTROL_SURFACE_PARITY_COMPLETION_CONFIGURATION_REVISION),
             acceptance_criteria=CONTROL_SURFACE_PARITY_ACCEPTANCE_CRITERIA,
-            required_exhaustive_receipts=(
-                CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            required_exhaustive_receipts=(CONTROL_SURFACE_PARITY_REQUIRED_EXHAUSTIVE_RECEIPTS),
             quorum_evidence_type=ControlSurfaceParityCompletionQuorumEvidence,
             operational_complete=bool(
-                self.proved_requirement_ids
-                == (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
+                self.proved_requirement_ids == (CONTROL_SURFACE_PARITY_REQUIREMENT_ID,)
                 and self.operations == expected_operations
                 and self.surfaces == expected_surfaces
-                and self.capability_report.supported_operations
-                == expected_operations
-                and set(self.request_schema_ids)
-                == {item.value for item in expected_operations}
-                and set(self.result_schema_ids)
-                == {item.value for item in expected_operations}
-                and {item.behavior_class for item in self.cases}
-                == set(ControlBehaviorClass)
+                and self.capability_report.supported_operations == expected_operations
+                and set(self.request_schema_ids) == {item.value for item in expected_operations}
+                and set(self.result_schema_ids) == {item.value for item in expected_operations}
+                and {item.behavior_class for item in self.cases} == set(ControlBehaviorClass)
             ),
             current_state=current_state,
             evidence=evidence,
@@ -6540,9 +5814,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlSurfaceParityEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlSurfaceParityEvidence":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -6588,9 +5860,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
         ):
             claimed = payload.get(name)
             if isinstance(actual, Mapping):
-                matches = isinstance(claimed, Mapping) and dict(claimed) == dict(
-                    actual
-                )
+                matches = isinstance(claimed, Mapping) and dict(claimed) == dict(actual)
             else:
                 matches = claimed == actual
             if not matches:
@@ -6605,9 +5875,7 @@ class ControlSurfaceParityEvidence(_ControlCanonicalContract):
 class ControlSurfaceParityCompletionMemberHealth(_ControlCanonicalContract):
     """Explicit completion-safety attestation for one G103 receipt."""
 
-    SCHEMA: ClassVar[str] = (
-        CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA
-    )
+    SCHEMA: ClassVar[str] = CONTROL_SURFACE_PARITY_COMPLETION_MEMBER_HEALTH_SCHEMA
 
     member_id: str
     receipt_cid: str
@@ -6628,15 +5896,11 @@ class ControlSurfaceParityCompletionMemberHealth(_ControlCanonicalContract):
             "member_id": self.member_id,
             "receipt_cid": self.receipt_cid,
             "healthy": self.healthy,
-            "safe_for_completion_reasoning": (
-                self.safe_for_completion_reasoning
-            ),
+            "safe_for_completion_reasoning": (self.safe_for_completion_reasoning),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlSurfaceParityCompletionMemberHealth":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlSurfaceParityCompletionMemberHealth":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -6656,9 +5920,7 @@ class ControlSurfaceParityCompletionMemberHealth(_ControlCanonicalContract):
             member_id=payload.get("member_id", ""),
             receipt_cid=payload.get("receipt_cid", ""),
             healthy=payload.get("healthy", False),
-            safe_for_completion_reasoning=payload.get(
-                "safe_for_completion_reasoning", False
-            ),
+            safe_for_completion_reasoning=payload.get("safe_for_completion_reasoning", False),
         )
         _identity(
             payload,
@@ -6669,22 +5931,16 @@ class ControlSurfaceParityCompletionMemberHealth(_ControlCanonicalContract):
 
 
 @dataclass(frozen=True)
-class ControlSurfaceParityCompletionQuorumEvidence(
-    _ControlCanonicalContract
-):
+class ControlSurfaceParityCompletionQuorumEvidence(_ControlCanonicalContract):
     """Bind a healthy exhaustive quorum to one G103 parity witness."""
 
-    SCHEMA: ClassVar[str] = (
-        CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
-    )
+    SCHEMA: ClassVar[str] = CONTROL_SURFACE_PARITY_COMPLETION_QUORUM_EVIDENCE_SCHEMA
 
     validation_policy_id: str
     policy_revision: str
     operational_receipt_id: str
     quorum: Any
-    member_health: tuple[
-        ControlSurfaceParityCompletionMemberHealth | Mapping[str, Any], ...
-    ]
+    member_health: tuple[ControlSurfaceParityCompletionMemberHealth | Mapping[str, Any], ...]
     objective_id: str = CONTROL_SURFACE_PARITY_OBJECTIVE_ID
     requirement_id: str = CONTROL_SURFACE_PARITY_REQUIREMENT_ID
 
@@ -6700,13 +5956,10 @@ class ControlSurfaceParityCompletionQuorumEvidence(
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.objective_id != CONTROL_SURFACE_PARITY_OBJECTIVE_ID:
-            raise ControlContractError(
-                "completion quorum objective_id is not ASI-G103"
-            )
+            raise ControlContractError("completion quorum objective_id is not ASI-G103")
         if self.requirement_id != CONTROL_SURFACE_PARITY_REQUIREMENT_ID:
             raise ControlContractError(
-                "completion quorum requirement_id is not the ASI-G103 "
-                "requirement"
+                "completion quorum requirement_id is not the ASI-G103 requirement"
             )
         quorum = self.quorum
         if not isinstance(quorum, ExhaustionQuorumResult):
@@ -6717,9 +5970,7 @@ class ControlSurfaceParityCompletionQuorumEvidence(
             try:
                 quorum = ExhaustionQuorumResult.from_dict(quorum)
             except (TypeError, ValueError) as exc:
-                raise ControlContractError(
-                    "completion quorum is malformed"
-                ) from exc
+                raise ControlContractError("completion quorum is malformed") from exc
         object.__setattr__(self, "quorum", quorum)
         member_health = _coerce_tuple(
             self.member_health,
@@ -6727,25 +5978,14 @@ class ControlSurfaceParityCompletionQuorumEvidence(
             ControlSurfaceParityCompletionMemberHealth.from_dict,
             "member_health",
         )
-        expected_members = {
-            (member.member_id, member.receipt_cid)
-            for member in quorum.members
-        }
-        attested_members = {
-            (member.member_id, member.receipt_cid)
-            for member in member_health
-        }
-        if (
-            len(member_health) != len(attested_members)
-            or attested_members != expected_members
-        ):
+        expected_members = {(member.member_id, member.receipt_cid) for member in quorum.members}
+        attested_members = {(member.member_id, member.receipt_cid) for member in member_health}
+        if len(member_health) != len(attested_members) or attested_members != expected_members:
             raise ControlContractError(
-                "completion member health must cover every quorum receipt "
-                "exactly"
+                "completion member health must cover every quorum receipt exactly"
             )
         if not all(
-            member.healthy and member.safe_for_completion_reasoning
-            for member in member_health
+            member.healthy and member.safe_for_completion_reasoning for member in member_health
         ):
             raise ControlContractError(
                 "every exhaustive receipt must be explicitly healthy and "
@@ -6772,9 +6012,7 @@ class ControlSurfaceParityCompletionQuorumEvidence(
             "policy_revision": self.policy_revision,
             "operational_receipt_id": self.operational_receipt_id,
             "quorum": quorum,
-            "member_health": tuple(
-                item.to_record() for item in self.member_health
-            ),
+            "member_health": tuple(item.to_record() for item in self.member_health),
         }
 
     @classmethod
@@ -6840,8 +6078,7 @@ class MutationGuardRejection(_ControlCanonicalContract):
         object.__setattr__(self, "scenario", _text(self.scenario, "scenario"))
         if self.scenario not in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS:
             raise ControlContractError(
-                "mutation guard rejection scenario is not in the closed "
-                "rejection vocabulary"
+                "mutation guard rejection scenario is not in the closed rejection vocabulary"
             )
         object.__setattr__(
             self,
@@ -6859,17 +6096,10 @@ class MutationGuardRejection(_ControlCanonicalContract):
                 name,
                 _nonnegative(getattr(self, name), name),
             )
-        if (
-            self.service_resolution_count_after
-            != self.service_resolution_count_before
-        ):
-            raise ControlContractError(
-                "rejected mutation must not resolve a control service"
-            )
+        if self.service_resolution_count_after != self.service_resolution_count_before:
+            raise ControlContractError("rejected mutation must not resolve a control service")
         if self.dispatch_count_after != self.dispatch_count_before:
-            raise ControlContractError(
-                "rejected mutation must fail before backend dispatch"
-            )
+            raise ControlContractError("rejected mutation must fail before backend dispatch")
         if not isinstance(self.request_payload, Mapping):
             raise ControlContractError("request_payload must be a mapping")
         payload = dict(self.request_payload)
@@ -6892,13 +6122,9 @@ class MutationGuardRejection(_ControlCanonicalContract):
         except (ControlContractError, ValueError) as exc:
             actual = type(exc).__name__
         else:
-            raise ControlContractError(
-                "mutation guard rejection payload was accepted"
-            )
+            raise ControlContractError("mutation guard rejection payload was accepted")
         if actual != error_type:
-            raise ControlContractError(
-                "mutation guard rejection error_type does not match replay"
-            )
+            raise ControlContractError("mutation guard rejection error_type does not match replay")
         object.__setattr__(self, "error_type", error_type)
         _bounded_record(self, "mutation guard rejection")
 
@@ -6909,12 +6135,8 @@ class MutationGuardRejection(_ControlCanonicalContract):
             "surface": self.surface,
             "request_payload": self.request_payload,
             "error_type": self.error_type,
-            "service_resolution_count_before": (
-                self.service_resolution_count_before
-            ),
-            "service_resolution_count_after": (
-                self.service_resolution_count_after
-            ),
+            "service_resolution_count_before": (self.service_resolution_count_before),
+            "service_resolution_count_after": (self.service_resolution_count_after),
             "dispatch_count_before": self.dispatch_count_before,
             "dispatch_count_after": self.dispatch_count_after,
         }
@@ -6945,12 +6167,8 @@ class MutationGuardRejection(_ControlCanonicalContract):
             surface=payload.get("surface", ""),
             request_payload=payload.get("request_payload") or {},
             error_type=payload.get("error_type", ""),
-            service_resolution_count_before=payload.get(
-                "service_resolution_count_before", 0
-            ),
-            service_resolution_count_after=payload.get(
-                "service_resolution_count_after", 0
-            ),
+            service_resolution_count_before=payload.get("service_resolution_count_before", 0),
+            service_resolution_count_after=payload.get("service_resolution_count_after", 0),
             dispatch_count_before=payload.get("dispatch_count_before", 0),
             dispatch_count_after=payload.get("dispatch_count_after", 0),
         )
@@ -6971,9 +6189,7 @@ class ControlMutationRuntimeState(_ControlCanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("dispatch_count", "audit_receipt_count"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         for name in (
             "last_dispatch_request_id",
             "last_audit_receipt_id",
@@ -6987,12 +6203,8 @@ class ControlMutationRuntimeState(_ControlCanonicalContract):
             raise ControlContractError(
                 "dispatch count and latest request identity must both be set"
             )
-        if bool(self.audit_receipt_count) != bool(
-            self.last_audit_receipt_id
-        ):
-            raise ControlContractError(
-                "audit count and latest receipt identity must both be set"
-            )
+        if bool(self.audit_receipt_count) != bool(self.last_audit_receipt_id):
+            raise ControlContractError("audit count and latest receipt identity must both be set")
         _bounded_record(self, "control mutation runtime state")
 
     def _payload(self) -> dict[str, Any]:
@@ -7005,9 +6217,7 @@ class ControlMutationRuntimeState(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlMutationRuntimeState":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlMutationRuntimeState":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -7026,12 +6236,8 @@ class ControlMutationRuntimeState(_ControlCanonicalContract):
         result = cls(
             dispatch_count=payload.get("dispatch_count", 0),
             audit_receipt_count=payload.get("audit_receipt_count", 0),
-            last_dispatch_request_id=payload.get(
-                "last_dispatch_request_id", ""
-            ),
-            last_audit_receipt_id=payload.get(
-                "last_audit_receipt_id", ""
-            ),
+            last_dispatch_request_id=payload.get("last_dispatch_request_id", ""),
+            last_audit_receipt_id=payload.get("last_audit_receipt_id", ""),
         )
         _identity(payload, result.content_id, "control mutation runtime state")
         return result
@@ -7058,9 +6264,7 @@ class MutationGuardExecutionObservation(_ControlCanonicalContract):
             item = getattr(self, name)
             if not isinstance(item, ControlMutationRuntimeState):
                 if not isinstance(item, Mapping):
-                    raise ControlContractError(
-                        f"{name} must be a ControlMutationRuntimeState"
-                    )
+                    raise ControlContractError(f"{name} must be a ControlMutationRuntimeState")
                 item = ControlMutationRuntimeState.from_dict(item)
             object.__setattr__(self, name, item)
             states[name] = item
@@ -7077,30 +6281,21 @@ class MutationGuardExecutionObservation(_ControlCanonicalContract):
             )
         if (
             after_replay.dispatch_count != after_result.dispatch_count
-            or after_replay.last_dispatch_request_id
-            != after_result.last_dispatch_request_id
+            or after_replay.last_dispatch_request_id != after_result.last_dispatch_request_id
         ):
-            raise ControlContractError(
-                "idempotent replay must not dispatch the backend"
-            )
+            raise ControlContractError("idempotent replay must not dispatch the backend")
         if (
-            after_result.audit_receipt_count
-            != before.audit_receipt_count + 1
-            or after_result.last_audit_receipt_id
-            != self.audit_receipt_id
+            after_result.audit_receipt_count != before.audit_receipt_count + 1
+            or after_result.last_audit_receipt_id != self.audit_receipt_id
         ):
             raise ControlContractError(
                 "mutation execution must add exactly one bound audit receipt"
             )
         if (
-            after_replay.audit_receipt_count
-            != after_result.audit_receipt_count
-            or after_replay.last_audit_receipt_id
-            != after_result.last_audit_receipt_id
+            after_replay.audit_receipt_count != after_result.audit_receipt_count
+            or after_replay.last_audit_receipt_id != after_result.last_audit_receipt_id
         ):
-            raise ControlContractError(
-                "idempotent replay must not append another audit receipt"
-            )
+            raise ControlContractError("idempotent replay must not append another audit receipt")
         _bounded_record(self, "mutation guard execution observation")
 
     def _payload(self) -> dict[str, Any]:
@@ -7118,9 +6313,7 @@ class MutationGuardExecutionObservation(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "MutationGuardExecutionObservation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "MutationGuardExecutionObservation":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -7146,9 +6339,7 @@ class MutationGuardExecutionObservation(_ControlCanonicalContract):
             after_result=payload.get("after_result") or {},
             after_replay=payload.get("after_replay") or {},
         )
-        _identity(
-            payload, result.content_id, "mutation guard execution observation"
-        )
+        _identity(payload, result.content_id, "mutation guard execution observation")
         return result
 
 
@@ -7182,27 +6373,21 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
                 "mutation evidence requirement_id is not the ASI-G104 requirement"
             )
         if self.objective_id != CONTROL_MUTATION_GUARD_OBJECTIVE_ID:
-            raise ControlContractError(
-                "mutation evidence objective_id is not ASI-G104"
-            )
+            raise ControlContractError("mutation evidence objective_id is not ASI-G104")
         request = self.request
         if not isinstance(request, OperationRequest):
             if not isinstance(request, Mapping):
                 raise ControlContractError("request must be an OperationRequest")
             request = OperationRequest.from_dict(request)
         if not request.operation.mutating or request.dry_run:
-            raise ControlContractError(
-                "mutation guard evidence requires a real mutation request"
-            )
+            raise ControlContractError("mutation guard evidence requires a real mutation request")
         if (
             request.tree_id != self.repository_tree
             or request.objective_id != self.objective_id
             or request.policy_id != self.policy_id
             or request.policy_revision != self.policy_revision
         ):
-            raise ControlContractError(
-                "mutation guard evidence request binding is stale"
-            )
+            raise ControlContractError("mutation guard evidence request binding is stale")
         object.__setattr__(self, "request", request)
 
         decoded_results: list[OperationResult] = []
@@ -7210,15 +6395,11 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             item = getattr(self, name)
             if not isinstance(item, OperationResult):
                 if not isinstance(item, Mapping):
-                    raise ControlContractError(
-                        f"{name} must be an OperationResult"
-                    )
+                    raise ControlContractError(f"{name} must be an OperationResult")
                 item = OperationResult.from_dict(item)
             item.validate_against(request)
             if not item.succeeded:
-                raise ControlContractError(
-                    "mutation guard evidence requires successful results"
-                )
+                raise ControlContractError("mutation guard evidence requires successful results")
             object.__setattr__(self, name, item)
             decoded_results.append(item)
         if (
@@ -7233,19 +6414,15 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
         execution = self.execution
         if not isinstance(execution, MutationGuardExecutionObservation):
             if not isinstance(execution, Mapping):
-                raise ControlContractError(
-                    "execution must be a MutationGuardExecutionObservation"
-                )
+                raise ControlContractError("execution must be a MutationGuardExecutionObservation")
             execution = MutationGuardExecutionObservation.from_dict(execution)
         if (
             execution.request_id != request.request_id
             or execution.result_id != decoded_results[0].result_id
-            or execution.audit_receipt_id
-            != decoded_results[0].audit_receipt_id
+            or execution.audit_receipt_id != decoded_results[0].audit_receipt_id
         ):
             raise ControlContractError(
-                "mutation execution observation is detached from its request "
-                "or result"
+                "mutation execution observation is detached from its request or result"
             )
         object.__setattr__(self, "execution", execution)
 
@@ -7255,18 +6432,13 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             MutationGuardRejection.from_dict,
             "rejections",
         )
-        observed_cases = {
-            (item.surface, item.scenario) for item in rejections
-        }
+        observed_cases = {(item.surface, item.scenario) for item in rejections}
         required_cases = {
             (surface, scenario)
             for surface in ControlSurface
             for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
         }
-        if (
-            observed_cases != required_cases
-            or len(rejections) != len(required_cases)
-        ):
+        if observed_cases != required_cases or len(rejections) != len(required_cases):
             raise ControlContractError(
                 "mutation evidence requires the complete rejection scenario "
                 "matrix on Python, CLI, and MCP"
@@ -7296,9 +6468,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
         unfenced.pop("fencing_epoch", None)
 
         stale_binding = dict(canonical_request)
-        stale_binding["tree_id"] = (
-            f"{self.repository_tree}:stale-request-binding"
-        )
+        stale_binding["tree_id"] = f"{self.repository_tree}:stale-request-binding"
 
         path_escape = dict(canonical_request)
         parameters = dict(path_escape["parameters"])
@@ -7317,9 +6487,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             "undeclared_effect": undeclared_effect,
         }
         for rejection in rejections:
-            if dict(rejection.request_payload) != expected_rejections[
-                rejection.scenario
-            ]:
+            if dict(rejection.request_payload) != expected_rejections[rejection.scenario]:
                 raise ControlContractError(
                     "mutation guard rejection is not the bound request with "
                     f"only the {rejection.scenario} guard invalidated"
@@ -7387,8 +6555,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             for scenario in CONTROL_MUTATION_GUARD_REJECTION_SCENARIOS
         }
         operational_complete = bool(
-            self.proved_requirement_ids
-            == (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
+            self.proved_requirement_ids == (CONTROL_MUTATION_GUARD_REQUIREMENT_ID,)
             and isinstance(self.request, OperationRequest)
             and self.request.operation.mutating
             and not self.request.dry_run
@@ -7398,27 +6565,17 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
             and execution.request_id == self.request.request_id
             and execution.result_id == result.result_id
             and execution.audit_receipt_id == result.audit_receipt_id
-            and {
-                (item.surface, item.scenario)
-                for item in self.rejections
-            }
-            == required_rejections
+            and {(item.surface, item.scenario) for item in self.rejections} == required_rejections
         )
         return _evaluate_control_objective_completion(
             self,
             objective_id=CONTROL_MUTATION_GUARD_OBJECTIVE_ID,
             requirement_id=CONTROL_MUTATION_GUARD_REQUIREMENT_ID,
             objective_revision=CONTROL_MUTATION_GUARD_OBJECTIVE_REVISION,
-            analyzer_version=(
-                CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION
-            ),
-            configuration_revision=(
-                CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION
-            ),
+            analyzer_version=(CONTROL_MUTATION_GUARD_COMPLETION_ANALYZER_VERSION),
+            configuration_revision=(CONTROL_MUTATION_GUARD_COMPLETION_CONFIGURATION_REVISION),
             acceptance_criteria=CONTROL_MUTATION_GUARD_ACCEPTANCE_CRITERIA,
-            required_exhaustive_receipts=(
-                CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            required_exhaustive_receipts=(CONTROL_MUTATION_GUARD_REQUIRED_EXHAUSTIVE_RECEIPTS),
             quorum_evidence_type=ControlMutationCompletionQuorumEvidence,
             operational_complete=operational_complete,
             current_state=current_state,
@@ -7455,9 +6612,7 @@ class ControlMutationGuardEvidence(_ControlCanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlMutationGuardEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlMutationGuardEvidence":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -7520,15 +6675,11 @@ class ControlMutationCompletionMemberHealth(_ControlCanonicalContract):
             "member_id": self.member_id,
             "receipt_cid": self.receipt_cid,
             "healthy": self.healthy,
-            "safe_for_completion_reasoning": (
-                self.safe_for_completion_reasoning
-            ),
+            "safe_for_completion_reasoning": (self.safe_for_completion_reasoning),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlMutationCompletionMemberHealth":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlMutationCompletionMemberHealth":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -7548,9 +6699,7 @@ class ControlMutationCompletionMemberHealth(_ControlCanonicalContract):
             member_id=payload.get("member_id", ""),
             receipt_cid=payload.get("receipt_cid", ""),
             healthy=payload.get("healthy", False),
-            safe_for_completion_reasoning=payload.get(
-                "safe_for_completion_reasoning", False
-            ),
+            safe_for_completion_reasoning=payload.get("safe_for_completion_reasoning", False),
         )
         _identity(
             payload,
@@ -7564,17 +6713,13 @@ class ControlMutationCompletionMemberHealth(_ControlCanonicalContract):
 class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
     """Bind a generic exhaustive quorum to one G104 mutation witness."""
 
-    SCHEMA: ClassVar[str] = (
-        CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA
-    )
+    SCHEMA: ClassVar[str] = CONTROL_MUTATION_COMPLETION_QUORUM_EVIDENCE_SCHEMA
 
     validation_policy_id: str
     policy_revision: str
     operational_receipt_id: str
     quorum: Any
-    member_health: tuple[
-        ControlMutationCompletionMemberHealth | Mapping[str, Any], ...
-    ]
+    member_health: tuple[ControlMutationCompletionMemberHealth | Mapping[str, Any], ...]
     objective_id: str = CONTROL_MUTATION_GUARD_OBJECTIVE_ID
     requirement_id: str = CONTROL_MUTATION_GUARD_REQUIREMENT_ID
 
@@ -7590,9 +6735,7 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.objective_id != CONTROL_MUTATION_GUARD_OBJECTIVE_ID:
-            raise ControlContractError(
-                "completion quorum objective_id is not ASI-G104"
-            )
+            raise ControlContractError("completion quorum objective_id is not ASI-G104")
         if self.requirement_id != CONTROL_MUTATION_GUARD_REQUIREMENT_ID:
             raise ControlContractError(
                 "completion quorum requirement_id is not the ASI-G104 requirement"
@@ -7606,9 +6749,7 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
             try:
                 quorum = ExhaustionQuorumResult.from_dict(quorum)
             except (TypeError, ValueError) as exc:
-                raise ControlContractError(
-                    "completion quorum is malformed"
-                ) from exc
+                raise ControlContractError("completion quorum is malformed") from exc
         object.__setattr__(self, "quorum", quorum)
         member_health = _coerce_tuple(
             self.member_health,
@@ -7616,24 +6757,14 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
             ControlMutationCompletionMemberHealth.from_dict,
             "member_health",
         )
-        expected_members = {
-            (member.member_id, member.receipt_cid)
-            for member in quorum.members
-        }
-        attested_members = {
-            (member.member_id, member.receipt_cid)
-            for member in member_health
-        }
-        if (
-            len(member_health) != len(attested_members)
-            or attested_members != expected_members
-        ):
+        expected_members = {(member.member_id, member.receipt_cid) for member in quorum.members}
+        attested_members = {(member.member_id, member.receipt_cid) for member in member_health}
+        if len(member_health) != len(attested_members) or attested_members != expected_members:
             raise ControlContractError(
                 "completion member health must cover every quorum receipt exactly"
             )
         if not all(
-            member.healthy and member.safe_for_completion_reasoning
-            for member in member_health
+            member.healthy and member.safe_for_completion_reasoning for member in member_health
         ):
             raise ControlContractError(
                 "every exhaustive receipt must be explicitly healthy and "
@@ -7657,15 +6788,11 @@ class ControlMutationCompletionQuorumEvidence(_ControlCanonicalContract):
             "policy_revision": self.policy_revision,
             "operational_receipt_id": self.operational_receipt_id,
             "quorum": quorum,
-            "member_health": tuple(
-                item.to_record() for item in self.member_health
-            ),
+            "member_health": tuple(item.to_record() for item in self.member_health),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ControlMutationCompletionQuorumEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ControlMutationCompletionQuorumEvidence":
         _schema(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -7714,9 +6841,7 @@ class LifecycleCommand(_ControlCanonicalContract):
     dry_run: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "action", _enum(self.action, LifecycleAction, "action")
-        )
+        object.__setattr__(self, "action", _enum(self.action, LifecycleAction, "action"))
         object.__setattr__(self, "target_id", _text(self.target_id, "target_id"))
         object.__setattr__(self, "reason", _text(self.reason, "reason"))
         object.__setattr__(
@@ -7734,11 +6859,7 @@ class LifecycleCommand(_ControlCanonicalContract):
 
     @property
     def authority(self) -> OperationAuthority:
-        return (
-            OperationAuthority.PROPOSAL
-            if self.dry_run
-            else OperationAuthority.MUTATION
-        )
+        return OperationAuthority.PROPOSAL if self.dry_run else OperationAuthority.MUTATION
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -7780,19 +6901,17 @@ class LifecycleCommand(_ControlCanonicalContract):
             dry_run=payload.get("dry_run", False),
         )
         claimed_operation = payload.get("operation")
-        if claimed_operation not in (None, "") and _operation(
-            claimed_operation
-        ) is not result.operation:
-            raise ControlContractError(
-                "lifecycle operation does not match its action"
-            )
+        if (
+            claimed_operation not in (None, "")
+            and _operation(claimed_operation) is not result.operation
+        ):
+            raise ControlContractError("lifecycle operation does not match its action")
         claimed_authority = payload.get("authority")
-        if claimed_authority not in (None, "") and _authority(
-            claimed_authority
-        ) is not result.authority:
-            raise AuthorityViolationError(
-                "lifecycle authority does not match dry_run"
-            )
+        if (
+            claimed_authority not in (None, "")
+            and _authority(claimed_authority) is not result.authority
+        ):
+            raise AuthorityViolationError("lifecycle authority does not match dry_run")
         _identity(payload, result.content_id, "lifecycle command")
         return result
 
@@ -7851,9 +6970,7 @@ def operation_request_json_schema(
                     )
                 )
             )
-            for name in sorted(
-                allowed_parameters.difference({"target", "prompt_source"})
-            )
+            for name in sorted(allowed_parameters.difference({"target", "prompt_source"}))
         }
         target_fields = {
             Operation.WORKFLOW_PREVIEW: ("repository_id", "tree_id"),
@@ -7876,10 +6993,7 @@ def operation_request_json_schema(
         }[selected]
         parameter_properties["target"] = {
             "type": "object",
-            "properties": {
-                name: {"type": "string", "minLength": 1}
-                for name in target_fields
-            },
+            "properties": {name: {"type": "string", "minLength": 1} for name in target_fields},
             "additionalProperties": False,
         }
         if "directory" in allowed_parameters:
@@ -7892,10 +7006,7 @@ def operation_request_json_schema(
         if "prompt_source" in allowed_parameters:
             parameter_properties["prompt_source"] = {
                 "type": "object",
-                "properties": {
-                    name: {"type": "string"}
-                    for name in sorted(_PROMPT_SOURCE_FIELDS)
-                },
+                "properties": {name: {"type": "string"} for name in sorted(_PROMPT_SOURCE_FIELDS)},
                 "additionalProperties": False,
             }
         parameter_schema = {
@@ -8039,10 +7150,7 @@ def operation_result_json_schema(
         if selected is not None
         else {
             "type": "string",
-            "enum": [
-                item.value
-                for item in sorted(Operation, key=lambda item: item.value)
-            ],
+            "enum": [item.value for item in sorted(Operation, key=lambda item: item.value)],
         }
     )
     return {
@@ -8143,9 +7251,7 @@ def decode_operation_request(
     """
 
     if not isinstance(payload, Mapping):
-        raise ControlContractError(
-            "operation request payload must contain an object"
-        )
+        raise ControlContractError("operation request payload must contain an object")
     return OperationRequest.from_dict(payload)
 
 
@@ -8177,9 +7283,7 @@ SUPERVISOR_USAGE_CONTROL_TOOL_SCHEMA_VERSION: Final[str] = (
 SUPERVISOR_USAGE_CONTROL_CATALOG_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/usage-control-catalog@1"
 )
-SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID: Final[str] = (
-    "requirement:supervisor-usage-metrics.v1"
-)
+SUPERVISOR_USAGE_METRICS_REQUIREMENT_ID: Final[str] = "requirement:supervisor-usage-metrics.v1"
 SUPERVISOR_USAGE_METRICS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/usage-governance-metrics@1"
 )
@@ -8187,15 +7291,11 @@ SUPERVISOR_USAGE_METRICS_SCHEMA_VERSION: Final[int] = 1
 
 # Distinct authorities — read/detail/admin never share a token.
 SUPERVISOR_USAGE_READ_AUTHORITY: Final[str] = "agent_supervisor.usage/read"
-SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY: Final[str] = (
-    "agent_supervisor.usage/read_detail"
-)
+SUPERVISOR_USAGE_READ_DETAIL_AUTHORITY: Final[str] = "agent_supervisor.usage/read_detail"
 SUPERVISOR_USAGE_ADMIN_AUTHORITY: Final[str] = "agent_supervisor.usage/admin"
 SUPERVISOR_USAGE_BUDGET_AUTHORITY: Final[str] = "agent_supervisor.usage/budget"
 SUPERVISOR_USAGE_POLICY_AUTHORITY: Final[str] = "agent_supervisor.usage/policy"
-SUPERVISOR_USAGE_CORRECTION_AUTHORITY: Final[str] = (
-    "agent_supervisor.usage/correction"
-)
+SUPERVISOR_USAGE_CORRECTION_AUTHORITY: Final[str] = "agent_supervisor.usage/correction"
 SUPERVISOR_USAGE_RESET_AUTHORITY: Final[str] = "agent_supervisor.usage/reset"
 
 MAX_USAGE_CONTROL_PAGE_SIZE: Final[int] = 100
@@ -8320,25 +7420,21 @@ class SupervisorUsageControlOperation(str, Enum):
     RESET = "usage_reset"
 
 
-USAGE_CONTROL_READ_OPERATIONS: Final[frozenset[SupervisorUsageControlOperation]] = (
-    frozenset(
-        {
-            SupervisorUsageControlOperation.STATUS,
-            SupervisorUsageControlOperation.HEALTH,
-            SupervisorUsageControlOperation.BUDGETS,
-            SupervisorUsageControlOperation.HEADROOM,
-            SupervisorUsageControlOperation.RESERVATIONS,
-            SupervisorUsageControlOperation.RECEIPTS,
-            SupervisorUsageControlOperation.ROUTE_PREVIEW,
-            SupervisorUsageControlOperation.BLOCKED_WORK,
-            SupervisorUsageControlOperation.NEXT_ELIGIBLE,
-            SupervisorUsageControlOperation.ADAPTER_CAPABILITIES,
-        }
-    )
+USAGE_CONTROL_READ_OPERATIONS: Final[frozenset[SupervisorUsageControlOperation]] = frozenset(
+    {
+        SupervisorUsageControlOperation.STATUS,
+        SupervisorUsageControlOperation.HEALTH,
+        SupervisorUsageControlOperation.BUDGETS,
+        SupervisorUsageControlOperation.HEADROOM,
+        SupervisorUsageControlOperation.RESERVATIONS,
+        SupervisorUsageControlOperation.RECEIPTS,
+        SupervisorUsageControlOperation.ROUTE_PREVIEW,
+        SupervisorUsageControlOperation.BLOCKED_WORK,
+        SupervisorUsageControlOperation.NEXT_ELIGIBLE,
+        SupervisorUsageControlOperation.ADAPTER_CAPABILITIES,
+    }
 )
-USAGE_CONTROL_MUTATION_OPERATIONS: Final[
-    frozenset[SupervisorUsageControlOperation]
-] = frozenset(
+USAGE_CONTROL_MUTATION_OPERATIONS: Final[frozenset[SupervisorUsageControlOperation]] = frozenset(
     {
         SupervisorUsageControlOperation.SET_BUDGET,
         SupervisorUsageControlOperation.SET_POLICY,
@@ -8346,20 +7442,20 @@ USAGE_CONTROL_MUTATION_OPERATIONS: Final[
         SupervisorUsageControlOperation.RESET,
     }
 )
-USAGE_CONTROL_PREVIEW_OPERATIONS: Final[
-    frozenset[SupervisorUsageControlOperation]
-] = frozenset({SupervisorUsageControlOperation.ROUTE_PREVIEW})
+USAGE_CONTROL_PREVIEW_OPERATIONS: Final[frozenset[SupervisorUsageControlOperation]] = frozenset(
+    {SupervisorUsageControlOperation.ROUTE_PREVIEW}
+)
 
 # Mutation operations require a distinct authority (not just generic admin).
-USAGE_CONTROL_MUTATION_AUTHORITIES: Final[
-    Mapping[SupervisorUsageControlOperation, str]
-] = MappingProxyType(
-    {
-        SupervisorUsageControlOperation.SET_BUDGET: SUPERVISOR_USAGE_BUDGET_AUTHORITY,
-        SupervisorUsageControlOperation.SET_POLICY: SUPERVISOR_USAGE_POLICY_AUTHORITY,
-        SupervisorUsageControlOperation.CORRECT: SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
-        SupervisorUsageControlOperation.RESET: SUPERVISOR_USAGE_RESET_AUTHORITY,
-    }
+USAGE_CONTROL_MUTATION_AUTHORITIES: Final[Mapping[SupervisorUsageControlOperation, str]] = (
+    MappingProxyType(
+        {
+            SupervisorUsageControlOperation.SET_BUDGET: SUPERVISOR_USAGE_BUDGET_AUTHORITY,
+            SupervisorUsageControlOperation.SET_POLICY: SUPERVISOR_USAGE_POLICY_AUTHORITY,
+            SupervisorUsageControlOperation.CORRECT: SUPERVISOR_USAGE_CORRECTION_AUTHORITY,
+            SupervisorUsageControlOperation.RESET: SUPERVISOR_USAGE_RESET_AUTHORITY,
+        }
+    )
 )
 
 
@@ -8382,9 +7478,7 @@ def usage_control_reason_codes() -> tuple[str, ...]:
 
 
 def usage_control_operations() -> tuple[str, ...]:
-    return tuple(
-        sorted(item.value for item in SupervisorUsageControlOperation)
-    )
+    return tuple(sorted(item.value for item in SupervisorUsageControlOperation))
 
 
 def usage_control_mutation_operations() -> tuple[str, ...]:
@@ -8404,9 +7498,7 @@ def discover_usage_control_catalog() -> dict[str, Any]:
     """
 
     operations: list[dict[str, Any]] = []
-    for operation in sorted(
-        SupervisorUsageControlOperation, key=lambda item: item.value
-    ):
+    for operation in sorted(SupervisorUsageControlOperation, key=lambda item: item.value):
         mutating = operation in USAGE_CONTROL_MUTATION_OPERATIONS
         preview = operation in USAGE_CONTROL_PREVIEW_OPERATIONS
         authority = (
@@ -8483,11 +7575,7 @@ def usage_headroom_band(
             except (TypeError, ValueError):
                 return kind, None
         kind_attr = getattr(quantity, "kind", None)
-        kind = (
-            kind_attr.value
-            if hasattr(kind_attr, "value")
-            else str(kind_attr or "unknown")
-        )
+        kind = kind_attr.value if hasattr(kind_attr, "value") else str(kind_attr or "unknown")
         value = getattr(quantity, "value", None)
         try:
             return kind, (None if value is None else int(value))

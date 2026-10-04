@@ -39,9 +39,7 @@ BLOB_B = "baguqeerbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
 def _span(line: int = 1, col: int = 0) -> SourceSpan:
-    return SourceSpan(
-        line_start=line, column_start=col, line_end=line, column_end=col + 4
-    )
+    return SourceSpan(line_start=line, column_start=col, line_end=line, column_end=col + 4)
 
 
 def _node(
@@ -283,6 +281,7 @@ class _PoisonBackend(_HealthyBackend):
             ]
         raise AssertionError(f"unknown poison kind {self.kind}")
 
+
 # ---------------------------------------------------------------------------
 # Capability / inspection
 # ---------------------------------------------------------------------------
@@ -503,12 +502,8 @@ def test_poisoned_backend_results_are_rejected(kind: str) -> None:
 
 def test_healthy_backend_ranks_only_canonical_evidence() -> None:
     graph = _fixture_graph()
-    entry = next(
-        n for n in graph.nodes if n.qualified_name == "pkg.mod.entry"
-    )
-    helper = next(
-        n for n in graph.nodes if n.qualified_name == "pkg.mod.helper"
-    )
+    entry = next(n for n in graph.nodes if n.qualified_name == "pkg.mod.entry")
+    helper = next(n for n in graph.nodes if n.qualified_name == "pkg.mod.helper")
     backend = _HealthyBackend(
         hits=[
             {"node_id": helper.node_id, "score": 0.4, "ranking_reason": "graph"},
@@ -547,12 +542,8 @@ def test_local_projection_chunk_cids_are_deterministic() -> None:
 
     assert first.projection_id == second.projection_id
     assert first.index_cid == second.index_cid
-    assert [c.chunk_cid for c in first.chunks] == [
-        c.chunk_cid for c in second.chunks
-    ]
-    assert [c.chunk_id for c in first.chunks] == [
-        c.chunk_id for c in second.chunks
-    ]
+    assert [c.chunk_cid for c in first.chunks] == [c.chunk_cid for c in second.chunks]
+    assert [c.chunk_id for c in first.chunks] == [c.chunk_id for c in second.chunks]
     # Provenance links bind chunk CIDs to blob CIDs and graph identity.
     kinds = {link.kind for link in first.provenance_links}
     assert "projects_blob" in kinds
@@ -572,9 +563,7 @@ def test_deterministic_query_ranking_is_stable() -> None:
 
     assert first.result_id == second.result_id
     assert first.query_id == second.query_id
-    assert [r.to_dict() for r in first.references] == [
-        r.to_dict() for r in second.references
-    ]
+    assert [r.to_dict() for r in first.references] == [r.to_dict() for r in second.references]
     assert first.references
     for ref in first.references:
         assert ref.ranking_reason
@@ -586,9 +575,7 @@ def test_deterministic_query_ranking_is_stable() -> None:
 def test_query_seed_and_hop_expansion_stays_in_projection() -> None:
     graph = _fixture_graph()
     projection = project_program_graph_local(graph)
-    entry = next(
-        n for n in graph.nodes if n.qualified_name == "pkg.mod.entry"
-    )
+    entry = next(n for n in graph.nodes if n.qualified_name == "pkg.mod.entry")
     result = rank_projection_local(
         graph,
         projection,
@@ -635,11 +622,7 @@ def test_query_never_ranks_nodes_outside_projection() -> None:
     for ref in result.references:
         assert ref.node_id in allowed
     # The dropped component must not appear.
-    dropped = {
-        n.node_id
-        for n in graph.nodes
-        if n.node_id not in allowed
-    }
+    dropped = {n.node_id for n in graph.nodes if n.node_id not in allowed}
     assert dropped
     assert not any(ref.node_id in dropped for ref in result.references)
 
@@ -690,9 +673,7 @@ def test_query_input_order_does_not_affect_result_identity() -> None:
 
 
 def test_inspect_helper_matches_provider_capabilities() -> None:
-    policy = GraphProjectionPolicy(
-        bounds=GraphProjectionBounds(max_results=8, max_items=32)
-    )
+    policy = GraphProjectionPolicy(bounds=GraphProjectionBounds(max_results=8, max_items=32))
     declared = inspect_program_graph_provider_capability(policy)
     provider = IpfsDatasetsProgramGraphProvider(policy)
     assert provider.capabilities().capability_id == declared.capability_id

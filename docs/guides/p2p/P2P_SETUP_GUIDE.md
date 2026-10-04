@@ -145,10 +145,8 @@ from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 # Create cache with P2P enabled
 cache = GitHubAPICache(
     enable_p2p=True,
-  p2p_listen_port=9100,
-    bootstrap_peers=[
-    "/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID1"
-    ]
+    p2p_listen_port=9100,
+    bootstrap_peers=["/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID1"],
 )
 ```
 
@@ -280,10 +278,7 @@ Response:
 ### Python API
 
 ```python
-from ipfs_accelerate_py.mcp.tools.dashboard_data import (
-    get_peer_status,
-    get_cache_stats
-)
+from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status, get_cache_stats
 
 # Get P2P peer status
 peer_status = get_peer_status()

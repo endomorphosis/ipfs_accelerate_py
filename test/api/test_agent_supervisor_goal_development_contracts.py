@@ -57,9 +57,7 @@ def _request(
         "policy_digest": policy.policy_digest,
         "mode": policy.mode,
         "repair_draft_id": (
-            "baguqeera-prior-draft"
-            if policy.mode is GoalDevelopmentMode.REPAIR_ONLY
-            else ""
+            "baguqeera-prior-draft" if policy.mode is GoalDevelopmentMode.REPAIR_ONLY else ""
         ),
     }
     values.update(changes)
@@ -291,11 +289,7 @@ def test_draft_rejects_unknown_parents_cycles_and_dependencies() -> None:
             )
         )
     with pytest.raises(ContractValidationError, match="unknown dependencies"):
-        _draft(
-            proposals=(
-                _proposal("subgoal:a", depends_on=("subgoal:missing",)),
-            )
-        )
+        _draft(proposals=(_proposal("subgoal:a", depends_on=("subgoal:missing",)),))
     with pytest.raises(ContractValidationError, match="dependency graph.*acyclic"):
         _draft(
             proposals=(
@@ -508,9 +502,7 @@ def test_admission_receipts_round_trip_and_enforce_mode_authority() -> None:
             reason_codes=("shadow_mode",),
         )
     with pytest.raises(ContractValidationError, match="frozen proposal bindings"):
-        replace(admitted, repository_tree_id="tree:other").validate_proposal_receipt(
-            proposal
-        )
+        replace(admitted, repository_tree_id="tree:other").validate_proposal_receipt(proposal)
 
 
 def test_shadow_assist_and_repair_receipts_cannot_mutate_objective_graph() -> None:

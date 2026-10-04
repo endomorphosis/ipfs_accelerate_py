@@ -88,12 +88,8 @@ from ..analysis.analysis_transport import (
 
 IPFS_DATASETS_LOGIC_PROVIDER_ID: Final = "hammer"
 IPFS_DATASETS_LOGIC_PROVIDER_VERSION: Final = "1.0.0"
-HAMMER_ADAPTER_SCHEMA_VERSION: Final = (
-    "ipfs_accelerate_py/agent-supervisor/hammer-adapter-result@1"
-)
-HAMMER_PROVENANCE_SCHEMA_VERSION: Final = (
-    "ipfs_accelerate_py/agent-supervisor/hammer-provenance@1"
-)
+HAMMER_ADAPTER_SCHEMA_VERSION: Final = "ipfs_accelerate_py/agent-supervisor/hammer-adapter-result@1"
+HAMMER_PROVENANCE_SCHEMA_VERSION: Final = "ipfs_accelerate_py/agent-supervisor/hammer-provenance@1"
 HAMMER_TRANSLATOR_ID: Final = "ipfs-datasets-py-hammer-adapter@1"
 
 KNOWN_HAMMER_SOLVERS: Final = ("cvc5", "e", "vampire", "z3")
@@ -170,9 +166,7 @@ def _strings(
         raw: Sequence[Any] = ()
     elif isinstance(value, str):
         raw = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         raw = value
     else:
         raise ValueError(f"{field_name} must be a string or array of strings")
@@ -251,20 +245,13 @@ def _semantic_binding_projection(
     ).strip()
     return {
         "goal_id": str(
-            payload.get("goal_id")
-            or metadata.get("goal_id")
-            or metadata.get("objective_id")
-            or ""
+            payload.get("goal_id") or metadata.get("goal_id") or metadata.get("objective_id") or ""
         ).strip(),
         "accepted_plan_id": str(
-            payload.get("accepted_plan_id")
-            or metadata.get("accepted_plan_id")
-            or ""
+            payload.get("accepted_plan_id") or metadata.get("accepted_plan_id") or ""
         ).strip(),
         "assumptions_digest": str(
-            payload.get("assumptions_digest")
-            or metadata.get("assumptions_digest")
-            or ""
+            payload.get("assumptions_digest") or metadata.get("assumptions_digest") or ""
         ).strip(),
         "toolchain_id": toolchain_id,
         "changed_scope_set_id": str(
@@ -274,9 +261,7 @@ def _semantic_binding_projection(
             or ""
         ).strip(),
         "effect_scope_map": _provider_safe(
-            payload.get("effect_scope_map")
-            or metadata.get("effect_scope_map")
-            or {}
+            payload.get("effect_scope_map") or metadata.get("effect_scope_map") or {}
         ),
         "policy_id": policy_id,
     }
@@ -337,9 +322,7 @@ def _provider_safe(value: Any) -> Any:
             str(key): _provider_safe(item)
             for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_provider_safe(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
@@ -379,9 +362,7 @@ class HammerSupervisorPolicy:
         cpu_time_ms = self.cpu_time_ms
         memory_bytes = self.memory_bytes
         if self.timeout_seconds is not None:
-            seconds = _positive_int(
-                self.timeout_seconds, field_name="timeout_seconds"
-            )
+            seconds = _positive_int(self.timeout_seconds, field_name="timeout_seconds")
             converted = seconds * 1000
             if self.timeout_ms != 30_000 and self.timeout_ms != converted:
                 raise ValueError("timeout_ms and timeout_seconds disagree")
@@ -395,34 +376,23 @@ class HammerSupervisorPolicy:
         if self.memory_mb is not None:
             memory_mb = _positive_int(self.memory_mb, field_name="memory_mb")
             converted = memory_mb * 1024 * 1024
-            if (
-                self.memory_bytes != 512 * 1024 * 1024
-                and self.memory_bytes != converted
-            ):
+            if self.memory_bytes != 512 * 1024 * 1024 and self.memory_bytes != converted:
                 raise ValueError("memory_bytes and memory_mb disagree")
             memory_bytes = converted
         object.__setattr__(self, "timeout_ms", timeout_ms)
         object.__setattr__(self, "cpu_time_ms", cpu_time_ms)
         object.__setattr__(self, "memory_bytes", memory_bytes)
-        solvers = _solver_names(
-            self.allowed_solvers, field_name="allowed_solvers"
-        )
+        solvers = _solver_names(self.allowed_solvers, field_name="allowed_solvers")
         unknown = sorted(set(solvers) - set(KNOWN_HAMMER_SOLVERS))
         if unknown:
             raise ValueError(
-                "allowed_solvers contains unknown Hammer solver families: "
-                + ", ".join(unknown)
+                "allowed_solvers contains unknown Hammer solver families: " + ", ".join(unknown)
             )
-        families = tuple(
-            sorted({_family(item) for item in self.translation_families})
-        )
-        unknown_families = sorted(
-            set(families) - set(SUPPORTED_TRANSLATION_FAMILIES)
-        )
+        families = tuple(sorted({_family(item) for item in self.translation_families}))
+        unknown_families = sorted(set(families) - set(SUPPORTED_TRANSLATION_FAMILIES))
         if unknown_families:
             raise ValueError(
-                "translation_families contains unsupported values: "
-                + ", ".join(unknown_families)
+                "translation_families contains unsupported values: " + ", ".join(unknown_families)
             )
         for name in (
             "timeout_ms",
@@ -435,17 +405,13 @@ class HammerSupervisorPolicy:
         if not isinstance(self.network_allowed, bool):
             raise ValueError("network_allowed must be a boolean")
         if not isinstance(self.require_authoritative_reconstruction, bool):
-            raise ValueError(
-                "require_authoritative_reconstruction must be a boolean"
-            )
+            raise ValueError("require_authoritative_reconstruction must be a boolean")
         target_itp = _text(self.target_itp, field_name="target_itp").lower()
         if target_itp == "lean4":
             target_itp = "lean"
         if target_itp not in {"lean", "coq", "isabelle"}:
             raise ValueError("target_itp must be lean, coq, or isabelle")
-        lock = _strict_mapping(
-            self.environment_lock, field_name="environment_lock"
-        )
+        lock = _strict_mapping(self.environment_lock, field_name="environment_lock")
         object.__setattr__(self, "allowed_solvers", solvers)
         object.__setattr__(self, "translation_families", families)
         object.__setattr__(
@@ -473,9 +439,7 @@ class HammerSupervisorPolicy:
             "fallback_checks": list(self.fallback_checks),
             "environment_lock": dict(self.environment_lock),
             "target_itp": self.target_itp,
-            "require_authoritative_reconstruction": (
-                self.require_authoritative_reconstruction
-            ),
+            "require_authoritative_reconstruction": (self.require_authoritative_reconstruction),
         }
 
 
@@ -756,9 +720,7 @@ def _resolve_family(
             "obligation does not declare a Hammer translation family",
             details={
                 "reason_code": "translation_family_missing",
-                "supported_translation_families": list(
-                    policy.translation_families
-                ),
+                "supported_translation_families": list(policy.translation_families),
             },
         )
     family = _family(raw)
@@ -769,9 +731,7 @@ def _resolve_family(
             details={
                 "reason_code": "translation_family_unsupported",
                 "translation_family": family,
-                "supported_translation_families": list(
-                    policy.translation_families
-                ),
+                "supported_translation_families": list(policy.translation_families),
             },
         )
     return family
@@ -886,12 +846,15 @@ def _hammer_selected_premise_payloads(
     itp: str,
     max_premises: int,
     hammer_policy: Any,
-) -> tuple[
-    tuple[dict[str, Any], ...],
-    tuple[str, ...],
-    dict[str, Any],
-    dict[str, Any],
-] | None:
+) -> (
+    tuple[
+        tuple[dict[str, Any], ...],
+        tuple[str, ...],
+        dict[str, Any],
+        dict[str, Any],
+    ]
+    | None
+):
     """Delegate reviewed deterministic premise selection to Hammer.
 
     Selection may rank a pinned corpus, but it cannot mutate the theorem:
@@ -903,9 +866,7 @@ def _hammer_selected_premise_payloads(
     selection_config = payload.get("premise_selection")
     if selection_config is None:
         return None
-    config = _strict_mapping(
-        selection_config, field_name="premise_selection"
-    )
+    config = _strict_mapping(selection_config, field_name="premise_selection")
     manifest_payload = payload.get("corpus_manifest")
     if not isinstance(manifest_payload, Mapping):
         raise ProofProviderError(
@@ -936,9 +897,7 @@ def _hammer_selected_premise_payloads(
     goal = hammer.GoalFeatures.from_statement(
         obligation.statement,
         theorem_id=str(config.get("theorem_id") or "") or None,
-        imports=_strings(
-            config.get("imports"), field_name="premise_selection.imports"
-        ),
+        imports=_strings(config.get("imports"), field_name="premise_selection.imports"),
         extra_symbols=_strings(
             config.get("extra_symbols"),
             field_name="premise_selection.extra_symbols",
@@ -1131,11 +1090,7 @@ def adapt_hammer_result(
 
     request_raw = raw.get("request") or {}
     result_request_id = str(
-        (
-            request_raw.get("request_id")
-            if isinstance(request_raw, Mapping)
-            else ""
-        )
+        (request_raw.get("request_id") if isinstance(request_raw, Mapping) else "")
         or raw.get("request_id")
         or ""
     )
@@ -1148,24 +1103,16 @@ def adapt_hammer_result(
     candidate = raw.get("proof_candidate")
     status = _status_from_hammer(raw.get("status", "unknown"))
     if candidate is not None and status is not HammerAdapterStatus.CANDIDATE:
-        raise ValueError(
-            "Hammer proof candidate is inconsistent with the portfolio status"
-        )
+        raise ValueError("Hammer proof candidate is inconsistent with the portfolio status")
     if candidate is None and status is HammerAdapterStatus.CANDIDATE:
-        raise ValueError(
-            "Hammer candidate status requires an exact proof candidate record"
-        )
+        raise ValueError("Hammer candidate status requires an exact proof candidate record")
     provenance = dict(bundle.provenance)
     attempt_provenance: dict[str, Any] = {}
     for attempt in attempts or ():
-        attempt_dict = (
-            attempt.to_dict() if hasattr(attempt, "to_dict") else attempt
-        )
+        attempt_dict = attempt.to_dict() if hasattr(attempt, "to_dict") else attempt
         if not isinstance(attempt_dict, Mapping):
             raise ValueError("Hammer solver attempts must be objects")
-        attempt_id = _text(
-            attempt_dict.get("attempt_id"), field_name="attempt.attempt_id"
-        )
+        attempt_id = _text(attempt_dict.get("attempt_id"), field_name="attempt.attempt_id")
         if str(attempt_dict.get("request_id") or bundle.request_id) != bundle.request_id:
             raise ValueError("Hammer solver attempt request_id does not match")
         attempt_provenance[attempt_id] = {
@@ -1179,9 +1126,7 @@ def adapt_hammer_result(
 
     candidate_provenance: dict[str, Any] = {}
     if candidate is not None:
-        candidate_dict = (
-            candidate.to_dict() if hasattr(candidate, "to_dict") else candidate
-        )
+        candidate_dict = candidate.to_dict() if hasattr(candidate, "to_dict") else candidate
         if not isinstance(candidate_dict, Mapping):
             raise ValueError("Hammer proof candidate must be an object")
         candidate_id = _text(
@@ -1249,9 +1194,7 @@ class IpfsDatasetsLogicProvider:
         if portfolio_runner is not None and not callable(portfolio_runner):
             raise ValueError("portfolio_runner must be callable")
         supplied_caches = [
-            item
-            for item in (verification_cache, proof_cache, cache)
-            if item is not None
+            item for item in (verification_cache, proof_cache, cache) if item is not None
         ]
         if len({id(item) for item in supplied_caches}) > 1:
             raise ValueError(
@@ -1259,19 +1202,13 @@ class IpfsDatasetsLogicProvider:
                 "the same cache when more than one is supplied"
             )
         selected_cache = supplied_caches[0] if supplied_caches else None
-        if selected_cache is not None and not isinstance(
-            selected_cache, FormalVerificationCache
-        ):
-            raise ValueError(
-                "verification_cache must be a FormalVerificationCache"
-            )
+        if selected_cache is not None and not isinstance(selected_cache, FormalVerificationCache):
+            raise ValueError("verification_cache must be a FormalVerificationCache")
         self._portfolio_runner = portfolio_runner
         if kernel_verifier is not None and not callable(
             getattr(kernel_verifier, "reconstruct_and_verify", None)
         ):
-            raise ValueError(
-                "kernel_verifier must expose reconstruct_and_verify"
-            )
+            raise ValueError("kernel_verifier must expose reconstruct_and_verify")
         self.kernel_verifier = kernel_verifier
         self.verification_cache = selected_cache
         self.proof_cache = selected_cache
@@ -1309,9 +1246,7 @@ class IpfsDatasetsLogicProvider:
                 "max_premises": self.policy.max_premises,
                 "candidate_authoritative": False,
                 "kernel_reconstruction_required": True,
-                "kernel_reconstruction_available": (
-                    self.kernel_verifier is not None
-                ),
+                "kernel_reconstruction_available": (self.kernel_verifier is not None),
                 "trust_aware_cache_enabled": self.verification_cache is not None,
                 "cross_process_single_flight": self.verification_cache is not None,
                 "proof_attempted": False,
@@ -1380,12 +1315,8 @@ class IpfsDatasetsLogicProvider:
         )
 
         hammer_policy = hammer.HammerPolicy(
-            timeout_seconds=_seconds_within(
-                policy.timeout_ms, field_name="timeout"
-            ),
-            cpu_seconds=_seconds_within(
-                policy.cpu_time_ms, field_name="cpu_time"
-            ),
+            timeout_seconds=_seconds_within(policy.timeout_ms, field_name="timeout"),
+            cpu_seconds=_seconds_within(policy.cpu_time_ms, field_name="cpu_time"),
             memory_mb=_memory_mb_within(policy.memory_bytes),
             network_allowed=policy.network_allowed,
             allowed_solvers=list(policy.allowed_solvers),
@@ -1406,14 +1337,12 @@ class IpfsDatasetsLogicProvider:
             hammer_policy=hammer_policy,
         )
         if selected is None:
-            premise_dicts, upstream_receipts, premise_provenance = (
-                _premise_payloads(
-                    obligation,
-                    payload,
-                    corpus_revision=corpus_revision,
-                    itp=itp,
-                    max_premises=policy.max_premises,
-                )
+            premise_dicts, upstream_receipts, premise_provenance = _premise_payloads(
+                obligation,
+                payload,
+                corpus_revision=corpus_revision,
+                itp=itp,
+                max_premises=policy.max_premises,
             )
             premise_selection: dict[str, Any] = {
                 "selection_method": "supervisor-explicit-premises@1",
@@ -1506,10 +1435,7 @@ class IpfsDatasetsLogicProvider:
             obligation,
             policy,
             hammer_request,
-            tuple(
-                hammer.PremiseRecord.from_dict(dict(item))
-                for item in premise_dicts
-            ),
+            tuple(hammer.PremiseRecord.from_dict(dict(item)) for item in premise_dicts),
             lock_record,
             hammer_policy,
             portfolio_policy,
@@ -1534,9 +1460,7 @@ class IpfsDatasetsLogicProvider:
             _runtime=runtime,
         )
 
-    def translate(
-        self, request: ProviderRequest
-    ) -> Mapping[str, Any] | ProviderResponse:
+    def translate(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
         obligation: CodeProofObligation | None = None
         policy: EffectiveHammerPolicy | None = None
         try:
@@ -1545,9 +1469,7 @@ class IpfsDatasetsLogicProvider:
             return self._build_bundle(request).to_dict()
         except ProofProviderError as exc:
             if exc.code is ProviderFailureCode.UNSUPPORTED:
-                return self._unsupported(
-                    request, exc, obligation=obligation, policy=policy
-                )
+                return self._unsupported(request, exc, obligation=obligation, policy=policy)
             raise
         except (TypeError, ValueError, KeyError) as exc:
             raise ProofProviderError(
@@ -1589,8 +1511,7 @@ class IpfsDatasetsLogicProvider:
         if kernel is None:
             kernel = {
                 "kernel_id": str(
-                    payload.get("kernel_id")
-                    or "independent-kernel-provider-required"
+                    payload.get("kernel_id") or "independent-kernel-provider-required"
                 ),
                 "kernel_version": str(payload.get("kernel_version") or ""),
             }
@@ -1598,17 +1519,14 @@ class IpfsDatasetsLogicProvider:
         if toolchain is None:
             toolchain = {
                 "toolchain_id": str(
-                    payload.get("toolchain_id")
-                    or bundle.environment_lock.get("lock_id")
+                    payload.get("toolchain_id") or bundle.environment_lock.get("lock_id")
                 ),
                 "environment_lock": dict(bundle.environment_lock),
             }
         theorem_registry = payload.get("theorem_registry")
         if theorem_registry is None:
             theorem_registry = {
-                "theorem_registry_id": str(
-                    payload.get("theorem_registry_id") or corpus_revision
-                ),
+                "theorem_registry_id": str(payload.get("theorem_registry_id") or corpus_revision),
                 "corpus_revision": corpus_revision,
             }
         return build_proof_cache_key(
@@ -1660,9 +1578,7 @@ class IpfsDatasetsLogicProvider:
             raw = obligation.metadata.get("legal_logic_translations")
         if raw is None:
             target = _FAMILY_TARGET.get(bundle.translation_family)
-            statement_format = str(
-                obligation.metadata.get("statement_format") or ""
-            ).lower()
+            statement_format = str(obligation.metadata.get("statement_format") or "").lower()
             if target and statement_format in {
                 target,
                 "smtlib2" if target == "smtlib" else target,
@@ -1696,9 +1612,7 @@ class IpfsDatasetsLogicProvider:
                         "translation_family": bundle.translation_family,
                     },
                 )
-        if not isinstance(raw, Sequence) or isinstance(
-            raw, (str, bytes, bytearray)
-        ):
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
             raise ValueError("translations must be an array")
         records = []
         for item in raw:
@@ -1730,9 +1644,7 @@ class IpfsDatasetsLogicProvider:
         normalized = hammer.normalize_portfolio_run(
             run,
             request_id=invocation.hammer_request.request_id,
-            premise_ids=[
-                premise.premise_id for premise in invocation.premises
-            ],
+            premise_ids=[premise.premise_id for premise in invocation.premises],
         )
         status = hammer.aggregate_recommended_status(normalized.values())
         if not run.attempts:
@@ -1741,10 +1653,7 @@ class IpfsDatasetsLogicProvider:
                 if run.denied
                 else hammer.HammerResultStatus.UNKNOWN
             )
-        elif all(
-            attempt.verdict is hammer.SolverVerdict.TIMEOUT
-            for attempt in run.attempts
-        ):
+        elif all(attempt.verdict is hammer.SolverVerdict.TIMEOUT for attempt in run.attempts):
             status = hammer.HammerResultStatus.TIMEOUT
         candidate = None
         if status is hammer.HammerResultStatus.CANDIDATE:
@@ -1752,8 +1661,7 @@ class IpfsDatasetsLogicProvider:
                 evidence = normalized.get(attempt.attempt_id)
                 if (
                     evidence is not None
-                    and evidence.recommended_status
-                    is hammer.HammerResultStatus.CANDIDATE
+                    and evidence.recommended_status is hammer.HammerResultStatus.CANDIDATE
                 ):
                     candidate = hammer.build_proof_candidate_record(
                         evidence,
@@ -1772,18 +1680,12 @@ class IpfsDatasetsLogicProvider:
             "request_id": invocation.bundle.request_id,
             "status": status.value,
             "attempts": [attempt.to_dict() for attempt in run.attempts],
-            "proof_candidate": (
-                candidate.to_dict() if candidate is not None else None
-            ),
+            "proof_candidate": (candidate.to_dict() if candidate is not None else None),
             "portfolio_run": run.to_dict(),
-            "normalized_evidence": {
-                key: value.to_dict() for key, value in normalized.items()
-            },
+            "normalized_evidence": {key: value.to_dict() for key, value in normalized.items()},
         }
 
-    def prove(
-        self, request: ProviderRequest
-    ) -> Mapping[str, Any] | ProviderResponse:
+    def prove(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
         obligation: CodeProofObligation | None = None
         effective: EffectiveHammerPolicy | None = None
         bundle: HammerRequestBundle | None = None
@@ -1839,9 +1741,7 @@ class IpfsDatasetsLogicProvider:
                 projected = adapt_hammer_result(raw_result, bundle)
                 projected["environment_lock"] = dict(bundle.environment_lock)
                 projected["portfolio_policy"] = dict(bundle.portfolio_policy)
-                projected["premises"] = [
-                    dict(premise) for premise in bundle.premises
-                ]
+                projected["premises"] = [dict(premise) for premise in bundle.premises]
                 return projected
 
             if self.verification_cache is None:
@@ -1851,12 +1751,8 @@ class IpfsDatasetsLogicProvider:
                 shared = self.verification_cache.single_flight(
                     cache_key,
                     execute_portfolio,
-                    lease_seconds=max(
-                        1, (effective.timeout_ms + 999) // 1000 + 5
-                    ),
-                    wait_timeout_seconds=max(
-                        1, (effective.timeout_ms + 999) // 1000 + 30
-                    ),
+                    lease_seconds=max(1, (effective.timeout_ms + 999) // 1000 + 5),
+                    wait_timeout_seconds=max(1, (effective.timeout_ms + 999) // 1000 + 30),
                 )
                 if not isinstance(shared, Mapping):
                     raise ValueError("shared Hammer result must be an object")
@@ -1867,16 +1763,11 @@ class IpfsDatasetsLogicProvider:
             )
             if (
                 self.policy.require_authoritative_reconstruction
-                and projected_result.get("status")
-                == HammerAdapterStatus.CANDIDATE.value
+                and projected_result.get("status") == HammerAdapterStatus.CANDIDATE.value
             ):
                 candidate = (
-                    projected_result.get("hammer_result", {}).get(
-                        "proof_candidate"
-                    )
-                    if isinstance(
-                        projected_result.get("hammer_result"), Mapping
-                    )
+                    projected_result.get("hammer_result", {}).get("proof_candidate")
+                    if isinstance(projected_result.get("hammer_result"), Mapping)
                     else None
                 )
                 if self.kernel_verifier is None:
@@ -1886,9 +1777,7 @@ class IpfsDatasetsLogicProvider:
                         "policy requires independent kernel reconstruction",
                         details={
                             "status": HammerAdapterStatus.UNSUPPORTED.value,
-                            "reason_code": (
-                                "independent_kernel_provider_required"
-                            ),
+                            "reason_code": ("independent_kernel_provider_required"),
                             "candidate": _provider_safe(candidate),
                             "provenance": dict(bundle.provenance),
                             "proof_success": False,
@@ -1909,9 +1798,7 @@ class IpfsDatasetsLogicProvider:
                         "policy-required reconstruction inputs are missing",
                         details={
                             "status": HammerAdapterStatus.UNSUPPORTED.value,
-                            "reason_code": (
-                                "authoritative_reconstruction_inputs_required"
-                            ),
+                            "reason_code": ("authoritative_reconstruction_inputs_required"),
                             "candidate": _provider_safe(candidate),
                             "provenance": dict(bundle.provenance),
                             "proof_success": False,
@@ -1975,9 +1862,7 @@ class IpfsDatasetsLogicProvider:
                 f"invalid Hammer portfolio request or result: {exc}",
             ) from exc
 
-    def reconstruct(
-        self, request: ProviderRequest
-    ) -> Mapping[str, Any] | ProviderResponse:
+    def reconstruct(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
         """Independently reconstruct one untrusted Hammer candidate."""
 
         if self.kernel_verifier is None:
@@ -2018,27 +1903,18 @@ class IpfsDatasetsLogicProvider:
                 raise ValueError("proof_candidate must be an object")
             if not isinstance(snapshot_raw, Mapping):
                 raise ValueError("goal_snapshot must be an object")
-            candidate = hammer.ProofCandidateRecord.from_dict(
-                dict(candidate_raw)
-            )
+            candidate = hammer.ProofCandidateRecord.from_dict(dict(candidate_raw))
             candidate.validate()
             if candidate.request_id != bundle.request_id:
-                raise ValueError(
-                    "proof_candidate.request_id does not match Hammer request"
-                )
+                raise ValueError("proof_candidate.request_id does not match Hammer request")
             snapshot = hammer.GoalSnapshot.from_dict(dict(snapshot_raw))
             snapshot.validate()
             if snapshot.goal_text.strip() != obligation.statement.strip():
-                raise ValueError(
-                    "goal_snapshot.goal_text does not match the obligation"
-                )
+                raise ValueError("goal_snapshot.goal_text does not match the obligation")
 
-            semantic_bindings = dict(
-                bundle.provenance.get("semantic_bindings") or {}
-            )
+            semantic_bindings = dict(bundle.provenance.get("semantic_bindings") or {})
             toolchain_id = _text(
-                request.payload.get("toolchain_id")
-                or semantic_bindings.get("toolchain_id"),
+                request.payload.get("toolchain_id") or semantic_bindings.get("toolchain_id"),
                 field_name="toolchain_id",
             )
             kernel_id = _text(
@@ -2076,9 +1952,7 @@ class IpfsDatasetsLogicProvider:
                 provider_status=HammerAdapterStatus.CANDIDATE.value,
             )
             if not isinstance(result, KernelVerificationResult):
-                raise ValueError(
-                    "kernel verifier returned an invalid result record"
-                )
+                raise ValueError("kernel verifier returned an invalid result record")
             if (
                 result.obligation_id != obligation.obligation_id
                 or result.request_id != bundle.request_id
@@ -2086,9 +1960,7 @@ class IpfsDatasetsLogicProvider:
                 or result.kernel_id != kernel_id
                 or result.toolchain_id != toolchain_id
             ):
-                raise ValueError(
-                    "kernel verification result is not bound to the request"
-                )
+                raise ValueError("kernel verification result is not bound to the request")
             return {
                 "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
                 "status": result.status.value,
@@ -2102,9 +1974,7 @@ class IpfsDatasetsLogicProvider:
                 },
                 "authoritative_verdict": result.verdict.value,
                 "authoritative_assurance": result.assurance.value,
-                "kernel_checked": (
-                    result.assurance.value == "kernel_verified"
-                ),
+                "kernel_checked": (result.assurance.value == "kernel_verified"),
                 "proof_success": result.accepted,
             }
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
@@ -2118,9 +1988,7 @@ class IpfsDatasetsLogicProvider:
                     "reason_code": "kernel_reconstruction_timed_out",
                     "proof_success": False,
                     "authoritative_assurance": "unverified",
-                    "provenance": (
-                        dict(bundle.provenance) if bundle is not None else {}
-                    ),
+                    "provenance": (dict(bundle.provenance) if bundle is not None else {}),
                 },
                 provider_id=self.provider_id,
                 provider_version=self.provider_version,
@@ -2131,9 +1999,7 @@ class IpfsDatasetsLogicProvider:
                 f"invalid independent reconstruction request or result: {exc}",
             ) from exc
 
-    def verify(
-        self, request: ProviderRequest
-    ) -> Mapping[str, Any] | ProviderResponse:
+    def verify(self, request: ProviderRequest) -> Mapping[str, Any] | ProviderResponse:
         return self.reconstruct(request)
 
     def attest(self, request: ProviderRequest) -> ProviderResponse:
@@ -2199,9 +2065,7 @@ _OPTIONAL_LOGIC_METHODS: Final = {
     ),
 }
 _OPTIONAL_LOGIC_MODULES: Final = {
-    AnalysisOperation.PREMISE_SELECTION: (
-        "ipfs_datasets_py.logic.hammers",
-    ),
+    AnalysisOperation.PREMISE_SELECTION: ("ipfs_datasets_py.logic.hammers",),
     AnalysisOperation.CONTRADICTION_SEARCH: (
         "ipfs_datasets_py.logic.integration.domain.document_consistency_checker",
         "ipfs_datasets_py.logic.TDFOL",
@@ -2210,9 +2074,7 @@ _OPTIONAL_LOGIC_MODULES: Final = {
         "ipfs_datasets_py.logic.integration.logic_translation_core",
         "ipfs_datasets_py.logic.deontic",
     ),
-    AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: (
-        "ipfs_datasets_py.logic.hammers",
-    ),
+    AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: ("ipfs_datasets_py.logic.hammers",),
     AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS: (
         "ipfs_datasets_py.logic.hammers",
         "ipfs_datasets_py.logic.TDFOL",
@@ -2270,18 +2132,14 @@ def registry_logic_producer_declarations() -> tuple[AnalysisProducer, AnalysisPr
     local = AnalysisProducer(
         producer_id=LOCAL_ANALYSIS_PRODUCER_ID,
         provider_kind=AnalysisProviderKind.LOCAL,
-        capability_revision=_registry_logic_capability_revision(
-            AnalysisProviderKind.LOCAL
-        ),
+        capability_revision=_registry_logic_capability_revision(AnalysisProviderKind.LOCAL),
         max_concurrency=4,
         **common,
     )
     optional = AnalysisProducer(
         producer_id=IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
         provider_kind=AnalysisProviderKind.IPFS_DATASETS,
-        capability_revision=_registry_logic_capability_revision(
-            AnalysisProviderKind.IPFS_DATASETS
-        ),
+        capability_revision=_registry_logic_capability_revision(AnalysisProviderKind.IPFS_DATASETS),
         max_concurrency=2,
         **common,
     )
@@ -2310,9 +2168,7 @@ def _registry_logic_family(request: AnalysisRequest) -> LogicFamily:
     return normalize_registry_logic_family(raw)
 
 
-def _registry_reference_source_id(
-    reference: Mapping[str, Any], request: AnalysisRequest
-) -> str:
+def _registry_reference_source_id(reference: Mapping[str, Any], request: AnalysisRequest) -> str:
     for name in (
         "reference_id",
         "artifact_content_id",
@@ -2333,9 +2189,7 @@ def _registry_reference_source_id(
 
 def _registry_logic_tokens(value: Any) -> frozenset[str]:
     return frozenset(
-        token.casefold()
-        for token in _REGISTRY_LOGIC_TOKEN_RE.findall(str(value))
-        if token
+        token.casefold() for token in _REGISTRY_LOGIC_TOKEN_RE.findall(str(value)) if token
     )
 
 
@@ -2357,14 +2211,10 @@ def _registry_candidate_score(
         AnalysisOperation.PROOF_CANDIDATE_ANALYSIS: 550_000,
         AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS: 500_000,
     }[operation]
-    if (
-        operation
-        in {
-            AnalysisOperation.CONTRADICTION_SEARCH,
-            AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS,
-        }
-        and question_tokens.intersection(_REGISTRY_NEGATION_TOKENS)
-    ):
+    if operation in {
+        AnalysisOperation.CONTRADICTION_SEARCH,
+        AnalysisOperation.COUNTEREXAMPLE_CANDIDATE_ANALYSIS,
+    } and question_tokens.intersection(_REGISTRY_NEGATION_TOKENS):
         base += 100_000
     return min(1_000_000, base + overlap_score)
 
@@ -2389,17 +2239,12 @@ def _registry_logic_evidence(
             "source_id": source_id,
         }
         raw: dict[str, Any] = {
-            "reference_id": _digest(
-                semantic_identity, prefix="analysis-logic-candidate"
-            ),
+            "reference_id": _digest(semantic_identity, prefix="analysis-logic-candidate"),
             "artifact_id": str(reference.get("artifact_id") or source_id),
             "kind": f"{operation.value}:{family.value}:candidate",
-            "score_millionths": _registry_candidate_score(
-                operation, question_tokens, reference
-            ),
+            "score_millionths": _registry_candidate_score(operation, question_tokens, reference),
             "summary": (
-                f"non-authoritative {family.value} "
-                f"{operation.value.replace('_', ' ')} candidate"
+                f"non-authoritative {family.value} {operation.value.replace('_', ' ')} candidate"
             ),
         }
         for name in (
@@ -2501,9 +2346,7 @@ def _registry_negotiated_fields(
         "schema": str(negotiated_capability.result_schema),
         "protocol_version": int(negotiated_capability.protocol_version),
         "capability_id": str(negotiated_capability.capability_id),
-        "capability_revision": str(
-            negotiated_capability.capability_revision
-        ),
+        "capability_revision": str(negotiated_capability.capability_revision),
     }
 
 
@@ -2519,9 +2362,7 @@ def _registry_transport_result(
     cost: Mapping[str, int] | None = None,
     truncated: bool = False,
 ) -> dict[str, Any]:
-    negotiated = _registry_negotiated_fields(
-        declaration, operation, negotiated_capability
-    )
+    negotiated = _registry_negotiated_fields(declaration, operation, negotiated_capability)
     return {
         **negotiated,
         "request_id": request.request_id,
@@ -2595,15 +2436,11 @@ def _registry_normalize_optional_references(
             raise ValueError("optional logic references must contain objects")
         reference_tree_id = str(value.get("tree_id") or "").strip()
         if reference_tree_id and reference_tree_id != expected_tree_id:
-            raise ValueError(
-                "optional logic reference tree_id does not match request tree_id"
-            )
+            raise ValueError("optional logic reference tree_id does not match request tree_id")
         aliased = _registry_alias_reference_ids(value)
         # Derive a semantic identity before attaching provider provenance so an
         # equivalent local and remote reference receives the same reference ID.
-        semantic = normalized_reference_payload(
-            aliased, default_kind=default_kind
-        )
+        semantic = normalized_reference_payload(aliased, default_kind=default_kind)
         normalized = normalize_analysis_reference(
             semantic,
             default_kind=default_kind,
@@ -2629,9 +2466,7 @@ def _registry_optional_result_parts(
     converter = getattr(raw, "to_dict", None)
     if not isinstance(raw, Mapping) and callable(converter):
         raw = converter()
-    if isinstance(raw, Sequence) and not isinstance(
-        raw, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray, memoryview)):
         raw = {"results": raw}
     if not isinstance(raw, Mapping):
         raise ValueError("optional logic provider returned a non-object result")
@@ -2656,9 +2491,7 @@ def _registry_optional_result_parts(
         "translated",
         "unknown",
     }:
-        raise RegistryLogicProviderUnavailable(
-            f"optional logic provider status is {status}"
-        )
+        raise RegistryLogicProviderUnavailable(f"optional logic provider status is {status}")
     evidence_raw = raw.get("evidence_references")
     if evidence_raw is None:
         for name in (
@@ -2673,9 +2506,7 @@ def _registry_optional_result_parts(
             if raw.get(name) is not None:
                 evidence_raw = raw[name]
                 break
-    provenance_raw = raw.get(
-        "provenance_references", raw.get("provenance", ())
-    )
+    provenance_raw = raw.get("provenance_references", raw.get("provenance", ()))
     evidence = _registry_normalize_optional_references(
         evidence_raw or (),
         default_kind=f"{operation.value}:candidate",
@@ -2699,9 +2530,7 @@ def _registry_optional_result_parts(
             or not isinstance(value, int)
             or value < 0
         ):
-            raise ValueError(
-                "optional logic cost must contain non-negative integer counters"
-            )
+            raise ValueError("optional logic cost must contain non-negative integer counters")
         cost[name] = value
     return (
         evidence,
@@ -2744,9 +2573,7 @@ class _RegistryLogicProducer:
         normalized = AnalysisRequest.from_value(request)
         operation = normalize_analysis_operation(normalized.operation)
         if operation not in self.declaration.operations:
-            raise ValueError(
-                f"logic producer does not support {operation.value}"
-            )
+            raise ValueError(f"logic producer does not support {operation.value}")
         for name in (
             "repository_id",
             "tree_id",
@@ -2754,18 +2581,13 @@ class _RegistryLogicProducer:
             "policy_id",
         ):
             if not str(normalized.metadata.get(name) or "").strip():
-                raise ValueError(
-                    f"registry logic request requires {name} provenance"
-                )
+                raise ValueError(f"registry logic request requires {name} provenance")
         tree_id = normalized.metadata["tree_id"]
         if any(
-            reference.get("tree_id")
-            and reference.get("tree_id") != tree_id
+            reference.get("tree_id") and reference.get("tree_id") != tree_id
             for reference in normalized.artifact_references
         ):
-            raise ValueError(
-                "registry logic artifact tree_id does not match request tree_id"
-            )
+            raise ValueError("registry logic artifact tree_id does not match request tree_id")
         return normalized, operation, _registry_logic_family(normalized)
 
     def _local_analyze(
@@ -2779,9 +2601,7 @@ class _RegistryLogicProducer:
         evidence = _registry_logic_evidence(
             request, operation, family, self.declaration.producer_id
         )
-        provenance = _registry_logic_provenance(
-            request, operation, family, self.declaration
-        )
+        provenance = _registry_logic_provenance(request, operation, family, self.declaration)
         return _registry_transport_result(
             request,
             operation,
@@ -2845,9 +2665,7 @@ class _RegistryLogicProducer:
             "request_id": request.request_id,
             "operation": operation.value,
             "question": request.question,
-            "artifact_references": [
-                dict(reference) for reference in request.artifact_references
-            ],
+            "artifact_references": [dict(reference) for reference in request.artifact_references],
             "metadata": {
                 key: request.metadata[key]
                 for key in (
@@ -2871,13 +2689,11 @@ class _RegistryLogicProducer:
         family: LogicFamily,
         negotiated_capability: Any,
     ) -> dict[str, Any]:
-        evidence, optional_provenance, verdict, cost, truncated = (
-            _registry_optional_result_parts(
-                raw,
-                operation=operation,
-                producer_id=self.declaration.producer_id,
-                expected_tree_id=str(request.metadata["tree_id"]),
-            )
+        evidence, optional_provenance, verdict, cost, truncated = _registry_optional_result_parts(
+            raw,
+            operation=operation,
+            producer_id=self.declaration.producer_id,
+            expected_tree_id=str(request.metadata["tree_id"]),
         )
         provenance = optional_provenance + _registry_logic_provenance(
             request, operation, family, self.declaration
@@ -2904,9 +2720,7 @@ class _RegistryLogicProducer:
     ) -> Any:
         normalized, operation, family = self._normalize_request(request)
         if _registry_cancelled(cancellation_token):
-            raise RegistryLogicProviderUnavailable(
-                "registry logic analysis was cancelled"
-            )
+            raise RegistryLogicProviderUnavailable("registry logic analysis was cancelled")
         if self.declaration.provider_kind is AnalysisProviderKind.LOCAL:
             return self._local_analyze(
                 normalized,
@@ -2917,6 +2731,7 @@ class _RegistryLogicProducer:
         _owner, method = self._optional_backend(operation)
         raw = method(self._optional_payload(normalized, operation, family))
         if inspect.isawaitable(raw):
+
             async def finish() -> dict[str, Any]:
                 resolved = await raw
                 return self._finish_optional(
@@ -2944,9 +2759,7 @@ class _RegistryLogicProducer:
         negotiated_capability: Any = None,
         **kwargs: Any,
     ) -> Any:
-        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(
-            requests, Sequence
-        ):
+        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(requests, Sequence):
             raise ValueError("registry logic batch must be a sequence")
         if not requests:
             raise ValueError("registry logic batch must not be empty")
@@ -2962,6 +2775,7 @@ class _RegistryLogicProducer:
             for request in requests
         )
         if any(inspect.isawaitable(item) for item in results):
+
             async def finish_batch() -> tuple[Any, ...]:
                 output: list[Any] = []
                 for item in results:

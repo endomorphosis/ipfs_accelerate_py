@@ -96,7 +96,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
                 self.assertTrue(self._check_lora_correctly_converted(peft_model))
                 self.assertTrue(peft_model._hf_peft_config_loaded)
                 # dummy generation
-                _ = peft_model.generate(input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device))
+                _ = peft_model.generate(
+                    input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device)
+                )
 
     def test_peft_state_dict(self):
         """
@@ -168,7 +170,11 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
                 peft_logits_enabled = peft_model(dummy_input).logits
 
                 torch.testing.assert_close(peft_logits, peft_logits_enabled, rtol=1e-12, atol=1e-12)
-                self.assertFalse(torch.allclose(peft_logits_enabled, peft_logits_disabled, atol=1e-12, rtol=1e-12))
+                self.assertFalse(
+                    torch.allclose(
+                        peft_logits_enabled, peft_logits_disabled, atol=1e-12, rtol=1e-12
+                    )
+                )
 
     def test_peft_add_adapter(self):
         """
@@ -186,7 +192,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 self.assertTrue(self._check_lora_correctly_converted(model))
                 # dummy generation
-                _ = model.generate(input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device))
+                _ = model.generate(
+                    input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device)
+                )
 
     def test_peft_add_adapter_from_pretrained(self):
         """
@@ -205,7 +213,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
                 self.assertTrue(self._check_lora_correctly_converted(model))
                 with tempfile.TemporaryDirectory() as tmpdirname:
                     model.save_pretrained(tmpdirname)
-                    model_from_pretrained = transformers_class.from_pretrained(tmpdirname).to(torch_device)
+                    model_from_pretrained = transformers_class.from_pretrained(tmpdirname).to(
+                        torch_device
+                    )
                     self.assertTrue(self._check_lora_correctly_converted(model_from_pretrained))
 
     def test_peft_add_adapter_modules_to_save(self):
@@ -339,9 +349,15 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 # Logits comparison
                 self.assertFalse(
-                    torch.allclose(logits_adapter_1.logits, logits_adapter_2.logits, atol=1e-6, rtol=1e-6)
+                    torch.allclose(
+                        logits_adapter_1.logits, logits_adapter_2.logits, atol=1e-6, rtol=1e-6
+                    )
                 )
-                self.assertFalse(torch.allclose(logits_original_model, logits_adapter_2.logits, atol=1e-6, rtol=1e-6))
+                self.assertFalse(
+                    torch.allclose(
+                        logits_original_model, logits_adapter_2.logits, atol=1e-6, rtol=1e-6
+                    )
+                )
 
                 model.set_adapter(["adapter-2", "default"])
                 self.assertTrue(model.active_adapters() == ["adapter-2", "default"])
@@ -349,10 +365,14 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 logits_adapter_mixed = model(dummy_input)
                 self.assertFalse(
-                    torch.allclose(logits_adapter_1.logits, logits_adapter_mixed.logits, atol=1e-6, rtol=1e-6)
+                    torch.allclose(
+                        logits_adapter_1.logits, logits_adapter_mixed.logits, atol=1e-6, rtol=1e-6
+                    )
                 )
                 self.assertFalse(
-                    torch.allclose(logits_adapter_2.logits, logits_adapter_mixed.logits, atol=1e-6, rtol=1e-6)
+                    torch.allclose(
+                        logits_adapter_2.logits, logits_adapter_mixed.logits, atol=1e-6, rtol=1e-6
+                    )
                 )
 
                 # multi active adapter saving not supported
@@ -401,10 +421,14 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
                 self.assertFalse(model._hf_peft_config_loaded)
 
                 # Test edge cases
-                with self.assertRaisesRegex(ValueError, "The following adapter\\(s\\) are not present"):
+                with self.assertRaisesRegex(
+                    ValueError, "The following adapter\\(s\\) are not present"
+                ):
                     model.delete_adapter("nonexistent_adapter")
 
-                with self.assertRaisesRegex(ValueError, "The following adapter\\(s\\) are not present"):
+                with self.assertRaisesRegex(
+                    ValueError, "The following adapter\\(s\\) are not present"
+                ):
                     model.delete_adapter(["adapter_1", "nonexistent_adapter"])
 
                 # Deleting with an empty list or None should not raise errors
@@ -432,14 +456,18 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         """
         for model_id in self.peft_test_model_ids:
             for transformers_class in self.transformers_test_model_classes:
-                peft_model = transformers_class.from_pretrained(model_id, load_in_8bit=True, device_map="auto")
+                peft_model = transformers_class.from_pretrained(
+                    model_id, load_in_8bit=True, device_map="auto"
+                )
 
                 module = peft_model.model.decoder.layers[0].self_attn.v_proj
                 self.assertTrue(module.__class__.__name__ == "Linear8bitLt")
                 self.assertTrue(peft_model.hf_device_map is not None)
 
                 # dummy generation
-                _ = peft_model.generate(input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device))
+                _ = peft_model.generate(
+                    input_ids=torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device)
+                )
 
     @require_torch_accelerator
     @require_bitsandbytes
@@ -450,7 +478,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         # 4bit
         for model_id in self.peft_test_model_ids:
             for transformers_class in self.transformers_test_model_classes:
-                peft_model = transformers_class.from_pretrained(model_id, load_in_4bit=True, device_map="auto")
+                peft_model = transformers_class.from_pretrained(
+                    model_id, load_in_4bit=True, device_map="auto"
+                )
 
                 module = peft_model.model.decoder.layers[0].self_attn.v_proj
                 self.assertTrue(module.__class__.__name__ == "Linear4bit")
@@ -466,7 +496,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         # 8-bit
         for model_id in self.peft_test_model_ids:
             for transformers_class in self.transformers_test_model_classes:
-                peft_model = transformers_class.from_pretrained(model_id, load_in_8bit=True, device_map="auto")
+                peft_model = transformers_class.from_pretrained(
+                    model_id, load_in_8bit=True, device_map="auto"
+                )
 
                 module = peft_model.model.decoder.layers[0].self_attn.v_proj
                 self.assertTrue(module.__class__.__name__ == "Linear8bitLt")
@@ -490,7 +522,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         # 4bit
         for model_id in self.peft_test_model_ids:
             for transformers_class in self.transformers_test_model_classes:
-                peft_model = transformers_class.from_pretrained(model_id, load_in_4bit=True, device_map="auto")
+                peft_model = transformers_class.from_pretrained(
+                    model_id, load_in_4bit=True, device_map="auto"
+                )
 
                 module = peft_model.model.decoder.layers[0].self_attn.v_proj
                 self.assertTrue(module.__class__.__name__ == "Linear4bit")
@@ -506,7 +540,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         # 8-bit
         for model_id in self.peft_test_model_ids:
             for transformers_class in self.transformers_test_model_classes:
-                peft_model = transformers_class.from_pretrained(model_id, load_in_8bit=True, device_map="auto")
+                peft_model = transformers_class.from_pretrained(
+                    model_id, load_in_8bit=True, device_map="auto"
+                )
 
                 module = peft_model.model.decoder.layers[0].self_attn.v_proj
                 self.assertTrue(module.__class__.__name__ == "Linear8bitLt")
@@ -526,12 +562,16 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         """
         from transformers import pipeline
 
-        for adapter_id, base_model_id in zip(self.peft_test_model_ids, self.transformers_test_model_ids):
+        for adapter_id, base_model_id in zip(
+            self.peft_test_model_ids, self.transformers_test_model_ids
+        ):
             peft_pipe = pipeline("text-generation", adapter_id)
             base_pipe = pipeline("text-generation", base_model_id)
             peft_params = list(peft_pipe.model.parameters())
             base_params = list(base_pipe.model.parameters())
-            self.assertNotEqual(len(peft_params), len(base_params))  # Assert we actually loaded the adapter too
+            self.assertNotEqual(
+                len(peft_params), len(base_params)
+            )  # Assert we actually loaded the adapter too
             _ = peft_pipe("Hello")
 
     def test_peft_add_adapter_with_state_dict(self):
@@ -543,7 +583,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
         dummy_input = torch.LongTensor([[0, 1, 2, 3, 4, 5, 6, 7]]).to(torch_device)
 
-        for model_id, peft_model_id in zip(self.transformers_test_model_ids, self.peft_test_model_ids):
+        for model_id, peft_model_id in zip(
+            self.transformers_test_model_ids, self.peft_test_model_ids
+        ):
             for transformers_class in self.transformers_test_model_classes:
                 model = transformers_class.from_pretrained(model_id).to(torch_device)
 
@@ -558,7 +600,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 model.load_adapter(adapter_state_dict=dummy_state_dict, peft_config=peft_config)
                 with self.assertRaises(ValueError):
-                    model.load_adapter(model.load_adapter(adapter_state_dict=dummy_state_dict, peft_config=None))
+                    model.load_adapter(
+                        model.load_adapter(adapter_state_dict=dummy_state_dict, peft_config=None)
+                    )
                 self.assertTrue(self._check_lora_correctly_converted(model))
 
                 # dummy generation
@@ -571,9 +615,13 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         from peft import LoraConfig
 
         min_version_lcmu = "0.13.0"
-        is_lcmu_supported = version.parse(importlib.metadata.version("peft")) >= version.parse(min_version_lcmu)
+        is_lcmu_supported = version.parse(importlib.metadata.version("peft")) >= version.parse(
+            min_version_lcmu
+        )
 
-        for model_id, peft_model_id in zip(self.transformers_test_model_ids, self.peft_test_model_ids):
+        for model_id, peft_model_id in zip(
+            self.transformers_test_model_ids, self.peft_test_model_ids
+        ):
             for transformers_class in self.transformers_test_model_classes:
                 model = transformers_class.from_pretrained(model_id).to(torch_device)
 
@@ -583,7 +631,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 # this should always work
                 model.load_adapter(
-                    adapter_state_dict=dummy_state_dict, peft_config=peft_config, low_cpu_mem_usage=False
+                    adapter_state_dict=dummy_state_dict,
+                    peft_config=peft_config,
+                    low_cpu_mem_usage=False,
                 )
 
                 if is_lcmu_supported:
@@ -641,7 +691,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
         logger = logging.get_logger("transformers.integrations.peft")
 
-        for model_id, peft_model_id in zip(self.transformers_test_model_ids, self.peft_test_model_ids):
+        for model_id, peft_model_id in zip(
+            self.transformers_test_model_ids, self.peft_test_model_ids
+        ):
             for transformers_class in self.transformers_test_model_classes:
                 model = transformers_class.from_pretrained(model_id).to(torch_device)
 
@@ -654,7 +706,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
                 with CaptureLogger(logger) as cl:
                     model.load_adapter(
-                        adapter_state_dict=dummy_state_dict, peft_config=peft_config, low_cpu_mem_usage=False
+                        adapter_state_dict=dummy_state_dict,
+                        peft_config=peft_config,
+                        low_cpu_mem_usage=False,
                     )
 
                 msg = "Loading adapter weights from state_dict led to unexpected keys not found in the model: foobar"
@@ -668,7 +722,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
 
         logger = logging.get_logger("transformers.integrations.peft")
 
-        for model_id, peft_model_id in zip(self.transformers_test_model_ids, self.peft_test_model_ids):
+        for model_id, peft_model_id in zip(
+            self.transformers_test_model_ids, self.peft_test_model_ids
+        ):
             for transformers_class in self.transformers_test_model_classes:
                 model = transformers_class.from_pretrained(model_id).to(torch_device)
 
@@ -773,7 +829,9 @@ class PeftIntegrationTester(unittest.TestCase, PeftTesterMixin):
         tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left", model_type="opt")
 
         def tokenize_function(examples):
-            return tokenizer(examples["text"], max_length=128, truncation=True, padding="max_length")
+            return tokenizer(
+                examples["text"], max_length=128, truncation=True, padding="max_length"
+            )
 
         tokenized_datasets = datasets.map(tokenize_function, batched=True)
         # lora works, prefix-tuning is expected to raise an error

@@ -44,27 +44,17 @@ from .prover_matrix_registry import (
 
 
 HYPERPROPERTY_VERIFICATION_VERSION = 1
-OBSERVATION_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hyperproperty-observation-policy@1"
-)
-HYPERPROPERTY_MODEL_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hyperproperty-model@1"
-)
-HYPERTRACE_COUNTEREXAMPLE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hypertrace-counterexample@1"
-)
-HYPERPROPERTY_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hyperproperty-result@1"
-)
+OBSERVATION_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hyperproperty-observation-policy@1"
+HYPERPROPERTY_MODEL_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hyperproperty-model@1"
+HYPERTRACE_COUNTEREXAMPLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hypertrace-counterexample@1"
+HYPERPROPERTY_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hyperproperty-result@1"
 ENGINE_CONFORMANCE_FIXTURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hyperproperty-engine-fixture@1"
 )
 ENGINE_CONFORMANCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/hyperproperty-engine-conformance@1"
 )
-ENGINE_CAPABILITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hyperproperty-engine-capability@1"
-)
+ENGINE_CAPABILITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hyperproperty-engine-capability@1"
 
 DEFAULT_MAX_COMPOSITION_TRACES = 32
 DEFAULT_MAX_COMPOSITION_PAIRS = 256
@@ -142,9 +132,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         raise HyperpropertyValidationError(f"unsupported {name}") from exc
 
 
-def _strings(
-    values: Sequence[Any] | None, name: str, *, required: bool = False
-) -> tuple[str, ...]:
+def _strings(values: Sequence[Any] | None, name: str, *, required: bool = False) -> tuple[str, ...]:
     if values is None:
         result: tuple[str, ...] = ()
     elif isinstance(values, (str, bytes, bytearray)):
@@ -160,9 +148,7 @@ def _mapping(value: Mapping[str, Any] | None, name: str) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, Mapping) or any(not isinstance(k, str) for k in value):
-        raise HyperpropertyValidationError(
-            f"{name} must be an object with string keys"
-        )
+        raise HyperpropertyValidationError(f"{name} must be an object with string keys")
     try:
         result = _canonical_value(dict(value))
     except ContractValidationError as exc:
@@ -180,9 +166,7 @@ def _positive_int(value: Any, name: str) -> int:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise HyperpropertyValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise HyperpropertyValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
@@ -295,9 +279,7 @@ class HyperpropertyModel(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
         object.__setattr__(self, "version", _text(self.version, "version"))
-        object.__setattr__(
-            self, "kind", _enum(self.kind, HyperpropertyKind, "hyperproperty kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, HyperpropertyKind, "hyperproperty kind"))
         if isinstance(self.observation_policy, Mapping):
             object.__setattr__(
                 self,
@@ -305,9 +287,7 @@ class HyperpropertyModel(CanonicalContract):
                 ObservationPolicy.from_dict(self.observation_policy),
             )
         if not isinstance(self.observation_policy, ObservationPolicy):
-            raise HyperpropertyValidationError(
-                "observation_policy must be an ObservationPolicy"
-            )
+            raise HyperpropertyValidationError("observation_policy must be an ObservationPolicy")
         formula = _text(self.hyperltl_formula, "hyperltl_formula")
         compact = " ".join(formula.split()).lower()
         if compact.count("forall") < 2 or "->" not in compact:
@@ -316,9 +296,7 @@ class HyperpropertyModel(CanonicalContract):
             )
         object.__setattr__(self, "hyperltl_formula", formula)
         object.__setattr__(self, "description", _text(self.description, "description"))
-        object.__setattr__(
-            self, "assumptions", _strings(self.assumptions, "assumptions")
-        )
+        object.__setattr__(self, "assumptions", _strings(self.assumptions, "assumptions"))
 
     @property
     def observation_policy_id(self) -> str:
@@ -382,15 +360,9 @@ class Hypertrace:
     def __post_init__(self) -> None:
         for name in ("trace_id", "task_id", "lane_id", "worktree_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "public_inputs", _mapping(self.public_inputs, "public_inputs")
-        )
-        object.__setattr__(
-            self, "observations", _mapping(self.observations, "observations")
-        )
-        object.__setattr__(
-            self, "private_inputs", _mapping(self.private_inputs, "private_inputs")
-        )
+        object.__setattr__(self, "public_inputs", _mapping(self.public_inputs, "public_inputs"))
+        object.__setattr__(self, "observations", _mapping(self.observations, "observations"))
+        object.__setattr__(self, "private_inputs", _mapping(self.private_inputs, "private_inputs"))
 
     def subject_projection(self, fields: Sequence[str]) -> tuple[str, ...]:
         return tuple(str(getattr(self, field)) for field in fields)
@@ -507,9 +479,7 @@ class HypertraceCounterexample(CanonicalContract):
         if not differences or any(
             not isinstance(item, ObservationDifference) for item in differences
         ):
-            raise HyperpropertyValidationError(
-                "counterexample requires observation differences"
-            )
+            raise HyperpropertyValidationError("counterexample requires observation differences")
         if any(item.field not in fields for item in differences):
             raise HyperpropertyValidationError(
                 "counterexample difference is outside its observation policy"
@@ -562,9 +532,7 @@ class HypertraceCounterexample(CanonicalContract):
             minimized=payload.get("minimized", False),
         )
         if payload.get("contains_private_inputs") not in (None, False):
-            raise HyperpropertyValidationError(
-                "counterexample claims to contain private inputs"
-            )
+            raise HyperpropertyValidationError("counterexample claims to contain private inputs")
         _claimed_identity(payload, result.content_id, "counterexample")
         return result
 
@@ -593,20 +561,14 @@ class HyperpropertyVerificationResult(CanonicalContract):
     def __post_init__(self) -> None:
         for name in ("model_id", "model_identity", "observation_policy_id", "reason"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, HyperpropertyVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, HyperpropertyVerdict, "verdict"))
         object.__setattr__(
             self,
             "evidence_kind",
             _enum(self.evidence_kind, HyperpropertyEvidenceKind, "evidence kind"),
         )
-        if not isinstance(self.authoritative, bool) or not isinstance(
-            self.bounded, bool
-        ):
-            raise HyperpropertyValidationError(
-                "authoritative and bounded must be booleans"
-            )
+        if not isinstance(self.authoritative, bool) or not isinstance(self.bounded, bool):
+            raise HyperpropertyValidationError("authoritative and bounded must be booleans")
         if any(
             isinstance(value, bool) or not isinstance(value, int) or value < 0
             for value in (
@@ -629,22 +591,15 @@ class HyperpropertyVerificationResult(CanonicalContract):
                     "engine evidence requires an exact conformant capability binding"
                 )
         elif self.engine is not None or self.engine_capability_id is not None:
-            raise HyperpropertyValidationError(
-                "non-engine evidence cannot claim an engine binding"
-            )
+            raise HyperpropertyValidationError("non-engine evidence cannot claim an engine binding")
         if self.counterexample is not None:
             if self.verdict is not HyperpropertyVerdict.VIOLATED:
                 raise HyperpropertyValidationError(
                     "only a violated result may contain a counterexample"
                 )
             if self.counterexample.model_identity != self.model_identity:
-                raise HyperpropertyValidationError(
-                    "counterexample belongs to a different model"
-                )
-            if (
-                self.counterexample.observation_policy_id
-                != self.observation_policy_id
-            ):
+                raise HyperpropertyValidationError("counterexample belongs to a different model")
+            if self.counterexample.observation_policy_id != self.observation_policy_id:
                 raise HyperpropertyValidationError(
                     "counterexample belongs to a different observation policy"
                 )
@@ -673,9 +628,7 @@ class HyperpropertyVerificationResult(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "HyperpropertyVerificationResult":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "HyperpropertyVerificationResult":
         if not isinstance(payload, Mapping):
             raise HyperpropertyValidationError("verification result must be an object")
         _schema(payload, cls.SCHEMA)
@@ -692,9 +645,7 @@ class HyperpropertyVerificationResult(CanonicalContract):
             explored_pairs=payload.get("explored_pairs", -1),
             maximum_pairs=payload.get("maximum_pairs", -1),
             reason=payload.get("reason", ""),
-            engine=(
-                None if payload.get("engine") is None else payload.get("engine")
-            ),
+            engine=(None if payload.get("engine") is None else payload.get("engine")),
             engine_capability_id=payload.get("engine_capability_id"),
             counterexample=(
                 HypertraceCounterexample.from_dict(raw_counterexample)
@@ -723,9 +674,7 @@ class EngineConformanceFixture(CanonicalContract):
     auxiliary_files: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, HyperpropertyEngine, "engine")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, HyperpropertyEngine, "engine"))
         for name in (
             "fixture_id",
             "model_text",
@@ -745,34 +694,23 @@ class EngineConformanceFixture(CanonicalContract):
         for raw_name, raw_text in self.auxiliary_files.items():
             name = _text(raw_name, "auxiliary file name")
             if Path(name).name != name:
-                raise HyperpropertyValidationError(
-                    "auxiliary file names must be basenames"
-                )
+                raise HyperpropertyValidationError("auxiliary file names must be basenames")
             auxiliary[name] = _text(raw_text, f"auxiliary_files[{name}]")
         expected_placeholders = {f"{{auxiliary:{name}}}" for name in auxiliary}
-        supplied_placeholders = {
-            item for item in args if item.startswith("{auxiliary:")
-        }
+        supplied_placeholders = {item for item in args if item.startswith("{auxiliary:")}
         if supplied_placeholders != expected_placeholders:
             raise HyperpropertyValidationError(
                 "fixture args must bind every auxiliary file exactly"
             )
         object.__setattr__(self, "args", args)
-        object.__setattr__(
-            self, "auxiliary_files", dict(sorted(auxiliary.items()))
-        )
+        object.__setattr__(self, "auxiliary_files", dict(sorted(auxiliary.items())))
         markers = tuple(
             sorted(
-                {
-                    _text(item, "expected_output_any").casefold()
-                    for item in self.expected_output_any
-                }
+                {_text(item, "expected_output_any").casefold() for item in self.expected_output_any}
             )
         )
         if not markers:
-            raise HyperpropertyValidationError(
-                "fixture requires a semantic success marker"
-            )
+            raise HyperpropertyValidationError("fixture requires a semantic success marker")
         object.__setattr__(self, "expected_output_any", markers)
 
     def _payload(self) -> dict[str, Any]:
@@ -787,8 +725,7 @@ class EngineConformanceFixture(CanonicalContract):
             "translator_id": self.translator_id,
             "semantic_profile_id": self.semantic_profile_id,
             "auxiliary_files": {
-                name: _digest(text)
-                for name, text in sorted(self.auxiliary_files.items())
+                name: _digest(text) for name, text in sorted(self.auxiliary_files.items())
             },
         }
 
@@ -815,9 +752,7 @@ class EngineConformanceReceipt(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, HyperpropertyEngine, "engine")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, HyperpropertyEngine, "engine"))
         object.__setattr__(
             self,
             "status",
@@ -836,12 +771,8 @@ class EngineConformanceReceipt(CanonicalContract):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         if isinstance(self.duration_ms, bool) or self.duration_ms < 0:
             raise HyperpropertyValidationError("duration_ms must be non-negative")
-        if not isinstance(self.timed_out, bool) or not isinstance(
-            self.marker_matched, bool
-        ):
-            raise HyperpropertyValidationError(
-                "timed_out and marker_matched must be booleans"
-            )
+        if not isinstance(self.timed_out, bool) or not isinstance(self.marker_matched, bool):
+            raise HyperpropertyValidationError("timed_out and marker_matched must be booleans")
         if self.returncode is not None and (
             isinstance(self.returncode, bool) or not isinstance(self.returncode, int)
         ):
@@ -856,9 +787,7 @@ class EngineConformanceReceipt(CanonicalContract):
                 "passing conformance requires execution success and a semantic marker"
             )
         if self.status is not ConformanceStatus.PASSED and self.marker_matched:
-            raise HyperpropertyValidationError(
-                "failed conformance cannot claim a semantic marker"
-            )
+            raise HyperpropertyValidationError("failed conformance cannot claim a semantic marker")
 
     @property
     def passed(self) -> bool:
@@ -887,9 +816,7 @@ class EngineConformanceReceipt(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "EngineConformanceReceipt":
         if not isinstance(payload, Mapping):
-            raise HyperpropertyValidationError(
-                "engine conformance receipt must be an object"
-            )
+            raise HyperpropertyValidationError("engine conformance receipt must be an object")
         _schema(payload, cls.SCHEMA)
         if payload.get("raw_output_included") not in (None, False):
             raise HyperpropertyValidationError(
@@ -929,9 +856,7 @@ class EngineCapability(CanonicalContract):
     conformance_receipt: EngineConformanceReceipt | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, HyperpropertyEngine, "engine")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, HyperpropertyEngine, "engine"))
         object.__setattr__(
             self,
             "status",
@@ -951,9 +876,7 @@ class EngineCapability(CanonicalContract):
                     "conformant capability requires its exact passing executable receipt"
                 )
         elif self.conformance_receipt is not None and self.conformance_receipt.passed:
-            raise HyperpropertyValidationError(
-                "passing receipt cannot be reported as unavailable"
-            )
+            raise HyperpropertyValidationError("passing receipt cannot be reported as unavailable")
 
     @property
     def available(self) -> bool:
@@ -1072,9 +995,7 @@ class HyperpropertyEngineAdapter:
         self.command_runner = command_runner or _default_command_runner
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = _positive_int(max_output_bytes, "max_output_bytes")
-        self.max_executable_bytes = _positive_int(
-            max_executable_bytes, "max_executable_bytes"
-        )
+        self.max_executable_bytes = _positive_int(max_executable_bytes, "max_executable_bytes")
         self.monotonic = monotonic or time.monotonic
 
     def _discover(self) -> str | None:
@@ -1101,9 +1022,7 @@ class HyperpropertyEngineAdapter:
                 status=EngineCapabilityStatus.UNAVAILABLE,
                 reason="executable not discovered",
             )
-        executable_identity = _executable_identity(
-            Path(executable), self.max_executable_bytes
-        )
+        executable_identity = _executable_identity(Path(executable), self.max_executable_bytes)
         if executable_identity is None:
             return EngineCapability(
                 engine=self.engine,
@@ -1122,11 +1041,7 @@ class HyperpropertyEngineAdapter:
             )
         )
         version_output = (version_result.stdout + "\n" + version_result.stderr).strip()
-        if (
-            version_result.returncode != 0
-            or version_result.timed_out
-            or not version_output
-        ):
+        if version_result.returncode != 0 or version_result.timed_out or not version_output:
             return EngineCapability(
                 engine=self.engine,
                 status=EngineCapabilityStatus.UNAVAILABLE,
@@ -1143,9 +1058,7 @@ class HyperpropertyEngineAdapter:
                 reason="executable discovered but conformance fixture was not run",
             )
 
-        receipt = self._run_conformance(
-            executable, executable_identity, version
-        )
+        receipt = self._run_conformance(executable, executable_identity, version)
         return EngineCapability(
             engine=self.engine,
             status=(
@@ -1174,9 +1087,7 @@ class HyperpropertyEngineAdapter:
 
         if not isinstance(model, HyperpropertyModel):
             raise HyperpropertyValidationError("model must be a HyperpropertyModel")
-        return model.hyperltl_formula + (
-            "" if model.hyperltl_formula.endswith("\n") else "\n"
-        )
+        return model.hyperltl_formula + ("" if model.hyperltl_formula.endswith("\n") else "\n")
 
     def _run_conformance(
         self, executable: str, executable_identity: str, version: str
@@ -1191,11 +1102,7 @@ class HyperpropertyEngineAdapter:
                 auxiliary_path.write_text(text, encoding="utf-8")
                 auxiliary_paths[f"{{auxiliary:{name}}}"] = str(auxiliary_path)
             command = (executable,) + tuple(
-                (
-                    str(fixture_path)
-                    if item == "{fixture}"
-                    else auxiliary_paths.get(item, item)
-                )
+                (str(fixture_path) if item == "{fixture}" else auxiliary_paths.get(item, item))
                 for item in self.fixture.args
             )
             result = self._run(
@@ -1208,9 +1115,7 @@ class HyperpropertyEngineAdapter:
                 )
             )
         duration_ms = max(0, round((self.monotonic() - started) * 1000))
-        output = (result.stdout + "\n" + result.stderr).encode(
-            "utf-8", errors="replace"
-        )
+        output = (result.stdout + "\n" + result.stderr).encode("utf-8", errors="replace")
         folded = output.decode("utf-8", errors="replace").casefold()
         marker = (
             result.returncode == 0
@@ -1247,10 +1152,7 @@ class HyperpropertyEngineAdapter:
         )
 
 
-_CONFORMANCE_FORMULA = (
-    'forall A. forall B. G (({"low"_A = "low"_B}) -> '
-    '({"obs"_A = "obs"_B}))'
-)
+_CONFORMANCE_FORMULA = 'forall A. forall B. G (({"low"_A = "low"_B}) -> ({"obs"_A = "obs"_B}))'
 
 _AUTOHYPER_CONFORMANCE_SYSTEM = """\
 Variables: ("low" Bool) ("obs" Bool)
@@ -1324,12 +1226,12 @@ def probe_hyperproperty_engines(
 ) -> tuple[EngineCapability, ...]:
     """Probe every engine independently; discovery never implies availability."""
 
-    selected = tuple(adapters) if adapters is not None else tuple(
-        adapter_type() for adapter_type in DEFAULT_ENGINE_ADAPTER_TYPES
+    selected = (
+        tuple(adapters)
+        if adapters is not None
+        else tuple(adapter_type() for adapter_type in DEFAULT_ENGINE_ADAPTER_TYPES)
     )
-    capabilities = tuple(
-        adapter.probe(run_conformance=run_conformance) for adapter in selected
-    )
+    capabilities = tuple(adapter.probe(run_conformance=run_conformance) for adapter in selected)
     engines = [item.engine for item in capabilities]
     if len(engines) != len(set(engines)):
         raise HyperpropertyValidationError("engine adapters must be unique")
@@ -1358,9 +1260,7 @@ class BoundedSelfCompositionChecker:
         values = tuple(traces)
         if any(not isinstance(item, Hypertrace) for item in values):
             raise HyperpropertyValidationError("traces must contain Hypertrace values")
-        selected = tuple(sorted(values, key=lambda item: item.public_ref))[
-            : self.max_traces
-        ]
+        selected = tuple(sorted(values, key=lambda item: item.public_ref))[: self.max_traces]
         policy = model.observation_policy
         pairs = 0
         eligible_pairs = 0
@@ -1376,9 +1276,9 @@ class BoundedSelfCompositionChecker:
                     policy.subject_fields
                 ):
                     continue
-                if _projection(
-                    left.public_inputs, policy.low_input_fields
-                ) != _projection(right.public_inputs, policy.low_input_fields):
+                if _projection(left.public_inputs, policy.low_input_fields) != _projection(
+                    right.public_inputs, policy.low_input_fields
+                ):
                     continue
                 if left.private_inputs == right.private_inputs:
                     continue
@@ -1432,9 +1332,7 @@ class BoundedSelfCompositionChecker:
             reason = "no violation observed before a self-composition bound was reached"
         else:
             verdict = HyperpropertyVerdict.HOLDS
-            reason = (
-                "all bounded low-equivalent trace pairs preserved approved observations"
-            )
+            reason = "all bounded low-equivalent trace pairs preserved approved observations"
         return HyperpropertyVerificationResult(
             model_id=model.model_id,
             model_identity=model.content_id,
@@ -1459,9 +1357,9 @@ def bounded_self_composition(
 ) -> HyperpropertyVerificationResult:
     """Functional entry point for the non-authoritative fallback."""
 
-    return BoundedSelfCompositionChecker(
-        max_traces=max_traces, max_pairs=max_pairs
-    ).check(model, traces)
+    return BoundedSelfCompositionChecker(max_traces=max_traces, max_pairs=max_pairs).check(
+        model, traces
+    )
 
 
 class HyperpropertyVerifier:
@@ -1486,12 +1384,8 @@ class HyperpropertyVerifier:
         )
         self.fallback_checker = fallback_checker or BoundedSelfCompositionChecker()
 
-    def capabilities(
-        self, *, run_conformance: bool = True
-    ) -> tuple[EngineCapability, ...]:
-        return probe_hyperproperty_engines(
-            self.adapters, run_conformance=run_conformance
-        )
+    def capabilities(self, *, run_conformance: bool = True) -> tuple[EngineCapability, ...]:
+        return probe_hyperproperty_engines(self.adapters, run_conformance=run_conformance)
 
     def verify(
         self,
@@ -1517,17 +1411,13 @@ def _formula_variable(field_name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", field_name)
 
 
-def _default_formula(
-    low_inputs: Sequence[str], observations: Sequence[str]
-) -> str:
+def _default_formula(low_inputs: Sequence[str], observations: Sequence[str]) -> str:
     def equal_across_traces(field_name: str) -> str:
         variable = _formula_variable(field_name)
         return f'{{"{variable}"_pi1 = "{variable}"_pi2}}'
 
     low = " & ".join(equal_across_traces(field) for field in low_inputs) or "1"
-    observed = " & ".join(
-        equal_across_traces(field) for field in observations
-    )
+    observed = " & ".join(equal_across_traces(field) for field in observations)
     return f"forall pi1. forall pi2. G((({low}) -> ({observed})))"
 
 
@@ -1605,22 +1495,16 @@ DEFAULT_HYPERPROPERTY_MODELS: tuple[HyperpropertyModel, ...] = (
     ),
 )
 
-DEFAULT_HYPERPROPERTY_MODELS_BY_KIND: Mapping[
-    HyperpropertyKind, HyperpropertyModel
-] = {model.kind: model for model in DEFAULT_HYPERPROPERTY_MODELS}
+DEFAULT_HYPERPROPERTY_MODELS_BY_KIND: Mapping[HyperpropertyKind, HyperpropertyModel] = {
+    model.kind: model for model in DEFAULT_HYPERPROPERTY_MODELS
+}
 
-PROMPT_ISOLATION_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[
-    HyperpropertyKind.PROMPT_ISOLATION
-]
+PROMPT_ISOLATION_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[HyperpropertyKind.PROMPT_ISOLATION]
 WORKTREE_ISOLATION_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[
     HyperpropertyKind.WORKTREE_ISOLATION
 ]
-LOG_REDACTION_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[
-    HyperpropertyKind.LOG_REDACTION
-]
-PROVIDER_ROUTING_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[
-    HyperpropertyKind.PROVIDER_ROUTING
-]
+LOG_REDACTION_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[HyperpropertyKind.LOG_REDACTION]
+PROVIDER_ROUTING_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[HyperpropertyKind.PROVIDER_ROUTING]
 ZKP_WITNESS_NONINTERFERENCE_MODEL = DEFAULT_HYPERPROPERTY_MODELS_BY_KIND[
     HyperpropertyKind.ZKP_WITNESS_NONINTERFERENCE
 ]

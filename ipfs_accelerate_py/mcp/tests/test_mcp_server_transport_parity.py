@@ -36,7 +36,9 @@ class TestMCPServerTransportParity(unittest.TestCase):
 
             router.register_tool_runtime("demo.tool", "trio")
 
-            with patch.object(router, "_execute_trio", AsyncMock(return_value={"value": "trio-ok"})) as mock_trio:
+            with patch.object(
+                router, "_execute_trio", AsyncMock(return_value={"value": "trio-ok"})
+            ) as mock_trio:
                 result = await router.route_tool_call("demo.tool", tool, value="ok")
 
             self.assertEqual(result, {"value": "trio-ok"})
@@ -53,7 +55,9 @@ class TestMCPServerTransportParity(unittest.TestCase):
 
             router.register_tool_runtime("demo.tool", "auto")
 
-            with patch.object(router, "_execute_fastapi", AsyncMock(return_value={"value": "auto-ok"})) as mock_fastapi:
+            with patch.object(
+                router, "_execute_fastapi", AsyncMock(return_value={"value": "auto-ok"})
+            ) as mock_fastapi:
                 result = await router.route_tool_call("demo.tool", tool, value="ok")
 
             self.assertEqual(result, {"value": "auto-ok"})

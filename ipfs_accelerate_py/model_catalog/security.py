@@ -41,9 +41,7 @@ _URL_FIELD = re.compile(
     re.IGNORECASE,
 )
 _URI_REFERENCE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
-_NUMERIC_HOST = re.compile(
-    r"^(?:0x[0-9a-f]+|0[0-7]+|[0-9]+|[0-9.]+)$", re.IGNORECASE
-)
+_NUMERIC_HOST = re.compile(r"^(?:0x[0-9a-f]+|0[0-7]+|[0-9]+|[0-9.]+)$", re.IGNORECASE)
 
 
 class SecurityPolicyError(ValueError):
@@ -184,9 +182,9 @@ class URLPolicy:
         if not schemes or any(item not in {"http", "https"} for item in schemes):
             raise ValueError("allowed_schemes must contain only http or https")
         ports = tuple(sorted(set(self.allowed_ports)))
-        if (
-            not ports
-            or any(isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535 for port in ports)
+        if not ports or any(
+            isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535
+            for port in ports
         ):
             raise ValueError("allowed_ports must contain valid TCP ports")
         hosts = []
@@ -313,9 +311,7 @@ class URLPolicy:
         ):
             _reject(URLPolicyError, "redirect_denied", "redirect limit exceeded")
         source = self.validate(source_url)
-        target = self.validate(
-            urljoin(source, target_url), resolved_addresses=resolved_addresses
-        )
+        target = self.validate(urljoin(source, target_url), resolved_addresses=resolved_addresses)
         if (
             not self.allow_cross_host_redirects
             and urlsplit(source).hostname != urlsplit(target).hostname
@@ -543,11 +539,7 @@ class ReplayCache:
     def consume(self, issuer: str, nonce: str, expires_at: float, now: float) -> bool:
         key = (issuer, nonce)
         with self._lock:
-            self._entries = {
-                item: expiry
-                for item, expiry in self._entries.items()
-                if expiry > now
-            }
+            self._entries = {item: expiry for item, expiry in self._entries.items() if expiry > now}
             if key in self._entries:
                 return False
             if len(self._entries) >= self.max_entries:
@@ -613,27 +605,47 @@ class AdvertisementVerifier:
             or not isinstance(selected_now, (int, float))
             or not math.isfinite(selected_now)
         ):
-            _reject(AdvertisementVerificationError, "clock_invalid", "verification clock is invalid")
+            _reject(
+                AdvertisementVerificationError, "clock_invalid", "verification clock is invalid"
+            )
         try:
             payload = record.to_dict()
         except Exception:
-            _reject(AdvertisementVerificationError, "record_malformed", "advertisement is malformed")
+            _reject(
+                AdvertisementVerificationError, "record_malformed", "advertisement is malformed"
+            )
         try:
             CatalogInputPolicy().validate_record(payload)
             canonical = canonical_json_bytes(payload)
         except Exception:
-            _reject(AdvertisementVerificationError, "record_malformed", "advertisement is malformed")
+            _reject(
+                AdvertisementVerificationError, "record_malformed", "advertisement is malformed"
+            )
         if len(canonical) > MAX_ADVERTISEMENT_BYTES:
-            _reject(AdvertisementVerificationError, "record_oversized", "advertisement exceeds bound")
+            _reject(
+                AdvertisementVerificationError, "record_oversized", "advertisement exceeds bound"
+            )
 
         issuer = getattr(record, "issuer", None)
         peer_id = getattr(record, "peer_id", None)
         if issuer not in self._keys:
-            _reject(AdvertisementVerificationError, "issuer_untrusted", "advertisement issuer is not trusted")
+            _reject(
+                AdvertisementVerificationError,
+                "issuer_untrusted",
+                "advertisement issuer is not trusted",
+            )
         if not isinstance(peer_id, str) or issuer != peer_id:
-            _reject(AdvertisementVerificationError, "issuer_mismatch", "issuer does not match peer identity")
+            _reject(
+                AdvertisementVerificationError,
+                "issuer_mismatch",
+                "issuer does not match peer identity",
+            )
         if getattr(record, "schema_version", None) != self.expected_schema_version:
-            _reject(AdvertisementVerificationError, "schema_unsupported", "catalog schema version is unsupported")
+            _reject(
+                AdvertisementVerificationError,
+                "schema_unsupported",
+                "catalog schema version is unsupported",
+            )
 
         cid = getattr(record, "catalog_cid", None)
         revision = getattr(record, "catalog_revision", None)
@@ -643,18 +655,25 @@ class AdvertisementVerifier:
             or cid != revision
             or (expected_catalog_cid is not None and cid != expected_catalog_cid)
         ):
-            _reject(AdvertisementVerificationError, "catalog_cid_invalid", "catalog CID does not match revision")
+            _reject(
+                AdvertisementVerificationError,
+                "catalog_cid_invalid",
+                "catalog CID does not match revision",
+            )
         required_text = (
             "service_name",
             "service_id",
             "endpoint_protocol",
         )
         if any(
-            not isinstance(getattr(record, name, None), str)
-            or not getattr(record, name)
+            not isinstance(getattr(record, name, None), str) or not getattr(record, name)
             for name in required_text
         ):
-            _reject(AdvertisementVerificationError, "record_malformed", "required advertisement field is missing")
+            _reject(
+                AdvertisementVerificationError,
+                "record_malformed",
+                "required advertisement field is missing",
+            )
         identity_payload = json.dumps(
             {
                 "namespace": SERVICE_NAMESPACE,
@@ -676,15 +695,26 @@ class AdvertisementVerifier:
         if (
             not isinstance(operations, list)
             or not operations
-            or any(not isinstance(item, str) or not _OPERATION.fullmatch(item) for item in operations)
+            or any(
+                not isinstance(item, str) or not _OPERATION.fullmatch(item) for item in operations
+            )
             or not isinstance(interfaces, list)
             or not interfaces
-            or any(not isinstance(item, str) or not item or len(item.encode("utf-8")) > 256 for item in interfaces)
+            or any(
+                not isinstance(item, str) or not item or len(item.encode("utf-8")) > 256
+                for item in interfaces
+            )
         ):
-            _reject(AdvertisementVerificationError, "record_malformed", "operation or interface summary is invalid")
+            _reject(
+                AdvertisementVerificationError,
+                "record_malformed",
+                "operation or interface summary is invalid",
+            )
         nonce = getattr(record, "nonce", None)
         if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
-            _reject(AdvertisementVerificationError, "nonce_invalid", "advertisement nonce is invalid")
+            _reject(
+                AdvertisementVerificationError, "nonce_invalid", "advertisement nonce is invalid"
+            )
 
         issued_at = getattr(record, "issued_at", None)
         expires_at = getattr(record, "expires_at", None)
@@ -698,19 +728,37 @@ class AdvertisementVerifier:
         issued = float(issued_at)
         expires = float(expires_at)
         if issued > selected_now + self.max_clock_skew:
-            _reject(AdvertisementVerificationError, "issued_in_future", "advertisement exceeds clock skew")
+            _reject(
+                AdvertisementVerificationError,
+                "issued_in_future",
+                "advertisement exceeds clock skew",
+            )
         if expires <= issued or expires - issued > self.max_lifetime:
-            _reject(AdvertisementVerificationError, "lifetime_invalid", "advertisement lifetime is invalid")
+            _reject(
+                AdvertisementVerificationError,
+                "lifetime_invalid",
+                "advertisement lifetime is invalid",
+            )
         if expires <= selected_now:
             _reject(AdvertisementVerificationError, "expired", "advertisement has expired")
         if issued < selected_now - self.replay_window:
-            _reject(AdvertisementVerificationError, "stale", "advertisement is outside replay window")
+            _reject(
+                AdvertisementVerificationError, "stale", "advertisement is outside replay window"
+            )
 
         verifier = getattr(record, "verify_signature", None)
         if not callable(verifier) or not verifier(self._keys[issuer]):
-            _reject(AdvertisementVerificationError, "signature_invalid", "advertisement signature is invalid")
-        if consume_nonce and not self.replay_cache.consume(issuer, nonce, expires, float(selected_now)):
-            _reject(AdvertisementVerificationError, "replayed", "advertisement nonce was already used")
+            _reject(
+                AdvertisementVerificationError,
+                "signature_invalid",
+                "advertisement signature is invalid",
+            )
+        if consume_nonce and not self.replay_cache.consume(
+            issuer, nonce, expires, float(selected_now)
+        ):
+            _reject(
+                AdvertisementVerificationError, "replayed", "advertisement nonce was already used"
+            )
         return record
 
 

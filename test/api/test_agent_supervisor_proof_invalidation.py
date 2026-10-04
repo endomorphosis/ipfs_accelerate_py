@@ -203,9 +203,7 @@ def test_transitive_invalidation_records_complete_semantic_impact() -> None:
     )
     assert event.affected_goal_ids == ("G1", "G2")
     assert event.source_tree == SOURCE_TREE
-    assert {
-        record.subject_id for record in event.invalidation_records
-    } == {
+    assert {record.subject_id for record in event.invalidation_records} == {
         "obligation:api",
         "obligation:consumer",
         "receipt:api",
@@ -338,13 +336,9 @@ def test_replay_is_idempotent_and_replacement_edges_remain_auditable() -> None:
     assert second_run["contradiction_reopened_goal_ids"] == []
     assert second_run["effective_reopened_goal_ids"] == ["G1", "G2"]
     assert second_run["replacement_tasks"] == []
-    assert second_run["persisted_replacement_tasks"] == first_run[
-        "persisted_replacement_tasks"
-    ]
+    assert second_run["persisted_replacement_tasks"] == first_run["persisted_replacement_tasks"]
     assert len(first_run["goal_reopening_receipts"]) == 2
-    assert second_run["goal_reopening_receipts"] == first_run[
-        "goal_reopening_receipts"
-    ]
+    assert second_run["goal_reopening_receipts"] == first_run["goal_reopening_receipts"]
     assert second_run["strategy"]["objective_completion_decisions"] == completion_history
 
     replacement_tasks = first_run["persisted_replacement_tasks"]

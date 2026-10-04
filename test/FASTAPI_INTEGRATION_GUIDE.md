@@ -87,15 +87,18 @@ async def run_test(request: TestRunRequest, background_tasks: BackgroundTasks):
     """Run a test for a specific model."""
     # Implementation details...
 
+
 @app.get("/api/test/status/{run_id}")
 async def get_test_status(run_id: str):
     """Get the status of a test run."""
     # Implementation details...
 
+
 @app.get("/api/test/results/{run_id}")
 async def get_test_results(run_id: str):
     """Get the results of a completed test run."""
     # Implementation details...
+
 
 @app.websocket("/api/test/ws/{run_id}")
 async def test_websocket(websocket: WebSocket, run_id: str):
@@ -113,15 +116,18 @@ async def generate_model(request: GenerateModelRequest, background_tasks: Backgr
     """Generate a model implementation."""
     # Implementation details...
 
+
 @app.get("/api/generator/status/{task_id}")
 async def get_generation_status(task_id: str):
     """Get the status of a model generation task."""
     # Implementation details...
 
+
 @app.get("/api/generator/templates")
 async def get_templates():
     """Get available templates."""
     # Implementation details...
+
 
 @app.websocket("/api/generator/ws/{task_id}")
 async def generator_websocket(websocket: WebSocket, task_id: str):
@@ -139,15 +145,18 @@ async def run_benchmark(request: BenchmarkRunRequest, background_tasks: Backgrou
     """Run a benchmark for a specific model."""
     # Implementation details...
 
+
 @app.get("/api/benchmark/status/{run_id}")
 async def get_benchmark_status(run_id: str):
     """Get the status of a benchmark run."""
     # Implementation details...
 
+
 @app.get("/api/benchmark/results/{run_id}")
 async def get_benchmark_results(run_id: str):
     """Get the results of a completed benchmark run."""
     # Implementation details...
+
 
 @app.websocket("/api/benchmark/ws/{run_id}")
 async def benchmark_websocket(websocket: WebSocket, run_id: str):

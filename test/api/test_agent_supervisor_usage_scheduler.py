@@ -22,9 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DECLARED_RS = ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "resource_scheduler.py"
-DECLARED_PBS = (
-    ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "provider_batch_scheduler.py"
-)
+DECLARED_PBS = ROOT / "ipfs_accelerate_py" / "agent_supervisor" / "provider_batch_scheduler.py"
 
 
 def _load(path: Path, module_name: str):
@@ -235,7 +233,10 @@ def test_stale_snapshot_fail_closed_enforce(rs) -> None:
     )
     assert projection.stale is True
     assert projection.capacity.quota_remaining == 0
-    assert "fail_closed_stale" in projection.reason_codes or "stale_snapshot" in projection.reason_codes
+    assert (
+        "fail_closed_stale" in projection.reason_codes
+        or "stale_snapshot" in projection.reason_codes
+    )
 
 
 def test_ancestor_budget_can_only_lower(rs) -> None:
@@ -258,8 +259,12 @@ def test_ancestor_budget_can_only_lower(rs) -> None:
 
 def test_weighted_fair_queue_protects_reserves(rs) -> None:
     queue = rs.WeightedFairQueue()
-    queue.register(rs.FairQueueScope(scope_id="tenant-a", kind="tenant", weight=1, reserved_slots=1))
-    queue.register(rs.FairQueueScope(scope_id="tenant-b", kind="tenant", weight=10, reserved_slots=1))
+    queue.register(
+        rs.FairQueueScope(scope_id="tenant-a", kind="tenant", weight=1, reserved_slots=1)
+    )
+    queue.register(
+        rs.FairQueueScope(scope_id="tenant-b", kind="tenant", weight=10, reserved_slots=1)
+    )
     # Total 2 slots; each tenant reserved 1. Heavy tenant must not take both.
     active = {"tenant-b": 1}
     assert queue.available_for_scope("tenant-b", total_slots=2, active_by_scope=active) == 0
@@ -280,7 +285,7 @@ def test_single_flight_refresh_prevents_herd(rs) -> None:
         results.append(
             flight.do(
                 "provider-a",
-                lambda: (calls.__setitem__("n", calls["n"] + 1) or time.sleep(0.05) or "snap"),
+                lambda: calls.__setitem__("n", calls["n"] + 1) or time.sleep(0.05) or "snap",
             )
         )
 
@@ -502,7 +507,9 @@ def test_physical_batch_reserves_once_and_isolates_cancel(pbs) -> None:
     # Total charged excludes cancelled member tokens, includes overhead once.
     assert reservation.total_charged_tokens() == 200 + 50
     payload = reservation.to_dict()
-    assert payload["physical_batch_requirement_id"] == pbs.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID
+    assert (
+        payload["physical_batch_requirement_id"] == pbs.PHYSICAL_BATCH_RESERVE_ONCE_REQUIREMENT_ID
+    )
 
 
 def test_physical_batch_enforce_denies_when_capacity_missing(pbs) -> None:

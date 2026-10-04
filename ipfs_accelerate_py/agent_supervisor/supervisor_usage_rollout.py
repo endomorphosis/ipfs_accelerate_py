@@ -83,14 +83,10 @@ ENDPOINT_USAGE_ADMISSION_REQUIREMENT_ID: Final[str] = (
 # Requirement + schema identities
 # ---------------------------------------------------------------------------
 
-SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID: Final[str] = (
-    "requirement:supervisor-usage-rollout.v1"
-)
+SUPERVISOR_USAGE_ROLLOUT_REQUIREMENT_ID: Final[str] = "requirement:supervisor-usage-rollout.v1"
 SUPERVISOR_USAGE_ROLLOUT_GOAL_ID: Final[str] = "ASI-G530"
 SUPERVISOR_USAGE_ROLLOUT_VERSION: Final[int] = 1
-SUPERVISOR_USAGE_BEHAVIOR_ID: Final[str] = (
-    "behavior:supervisor-endpoint-usage-aware@1"
-)
+SUPERVISOR_USAGE_BEHAVIOR_ID: Final[str] = "behavior:supervisor-endpoint-usage-aware@1"
 SUPERVISOR_USAGE_ROLLOUT_REPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-usage-rollout-report@1"
 )
@@ -114,14 +110,10 @@ ROLLOUT_AUTHORIZES_USAGE: Final[bool] = False
 ROLLOUT_AUTHORIZES_CONTROL_MUTATION: Final[bool] = False
 
 LIVE_ENV: Final[str] = "IPFS_ACCELERATE_SUPERVISOR_USAGE_LIVE"
-LIVE_BUDGET_ENV: Final[str] = (
-    "IPFS_ACCELERATE_SUPERVISOR_USAGE_LIVE_BUDGET_MICROS"
-)
+LIVE_BUDGET_ENV: Final[str] = "IPFS_ACCELERATE_SUPERVISOR_USAGE_LIVE_BUDGET_MICROS"
 DEFAULT_LIVE_BUDGET_MICROS: Final[int] = 5_000
 
-FIXED_NOW: Final[datetime] = datetime(
-    2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc
-)
+FIXED_NOW: Final[datetime] = datetime(2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc)
 
 # Reviewed promotion thresholds (lower-is-better for cost/latency; higher for
 # quality scores expressed as basis points).
@@ -238,17 +230,11 @@ class SafetyInvariant(str, Enum):
 REQUIRED_STAGES: Final[tuple[SupervisorStage, ...]] = tuple(SupervisorStage)
 REQUIRED_TOPOLOGIES: Final[tuple[TopologyKind, ...]] = tuple(TopologyKind)
 REQUIRED_CHAOS_BOUNDARIES: Final[tuple[ChaosBoundary, ...]] = tuple(ChaosBoundary)
-REQUIRED_SAFETY_INVARIANTS: Final[tuple[SafetyInvariant, ...]] = tuple(
-    SafetyInvariant
-)
-REQUIRED_MODES: Final[tuple[SupervisorUsageRolloutMode, ...]] = tuple(
-    SupervisorUsageRolloutMode
-)
+REQUIRED_SAFETY_INVARIANTS: Final[tuple[SafetyInvariant, ...]] = tuple(SafetyInvariant)
+REQUIRED_MODES: Final[tuple[SupervisorUsageRolloutMode, ...]] = tuple(SupervisorUsageRolloutMode)
 
 # Consumers that must appear in E2E coverage (ASI-168 closed population).
-REQUIRED_CONSUMERS: Final[tuple[str, ...]] = tuple(
-    item.value for item in ConsumerId
-)
+REQUIRED_CONSUMERS: Final[tuple[str, ...]] = tuple(item.value for item in ConsumerId)
 
 
 # ---------------------------------------------------------------------------
@@ -278,9 +264,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise SupervisorUsageRolloutError(
-            "rollout data must be canonical JSON"
-        ) from exc
+        raise SupervisorUsageRolloutError("rollout data must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -289,9 +273,7 @@ def _identity(value: Any) -> str:
 
 def _text(value: Any, name: str, *, maximum: int = 512) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
-        raise SupervisorUsageRolloutError(
-            f"{name} must be non-empty canonical text"
-        )
+        raise SupervisorUsageRolloutError(f"{name} must be non-empty canonical text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
         raise SupervisorUsageRolloutError(f"{name} is unsafe or too large")
     return value
@@ -310,9 +292,7 @@ def _timestamp(value: datetime | str, name: str) -> str:
     if selected.tzinfo is None:
         raise SupervisorUsageRolloutError(f"{name} must include a timezone")
     return (
-        selected.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
+        selected.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     )
 
 
@@ -370,10 +350,14 @@ def _reject_secrets(payload: Mapping[str, Any]) -> None:
         "prompt",
         "system_prompt",
     ):
-        if needle in lowered and needle not in {
-            # allowlisted schema tokens that mention "prompt" only as a
-            # forbidden-key name in reason codes / documentation strings.
-        }:
+        if (
+            needle in lowered
+            and needle
+            not in {
+                # allowlisted schema tokens that mention "prompt" only as a
+                # forbidden-key name in reason codes / documentation strings.
+            }
+        ):
             # Only flag raw credential/URL shapes; schema keys that document
             # redaction policy are permitted when they appear as reason codes.
             if needle in {"prompt", "system_prompt"} and (
@@ -502,12 +486,8 @@ class HarnessState:
 
     def record_charge(self, request_id: str, scope_id: str, units: int) -> None:
         with self.lock:
-            self.charged_by_request[request_id] = (
-                self.charged_by_request.get(request_id, 0) + units
-            )
-            self.charged_by_scope[scope_id] = (
-                self.charged_by_scope.get(scope_id, 0) + units
-            )
+            self.charged_by_request[request_id] = self.charged_by_request.get(request_id, 0) + units
+            self.charged_by_scope[scope_id] = self.charged_by_scope.get(scope_id, 0) + units
 
 
 def build_harness(
@@ -520,15 +500,9 @@ def build_harness(
     """Build an offline harness with configured endpoint scopes."""
 
     clock = FakeClock(FIXED_NOW)
-    store = InMemoryUsageLedgerStore(
-        clock=clock, writer_id=writer_id, fence=fence
-    )
-    coordinator = UsageCoordinator(
-        store, writer_id=writer_id, fence=fence
-    )
-    state = HarnessState(
-        clock=clock, store=store, coordinator=coordinator
-    )
+    store = InMemoryUsageLedgerStore(clock=clock, writer_id=writer_id, fence=fence)
+    coordinator = UsageCoordinator(store, writer_id=writer_id, fence=fence)
+    state = HarnessState(clock=clock, store=store, coordinator=coordinator)
     for key, cred in scope_keys:
         scope = _endpoint_scope(key, cred=cred)
         state.scopes[key] = scope
@@ -583,9 +557,7 @@ def _lineage_for(
         "parent_scope_id": "",
     }
     root = SupervisorUsageEnvelope(
-        scope=SupervisorUsageScope(
-            level=SupervisorUsageLevel.DEPLOYMENT, **base
-        ),
+        scope=SupervisorUsageScope(level=SupervisorUsageLevel.DEPLOYMENT, **base),
         budget=_budget(
             requests=1_000,
             input_tokens=100_000,
@@ -710,9 +682,7 @@ def _execution_request(
         observation_label=observation_label,
         tree_id=tree_id,
     )
-    estimated = estimated or UsageVector.of(
-        requests=1, input_tokens=80, output_tokens=40
-    )
+    estimated = estimated or UsageVector.of(requests=1, input_tokens=80, output_tokens=40)
     bridge = SupervisorToEndpointRequest(
         scope=request_env.scope,
         envelope_id=request_env.envelope_id,
@@ -833,16 +803,12 @@ class SupervisorUsageE2EReceipt:
             "legacy_binding",
             "observation_label",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=1024)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=1024))
         object.__setattr__(
             self, "charged_requests", _int(self.charged_requests, "charged_requests")
         )
         object.__setattr__(self, "latency_ms", _int(self.latency_ms, "latency_ms"))
-        object.__setattr__(
-            self, "cost_micros", _int(self.cost_micros, "cost_micros")
-        )
+        object.__setattr__(self, "cost_micros", _int(self.cost_micros, "cost_micros"))
         object.__setattr__(
             self, "quality_bps", _int(self.quality_bps, "quality_bps", maximum=10_000)
         )
@@ -919,9 +885,7 @@ class SupervisorUsageChaosReceipt:
             "task_id",
             "observation_label",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=1024)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=1024))
         for name in ("charged_requests", "wait_ms"):
             object.__setattr__(self, name, _int(getattr(self, name), name))
         for name in (
@@ -1011,12 +975,8 @@ class SupervisorUsagePairedReport:
         )
         object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
         object.__setattr__(self, "tree_id", _text(self.tree_id, "tree_id"))
-        object.__setattr__(
-            self, "max_cost_micros", _int(self.max_cost_micros, "max_cost_micros")
-        )
-        object.__setattr__(
-            self, "max_latency_ms", _int(self.max_latency_ms, "max_latency_ms")
-        )
+        object.__setattr__(self, "max_cost_micros", _int(self.max_cost_micros, "max_cost_micros"))
+        object.__setattr__(self, "max_latency_ms", _int(self.max_latency_ms, "max_latency_ms"))
         object.__setattr__(
             self,
             "min_quality_bps",
@@ -1092,10 +1052,14 @@ class SupervisorUsagePairedReport:
         for receipt in self.e2e_receipts:
             if not receipt.endpoint_scope_id or not receipt.task_id:
                 failures.add("exact_attribution")
-            if receipt.mode in {
-                SupervisorUsageRolloutMode.OBSERVE,
-                SupervisorUsageRolloutMode.SHADOW,
-            } and receipt.altered_execution:
+            if (
+                receipt.mode
+                in {
+                    SupervisorUsageRolloutMode.OBSERVE,
+                    SupervisorUsageRolloutMode.SHADOW,
+                }
+                and receipt.altered_execution
+            ):
                 failures.add("observe_shadow_altered_execution")
             if receipt.mode is SupervisorUsageRolloutMode.OFF:
                 if receipt.selected_binding != receipt.legacy_binding:
@@ -1144,10 +1108,8 @@ class SupervisorUsagePairedReport:
         failures = set(self.failure_codes())
         mapping = {
             SafetyInvariant.EXACT_ATTRIBUTION: "exact_attribution" not in failures,
-            SafetyInvariant.NO_HARD_LIMIT_OVERSHOOT: "hard_limit_overshoot"
-            not in failures,
-            SafetyInvariant.NO_ANCESTOR_BUDGET_OVERSHOOT: "hard_limit_overshoot"
-            not in failures,
+            SafetyInvariant.NO_HARD_LIMIT_OVERSHOOT: "hard_limit_overshoot" not in failures,
+            SafetyInvariant.NO_ANCESTOR_BUDGET_OVERSHOOT: "hard_limit_overshoot" not in failures,
             SafetyInvariant.NO_DOUBLE_CHARGE: "double_charge" not in failures,
             SafetyInvariant.NO_MISSING_CHARGE: "missing_charge" not in failures,
             SafetyInvariant.NO_SCOPE_MERGE: "scope_merge" not in failures,
@@ -1161,9 +1123,7 @@ class SupervisorUsagePairedReport:
                 code.startswith("chaos-failed:") for code in failures
             ),
         }
-        return tuple(
-            inv.value for inv, ok in mapping.items() if ok
-        )
+        return tuple(inv.value for inv, ok in mapping.items() if ok)
 
     def to_dict(self, *, include_report_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -1218,9 +1178,7 @@ def _consumer_for_stage(stage: SupervisorStage) -> str:
         SupervisorStage.ANALYSIS: ConsumerId.PROMPT_GOAL_PLANNER.value,
         SupervisorStage.PROOF: ConsumerId.LEANSTRAL_PROOF_PROVIDER.value,
         SupervisorStage.RESCUE: ConsumerId.RESCUE_PLANNER.value,
-        SupervisorStage.VALIDATION_ASSISTANCE: (
-            ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT.value
-        ),
+        SupervisorStage.VALIDATION_ASSISTANCE: (ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT.value),
         SupervisorStage.IMPLEMENTATION: ConsumerId.TASK_PROPOSAL_ROUTER.value,
         SupervisorStage.BATCH: ConsumerId.PROMPT_GOAL_PLANNER.value,
         SupervisorStage.SINGLE_FLIGHT: ConsumerId.RESCUE_PLANNER.value,
@@ -1355,15 +1313,18 @@ def run_e2e_population(
             elif charged == 0 and result.phase is ProviderExecutionPhase.REPLAYED:
                 charged = 0
             elif charged == 0 and stage is not SupervisorStage.LOCAL_FALLBACK:
-                charged = 1 if result.final_status in {
-                    SupervisorUsageFinalStatus.COMMITTED,
-                    SupervisorUsageFinalStatus.UNKNOWN,
-                } else 0
+                charged = (
+                    1
+                    if result.final_status
+                    in {
+                        SupervisorUsageFinalStatus.COMMITTED,
+                        SupervisorUsageFinalStatus.UNKNOWN,
+                    }
+                    else 0
+                )
 
         if charged:
-            harness.record_charge(
-                request_id, request.bridge.endpoint_scope_id, charged
-            )
+            harness.record_charge(request_id, request.bridge.endpoint_scope_id, charged)
 
         # observe/shadow must not change which binding would have been selected
         # relative to legacy (catalog-score) selection of the primary.
@@ -1510,9 +1471,7 @@ def run_chaos_population(
             req = _execution_request(
                 race_harness,
                 stage=SupervisorStage.IMPLEMENTATION,
-                request_id=(
-                    f"{rid(ChaosBoundary.CONCURRENT_RESERVATION_RACE)}:{idx}"
-                ),
+                request_id=(f"{rid(ChaosBoundary.CONCURRENT_RESERVATION_RACE)}:{idx}"),
                 scope_key="race",
                 mode=ProviderExecutionMode.ENFORCE,
                 observation_label=observation_label,
@@ -1525,9 +1484,7 @@ def run_chaos_population(
             with race_lock:
                 race_errors.append(type(exc).__name__)
 
-    threads = [
-        threading.Thread(target=race_worker, args=(i,)) for i in range(6)
-    ]
+    threads = [threading.Thread(target=race_worker, args=(i,)) for i in range(6)]
     for t in threads:
         t.start()
     for t in threads:
@@ -1539,17 +1496,12 @@ def run_chaos_population(
         1
         for r in race_results
         if r.granted
-        and r.phase
-        in {ProviderExecutionPhase.SETTLED, ProviderExecutionPhase.REPLAYED}
+        and r.phase in {ProviderExecutionPhase.SETTLED, ProviderExecutionPhase.REPLAYED}
     )
     receipts.append(
         _chaos_receipt(
             ChaosBoundary.CONCURRENT_RESERVATION_RACE,
-            outcome=(
-                FaultOutcome.RECOVERED
-                if not overshoot
-                else FaultOutcome.QUARANTINED
-            ),
+            outcome=(FaultOutcome.RECOVERED if not overshoot else FaultOutcome.QUARANTINED),
             request_id=rid(ChaosBoundary.CONCURRENT_RESERVATION_RACE),
             endpoint_scope_id=race_scope.scope_id,
             charged=charged_race,
@@ -1625,9 +1577,7 @@ def run_chaos_population(
         receipts.append(
             _chaos_receipt(
                 boundary,
-                outcome=FaultOutcome.BACKPRESSURE
-                if code in {429, 503}
-                else FaultOutcome.DENIED,
+                outcome=FaultOutcome.BACKPRESSURE if code in {429, 503} else FaultOutcome.DENIED,
                 stage=SupervisorStage.PROOF,
                 request_id=rid(boundary),
                 endpoint_scope_id=scope_id,
@@ -1801,9 +1751,7 @@ def run_chaos_population(
         }
 
     # Distinct attempt keys for retry; each attempt charges at most once.
-    gw1 = ProviderExecutionGateway(
-        coordinator=harness.coordinator, invoker=flaky, owner_id="retry"
-    )
+    gw1 = ProviderExecutionGateway(coordinator=harness.coordinator, invoker=flaky, owner_id="retry")
     r1 = _execution_request(
         harness,
         stage=SupervisorStage.PLANNING,
@@ -1984,8 +1932,7 @@ def run_chaos_population(
             request_id=rid(ChaosBoundary.STALE_LEASE_FENCE),
             endpoint_scope_id=scope_id,
             charged=0,
-            reason_codes=tuple(stale_result.reason_codes)
-            or ("stale_lease_fence",),
+            reason_codes=tuple(stale_result.reason_codes) or ("stale_lease_fence",),
             observation_label=observation_label,
         )
     )
@@ -2035,8 +1982,7 @@ def run_chaos_population(
             request_id=rid(ChaosBoundary.LEDGER_OUTAGE),
             endpoint_scope_id=scope_id,
             charged=0,
-            reason_codes=tuple(outage_result.reason_codes)
-            or ("ledger_outage", "fail_closed"),
+            reason_codes=tuple(outage_result.reason_codes) or ("ledger_outage", "fail_closed"),
             observation_label=observation_label,
         )
     )
@@ -2168,9 +2114,7 @@ def run_chaos_population(
     receipts.append(
         _chaos_receipt(
             ChaosBoundary.UNFAIR_QUEUE_PRESSURE,
-            outcome=(
-                FaultOutcome.QUARANTINED if starvation else FaultOutcome.RECOVERED
-            ),
+            outcome=(FaultOutcome.QUARANTINED if starvation else FaultOutcome.RECOVERED),
             request_id=rid(ChaosBoundary.UNFAIR_QUEUE_PRESSURE),
             endpoint_scope_id=scope_id,
             charged=0,
@@ -2192,9 +2136,7 @@ def run_chaos_population(
     receipts.append(
         _chaos_receipt(
             ChaosBoundary.RESET_HERD,
-            outcome=(
-                FaultOutcome.RECOVERED if not herd else FaultOutcome.BACKPRESSURE
-            ),
+            outcome=(FaultOutcome.RECOVERED if not herd else FaultOutcome.BACKPRESSURE),
             request_id=rid(ChaosBoundary.RESET_HERD),
             endpoint_scope_id=scope_id,
             charged=0,
@@ -2227,12 +2169,8 @@ def build_paired_report(
 ) -> SupervisorUsagePairedReport:
     """Build the frozen paired E2E + chaos report for one observation."""
 
-    e2e = run_e2e_population(
-        observation_label=observation_label, tree_id=tree_id
-    )
-    chaos = run_chaos_population(
-        observation_label=observation_label, tree_id=tree_id
-    )
+    e2e = run_e2e_population(observation_label=observation_label, tree_id=tree_id)
+    chaos = run_chaos_population(observation_label=observation_label, tree_id=tree_id)
     when = observed_at or (
         FIXED_NOW
         if observation_label == "qualification"
@@ -2274,9 +2212,7 @@ class SupervisorUsageRolloutBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def binding_id(self) -> str:
@@ -2286,9 +2222,7 @@ class SupervisorUsageRolloutBinding:
         return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SupervisorUsageRolloutBinding":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SupervisorUsageRolloutBinding":
         if set(value) != set(cls.__dataclass_fields__):
             raise SupervisorUsageRolloutError("invalid rollout binding fields")
         return cls(**dict(value))
@@ -2317,19 +2251,12 @@ class SupervisorUsageRolloutPolicy:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
-        object.__setattr__(
-            self, "policy_revision", _text(self.policy_revision, "policy_revision")
-        )
+        object.__setattr__(self, "policy_revision", _text(self.policy_revision, "policy_revision"))
         behaviors = tuple(
-            sorted(
-                _text(item, "approved_behavior_ids")
-                for item in self.approved_behavior_ids
-            )
+            sorted(_text(item, "approved_behavior_ids") for item in self.approved_behavior_ids)
         )
         if len(behaviors) != len(set(behaviors)):
-            raise SupervisorUsageRolloutError(
-                "approved behavior IDs must be unique"
-            )
+            raise SupervisorUsageRolloutError("approved behavior IDs must be unique")
         object.__setattr__(self, "approved_behavior_ids", behaviors)
         modes = tuple(
             sorted(
@@ -2345,12 +2272,8 @@ class SupervisorUsageRolloutPolicy:
             "rollback_on_metric_regression",
         ):
             object.__setattr__(self, flag, _bool(getattr(self, flag), flag))
-        object.__setattr__(
-            self, "max_cost_micros", _int(self.max_cost_micros, "max_cost_micros")
-        )
-        object.__setattr__(
-            self, "max_latency_ms", _int(self.max_latency_ms, "max_latency_ms")
-        )
+        object.__setattr__(self, "max_cost_micros", _int(self.max_cost_micros, "max_cost_micros"))
+        object.__setattr__(self, "max_latency_ms", _int(self.max_latency_ms, "max_latency_ms"))
         object.__setattr__(
             self,
             "min_quality_bps",
@@ -2361,12 +2284,8 @@ class SupervisorUsageRolloutPolicy:
     def policy_binding_id(self) -> str:
         return _identity(self.to_dict())
 
-    def approves(
-        self, behavior_id: str, mode: SupervisorUsageRolloutMode
-    ) -> bool:
-        return (
-            behavior_id in self.approved_behavior_ids and mode in self.approved_modes
-        )
+    def approves(self, behavior_id: str, mode: SupervisorUsageRolloutMode) -> bool:
+        return behavior_id in self.approved_behavior_ids and mode in self.approved_modes
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2374,12 +2293,8 @@ class SupervisorUsageRolloutPolicy:
             "policy_revision": self.policy_revision,
             "approved_behavior_ids": list(self.approved_behavior_ids),
             "approved_modes": [m.value for m in self.approved_modes],
-            "require_operator_authority_for_assist": (
-                self.require_operator_authority_for_assist
-            ),
-            "require_distinct_current_evaluation": (
-                self.require_distinct_current_evaluation
-            ),
+            "require_operator_authority_for_assist": (self.require_operator_authority_for_assist),
+            "require_distinct_current_evaluation": (self.require_distinct_current_evaluation),
             "require_fenced_coordinator_for_distributed": (
                 self.require_fenced_coordinator_for_distributed
             ),
@@ -2390,9 +2305,7 @@ class SupervisorUsageRolloutPolicy:
         }
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "SupervisorUsageRolloutPolicy":
+    def from_dict(cls, value: Mapping[str, Any]) -> "SupervisorUsageRolloutPolicy":
         if set(value) != set(cls.__dataclass_fields__):
             raise SupervisorUsageRolloutError("invalid rollout policy fields")
         return cls(**dict(value))
@@ -2407,16 +2320,10 @@ class SupervisorUsageRolloutEvaluation:
     report: SupervisorUsagePairedReport
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "evaluation_id", _text(self.evaluation_id, "evaluation_id")
-        )
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, "observed_at")
-        )
+        object.__setattr__(self, "evaluation_id", _text(self.evaluation_id, "evaluation_id"))
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
         if not isinstance(self.report, SupervisorUsagePairedReport):
-            raise SupervisorUsageRolloutError(
-                "evaluation report has the wrong type"
-            )
+            raise SupervisorUsageRolloutError("evaluation report has the wrong type")
 
     @property
     def evaluation_receipt_id(self) -> str:
@@ -2473,24 +2380,15 @@ class SupervisorUsageRolloutDecision:
                 SupervisorUsageRolloutMode.SHADOW,
                 SupervisorUsageRolloutMode.OFF,
             }:
-                raise SupervisorUsageRolloutError(
-                    "observe/shadow cannot gain enforce authority"
-                )
+                raise SupervisorUsageRolloutError("observe/shadow cannot gain enforce authority")
         elif self.effective_mode not in {
             self.desired_mode,
             SupervisorUsageRolloutMode.SHADOW,
             SupervisorUsageRolloutMode.OFF,
         }:
-            raise SupervisorUsageRolloutError(
-                "failed promotion must return to shadow/off"
-            )
-        if (
-            self.effective_mode is SupervisorUsageRolloutMode.ENFORCE
-            and not self.enforce_ready
-        ):
-            raise SupervisorUsageRolloutError(
-                "enforce requires the complete two-observation gate"
-            )
+            raise SupervisorUsageRolloutError("failed promotion must return to shadow/off")
+        if self.effective_mode is SupervisorUsageRolloutMode.ENFORCE and not self.enforce_ready:
+            raise SupervisorUsageRolloutError("enforce requires the complete two-observation gate")
 
     @property
     def decision_id(self) -> str:
@@ -2514,15 +2412,8 @@ class SupervisorUsageRolloutDecision:
                 f"{self.binding.behavior_id} is {self.effective_mode.value}; "
                 "all gates required for that mode passed."
             )
-        target = (
-            "off"
-            if self.effective_mode is SupervisorUsageRolloutMode.OFF
-            else "shadow"
-        )
-        return (
-            f"{self.binding.behavior_id} returned to {target}: "
-            + ", ".join(self.reason_codes)
-        )
+        target = "off" if self.effective_mode is SupervisorUsageRolloutMode.OFF else "shadow"
+        return f"{self.binding.behavior_id} returned to {target}: " + ", ".join(self.reason_codes)
 
     def to_dict(self, *, include_decision_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -2633,9 +2524,7 @@ def evaluate_supervisor_usage_rollout(
     *,
     binding: SupervisorUsageRolloutBinding,
     policy: SupervisorUsageRolloutPolicy,
-    desired_mode: SupervisorUsageRolloutMode | str = (
-        SupervisorUsageRolloutMode.SHADOW
-    ),
+    desired_mode: SupervisorUsageRolloutMode | str = (SupervisorUsageRolloutMode.SHADOW),
     current_evaluation: SupervisorUsageRolloutEvaluation | None = None,
     operator_authority_granted: bool = False,
     fenced_coordinator_available: bool = True,
@@ -2659,30 +2548,26 @@ def evaluate_supervisor_usage_rollout(
         # Qualification may be from a prior tree; only current must match for
         # enforce.  Record informational binding note when labels diverge hard.
         pass
-    if (
-        policy.policy_id != binding.policy_id
-        or policy.policy_revision != binding.policy_revision
-    ):
+    if policy.policy_id != binding.policy_id or policy.policy_revision != binding.policy_revision:
         reasons.append("stale-binding:rollout-policy")
     if binding.behavior_id != SUPERVISOR_USAGE_BEHAVIOR_ID:
         reasons.append("stale-binding:behavior_id")
     if not qualification.report.passed:
-        reasons.extend(
-            f"qualification:{code}" for code in qualification.report.failure_codes()
+        reasons.extend(f"qualification:{code}" for code in qualification.report.failure_codes())
+    qualification_passed = (
+        not any(
+            code.startswith("qualification:") or code.startswith("stale-binding:")
+            for code in reasons
         )
-    qualification_passed = not any(
-        code.startswith("qualification:") or code.startswith("stale-binding:")
-        for code in reasons
-    ) and qualification.report.passed
+        and qualification.report.passed
+    )
 
     current_passed = False
     current_report_id = ""
     current_evaluation_id = ""
     if current_evaluation is not None:
         if not isinstance(current_evaluation, SupervisorUsageRolloutEvaluation):
-            raise SupervisorUsageRolloutError(
-                "current_evaluation has the wrong type"
-            )
+            raise SupervisorUsageRolloutError("current_evaluation has the wrong type")
         current_evaluation_id = current_evaluation.evaluation_id
         current_report_id = current_evaluation.report.report_id
         current_reasons: list[str] = []
@@ -2690,46 +2575,28 @@ def evaluate_supervisor_usage_rollout(
             current_reasons.append("stale-binding:tree_id")
         if not current_evaluation.report.passed:
             current_reasons.extend(
-                f"current:{code}"
-                for code in current_evaluation.report.failure_codes()
+                f"current:{code}" for code in current_evaluation.report.failure_codes()
             )
         if (
             current_evaluation.evaluation_id == qualification.evaluation_id
-            or current_evaluation.evaluation_receipt_id
-            == qualification.evaluation_receipt_id
-            or current_evaluation.report.report_id
-            == qualification.report.report_id
+            or current_evaluation.evaluation_receipt_id == qualification.evaluation_receipt_id
+            or current_evaluation.report.report_id == qualification.report.report_id
         ):
             current_reasons.append("current-evaluation-not-distinct")
-        if _datetime(current_evaluation.observed_at) <= _datetime(
-            qualification.observed_at
-        ):
+        if _datetime(current_evaluation.observed_at) <= _datetime(qualification.observed_at):
             current_reasons.append("current-evaluation-not-later")
-        if _population_key(current_evaluation.report) != _population_key(
-            qualification.report
-        ):
+        if _population_key(current_evaluation.report) != _population_key(qualification.report):
             current_reasons.append("benchmark-population-narrowed")
         if policy.rollback_on_metric_regression:
             current_reasons.extend(
-                _metric_regressions(
-                    qualification.report, current_evaluation.report
-                )
+                _metric_regressions(qualification.report, current_evaluation.report)
             )
         # Reviewed absolute limits on the current observation.
-        if (
-            current_evaluation.report.max_observed_cost_micros
-            > policy.max_cost_micros
-        ):
+        if current_evaluation.report.max_observed_cost_micros > policy.max_cost_micros:
             current_reasons.append("cost_limit")
-        if (
-            current_evaluation.report.max_observed_latency_ms
-            > policy.max_latency_ms
-        ):
+        if current_evaluation.report.max_observed_latency_ms > policy.max_latency_ms:
             current_reasons.append("latency_limit")
-        if (
-            current_evaluation.report.min_observed_quality_bps
-            < policy.min_quality_bps
-        ):
+        if current_evaluation.report.min_observed_quality_bps < policy.min_quality_bps:
             current_reasons.append("quality_limit")
         reasons.extend(current_reasons)
         current_passed = not current_reasons
@@ -2739,10 +2606,7 @@ def evaluate_supervisor_usage_rollout(
     if desired is SupervisorUsageRolloutMode.ASSIST:
         if not policy.approves(binding.behavior_id, desired):
             reasons.append("mode-not-policy-approved")
-        if (
-            policy.require_operator_authority_for_assist
-            and not operator_authority_granted
-        ):
+        if policy.require_operator_authority_for_assist and not operator_authority_granted:
             reasons.append("operator-authority-required")
     if desired is SupervisorUsageRolloutMode.ENFORCE:
         if not policy.approves(binding.behavior_id, desired):
@@ -2750,10 +2614,7 @@ def evaluate_supervisor_usage_rollout(
 
     distributed_fail_closed = False
     if distributed_enforcement_requested:
-        if (
-            policy.require_fenced_coordinator_for_distributed
-            and not fenced_coordinator_available
-        ):
+        if policy.require_fenced_coordinator_for_distributed and not fenced_coordinator_available:
             reasons.append("distributed-enforcement-fail-closed")
             distributed_fail_closed = True
 
@@ -2778,9 +2639,7 @@ def evaluate_supervisor_usage_rollout(
     elif desired is SupervisorUsageRolloutMode.ASSIST:
         effective = (
             SupervisorUsageRolloutMode.ASSIST
-            if qualification_passed
-            and operator_authority_granted
-            and not reasons
+            if qualification_passed and operator_authority_granted and not reasons
             else SupervisorUsageRolloutMode.SHADOW
         )
     else:
@@ -2845,9 +2704,7 @@ def verify_supervisor_usage_rollout(
         )
     except SupervisorUsageRolloutError:
         return False
-    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(decision.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 def discover_schemas() -> dict[str, str]:
@@ -2869,9 +2726,7 @@ def discover_schemas() -> dict[str, str]:
         "authorizes_usage": str(ROLLOUT_AUTHORIZES_USAGE).lower(),
         "is_completion_evidence": str(ROLLOUT_IS_COMPLETION_EVIDENCE).lower(),
         "is_correctness_evidence": str(ROLLOUT_IS_CORRECTNESS_EVIDENCE).lower(),
-        "authorizes_control_mutation": str(
-            ROLLOUT_AUTHORIZES_CONTROL_MUTATION
-        ).lower(),
+        "authorizes_control_mutation": str(ROLLOUT_AUTHORIZES_CONTROL_MUTATION).lower(),
         "live_env": LIVE_ENV,
         "live_budget_env": LIVE_BUDGET_ENV,
     }

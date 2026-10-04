@@ -533,8 +533,7 @@ def compile_code_proof_context_capsule(
 
     omitted = tuple(getattr(result.capsule, "omissions", ()) or ())
     expansion_handles = tuple(
-        ref.reference_id
-        for ref in (getattr(result.capsule, "expansion_references", ()) or ())
+        ref.reference_id for ref in (getattr(result.capsule, "expansion_references", ()) or ())
     )
     # Prefer expansion candidates that were omitted under budget.
     if not expansion_handles:
@@ -565,9 +564,7 @@ def compile_code_proof_context_capsule(
         metadata={
             "interface": CODE_PROOF_CONTEXT_INTERFACE,
             "version": CODE_PROOF_CONTEXT_VERSION,
-            "solver_traces_excluded_by_default": manifest[
-                "solver_traces_excluded_by_default"
-            ],
+            "solver_traces_excluded_by_default": manifest["solver_traces_excluded_by_default"],
             "untrusted_data_label": UNTRUSTED_DATA_LABEL,
         },
     )
@@ -612,9 +609,7 @@ class CodeProofContextDeltaCapsule:
             "still_valid_property_ids": list(self.still_valid_property_ids),
             "cold_input_tokens": self.cold_input_tokens,
             "retry_input_tokens": self.retry_input_tokens,
-            "token_reduction_ratio_millis": int(
-                round(self.token_reduction_ratio * 1_000_000)
-            ),
+            "token_reduction_ratio_millis": int(round(self.token_reduction_ratio * 1_000_000)),
             "metadata": dict(self.metadata),
         }
 
@@ -770,17 +765,11 @@ def compile_code_proof_context_delta(
     # compile_delta requires every parent-required reference id to remain present
     # (and still required). Unchanged required refs are listed but not re-sent
     # as "changed" payloads when content identity matches.
-    parent_required = {
-        ref.reference_id: ref
-        for ref in parent_capsule.evidence
-        if ref.required
-    }
+    parent_required = {ref.reference_id: ref for ref in parent_capsule.evidence if ref.required}
     candidates: dict[str, ContextReference] = dict(parent_required)
     for ref in delta_updates:
         candidates[ref.reference_id] = ref
-    delta_evidence = tuple(
-        candidates[key] for key in sorted(candidates)
-    )
+    delta_evidence = tuple(candidates[key] for key in sorted(candidates))
 
     budget = child_request.budget or _default_budget()
     delta_result = compile_context_delta(
@@ -792,9 +781,7 @@ def compile_code_proof_context_delta(
         provider_context_window=provider_context_window,
     )
 
-    cold_tokens = int(
-        parent.token_budget.get("input_tokens") or parent_capsule.input_tokens
-    )
+    cold_tokens = int(parent.token_budget.get("input_tokens") or parent_capsule.input_tokens)
     # Prefer delta transmission tokens (not full reconstructed size).
     receipt = getattr(delta_result, "receipt", None)
     if receipt is not None and getattr(receipt, "delta_tokens", None) is not None:

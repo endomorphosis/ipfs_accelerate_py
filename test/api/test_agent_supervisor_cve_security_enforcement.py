@@ -175,10 +175,7 @@ def test_plan_admission_rejects_deny_conflict_unknown_and_stale_gate_evidence(
     receipt = compile_cve_plan_admission(request)
 
     assert not receipt.admitted
-    assert (
-        AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED.value
-        in receipt.reason_codes
-    )
+    assert AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED.value in receipt.reason_codes
     assert expected_code.value in receipt.reason_codes
 
     stale = _gated(
@@ -188,14 +185,10 @@ def test_plan_admission_rejects_deny_conflict_unknown_and_stale_gate_evidence(
     )
     stale_receipt = compile_cve_plan_admission(stale)
     assert not stale_receipt.admitted
-    assert (
-        AdmissionRejectionCode.CVE_SECURITY_GATE_STALE.value
-        in stale_receipt.reason_codes
-    )
+    assert AdmissionRejectionCode.CVE_SECURITY_GATE_STALE.value in stale_receipt.reason_codes
 
 
-def test_allow_still_requires_existing_authority_and_declared_generated_effects(
-) -> None:
+def test_allow_still_requires_existing_authority_and_declared_generated_effects() -> None:
     request = _gated(
         _base_admission(),
         CVESecurityEnforcementStage.POST_GENERATION,
@@ -229,8 +222,7 @@ def test_allow_still_requires_existing_authority_and_declared_generated_effects(
     assert AdmissionRejectionCode.UNDECLARED_EFFECT.value in receipt.reason_codes
 
 
-def test_every_cve_runtime_stage_requires_an_unbroken_tree_bound_gate_chain(
-) -> None:
+def test_every_cve_runtime_stage_requires_an_unbroken_tree_bound_gate_chain() -> None:
     base = _base_admission()
     stage_compilers = (
         (
@@ -272,14 +264,9 @@ def test_every_cve_runtime_stage_requires_an_unbroken_tree_bound_gate_chain(
     )
     skipped_receipt = compile_cve_merge_admission(skipped)
     assert not skipped_receipt.admitted
-    assert (
-        AdmissionRejectionCode.CVE_SECURITY_GATE_MISSING.value
-        in skipped_receipt.reason_codes
-    )
+    assert AdmissionRejectionCode.CVE_SECURITY_GATE_MISSING.value in skipped_receipt.reason_codes
 
-    merged = _gated(
-        base, CVESecurityEnforcementStage.MERGED_TREE_REVALIDATION
-    )
+    merged = _gated(base, CVESecurityEnforcementStage.MERGED_TREE_REVALIDATION)
     drifted = replace(
         merged,
         repository_tree_id="tree:merged-drift",
@@ -296,18 +283,12 @@ def test_every_cve_runtime_stage_requires_an_unbroken_tree_bound_gate_chain(
     )
     drifted_receipt = revalidate_cve_merged_tree(drifted)
     assert not drifted_receipt.admitted
-    assert (
-        AdmissionRejectionCode.CVE_SECURITY_GATE_STALE.value
-        in drifted_receipt.reason_codes
-    )
+    assert AdmissionRejectionCode.CVE_SECURITY_GATE_STALE.value in drifted_receipt.reason_codes
 
 
-def test_no_cve_permit_path_bypasses_pre_execution_gate_or_root_recheck(
-) -> None:
+def test_no_cve_permit_path_bypasses_pre_execution_gate_or_root_recheck() -> None:
     admission, _, witness = _permit_fixture()
-    plan_only = _gated(
-        admission, CVESecurityEnforcementStage.PLAN_ADMISSION
-    )
+    plan_only = _gated(admission, CVESecurityEnforcementStage.PLAN_ADMISSION)
     plan_receipt = compile_cve_plan_admission(plan_only)
     assert plan_receipt.admitted
     with pytest.raises(PermitIssuanceError, match="pre-execution"):
@@ -322,9 +303,7 @@ def test_no_cve_permit_path_bypasses_pre_execution_gate_or_root_recheck(
             expires_at_ms=NOW + 30_000,
         )
 
-    pre_execution = _gated(
-        admission, CVESecurityEnforcementStage.PRE_EXECUTION
-    )
+    pre_execution = _gated(admission, CVESecurityEnforcementStage.PRE_EXECUTION)
     pre_receipt = compile_cve_pre_execution_admission(pre_execution)
     permit = issue_cve_execution_permit(
         pre_execution,
@@ -337,7 +316,8 @@ def test_no_cve_permit_path_bypasses_pre_execution_gate_or_root_recheck(
         expires_at_ms=NOW + 30_000,
     )
     assert {
-        item.domain for item in permit.evidence_receipts
+        item.domain
+        for item in permit.evidence_receipts
         if item.domain.startswith("cve_security_gate:")
     } == {
         "cve_security_gate:plan_admission",

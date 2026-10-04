@@ -50,9 +50,7 @@ PROOF_ATTESTATION_ENVELOPE_SCHEMA = (
 PROOF_ATTESTATION_VERIFICATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-attestation-verification@1"
 )
-PROOF_ATTESTATION_RECORD_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-attestation-record@1"
-)
+PROOF_ATTESTATION_RECORD_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-attestation-record@1"
 PERSISTED_ATTESTATION_SCHEMA = PROOF_ATTESTATION_RECORD_SCHEMA
 ATTESTATION_BACKEND_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/attestation-backend-policy@1"
@@ -66,9 +64,7 @@ ATTESTATION_BACKEND_HEALTH_SCHEMA = (
 CBP_ATTESTATION_PUBLIC_BINDINGS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/cbp-attestation-public-bindings@1"
 )
-ZK_USE_CASE_DECISION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/zk-use-case-decision@1"
-)
+ZK_USE_CASE_DECISION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/zk-use-case-decision@1"
 
 # Normative public identities that a CBP-grade attestation statement must bind.
 # Digests commit to the same identities so circuit adapters may use either the
@@ -202,20 +198,14 @@ def _timestamp(value: Any, *, field_name: str, required: bool = True) -> str:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
-        raise AttestationValidationError(
-            "%s must be an RFC3339 timestamp" % field_name
-        ) from exc
+        raise AttestationValidationError("%s must be an RFC3339 timestamp" % field_name) from exc
     if parsed.tzinfo is None:
-        raise AttestationValidationError(
-            "%s must include a timezone" % field_name
-        )
+        raise AttestationValidationError("%s must include a timezone" % field_name)
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _timestamp_value(value: str) -> datetime:
-    return datetime.fromisoformat(
-        value[:-1] + "+00:00" if value.endswith("Z") else value
-    )
+    return datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
 
 
 @dataclass(frozen=True)
@@ -294,8 +284,7 @@ class AttestationBackendPolicy(CanonicalContract):
     def key_is_current_at(self, timestamp: str) -> bool:
         checked = _timestamp(timestamp, field_name="timestamp")
         return not self.verification_key_expires_at or (
-            _timestamp_value(checked)
-            < _timestamp_value(self.verification_key_expires_at)
+            _timestamp_value(checked) < _timestamp_value(self.verification_key_expires_at)
         )
 
     def _payload(self) -> Dict[str, Any]:
@@ -322,19 +311,11 @@ class AttestationBackendPolicy(CanonicalContract):
             circuit_id=payload.get("circuit_id", ""),
             circuit_version=payload.get("circuit_version", ""),
             public_input_schema_id=payload.get("public_input_schema_id", ""),
-            public_input_schema_version=payload.get(
-                "public_input_schema_version", ""
-            ),
+            public_input_schema_version=payload.get("public_input_schema_version", ""),
             verification_key_id=payload.get("verification_key_id", ""),
-            verification_key_version=payload.get(
-                "verification_key_version", ""
-            ),
-            backend_mode=payload.get(
-                "backend_mode", AttestationBackendMode.CRYPTOGRAPHIC
-            ),
-            verification_key_expires_at=payload.get(
-                "verification_key_expires_at", ""
-            ),
+            verification_key_version=payload.get("verification_key_version", ""),
+            backend_mode=payload.get("backend_mode", AttestationBackendMode.CRYPTOGRAPHIC),
+            verification_key_expires_at=payload.get("verification_key_expires_at", ""),
         )
         claimed = payload.get("policy_id") or payload.get("content_id")
         if claimed and claimed != result.policy_id:
@@ -424,9 +405,7 @@ class BackendTestResult(CanonicalContract):
         )
         claimed = payload.get("result_id") or payload.get("content_id")
         if claimed and claimed != result.result_id:
-            raise AttestationValidationError(
-                "backend test-result identity does not match payload"
-            )
+            raise AttestationValidationError("backend test-result identity does not match payload")
         return result
 
     def to_public_artifact(self) -> Dict[str, Any]:
@@ -452,9 +431,7 @@ def _backend_test_result(value: Any) -> BackendTestResult:
         return value
     if isinstance(value, Mapping):
         return BackendTestResult.from_dict(value)
-    raise AttestationValidationError(
-        "backend test result must be a BackendTestResult or mapping"
-    )
+    raise AttestationValidationError("backend test result must be a BackendTestResult or mapping")
 
 
 @dataclass(frozen=True)
@@ -471,29 +448,16 @@ class BackendHealthReport(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy", _backend_policy(self.policy))
-        object.__setattr__(
-            self, "configured", _bool(self.configured, field_name="configured")
-        )
-        object.__setattr__(
-            self, "available", _bool(self.available, field_name="available")
-        )
+        object.__setattr__(self, "configured", _bool(self.configured, field_name="configured"))
+        object.__setattr__(self, "available", _bool(self.available, field_name="available"))
         if self.available and not self.configured:
-            raise AttestationValidationError(
-                "an available backend must also be configured"
-            )
+            raise AttestationValidationError("an available backend must also be configured")
         results = tuple(_backend_test_result(item) for item in self.test_results)
         cases = tuple(result.case for result in results)
         if len(cases) != len(set(cases)):
-            raise AttestationValidationError(
-                "backend health cannot contain duplicate test cases"
-            )
-        if any(
-            result.backend_policy_id != self.policy.policy_id
-            for result in results
-        ):
-            raise AttestationValidationError(
-                "backend test evidence is bound to a different policy"
-            )
+            raise AttestationValidationError("backend health cannot contain duplicate test cases")
+        if any(result.backend_policy_id != self.policy.policy_id for result in results):
+            raise AttestationValidationError("backend test evidence is bound to a different policy")
         object.__setattr__(
             self,
             "test_results",
@@ -521,9 +485,7 @@ class BackendHealthReport(CanonicalContract):
     @property
     def missing_cases(self) -> tuple[BackendTestCase, ...]:
         present = set(self.results_by_case)
-        return tuple(
-            case for case in REQUIRED_BACKEND_TEST_CASES if case not in present
-        )
+        return tuple(case for case in REQUIRED_BACKEND_TEST_CASES if case not in present)
 
     @property
     def evidence_timestamps_valid(self) -> bool:
@@ -531,8 +493,7 @@ class BackendHealthReport(CanonicalContract):
 
         evaluated = _timestamp_value(self.evaluated_at)
         return all(
-            _timestamp_value(result.observed_at) <= evaluated
-            for result in self.test_results
+            _timestamp_value(result.observed_at) <= evaluated for result in self.test_results
         )
 
     @property
@@ -565,9 +526,7 @@ class BackendHealthReport(CanonicalContract):
             return "backend is not configured"
         if self.status is CapabilityHealth.CONFIGURED:
             return "backend policy and artifacts are configured but backend is unavailable"
-        failed = tuple(
-            result.case.value for result in self.test_results if not result.passed
-        )
+        failed = tuple(result.case.value for result in self.test_results if not result.passed)
         if failed:
             return "backend failed required cases: " + ", ".join(failed)
         if self.missing_cases:
@@ -623,9 +582,7 @@ class BackendHealthReport(CanonicalContract):
                 )
         claimed = payload.get("health_id") or payload.get("content_id")
         if claimed and claimed != result.health_id:
-            raise AttestationValidationError(
-                "backend health identity does not match payload"
-            )
+            raise AttestationValidationError("backend health identity does not match payload")
         return result
 
     def to_public_artifact(self) -> Dict[str, Any]:
@@ -641,9 +598,7 @@ def _backend_health(value: Any) -> BackendHealthReport:
         return value
     if isinstance(value, Mapping):
         return BackendHealthReport.from_dict(value)
-    raise AttestationValidationError(
-        "backend health must be a BackendHealthReport or mapping"
-    )
+    raise AttestationValidationError("backend health must be a BackendHealthReport or mapping")
 
 
 def _bool(value: Any, *, field_name: str) -> bool:
@@ -657,21 +612,13 @@ def _statement(value: Any) -> "ReceiptAttestationStatement":
         return value
     if isinstance(value, Mapping):
         return ReceiptAttestationStatement.from_dict(value)
-    raise AttestationValidationError(
-        "statement must be a ReceiptAttestationStatement or mapping"
-    )
+    raise AttestationValidationError("statement must be a ReceiptAttestationStatement or mapping")
 
 
 def _backend_id_is_explicitly_simulated(backend_id: str) -> bool:
     """Recognize backend identities which can never be cryptographic."""
 
-    normalized = (
-        backend_id.strip()
-        .lower()
-        .replace("/", ":")
-        .replace("@", ":")
-        .replace("_", "-")
-    )
+    normalized = backend_id.strip().lower().replace("/", ":").replace("@", ":").replace("_", "-")
     tokens = normalized.split(":")
     return any(
         token in {"sim", "simulated", "mock", "fake", "demo", "educational"}
@@ -887,15 +834,12 @@ class ReceiptAttestationStatement(CanonicalContract):
                 "repository/tree, obligation, toolchain, policy, and "
                 "kernel-receipt digests"
             )
-        missing = [
-            key for key in CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS if not bindings.get(key)
-        ]
+        missing = [key for key in CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS if not bindings.get(key)]
         if missing:
             raise AttestationValidationError(
                 "Code-proof attestation public bindings missing: %s" % ", ".join(missing)
             )
         return dict(bindings)
-
 
     # Deprecated board-prefix spellings (prefer code_proof_*).
     @property
@@ -960,13 +904,9 @@ class ReceiptAttestationStatement(CanonicalContract):
             require_code_proof_bindings = bool(require_cbp_bindings)
 
         if not isinstance(receipt, ProofReceipt):
-            raise AttestationValidationError(
-                "attestation requires an existing ProofReceipt object"
-            )
+            raise AttestationValidationError("attestation requires an existing ProofReceipt object")
         receipt.require_kernel_verified()
-        policy = (
-            None if backend_policy is None else _backend_policy(backend_policy)
-        )
+        policy = None if backend_policy is None else _backend_policy(backend_policy)
         if policy is not None:
             supplied = (circuit_id, backend_id, verification_key_id)
             expected = (
@@ -1013,9 +953,7 @@ class ReceiptAttestationStatement(CanonicalContract):
             backend_policy_id=policy.policy_id if policy is not None else "",
             backend_version=policy.backend_version if policy is not None else "",
             circuit_version=policy.circuit_version if policy is not None else "",
-            public_input_schema_id=(
-                policy.public_input_schema_id if policy is not None else ""
-            ),
+            public_input_schema_id=(policy.public_input_schema_id if policy is not None else ""),
             public_input_schema_version=(
                 policy.public_input_schema_version if policy is not None else ""
             ),
@@ -1029,14 +967,10 @@ class ReceiptAttestationStatement(CanonicalContract):
         )
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ReceiptAttestationStatement":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ReceiptAttestationStatement":
         _schema(payload, cls.SCHEMA)
         result = cls(
-            repository_tree_id=payload.get(
-                "repository_tree_id", payload.get("tree_id", "")
-            ),
+            repository_tree_id=payload.get("repository_tree_id", payload.get("tree_id", "")),
             obligation_id=payload.get("obligation_id", ""),
             policy_id=payload.get("policy_id", ""),
             kernel_id=payload.get("kernel_id", ""),
@@ -1048,12 +982,8 @@ class ReceiptAttestationStatement(CanonicalContract):
             backend_version=payload.get("backend_version", ""),
             circuit_version=payload.get("circuit_version", ""),
             public_input_schema_id=payload.get("public_input_schema_id", ""),
-            public_input_schema_version=payload.get(
-                "public_input_schema_version", ""
-            ),
-            verification_key_version=payload.get(
-                "verification_key_version", ""
-            ),
+            public_input_schema_version=payload.get("public_input_schema_version", ""),
+            verification_key_version=payload.get("verification_key_version", ""),
             property_id=payload.get("property_id", ""),
             repository_id=payload.get("repository_id", ""),
             toolchain_id=payload.get("toolchain_id", ""),
@@ -1064,9 +994,7 @@ class ReceiptAttestationStatement(CanonicalContract):
             raise AttestationValidationError(
                 "attestation statement identity does not match payload"
             )
-        claimed_digest = payload.get("public_input_digest") or payload.get(
-            "public_inputs_digest"
-        )
+        claimed_digest = payload.get("public_input_digest") or payload.get("public_inputs_digest")
         if claimed_digest and claimed_digest != result.public_input_digest:
             raise AttestationValidationError(
                 "attestation public-input digest does not match payload"
@@ -1111,9 +1039,7 @@ class PrivateAttestationWitness:
         normalized: Dict[str, Any] = {}
         for raw_name, value in values.items():
             if not isinstance(raw_name, str) or not raw_name.strip():
-                raise AttestationValidationError(
-                    "witness field names must be non-empty strings"
-                )
+                raise AttestationValidationError("witness field names must be non-empty strings")
             normalized[raw_name] = value
         if not normalized:
             raise AttestationValidationError("witness values must not be empty")
@@ -1134,19 +1060,13 @@ class PrivateAttestationWitness:
 
     def __reduce_ex__(self, protocol: int) -> Any:
         del protocol
-        raise WitnessDisclosureError(
-            "private witness cannot be serialized or cached"
-        )
+        raise WitnessDisclosureError("private witness cannot be serialized or cached")
 
     def __getstate__(self) -> Any:
-        raise WitnessDisclosureError(
-            "private witness cannot be serialized or cached"
-        )
+        raise WitnessDisclosureError("private witness cannot be serialized or cached")
 
     def to_dict(self) -> Dict[str, Any]:
-        raise WitnessDisclosureError(
-            "private witness has no public dictionary representation"
-        )
+        raise WitnessDisclosureError("private witness has no public dictionary representation")
 
     def use(self, consumer: Callable[[Mapping[str, Any]], T]) -> T:
         """Invoke a local prover callback with a read-only witness view."""
@@ -1175,9 +1095,7 @@ class ReceiptAttestationRequest:
     def __post_init__(self) -> None:
         object.__setattr__(self, "statement", _statement(self.statement))
         if not isinstance(self._witness, PrivateAttestationWitness):
-            raise AttestationValidationError(
-                "_witness must be a PrivateAttestationWitness"
-            )
+            raise AttestationValidationError("_witness must be a PrivateAttestationWitness")
 
     def __repr__(self) -> str:
         return (
@@ -1189,9 +1107,7 @@ class ReceiptAttestationRequest:
 
     def __reduce_ex__(self, protocol: int) -> Any:
         del protocol
-        raise WitnessDisclosureError(
-            "attestation proving requests cannot be serialized or cached"
-        )
+        raise WitnessDisclosureError("attestation proving requests cannot be serialized or cached")
 
     def to_dict(self) -> Dict[str, Any]:
         """Return only public proving inputs, never the witness."""
@@ -1255,9 +1171,7 @@ class ReceiptAttestationEnvelope(CanonicalContract):
                 name,
                 _text(getattr(self, name), field_name=name, required=True),
             )
-        object.__setattr__(
-            self, "prover_id", _text(self.prover_id, field_name="prover_id")
-        )
+        object.__setattr__(self, "prover_id", _text(self.prover_id, field_name="prover_id"))
         if self.backend_health is not None:
             object.__setattr__(
                 self,
@@ -1281,9 +1195,7 @@ class ReceiptAttestationEnvelope(CanonicalContract):
                     "backend health policy does not match attestation statement"
                 )
             if self.backend_mode is not self.backend_health.policy.backend_mode:
-                raise AttestationValidationError(
-                    "envelope mode does not match backend policy"
-                )
+                raise AttestationValidationError("envelope mode does not match backend policy")
             if self.backend_mode is AttestationBackendMode.CRYPTOGRAPHIC:
                 self.backend_health.require_production_eligible()
 
@@ -1360,15 +1272,11 @@ class ReceiptAttestationEnvelope(CanonicalContract):
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ReceiptAttestationEnvelope":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ReceiptAttestationEnvelope":
         _schema(payload, cls.SCHEMA)
         result = cls(
             statement=_statement(payload.get("statement") or {}),
-            backend_mode=payload.get(
-                "backend_mode", AttestationBackendMode.SIMULATED
-            ),
+            backend_mode=payload.get("backend_mode", AttestationBackendMode.SIMULATED),
             proof_artifact_id=payload.get("proof_artifact_id", ""),
             proof_digest=payload.get("proof_digest", ""),
             prover_id=payload.get("prover_id", ""),
@@ -1408,9 +1316,7 @@ class ReceiptAttestationEnvelope(CanonicalContract):
             "",
             result.backend_health_id,
         ):
-            raise AttestationValidationError(
-                "backend health identity does not match envelope"
-            )
+            raise AttestationValidationError("backend health identity does not match envelope")
         if payload.get("production_eligible") not in (
             None,
             result.production_eligible,
@@ -1420,9 +1326,7 @@ class ReceiptAttestationEnvelope(CanonicalContract):
             )
         claimed_id = payload.get("envelope_id") or payload.get("content_id")
         if claimed_id and claimed_id != result.envelope_id:
-            raise AttestationValidationError(
-                "attestation envelope identity does not match payload"
-            )
+            raise AttestationValidationError("attestation envelope identity does not match payload")
         return result
 
     def to_public_artifact(self) -> Dict[str, Any]:
@@ -1443,9 +1347,7 @@ def _envelope(value: Any) -> ReceiptAttestationEnvelope:
         return value
     if isinstance(value, Mapping):
         return ReceiptAttestationEnvelope.from_dict(value)
-    raise AttestationValidationError(
-        "envelope must be a ReceiptAttestationEnvelope or mapping"
-    )
+    raise AttestationValidationError("envelope must be a ReceiptAttestationEnvelope or mapping")
 
 
 @dataclass(frozen=True)
@@ -1481,9 +1383,7 @@ class AttestationVerification(CanonicalContract):
             "diagnostic_code",
             _text(self.diagnostic_code, field_name="diagnostic_code"),
         )
-        object.__setattr__(
-            self, "independent", _bool(self.independent, field_name="independent")
-        )
+        object.__setattr__(self, "independent", _bool(self.independent, field_name="independent"))
 
     @property
     def verification_id(self) -> str:
@@ -1507,8 +1407,7 @@ class AttestationVerification(CanonicalContract):
             self.verified
             and self.independent
             and self.envelope.production_eligible
-            and self.envelope.backend_mode
-            is AttestationBackendMode.CRYPTOGRAPHIC
+            and self.envelope.backend_mode is AttestationBackendMode.CRYPTOGRAPHIC
         )
 
     @property
@@ -1579,12 +1478,8 @@ class AttestationVerification(CanonicalContract):
                     "backend_version": statement.backend_version,
                     "circuit_version": statement.circuit_version,
                     "public_input_schema_id": statement.public_input_schema_id,
-                    "public_input_schema_version": (
-                        statement.public_input_schema_version
-                    ),
-                    "verification_key_version": (
-                        statement.verification_key_version
-                    ),
+                    "public_input_schema_version": (statement.public_input_schema_version),
+                    "verification_key_version": (statement.verification_key_version),
                     "backend_health_id": self.envelope.backend_health_id,
                 }
             )
@@ -1623,9 +1518,7 @@ class AttestationVerification(CanonicalContract):
         _schema(payload, cls.SCHEMA)
         result = cls(
             envelope=_envelope(payload.get("envelope") or {}),
-            verdict=payload.get(
-                "verdict", AttestationVerificationVerdict.ERROR
-            ),
+            verdict=payload.get("verdict", AttestationVerificationVerdict.ERROR),
             verifier_id=payload.get("verifier_id", ""),
             independent=payload.get("independent", True),
             diagnostic_code=payload.get("diagnostic_code", ""),
@@ -1641,8 +1534,7 @@ class AttestationVerification(CanonicalContract):
             supplied = payload.get(name)
             if supplied not in (None, "", expected):
                 raise AttestationValidationError(
-                    "attestation verification %s does not match derived value"
-                    % name
+                    "attestation verification %s does not match derived value" % name
                 )
         claimed_id = payload.get("verification_id") or payload.get("content_id")
         if claimed_id and claimed_id != result.verification_id:
@@ -1675,9 +1567,7 @@ def _receipt(value: Any) -> ProofReceipt:
             raise AttestationValidationError(
                 "receipt must be a valid immutable ProofReceipt"
             ) from exc
-    raise AttestationValidationError(
-        "receipt must be a ProofReceipt or mapping"
-    )
+    raise AttestationValidationError("receipt must be a ProofReceipt or mapping")
 
 
 def _verification(value: Any) -> AttestationVerification:
@@ -1685,9 +1575,7 @@ def _verification(value: Any) -> AttestationVerification:
         return value
     if isinstance(value, Mapping):
         return AttestationVerification.from_dict(value)
-    raise AttestationValidationError(
-        "verification must be an AttestationVerification or mapping"
-    )
+    raise AttestationValidationError("verification must be an AttestationVerification or mapping")
 
 
 @dataclass(frozen=True)
@@ -1710,9 +1598,7 @@ class PersistedAttestationRecord(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "receipt", _receipt(self.receipt))
-        object.__setattr__(
-            self, "verification", _verification(self.verification)
-        )
+        object.__setattr__(self, "verification", _verification(self.verification))
         object.__setattr__(
             self,
             "created_at",
@@ -1724,9 +1610,7 @@ class PersistedAttestationRecord(CanonicalContract):
             _timestamp(self.expires_at, field_name="expires_at"),
         )
         if _timestamp_value(self.expires_at) <= _timestamp_value(self.created_at):
-            raise AttestationValidationError(
-                "attestation expiration must be after creation"
-            )
+            raise AttestationValidationError("attestation expiration must be after creation")
 
         self.receipt.require_kernel_verified()
         if not self.receipt.kernel_receipt_id:
@@ -1772,9 +1656,7 @@ class PersistedAttestationRecord(CanonicalContract):
                 "attestation was created with an expired verification key"
             )
         key_expiry = health.policy.verification_key_expires_at
-        if key_expiry and _timestamp_value(self.expires_at) > _timestamp_value(
-            key_expiry
-        ):
+        if key_expiry and _timestamp_value(self.expires_at) > _timestamp_value(key_expiry):
             raise AttestationValidationError(
                 "attestation expiration exceeds verification-key expiration"
             )
@@ -2025,9 +1907,7 @@ def build_receipt_attestation_statement(
         policy = _backend_policy(backend_policy)
         circuit_id = circuit_id or policy.circuit_id
         backend_id = backend_id or policy.backend_id
-        verification_key_id = (
-            verification_key_id or policy.verification_key_id
-        )
+        verification_key_id = verification_key_id or policy.verification_key_id
     if not circuit_id or not backend_id or not verification_key_id:
         raise AttestationValidationError(
             "circuit_id, backend_id, and verification_key_id are required"
@@ -2107,9 +1987,9 @@ def evaluate_backend_health(
     *,
     configured: bool,
     available: bool,
-    outcomes: Mapping[
-        BackendTestCase | str, BackendTestVerdict | str | bool
-    ] = MappingProxyType({}),
+    outcomes: Mapping[BackendTestCase | str, BackendTestVerdict | str | bool] = MappingProxyType(
+        {}
+    ),
     evaluated_at: str,
     diagnostics: Mapping[BackendTestCase | str, str] = MappingProxyType({}),
 ) -> BackendHealthReport:
@@ -2130,15 +2010,9 @@ def evaluate_backend_health(
     for raw_case, raw_verdict in outcomes.items():
         case = BackendTestCase(str(getattr(raw_case, "value", raw_case)))
         if isinstance(raw_verdict, bool):
-            verdict = (
-                BackendTestVerdict.PASSED
-                if raw_verdict
-                else BackendTestVerdict.FAILED
-            )
+            verdict = BackendTestVerdict.PASSED if raw_verdict else BackendTestVerdict.FAILED
         else:
-            verdict = BackendTestVerdict(
-                str(getattr(raw_verdict, "value", raw_verdict))
-            )
+            verdict = BackendTestVerdict(str(getattr(raw_verdict, "value", raw_verdict)))
         results.append(
             BackendTestResult(
                 case=case,
@@ -2191,11 +2065,7 @@ def run_backend_self_tests(
             outcomes[case] = BackendTestVerdict.ERROR
             diagnostics[case] = "fixture_returned_non_boolean"
             continue
-        outcomes[case] = (
-            BackendTestVerdict.PASSED
-            if passed
-            else BackendTestVerdict.FAILED
-        )
+        outcomes[case] = BackendTestVerdict.PASSED if passed else BackendTestVerdict.FAILED
     return evaluate_backend_health(
         policy,
         configured=configured,
@@ -2222,11 +2092,7 @@ def witness_no_leak_test_result(
             for artifact in artifacts
             for probe in secret_probes
         )
-        verdict = (
-            BackendTestVerdict.FAILED
-            if leaked
-            else BackendTestVerdict.PASSED
-        )
+        verdict = BackendTestVerdict.FAILED if leaked else BackendTestVerdict.PASSED
         diagnostic = "witness_disclosure_detected" if leaked else ""
     except Exception:
         verdict = BackendTestVerdict.ERROR
@@ -2277,13 +2143,9 @@ def execute_cryptographic_attestation(
     try:
         output = prover(request)
     except Exception as exc:
-        raise CryptographicBackendFailure(
-            "cryptographic proof generation failed"
-        ) from exc
+        raise CryptographicBackendFailure("cryptographic proof generation failed") from exc
     if not isinstance(output, Mapping):
-        raise CryptographicBackendFailure(
-            "cryptographic prover returned a malformed result"
-        )
+        raise CryptographicBackendFailure("cryptographic prover returned a malformed result")
     proof_artifact_id = output.get("proof_artifact_id", "")
     proof_digest = output.get("proof_digest", "")
     try:
@@ -2373,9 +2235,7 @@ def public_attestation_artifact(value: Any) -> Any:
     """
 
     if isinstance(value, PrivateAttestationWitness):
-        raise WitnessDisclosureError(
-            "private witness cannot enter a public artifact"
-        )
+        raise WitnessDisclosureError("private witness cannot enter a public artifact")
     if isinstance(value, ReceiptAttestationRequest):
         return value.to_public_artifact()
     if isinstance(
@@ -2392,18 +2252,13 @@ def public_attestation_artifact(value: Any) -> Any:
     ):
         return value.to_public_artifact()
     if isinstance(value, Mapping):
-        return {
-            str(key): public_attestation_artifact(item)
-            for key, item in value.items()
-        }
+        return {str(key): public_attestation_artifact(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [public_attestation_artifact(item) for item in value]
     return _canonical_value(value)
 
 
-def public_artifact_contains(
-    artifact: Any, secret: str | bytes
-) -> bool:
+def public_artifact_contains(artifact: Any, secret: str | bytes) -> bool:
     """Test helper for witness no-leak assertions."""
 
     needle = secret.encode("utf-8") if isinstance(secret, str) else bytes(secret)
@@ -2535,9 +2390,7 @@ class ZkUseCaseDecisionRecord(CanonicalContract):
                 "a terminal not_applicable ZK decision cannot block core CBP"
             )
         if self.disposition is ZkUseCaseDisposition.APPROVED:
-            if not (
-                self.qualifying_private_witness and self.qualifying_cross_trust_boundary
-            ):
+            if not (self.qualifying_private_witness and self.qualifying_cross_trust_boundary):
                 raise AttestationValidationError(
                     "an approved ZK use case requires a qualifying private witness "
                     "and a cross-trust-boundary need"
@@ -2606,24 +2459,14 @@ class ZkUseCaseDecisionRecord(CanonicalContract):
             trust_boundary_summary=payload.get("trust_boundary_summary", ""),
             disclosure_risk_summary=payload.get("disclosure_risk_summary", ""),
             replay_freshness_summary=payload.get("replay_freshness_summary", ""),
-            why_signed_receipts_insufficient=payload.get(
-                "why_signed_receipts_insufficient", ""
-            ),
-            qualifying_private_witness=payload.get(
-                "qualifying_private_witness", False
-            ),
-            qualifying_cross_trust_boundary=payload.get(
-                "qualifying_cross_trust_boundary", False
-            ),
-            approved_backend_families=tuple(
-                payload.get("approved_backend_families") or ()
-            ),
+            why_signed_receipts_insufficient=payload.get("why_signed_receipts_insufficient", ""),
+            qualifying_private_witness=payload.get("qualifying_private_witness", False),
+            qualifying_cross_trust_boundary=payload.get("qualifying_cross_trust_boundary", False),
+            approved_backend_families=tuple(payload.get("approved_backend_families") or ()),
         )
         claimed = payload.get("decision_id") or payload.get("content_id")
         if claimed and claimed != result.decision_id:
-            raise AttestationValidationError(
-                "ZK use-case decision identity does not match payload"
-            )
+            raise AttestationValidationError("ZK use-case decision identity does not match payload")
         return result
 
     def to_public_artifact(self) -> Dict[str, Any]:
@@ -2711,9 +2554,7 @@ def require_zk_backend_selection_authorized(
         )
     if checked.disposition is ZkUseCaseDisposition.NOT_APPLICABLE:
         if checked.blocks_core_cbp:
-            raise AttestationValidationError(
-                "not_applicable ZK decisions must not block core CBP"
-            )
+            raise AttestationValidationError("not_applicable ZK decisions must not block core CBP")
         raise AttestationValidationError(
             "ZK backend selection is not applicable for use case %s; no "
             "production backend may be selected" % checked.use_case_id
@@ -2769,8 +2610,7 @@ def reject_private_witness_from_public_payload(value: Any) -> None:
         )
     if isinstance(value, ReceiptAttestationRequest):
         raise WitnessDisclosureError(
-            "attestation proving requests cannot enter public receipts or "
-            "attestation cache entries"
+            "attestation proving requests cannot enter public receipts or attestation cache entries"
         )
     if _public_payload_has_private_witness(value):
         raise WitnessDisclosureError(
@@ -2793,9 +2633,7 @@ def _public_payload_has_private_witness(value: Any) -> bool:
                     continue
                 return True
             if any(
-                key == marker
-                or key.endswith("_" + marker)
-                or marker in key
+                key == marker or key.endswith("_" + marker) or marker in key
                 for marker in (
                     "private_witness",
                     "hidden_witness",
@@ -2821,9 +2659,7 @@ def public_attestation_cache_entry(value: Any) -> Any:
     """Project a value into a cache-safe public form, rejecting private witnesses."""
 
     if isinstance(value, PrivateAttestationWitness):
-        raise WitnessDisclosureError(
-            "private witness cannot enter an attestation cache entry"
-        )
+        raise WitnessDisclosureError("private witness cannot enter an attestation cache entry")
     if isinstance(value, ReceiptAttestationRequest):
         raise WitnessDisclosureError(
             "attestation proving requests containing a witness cannot be cached"
