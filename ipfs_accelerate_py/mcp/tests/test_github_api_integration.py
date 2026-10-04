@@ -75,7 +75,7 @@ def test_cache_stats_retrieval():
 
     logger.info(
         f"✓ Cache stats retrieved: {stats['cache_size']} entries, "
-        f"{stats['hit_rate']*100:.1f}% hit rate"
+        f"{stats['hit_rate'] * 100:.1f}% hit rate"
     )
 
 
@@ -180,7 +180,7 @@ def run_all_tests() -> Dict[str, bool]:
     logger.info("=" * 70)
     logger.info("GitHub API Integration Tests")
     logger.info("=" * 70)
-    
+
     tests = [
         ("MCP Tools Registration", test_github_mcp_tools_registration),
         ("Cache Stats Retrieval", test_cache_stats_retrieval),
@@ -188,9 +188,9 @@ def run_all_tests() -> Dict[str, bool]:
         ("Cache Invalidation", test_cache_invalidation),
         ("Content-Addressed Caching", test_content_addressed_caching),
     ]
-    
+
     results = {}
-    
+
     for test_name, test_func in tests:
         logger.info(f"\nRunning: {test_name}")
         logger.info("-" * 70)
@@ -200,36 +200,36 @@ def run_all_tests() -> Dict[str, bool]:
         except Exception as e:
             logger.error(f"Test crashed: {e}")
             import traceback
+
             traceback.print_exc()
             results[test_name] = False
-    
+
     logger.info("\n" + "=" * 70)
     logger.info("Test Summary")
     logger.info("=" * 70)
-    
+
     for test_name, passed in results.items():
         status = "✓ PASS" if passed else "✗ FAIL"
         logger.info(f"{status}: {test_name}")
-    
+
     passed_count = sum(1 for r in results.values() if r)
     total_count = len(results)
-    
+
     logger.info(f"\nPassed: {passed_count}/{total_count}")
     logger.info("=" * 70)
-    
+
     return results
 
 
 if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
+
     # Run tests
     results = run_all_tests()
-    
+
     # Exit with error code if any test failed
     if not all(results.values()):
         exit(1)

@@ -59,7 +59,9 @@ def _response_cache_enabled() -> bool:
 
 
 def _response_cache_key_strategy() -> str:
-    return os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    return (
+        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    )
 
 
 def _response_cache_cid_base() -> str:
@@ -80,7 +82,9 @@ def _text_digest(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
 
 
-def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]) -> str:
+def _effective_model_key(
+    *, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]
+) -> str:
     """Best-effort model identifier for caching.
 
     Embeddings callers sometimes pass model via kwargs (e.g. ``model=...``), and
@@ -124,13 +128,16 @@ def _response_cache_key(
     kwargs: Dict[str, object],
 ) -> str:
     provider_key = (provider or "auto").strip().lower()
-    model_key = _effective_model_key(provider_key=provider_key, model_name=model_name, kwargs=kwargs)
+    model_key = _effective_model_key(
+        provider_key=provider_key, model_name=model_name, kwargs=kwargs
+    )
     device_key = (device or "").strip().lower()
 
     strategy = _response_cache_key_strategy()
     if strategy == "cid":
         try:
             from .ipfs_multiformats import cid_for_obj
+
             payload = {
                 "type": "embeddings_response",
                 "provider": provider_key,
@@ -196,7 +203,9 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
     if not api_key:
         return None
 
-    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base_url = os.getenv(
+        "IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    ).rstrip("/")
     referer = os.getenv("OPENROUTER_HTTP_REFERER")
     app_title = os.getenv("OPENROUTER_APP_TITLE")
 
@@ -233,7 +242,7 @@ def _get_openrouter_provider() -> Optional[EmbeddingsProvider]:
                 f"{base_url}/embeddings",
                 data=json.dumps(payload).encode("utf-8"),
                 method="POST",
-                headers=headers
+                headers=headers,
             )
 
             try:
@@ -302,20 +311,21 @@ def _get_gemini_cli_provider() -> Optional[EmbeddingsProvider]:
             client = self._get_client()
             if client is None:
                 raise RuntimeError("Gemini integration not available")
-            
+
             # Check if the client has an embed_texts method
-            if not hasattr(client, 'embed_texts'):
+            if not hasattr(client, "embed_texts"):
                 # Fallback: Use generate_embeddings if available
-                if hasattr(client, 'generate_embeddings'):
+                if hasattr(client, "generate_embeddings"):
                     inputs = list(texts)
                     result = client.generate_embeddings(
                         texts=inputs,
-                        model=model_name or os.getenv("IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL", "embedding-001")
+                        model=model_name
+                        or os.getenv("IPFS_ACCELERATE_PY_GEMINI_EMBEDDINGS_MODEL", "embedding-001"),
                     )
                     if result.get("success") and "embeddings" in result:
                         return result["embeddings"]
                 raise RuntimeError("Gemini integration does not support embeddings")
-            
+
             inputs = list(texts)
             return client.embed_texts(inputs, model_name=model_name, device=device, **kwargs)
 
@@ -341,50 +351,55 @@ def _get_huggingface_provider() -> Optional[EmbeddingsProvider]:
             device: Optional[str] = None,
             **kwargs: object,
         ) -> List[List[float]]:
-            model = model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+            model = model_name or os.getenv(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+            )
             device_str = device or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_DEVICE", "cpu")
-            
+
             # Get or create model
             cache_key = f"{model}::{device_str}"
             if cache_key not in self._models:
                 try:
                     from sentence_transformers import SentenceTransformer
+
                     self._models[cache_key] = SentenceTransformer(model, device=device_str)
                 except ImportError:
                     # Fall back to transformers directly
                     from transformers import AutoTokenizer, AutoModel
                     import torch
-                    
+
                     tokenizer = AutoTokenizer.from_pretrained(model)
                     model_obj = AutoModel.from_pretrained(model)
                     if device_str == "cuda" and torch.cuda.is_available():
                         model_obj = model_obj.to("cuda")
                     self._models[cache_key] = (tokenizer, model_obj, device_str)
-            
+
             model_obj = self._models[cache_key]
             inputs = list(texts)
-            
+
             # Use SentenceTransformer if available
-            if hasattr(model_obj, 'encode'):
+            if hasattr(model_obj, "encode"):
                 embeddings = model_obj.encode(inputs, convert_to_numpy=True)
                 return [emb.tolist() for emb in embeddings]
-            
+
             # Otherwise use transformers directly
             tokenizer, transformer_model, dev = model_obj
             import torch
-            
+
             embeddings = []
             for text in inputs:
-                encoded = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+                encoded = tokenizer(
+                    text, return_tensors="pt", padding=True, truncation=True, max_length=512
+                )
                 if dev == "cuda" and torch.cuda.is_available():
                     encoded = {k: v.to("cuda") for k, v in encoded.items()}
-                
+
                 with torch.no_grad():
                     output = transformer_model(**encoded)
                     # Use [CLS] token embedding or mean pooling
                     embedding = output.last_hidden_state[:, 0, :].squeeze().cpu().numpy()
                     embeddings.append(embedding.tolist())
-            
+
             return embeddings
 
     return _HuggingFaceEmbeddingsProvider()
@@ -399,7 +414,9 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
         manager = deps.get_backend_manager(
             purpose="embeddings_router",
             enable_health_checks=True,
-            load_balancing_strategy=os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_LOAD_BALANCING", "round_robin"),
+            load_balancing_strategy=os.getenv(
+                "IPFS_ACCELERATE_PY_EMBEDDINGS_LOAD_BALANCING", "round_robin"
+            ),
         )
         if manager is None:
             return None
@@ -417,26 +434,20 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[EmbeddingsProvid
                 backend = manager.select_backend_for_task(
                     task="text-embedding",
                     model=model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL", ""),
-                    protocol="any"
+                    protocol="any",
                 )
-                
+
                 if backend is None:
                     raise RuntimeError("No available backend for text-embedding")
-                
+
                 # Execute inference via backend
                 inputs = list(texts)
-                payload = {
-                    "texts": inputs,
-                    "device": device,
-                    **kwargs
-                }
-                
+                payload = {"texts": inputs, "device": device, **kwargs}
+
                 result = manager.execute_inference(
-                    backend_id=backend["id"],
-                    task="text-embedding",
-                    payload=payload
+                    backend_id=backend["id"], task="text-embedding", payload=payload
                 )
-                
+
                 # Extract embeddings from result
                 embeddings = result.get("embeddings")
                 if isinstance(embeddings, list):
@@ -550,7 +561,9 @@ def get_embeddings_provider(
         cached = resolved_deps.get_cached(deps_key)
         if cached is not None:
             return cached
-        return resolved_deps.set_cached(deps_key, _resolve_provider_uncached(provider, deps=resolved_deps))
+        return resolved_deps.set_cached(
+            deps_key, _resolve_provider_uncached(provider, deps=resolved_deps)
+        )
 
     return _resolve_provider_cached(provider, _provider_cache_key())
 
@@ -566,7 +579,7 @@ def embed_texts(
     **kwargs: object,
 ) -> List[List[float]]:
     """Generate embeddings for multiple texts.
-    
+
     Args:
         texts: Iterable of strings to embed
         model_name: Optional model name to use
@@ -575,7 +588,7 @@ def embed_texts(
         provider_instance: Optional pre-created provider instance
         deps: Optional RouterDeps for dependency injection
         **kwargs: Additional arguments passed to the provider
-        
+
     Returns:
         List of embedding vectors (one per input text)
     """
@@ -598,7 +611,9 @@ def embed_texts(
                     kwargs=dict(kwargs),
                 )
                 getter = getattr(resolved_deps, "get_cached_or_remote", None)
-                cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
+                cached = (
+                    getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
+                )
                 if isinstance(cached, list) and all(isinstance(x, (int, float)) for x in cached):
                     cached_vectors[idx] = [float(x) for x in cached]
                 else:
@@ -609,7 +624,9 @@ def embed_texts(
                 return [v if v is not None else [] for v in cached_vectors]
 
             backend = provider_instance or get_embeddings_provider(provider, deps=resolved_deps)
-            generated = backend.embed_texts(missing_texts, model_name=model_name, device=device, **kwargs)
+            generated = backend.embed_texts(
+                missing_texts, model_name=model_name, device=device, **kwargs
+            )
             for out_idx, vec in enumerate(generated):
                 input_idx = missing_indices[out_idx]
                 cached_vectors[input_idx] = vec
@@ -660,7 +677,9 @@ def embed_texts(
         if provider is None:
             hf_provider = _get_huggingface_provider()
             if hf_provider is not None and backend is not hf_provider:
-                result = hf_provider.embed_texts(inputs, model_name=model_name, device=device, **kwargs)
+                result = hf_provider.embed_texts(
+                    inputs, model_name=model_name, device=device, **kwargs
+                )
                 if _response_cache_enabled() and inputs:
                     for text, vec in zip(inputs, result):
                         try:
@@ -696,14 +715,14 @@ def embed_text(
     **kwargs: object,
 ) -> List[float]:
     """Generate an embedding for a single text.
-    
+
     Args:
         text: Text to embed
         model_name: Optional model name to use
         device: Optional device (cpu/cuda)
         provider: Optional provider name
         **kwargs: Additional arguments passed to the provider
-        
+
     Returns:
         Embedding vector
     """

@@ -145,10 +145,12 @@ from ipfs_accelerate_py.mcp import create_ipfs_mcp_server
 # Create and configure the server
 mcp_server = create_ipfs_mcp_server(name="IPFS Accelerate")
 
+
 # Register custom tools if needed
 @mcp_server.tool()
 async def custom_tool(ctx):
     return {"result": "success"}
+
 
 # Run the server
 mcp_server.run(transport="stdio")

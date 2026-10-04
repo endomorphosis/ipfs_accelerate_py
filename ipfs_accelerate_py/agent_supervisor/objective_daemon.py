@@ -114,7 +114,9 @@ def discovery_fingerprints(discovery_dir: Path) -> set[str]:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate autonomous-agent todos from an objective goal heap")
+    parser = argparse.ArgumentParser(
+        description="Generate autonomous-agent todos from an objective goal heap"
+    )
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
     parser.add_argument("--objective-path", type=Path, default=None)
     parser.add_argument("--todo-path", type=Path, default=None)
@@ -133,7 +135,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
     )
-    parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
+    parser.add_argument(
+        "--repeat-existing",
+        action="store_true",
+        help="Do not suppress fingerprints already in discovery files",
+    )
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
         "--surplus-findings-per-goal",
@@ -214,11 +220,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path for the todo vector/AST index artifact. Defaults to <bundle-dir>/todo_vector_index.json.",
     )
-    parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
+    parser.add_argument(
+        "--submit-bundles",
+        action="store_true",
+        help="Submit generated bundle shards to the local task queue",
+    )
     parser.add_argument("--queue-path", default=None)
     parser.add_argument("--queue-task-type", default="codex.todo_bundle")
     parser.add_argument("--queue-model-name", default="codex")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     return parser
 
 
@@ -230,7 +242,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     discovery_dir = (args.discovery_dir or state_root / "discovery").resolve()
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     dataset_dir = (args.dataset_dir or state_root / "objective_datasets").resolve()
-    graph_path = (getattr(args, "graph_path", None) or state_root / "objective_graph.json").resolve()
+    graph_path = (
+        getattr(args, "graph_path", None) or state_root / "objective_graph.json"
+    ).resolve()
 
     seen_fingerprints = set(split_csv(args.seen_fingerprint))
     if not args.repeat_existing:
@@ -246,7 +260,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             root_goal_id=getattr(args, "root_goal_id", None),
             goal_prefix=getattr(args, "goal_prefix", None) or DEFAULT_GOAL_PREFIX,
             root_goal_title=getattr(args, "root_goal_title", DEFAULT_ROOT_GOAL_TITLE),
-            document_title=getattr(args, "tracking_document_title", DEFAULT_TRACKING_DOCUMENT_TITLE),
+            document_title=getattr(
+                args, "tracking_document_title", DEFAULT_TRACKING_DOCUMENT_TITLE
+            ),
         )
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
@@ -337,12 +353,20 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
-        surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
-        surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
-        summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
+        surplus_findings_per_goal=getattr(
+            args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+        ),
+        surplus_min_terms_per_todo=getattr(
+            args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO
+        ),
+        summary_prefix=getattr(
+            args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+        ),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
     )
-    graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
+    graph_payload = write_objective_graph_artifact(
+        objective_path=objective_path, graph_path=graph_path
+    )
 
     bundle_index_path = bundle_dir / "index.json"
     submitted_bundle_task_ids: list[str] = []
@@ -363,7 +387,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "bundle_index_path": repo_relative_path(repo_root, bundle_index_path),
         "todo_vector_index_path": repo_relative_path(
             repo_root,
-            (getattr(args, "todo_vector_index_path", None) or bundle_dir / "todo_vector_index.json").resolve(),
+            (
+                getattr(args, "todo_vector_index_path", None)
+                or bundle_dir / "todo_vector_index.json"
+            ).resolve(),
         ),
         "dataset_dir": repo_relative_path(repo_root, dataset_dir),
         "graph_path": repo_relative_path(repo_root, graph_path),
@@ -384,13 +411,21 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
-        "objective_completed_goal_count": graph_payload.get("completed_goal_count", objective_completed_goal_count),
+        "objective_completed_goal_count": graph_payload.get(
+            "completed_goal_count", objective_completed_goal_count
+        ),
         "objective_heap_schedule_count": len(graph_payload.get("heap_schedule") or []),
         "generated_count": len(records),
-        "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
-        "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
+        "surplus_findings_per_goal": getattr(
+            args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+        ),
+        "surplus_min_terms_per_todo": getattr(
+            args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO
+        ),
         "task_ids": [record.task_id for record in records],
-        "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],
+        "discovery_paths": [
+            repo_relative_path(repo_root, record.discovery_path) for record in records
+        ],
         "bundle_keys": sorted({record.finding.bundle_key for record in records}),
         "submitted_bundle_task_ids": submitted_bundle_task_ids,
     }

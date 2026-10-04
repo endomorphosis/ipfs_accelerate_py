@@ -263,40 +263,55 @@ Example extending the UI with a new tab:
 ```python
 def _setup_layout(self):
     # ... existing code ...
-    
+
     # Add a new tab
-    tabs = dbc.Tabs([
-        # ... existing tabs ...
-        dbc.Tab(self._create_new_feature_tab(), label="New Feature"),
-    ])
-    
+    tabs = dbc.Tabs(
+        [
+            # ... existing tabs ...
+            dbc.Tab(self._create_new_feature_tab(), label="New Feature"),
+        ]
+    )
+
     # ... rest of the method ...
+
 
 def _create_new_feature_tab(self):
     """Create a new custom visualization tab."""
-    return html.Div([
-        html.Br(),
-        dbc.Row([
-            dbc.Col([
-                html.H5("My New Feature"),
-                html.P("Description of the new feature"),
-            ]),
-        ]),
-        dbc.Row([
-            dbc.Col([
-                dcc.Graph(id="new-feature-graph"),
-            ], width=12),
-        ]),
-        # Add controls and additional elements
-    ])
+    return html.Div(
+        [
+            html.Br(),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            html.H5("My New Feature"),
+                            html.P("Description of the new feature"),
+                        ]
+                    ),
+                ]
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dcc.Graph(id="new-feature-graph"),
+                        ],
+                        width=12,
+                    ),
+                ]
+            ),
+            # Add controls and additional elements
+        ]
+    )
+
 
 def _setup_callbacks(self):
     # ... existing callbacks ...
-    
+
     # Add callback for the new feature
     @self.app.callback(
         Output("new-feature-graph", "figure"),
-        [Input("api-dropdown", "value"), Input("metric-dropdown", "value")]
+        [Input("api-dropdown", "value"), Input("metric-dropdown", "value")],
     )
     def update_new_feature_graph(api, metric):
         # Implement your visualization logic here
@@ -348,11 +363,13 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/management", tags=["management"])
 
+
 class FilterRequest(BaseModel):
     api_name: str
     metric_type: str
     start_date: str
     end_date: str
+
 
 @router.post("/filter_data")
 async def filter_data(request: FilterRequest):

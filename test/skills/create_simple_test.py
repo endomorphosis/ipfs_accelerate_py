@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 MODEL_TYPES = {
@@ -19,30 +19,31 @@ MODEL_TYPES = {
         "class_name": "BertForMaskedLM",
         "test_class_name": "TestBertModels",
         "task": "fill-mask",
-        "test_input": "The capital of France is [MASK]."
+        "test_input": "The capital of France is [MASK].",
     },
     "gpt2": {
         "registry_name": "GPT2_MODELS_REGISTRY",
         "class_name": "GPT2LMHeadModel",
         "test_class_name": "TestGpt2Models",
         "task": "text-generation",
-        "test_input": "GPT-2 is a language model that"
+        "test_input": "GPT-2 is a language model that",
     },
     "t5": {
         "registry_name": "T5_MODELS_REGISTRY",
         "class_name": "T5ForConditionalGeneration",
         "test_class_name": "TestT5Models",
         "task": "text2text-generation",
-        "test_input": "translate English to German: The house is wonderful."
+        "test_input": "translate English to German: The house is wonderful.",
     },
     "vit": {
         "registry_name": "VIT_MODELS_REGISTRY",
         "class_name": "ViTForImageClassification",
         "test_class_name": "TestVitModels",
         "task": "image-classification",
-        "test_input": "[IMAGE_PLACEHOLDER]"
-    }
+        "test_input": "[IMAGE_PLACEHOLDER]",
+    },
 }
+
 
 def create_model_test(model_type, output_dir="fixed_tests"):
     """Create a standardized test file for a given model type."""
@@ -50,17 +51,17 @@ def create_model_test(model_type, output_dir="fixed_tests"):
         logger.error(f"Model type {model_type} not found in supported types")
         logger.info(f"Supported types: {', '.join(MODEL_TYPES.keys())}")
         return False
-    
+
     # Get model info
     model_info = MODEL_TYPES[model_type]
-    
+
     # Create file path
     os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, f"test_hf_{model_type}.py")
-    
+
     logger.info(f"Creating test file for {model_type} at {file_path}")
-    
-    # Create file content with correct indentation 
+
+    # Create file content with correct indentation
     content = f'''#!/usr/bin/env python3
 
 import os
@@ -436,44 +437,51 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
 
-    # Write to file 
-    with open(file_path, 'w') as f:
+    # Write to file
+    with open(file_path, "w") as f:
         f.write(content)
-    
+
     # Verify syntax
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             test_content = f.read()
-        compile(test_content, file_path, 'exec')
+        compile(test_content, file_path, "exec")
         logger.info(f"Successfully created syntactically correct test file for {model_type}")
         return True
     except SyntaxError as e:
         logger.error(f"Syntax error in generated file {file_path} at line {e.lineno}: {e.msg}")
-        if hasattr(e, 'text'):
+        if hasattr(e, "text"):
             logger.error(f"Line content: {e.text}")
         return False
+
 
 def main():
     """Main function to create standardized test files."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Create standardized test files")
-    parser.add_argument("--model-type", required=True, choices=MODEL_TYPES.keys(),
-                        help="Model type to generate test for")
-    parser.add_argument("--output-dir", default="fixed_tests",
-                        help="Output directory for test files")
-    
+    parser.add_argument(
+        "--model-type",
+        required=True,
+        choices=MODEL_TYPES.keys(),
+        help="Model type to generate test for",
+    )
+    parser.add_argument(
+        "--output-dir", default="fixed_tests", help="Output directory for test files"
+    )
+
     args = parser.parse_args()
-    
+
     # Create test file
     success = create_model_test(args.model_type, args.output_dir)
-    
+
     if success:
         logger.info(f"Successfully created test file for {args.model_type}")
         return 0
     else:
         logger.error(f"Failed to create test file for {args.model_type}")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -75,10 +75,13 @@ class TestMCPServerUNI102MonitoringTools(unittest.TestCase):
                     "generate_monitoring_report": None,
                 },
             ):
+
                 async def _health_impl(**kwargs):
                     return kwargs
 
-                from ipfs_accelerate_py.mcp_server.tools.monitoring_tools import native_monitoring_tools as nmt
+                from ipfs_accelerate_py.mcp_server.tools.monitoring_tools import (
+                    native_monitoring_tools as nmt,
+                )
 
                 nmt._API["health_check"] = _health_impl
                 result = await health_check(service_name="vector_store")
@@ -99,7 +102,9 @@ class TestMCPServerUNI102MonitoringTools(unittest.TestCase):
 
     def test_monitor_services_action_passthrough_for_non_status(self) -> None:
         async def _run() -> None:
-            result = await monitor_services(action="restart", services=["mcp_server"], check_interval=5)
+            result = await monitor_services(
+                action="restart", services=["mcp_server"], check_interval=5
+            )
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("action"), "restart")
             self.assertIn("not supported", str(result.get("message", "")))
@@ -117,10 +122,13 @@ class TestMCPServerUNI102MonitoringTools(unittest.TestCase):
                     "generate_monitoring_report": None,
                 },
             ):
+
                 async def _report_impl(**kwargs):
                     return kwargs
 
-                from ipfs_accelerate_py.mcp_server.tools.monitoring_tools import native_monitoring_tools as nmt
+                from ipfs_accelerate_py.mcp_server.tools.monitoring_tools import (
+                    native_monitoring_tools as nmt,
+                )
 
                 nmt._API["generate_monitoring_report"] = _report_impl
                 result = await generate_monitoring_report(report_type="detailed", time_period="7d")

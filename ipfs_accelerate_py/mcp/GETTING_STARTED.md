@@ -97,10 +97,7 @@ from ipfs_accelerate_py.mcp import create_mcp_server, start_server
 
 # Create server
 server = create_mcp_server(
-    host="localhost",
-    port=8080,
-    name="ipfs-accelerate",
-    description="IPFS Accelerate MCP Server"
+    host="localhost", port=8080, name="ipfs-accelerate", description="IPFS Accelerate MCP Server"
 )
 
 # Start server (this will block until the server is stopped)
@@ -123,14 +120,17 @@ app = FastAPI(title="My Application with IPFS Accelerate")
 # Mount the MCP server at the /mcp path
 mcp_server = integrate_with_fastapi(app, mount_path="/mcp")
 
+
 # You can now add your own routes
 @app.get("/")
 def read_root():
     return {"message": "Welcome to my application with IPFS Accelerate"}
 
+
 # Start the FastAPI app with uvicorn
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="localhost", port=8000)
 ```
 
@@ -219,10 +219,7 @@ import requests
 server_url = "http://localhost:8080"
 
 # Call a tool
-response = requests.post(
-    f"{server_url}/tools/test_hardware",
-    json={}
-)
+response = requests.post(f"{server_url}/tools/test_hardware", json={})
 hardware_info = response.json()
 print(hardware_info)
 

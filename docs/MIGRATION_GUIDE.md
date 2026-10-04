@@ -90,11 +90,7 @@ ipfs-accelerate runner list-workflows
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
-config = RunnerConfig(
-    owner='myorg',
-    poll_interval=60,
-    max_runners=8
-)
+config = RunnerConfig(owner="myorg", poll_interval=60, max_runners=8)
 
 kit = get_runner_kit(config)
 kit.start_autoscaler(background=True)
@@ -112,7 +108,8 @@ print(f"Active runners: {status.active_runners}")
 **Before:**
 ```python
 import subprocess
-result = subprocess.run(['gh', 'repo', 'list', 'owner'], capture_output=True)
+
+result = subprocess.run(["gh", "repo", "list", "owner"], capture_output=True)
 ```
 
 **After:**
@@ -120,7 +117,7 @@ result = subprocess.run(['gh', 'repo', 'list', 'owner'], capture_output=True)
 from ipfs_accelerate_py.kit.github_kit import GitHubKit
 
 kit = GitHubKit()
-result = kit.list_repos(owner='owner', limit=10)
+result = kit.list_repos(owner="owner", limit=10)
 
 if result.success:
     repos = result.data
@@ -133,8 +130,8 @@ else:
 **Before:**
 ```python
 import subprocess
-result = subprocess.run(['docker', 'run', 'python:3.9', 'python', '--version'], 
-                       capture_output=True)
+
+result = subprocess.run(["docker", "run", "python:3.9", "python", "--version"], capture_output=True)
 ```
 
 **After:**
@@ -143,10 +140,7 @@ from ipfs_accelerate_py.kit.docker_kit import DockerKit
 
 kit = DockerKit()
 result = kit.run_container(
-    image='python:3.9',
-    command='python --version',
-    memory_limit='512m',
-    timeout=30
+    image="python:3.9", command="python --version", memory_limit="512m", timeout=30
 )
 
 if result.success:
@@ -193,12 +187,12 @@ result = some_legacy_tool(param1, param2)
 from ipfs_accelerate_py.mcp.unified_tools import (
     github_list_repos,
     docker_run_container,
-    hardware_get_info
+    hardware_get_info,
 )
 
 # All tools follow consistent patterns
-repos = github_list_repos(owner='owner', limit=10)
-container = docker_run_container(image='python:3.9', command='python --version')
+repos = github_list_repos(owner="owner", limit=10)
+container = docker_run_container(image="python:3.9", command="python --version")
 hardware = hardware_get_info(include_detailed=True)
 ```
 
@@ -298,10 +292,12 @@ Replace subprocess calls with kit modules:
 ```python
 # Old
 import subprocess
-result = subprocess.run(['command'], capture_output=True)
+
+result = subprocess.run(["command"], capture_output=True)
 
 # New
 from ipfs_accelerate_py.kit.module_kit import ModuleKit
+
 kit = ModuleKit()
 result = kit.method()
 ```
@@ -313,10 +309,12 @@ Use unified MCP tools:
 ```python
 # Old - Direct tool function
 from some_module import tool
+
 result = tool(args)
 
 # New - Unified tool
 from ipfs_accelerate_py.mcp.unified_tools import tool_name
+
 result = tool_name(args)
 ```
 

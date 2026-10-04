@@ -269,7 +269,7 @@ optimizer = get_db_optimizer(
     enable_caching=True,
     cache_size=100,
     cache_ttl=300,
-    batch_size=50
+    batch_size=50,
 )
 
 # Optimize database
@@ -277,9 +277,7 @@ optimizer.optimize_database()
 
 # Query with optimizations
 results = optimizer.get_validation_results_optimized(
-    hardware_id="gpu-1",
-    model_id="bert-base",
-    limit=100
+    hardware_id="gpu-1", model_id="bert-base", limit=100
 )
 ```
 

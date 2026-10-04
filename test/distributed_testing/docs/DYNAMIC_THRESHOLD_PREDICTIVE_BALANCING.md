@@ -65,7 +65,7 @@ load_balancer = AdaptiveLoadBalancer(
     enable_dynamic_thresholds=True,
     threshold_adjustment_rate=0.05,
     initial_threshold_high=0.85,
-    initial_threshold_low=0.2
+    initial_threshold_low=0.2,
 )
 ```
 
@@ -117,9 +117,7 @@ The Predictive Load Balancing system can be configured with the following parame
 ```python
 # Enable predictive balancing with a 5-minute prediction window
 load_balancer = AdaptiveLoadBalancer(
-    coordinator=coordinator,
-    enable_predictive_balancing=True,
-    prediction_window=5
+    coordinator=coordinator, enable_predictive_balancing=True, prediction_window=5
 )
 ```
 
@@ -202,9 +200,11 @@ if enable_load_balancer:
         enable_predictive_balancing=True,
         enable_cost_benefit_analysis=True,
         enable_hardware_specific_strategies=True,
-        enable_resource_efficiency=True
+        enable_resource_efficiency=True,
     )
-    logger.info("Adaptive load balancer initialized with dynamic thresholds and predictive balancing")
+    logger.info(
+        "Adaptive load balancer initialized with dynamic thresholds and predictive balancing"
+    )
 ```
 
 ## Performance Metrics and Monitoring

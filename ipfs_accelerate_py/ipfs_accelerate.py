@@ -48,6 +48,7 @@ except ImportError:
     HAVE_STORAGE_WRAPPER = False
     get_storage_wrapper = None
 
+
 class ipfs_accelerate_py:
     def __init__(
         self,
@@ -123,32 +124,48 @@ class ipfs_accelerate_py:
             self.resources["caches"] = {}
         if "tokenizer" not in list(self.resources.keys()):
             self.resources["tokenizer"] = {}
-        
+
         # if "install_depends_py" not in globals():
         #     try:
         #         from .install_depends import install_depends_py
         #     except:
         #         from install_depends import install_depends_py
         #     self.install_depends = install_depends_py(resources, metadata)
-        #     resources["install_depends"] = self.install_depends 
+        #     resources["install_depends"] = self.install_depends
         # else:
         #     self.install_depends = install_depends_py(resources, metadata)
         #     resources["install_depends"] = self.install_depends
 
         # Create a mock worker if the module doesn't exist
-        self.worker = type('MockWorker', (), {
-            'init_worker': lambda *args, **kwargs: {},  # Return empty dictionary
-            'test_hardware': lambda *args, **kwargs: {'cuda': True, 'openvino': True, 'llama_cpp': False, 'ipex': False, 'qualcomm': False, 'apple': False, 'webnn': False}
-        })()
+        self.worker = type(
+            "MockWorker",
+            (),
+            {
+                "init_worker": lambda *args, **kwargs: {},  # Return empty dictionary
+                "test_hardware": lambda *args, **kwargs: {
+                    "cuda": True,
+                    "openvino": True,
+                    "llama_cpp": False,
+                    "ipex": False,
+                    "qualcomm": False,
+                    "apple": False,
+                    "webnn": False,
+                },
+            },
+        )()
         self.resources["worker"] = self.worker
 
         # Create a simple mock for ipfs_multiformats with minimal functionality
-        self.ipfs_multiformats = type('MockIPFSMultiformats', (), {
-            'get_cid': lambda self, data: hashlib.sha256(str(data).encode('utf-8')).hexdigest(),
-            '__init__': lambda self, *args, **kwargs: None
-        })({}, metadata)
+        self.ipfs_multiformats = type(
+            "MockIPFSMultiformats",
+            (),
+            {
+                "get_cid": lambda self, data: hashlib.sha256(str(data).encode("utf-8")).hexdigest(),
+                "__init__": lambda self, *args, **kwargs: None,
+            },
+        )({}, metadata)
         self.resources["ipfs_multiformats"] = self.ipfs_multiformats
-            
+
         if "apis" not in globals():
             apis_cls = None
             try:
@@ -160,6 +177,7 @@ class ipfs_accelerate_py:
                     apis_cls = None
 
             if apis_cls is None:
+
                 class apis_cls:  # type: ignore
                     def __init__(self, *_args, **_kwargs):
                         pass
@@ -185,18 +203,30 @@ class ipfs_accelerate_py:
         self.endpoint_status = {}
         # Initialize the endpoints dictionary
         self.endpoints = {}
-        
+
         # endpoint_handler is a property - don't initialize it as an empty dict
         # instead, it should return self.resources["endpoint_handler"] when accessed
         self.batch_sizes = {}
         self.inbox = {}
         self.outbox = {}
-        
+
         # Add endpoint types (for validation)
-        self.endpoint_types = ["local_endpoints", "tei_endpoints", "libp2p_endpoints", "openvino_endpoints"]
-        
+        self.endpoint_types = [
+            "local_endpoints",
+            "tei_endpoints",
+            "libp2p_endpoints",
+            "openvino_endpoints",
+        ]
+
         # Add hwtest dictionary for hardware availability (default all to True for testing)
-        self.hwtest = {"cuda": True, "openvino": True, "cpu": True, "webnn": False, "qualcomm": False, "apple": False}
+        self.hwtest = {
+            "cuda": True,
+            "openvino": True,
+            "cpu": True,
+            "webnn": False,
+            "qualcomm": False,
+            "apple": False,
+        }
         self.local_queues = {}
         self.tokenizer = {}
         self.local_queues = {}
@@ -212,7 +242,7 @@ class ipfs_accelerate_py:
         self.rm_endpoint = self.rm_endpoint
         self.get_endpoints = self.get_endpoints
         self.init_endpoints = self.init_endpoints
-        
+
         # Ensure that method references are properly set
         self.get_endpoint_handler = self.get_endpoint_handler
         # self.get_https_endpoint = self.get_https_endpoint
@@ -253,7 +283,6 @@ class ipfs_accelerate_py:
 
         return None
 
-
     def get_optimal_backend(self, model_name, model_type):
         """Determine the optimal hardware backend for a model."""
         # Implement hardware detection logic
@@ -278,10 +307,7 @@ class ipfs_accelerate_py:
 
             # Load the model
             result = self.transformers_provider.load_model(
-                model_name=model_name,
-                model_type=model_type,
-                device=backend,
-                **kwargs
+                model_name=model_name, model_type=model_type, device=backend, **kwargs
             )
 
             if not result["success"]:
@@ -292,16 +318,11 @@ class ipfs_accelerate_py:
             self.loaded_models[model_name] = {
                 "model_id": model_id,
                 "backend": backend,
-                "type": model_type
+                "type": model_type,
             }
 
         # Run inference
-        return self.transformers_provider.run_inference(
-            model_id=model_id,
-            inputs=inputs,
-            **kwargs
-        )
-
+        return self.transformers_provider.run_inference(model_id=model_id, inputs=inputs, **kwargs)
 
     def run_model(
         self,
@@ -311,7 +332,7 @@ class ipfs_accelerate_py:
         device: str = "cuda",
         use_ipfs: bool = False,
         ipfs_cid: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Load a model and run inference with proper tensor conversion.
@@ -324,7 +345,7 @@ class ipfs_accelerate_py:
                 device=device,
                 use_ipfs=use_ipfs,
                 ipfs_cid=ipfs_cid,
-                **kwargs
+                **kwargs,
             )
 
             if not load_result.get("success", False):
@@ -334,6 +355,7 @@ class ipfs_accelerate_py:
 
             # Convert inputs to PyTorch tensors
             import torch
+
             tensor_inputs = {}
 
             for key, value in inputs.items():
@@ -359,7 +381,9 @@ class ipfs_accelerate_py:
 
             # Add attention_mask if not provided but input_ids is
             if "input_ids" in tensor_inputs and "attention_mask" not in tensor_inputs:
-                tensor_inputs["attention_mask"] = torch.ones_like(tensor_inputs["input_ids"]).to(device)
+                tensor_inputs["attention_mask"] = torch.ones_like(tensor_inputs["input_ids"]).to(
+                    device
+                )
 
             print(f"Converted input types: {[type(v) for k, v in tensor_inputs.items()]}")
 
@@ -369,26 +393,34 @@ class ipfs_accelerate_py:
         except Exception as e:
             logging.error(f"Error in run_model: {e}")
             import traceback
+
             traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def test_hardware(self):
         install_file_hash = None
         test_results_file = None
-        install_depends_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "install_depends", "install_depends.py")
+        install_depends_filename = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "install_depends", "install_depends.py"
+        )
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
             with open(install_depends_filename, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096),b""):
+                for byte_block in iter(lambda: f.read(4096), b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
-            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
-            
+            test_results = {
+                "cuda": True,
+                "openvino": True,
+                "llama_cpp": False,
+                "ipex": False,
+                "qualcomm": False,
+                "apple": False,
+                "webnn": False,
+            }
+
             # Try to read from distributed storage first, then fall back to local
             cache_data = None
             if self._storage_wrapper and self._storage_wrapper.is_distributed:
@@ -400,36 +432,57 @@ class ipfs_accelerate_py:
                         return test_results
                 except Exception:
                     pass  # Fall back to local filesystem check
-            
+
             # Check local filesystem if distributed storage didn't have it
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
-                        
+                        test_results = {
+                            "cuda": True,
+                            "openvino": True,
+                            "llama_cpp": False,
+                            "ipex": False,
+                            "qualcomm": False,
+                            "apple": False,
+                            "webnn": False,
+                        }
+
                         # Save to distributed storage for future use
                         if self._storage_wrapper and self._storage_wrapper.is_distributed:
                             try:
                                 cache_key = f"test_results_{install_file_hash}.json"
-                                self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                                self._storage_wrapper.write_file(
+                                    json.dumps(test_results), cache_key, pin=False
+                                )
                             except Exception:
                                 pass  # Continue even if distributed write fails
-                        
+
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
+                        test_results = {
+                            "cuda": True,
+                            "openvino": True,
+                            "llama_cpp": False,
+                            "qualcomm": False,
+                            "apple": False,
+                            "webnn": False,
+                            "llama_cpp": False,
+                            "ipex": False,
+                        }
                         # test_results = await self.install_depends.test_hardware()
-                        
+
                         # Save to both distributed and local storage
                         if self._storage_wrapper and self._storage_wrapper.is_distributed:
                             try:
                                 cache_key = f"test_results_{install_file_hash}.json"
-                                self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                                self._storage_wrapper.write_file(
+                                    json.dumps(test_results), cache_key, pin=False
+                                )
                             except Exception:
                                 pass  # Continue even if distributed write fails
-                        
+
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
                         return test_results
@@ -438,24 +491,35 @@ class ipfs_accelerate_py:
                         return e
             else:
                 try:
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
+                    test_results = {
+                        "cuda": True,
+                        "openvino": True,
+                        "llama_cpp": False,
+                        "qualcomm": False,
+                        "apple": False,
+                        "webnn": False,
+                        "llama_cpp": False,
+                        "ipex": False,
+                    }
                     # test_results = await self.install_depends.test_hardware()
-                    
+
                     # Save to both distributed and local storage
                     if self._storage_wrapper and self._storage_wrapper.is_distributed:
                         try:
                             cache_key = f"test_results_{install_file_hash}.json"
-                            self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                            self._storage_wrapper.write_file(
+                                json.dumps(test_results), cache_key, pin=False
+                            )
                         except Exception:
                             pass  # Continue even if distributed write fails
-                    
+
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
                     return test_results
                 except Exception as e:
                     print(e)
                     return e
-        else: 
+        else:
             raise ValueError("install_depends.py not found")
         return test_results
 
@@ -493,20 +557,15 @@ class ipfs_accelerate_py:
         else:
             libp2p_set = set()
 
-
         endpoints_set = set.union(api_set, local_set, libp2p_set)
-        endpoints =  { "api" : api , "local" : local , "libp2p": libp2p }
+        endpoints = {"api": api, "local": local, "libp2p": libp2p}
 
         # endpoints_set = set(set(endpoints["tei"]),set(endpoints["local"]),set(endpoints["openvino"]),set(endpoints["libp2p"]))
         # self.endpoints = endpoints
         # self.endpoints_list = list(endpoints.keys())
         # self.endpoints_set = endpoints_set
-        return {
-            "endpoints": endpoints,
-            "endpoints_set": endpoints_set
-        }
+        return {"endpoints": endpoints, "endpoints_set": endpoints_set}
 
-    
     def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
         def handler(x):
             # Get handler using the endpoint_handler method
@@ -515,9 +574,10 @@ class ipfs_accelerate_py:
             if remote_endpoint is None and model in self.resources["endpoint_handler"]:
                 if endpoint in self.resources["endpoint_handler"][model]:
                     remote_endpoint = self.resources["endpoint_handler"][model][endpoint]
-            
+
             request_results = self.request_libp2p_endpoint(model, endpoint, "libp2p_endpoints", x)
             return request_results
+
         return handler
 
     async def init_endpoints(self, models=None, endpoint_list=None):
@@ -534,7 +594,7 @@ class ipfs_accelerate_py:
                         self.resources["batch_sizes"][model][endpoint] = 0
                     await self.add_endpoint(model, endpoint_type, endpoint_info)
                 else:
-                    pass    
+                    pass
         for model in models:
             if model not in self.queues:
                 # anyio replacement for an async queue; returns (send, receive)
@@ -542,13 +602,22 @@ class ipfs_accelerate_py:
             if model not in list(self.resources["consumer_tasks"].keys()):
                 self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:
-            self.endpoints = { k : v for k, v in enumerate(endpoint_list) if endpoint_list[v] in self.endpoint_types or endpoint_list[k] in self.endpoint_types }
+            self.endpoints = {
+                k: v
+                for k, v in enumerate(endpoint_list)
+                if endpoint_list[v] in self.endpoint_types
+                or endpoint_list[k] in self.endpoint_types
+            }
             self.endpoint_list = new_endpoints_list
             endpoints_set = set(new_endpoints_list)
             self.endpoint_set = endpoints_set
         if type(endpoint_list) == dict:
-            query_endpoints = await self.query_endpoints(model)                
-            new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
+            query_endpoints = await self.query_endpoints(model)
+            new_endpoints_list = [
+                k
+                for k in endpoint_list.keys()
+                if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types
+            ]
             new_endpoints = {}
             endpoints_set = query_endpoints["endpoints_set"]
             for endpoint_type in new_endpoints_list:
@@ -568,15 +637,15 @@ class ipfs_accelerate_py:
                         this_context_length = item[2]
                         endpoints_set.add(this_endpoint)
                         if this_model in list(new_endpoints[endpoint_type].keys()):
-                            new_endpoints[endpoint_type][model].append(item)                
+                            new_endpoints[endpoint_type][model].append(item)
             self.endpoints = new_endpoints
             self.endpoints_list = new_endpoints_list
             self.endpoint_set = endpoints_set
-        if endpoint_list is None:    
+        if endpoint_list is None:
             query_endpoints = self.query_endpoints(model)
             endpoints = query_endpoints["endpoints"]
             endpoints_set = query_endpoints["endpoints_set"]
-            endpoints_list = [ k for k in endpoints.keys() ]
+            endpoints_list = [k for k in endpoints.keys()]
             self.endpoints = endpoints
             self.endpoint_list = endpoints_list
             self.endpoint_set = endpoints_set
@@ -585,20 +654,29 @@ class ipfs_accelerate_py:
         if not endpoints_set:
             raise ValueError("No endpoints available for model " + model)
         else:
-            local = [ endpoint for endpoint in self.endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
+            local = [
+                endpoint
+                for endpoint in self.endpoints["local_endpoints"]
+                if "local" in endpoint
+                or "cpu" in endpoint
+                or "cuda" in endpoint
+                or "openvino" in endpoint
+                or "llama_cpp" in endpoint
+                or "ipex" in endpoint
+            ]
             libp2p = []
-            
+
             if "api_endpoints" in list(self.endpoints.keys()):
                 api = [endpoint for endpoint in self.endpoints["api_endpoints"]]
             else:
                 api = []
-                 
+
         for model in models:
             if model not in self.tokenizer:
                 self.tokenizer[model] = {}
             if model not in self.local_endpoints:
                 self.local_endpoints[model] = {}
-            if model not in self.queues:    
+            if model not in self.queues:
                 self.queues[model] = {}
             if model not in self.caches:
                 self.caches[model] = {"items": {}}
@@ -622,19 +700,26 @@ class ipfs_accelerate_py:
                 self.queues[model]["cpu"] = ""
             if "cpu" not in self.batch_sizes[model]:
                 self.batch_sizes[model]["cpu"] = 1
-        new_resources = {}    
+        new_resources = {}
         try:
-            self.worker_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], None)
+            self.worker_resources = await self.worker.init_worker(
+                models, self.endpoints["local_endpoints"], None
+            )
         except Exception as e:
             import traceback
+
             print("Error initializing worker:")
             print(f"Exception type: {type(e).__name__}")
             print(f"Exception message: {str(e)}")
             print("Traceback:")
             traceback.print_exc()
             self.worker_resources = e
-        
-        if type(self.worker_resources) is not ValueError and type(self.worker_resources) is not Exception and type(self.worker_resources) is not TypeError:
+
+        if (
+            type(self.worker_resources) is not ValueError
+            and type(self.worker_resources) is not Exception
+            and type(self.worker_resources) is not TypeError
+        ):
             resource_list = list(self.worker_resources.keys())
             for resource in resource_list:
                 if resource not in list(self.resources.keys()):
@@ -645,7 +730,15 @@ class ipfs_accelerate_py:
                     pass
             pass
         new_resources = {}
-        resource_list = ["queues", "queue", "batch_sizes", "endpoint_handler", "consumer_tasks", "caches", "tokenizer"]
+        resource_list = [
+            "queues",
+            "queue",
+            "batch_sizes",
+            "endpoint_handler",
+            "consumer_tasks",
+            "caches",
+            "tokenizer",
+        ]
         if "resource_list" in globals() or "resource_list" in locals():
             for resource in resource_list:
                 new_resources[resource] = self.resources[resource]
@@ -659,7 +752,7 @@ class ipfs_accelerate_py:
     #             if self.batch_sizes[endpoint] >= batch_size:
     #                 return endpoint
     #     return None
-    
+
     # async def request_local_endpoint(self, model, endpoint, endpoint_type, batch):
     #     batch_size = len(batch)
     #     if model in self.local_endpoints:
@@ -683,11 +776,10 @@ class ipfs_accelerate_py:
     #     # self.local_endpoints[model][endpoint].to('cpu')  # Move model back to CPU
     #     torch.cuda.empty_cache()  # Free up GPU memory again
     #     return results
-        
-    
+
     def add_local_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
-    
+
     def add_api_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
 
@@ -695,14 +787,14 @@ class ipfs_accelerate_py:
         """
         Creates a mock handler function for the specified model and endpoint type.
         The handler will return appropriate mock responses based on the model type.
-        
+
         Args:
             model (str): The model name
             endpoint_type (str): The endpoint type (e.g., "cpu:0", "cuda:0")
         """
         # Determine what kind of model this is based on name patterns
         model_lower = model.lower()
-        
+
         # Create different mock handlers based on model type
         if any(name in model_lower for name in ["bert", "roberta", "embed", "mpnet", "minilm"]):
             # Embedding model
@@ -714,32 +806,31 @@ class ipfs_accelerate_py:
                 else:
                     # For single input, return single embedding
                     return {"embedding": [0.1, 0.2, 0.3, 0.4] * 96}
-            
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_embedding_handler
-            
-        elif any(name in model_lower for name in ["llama", "gpt", "opt", "bloom", "qwen", "mistral"]):
+
+        elif any(
+            name in model_lower for name in ["llama", "gpt", "opt", "bloom", "qwen", "mistral"]
+        ):
             # Text generation model
             async def mock_text_gen_handler(input_data):
                 # Return mock generated text
                 return {
                     "generated_text": "This is a mock response for a language model. The generated text is not real and is just for testing purposes.",
                     "tokens": 20,
-                    "model": model
+                    "model": model,
                 }
-            
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_text_gen_handler
-            
+
         elif any(name in model_lower for name in ["clip", "vit", "image"]):
             # Vision model
             async def mock_vision_handler(input_data):
                 # Return mock vision embedding
-                return {
-                    "image_embedding": [0.1, 0.2, 0.3, 0.4] * 128,
-                    "model": model
-                }
-            
+                return {"image_embedding": [0.1, 0.2, 0.3, 0.4] * 128, "model": model}
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_vision_handler
-            
+
         elif any(name in model_lower for name in ["wav2vec", "whisper", "hubert", "clap"]):
             # Audio model
             async def mock_audio_handler(input_data):
@@ -747,63 +838,59 @@ class ipfs_accelerate_py:
                     # Return mock transcription
                     return {
                         "text": "This is a mock transcription of audio content for testing purposes.",
-                        "model": model
+                        "model": model,
                     }
                 else:
                     # Return mock audio embedding
-                    return {
-                        "audio_embedding": [0.1, 0.2, 0.3, 0.4] * 64,
-                        "model": model
-                    }
-            
+                    return {"audio_embedding": [0.1, 0.2, 0.3, 0.4] * 64, "model": model}
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_audio_handler
-            
+
         elif any(name in model_lower for name in ["t5", "mt5", "bart", "pegasus"]):
             # Text-to-text model
             async def mock_t5_handler(input_data):
                 # Return mock translation/summarization
-                return {
-                    "text": "Dies ist ein Testtext für Übersetzungen.",
-                    "model": model
-                }
-            
+                return {"text": "Dies ist ein Testtext für Übersetzungen.", "model": model}
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_t5_handler
-            
-        elif any(name in model_lower for name in ["llava", "qwen2-vl", "llava_next", "videomae", "xclip"]):
+
+        elif any(
+            name in model_lower for name in ["llava", "qwen2-vl", "llava_next", "videomae", "xclip"]
+        ):
             # Multimodal model
             async def mock_multimodal_handler(input_data):
                 # Return mock vision-language response
                 return {
                     "text": "The image shows a test pattern that is commonly used for testing purposes.",
-                    "model": model
+                    "model": model,
                 }
-            
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_multimodal_handler
-            
+
         else:
             # Generic fallback handler
             async def mock_generic_handler(input_data):
                 return {
                     "output": f"Mock response from {model} using {endpoint_type}",
-                    "input": input_data
+                    "input": input_data,
                 }
-            
+
             self.resources["endpoint_handler"][model][endpoint_type] = mock_generic_handler
-        
+
         # Store the endpoint in the endpoints dictionary
         if "local_endpoints" not in self.endpoints:
             self.endpoints["local_endpoints"] = {}
-            
+
         if model not in self.endpoints["local_endpoints"]:
             self.endpoints["local_endpoints"][model] = []
-            
+
         # Add endpoint to endpoints list if not already there
         endpoint_entry = [model, endpoint_type, 2048]  # Using default context length
         if endpoint_entry not in self.endpoints["local_endpoints"][model]:
             self.endpoints["local_endpoints"][model].append(endpoint_entry)
-        
+
         print(f"Created mock handler for {model} with {endpoint_type} (REAL implementation type)")
-    
+
     async def add_endpoint(self, model, endpoint_type, endpoint):
         this_model = endpoint[0]
         backend = endpoint[1]
@@ -812,31 +899,34 @@ class ipfs_accelerate_py:
             success = False
             try:
                 if endpoint_type not in list(dir(self)):
-                    self.__dict__[endpoint_type]= {}
+                    self.__dict__[endpoint_type] = {}
                 if model not in list(self.__dict__[endpoint_type].keys()):
                     self.__dict__[endpoint_type][model] = {}
                 if endpoint not in list(self.__dict__[endpoint_type][model].keys()):
                     self.__dict__[endpoint_type][model][backend] = context_length
                 # self.endpoint_status[endpoint] = context_length
                 success = True
-                
+
                 # Ensure endpoint_handler entry exists for this model
                 if model not in self.resources["endpoint_handler"]:
                     self.resources["endpoint_handler"][model] = {}
-                
+
                 # Create a mock handler for this endpoint
                 self._create_mock_handler(model, backend)
-                
+
                 # Update the handler - this handles any wrapper functionality needed
-                if model in self.resources["endpoint_handler"] and backend in self.resources["endpoint_handler"][model]:
+                if (
+                    model in self.resources["endpoint_handler"]
+                    and backend in self.resources["endpoint_handler"][model]
+                ):
                     # Store both the raw handler and the wrapped handler
                     raw_handler = self.resources["endpoint_handler"][model][backend]
                     wrapped_handler = self.get_endpoint_handler(None, model, backend)
-                    
+
                     # Only overwrite with wrapped handler if it's callable
                     if callable(wrapped_handler):
                         self.resources["endpoint_handler"][model][backend] = wrapped_handler
-                
+
                 this_endpoint_type = backend.split(":")[0]
                 if this_endpoint_type in list(self.hwtest.keys()):
                     hardware_type = this_endpoint_type
@@ -868,41 +958,44 @@ class ipfs_accelerate_py:
                         print("API type " + this_endpoint_type + " not available")
                     else:
                         if api_type == "tei":
-                            self.add_api_endpoint(model, "tei", endpoint, context_length) 
+                            self.add_api_endpoint(model, "tei", endpoint, context_length)
                             pass
                         if api_type == "tgi":
-                            self.add_api_endpoint(model, "tgi", endpoint, context_length) 
+                            self.add_api_endpoint(model, "tgi", endpoint, context_length)
                             pass
                         if api_type == "groq":
-                            self.add_api_endpoint(model, "groq", endpoint, context_length) 
+                            self.add_api_endpoint(model, "groq", endpoint, context_length)
                             pass
                         if api_type == "ollama":
-                            self.add_api_endpoint(model, "ollama", endpoint, context_length) 
+                            self.add_api_endpoint(model, "ollama", endpoint, context_length)
                             pass
                         elif api_type == "libp2p":
-                            self.add_api_endpoint(model, "libp2p", endpoint, context_length) 
+                            self.add_api_endpoint(model, "libp2p", endpoint, context_length)
                             pass
                         elif api_type == "ovms":
-                            self.add_api_endpoint(model, "ovms", endpoint, context_length)                             
+                            self.add_api_endpoint(model, "ovms", endpoint, context_length)
                             pass
                         elif api_type == "openai_api":
-                            self.add_api_endpoint(model, "openai_api", endpoint, context_length) 
+                            self.add_api_endpoint(model, "openai_api", endpoint, context_length)
                         elif api_type == "s3_kit":
-                            self.add_api_endpoint(model, "s3_kit", endpoint, context_length) 
+                            self.add_api_endpoint(model, "s3_kit", endpoint, context_length)
                         elif api_type == "webnn":
-                            self.add_api_endpoint(model, "webnn", endpoint, context_length) 
+                            self.add_api_endpoint(model, "webnn", endpoint, context_length)
                             pass
             except Exception as e:
                 print(e)
                 pass
-            return success        
+            return success
         return None
-    
+
     async def rm_endpoint(self, model, endpoint_type, backend):
         if endpoint_type in self.endpoint_types:
             success = False
             try:
-                if model in self.__dict__[endpoint_type] and backend in self.__dict__[endpoint_type][model]:
+                if (
+                    model in self.__dict__[endpoint_type]
+                    and backend in self.__dict__[endpoint_type][model]
+                ):
                     del self.__dict__[endpoint_type][model][backend]
                 if backend in self.resources["batch_sizes"][model]:
                     del self.resources["batch_sizes"][model][backend]
@@ -916,7 +1009,7 @@ class ipfs_accelerate_py:
                 pass
             return success
         return None
-    
+
     async def create_background_tasks(self):
         if "endpoint_handler" in list(self.resources.keys()):
             models = list(self.resources["endpoint_handler"].keys())
@@ -928,25 +1021,33 @@ class ipfs_accelerate_py:
                         if model not in list(self.resources["queue_tasks"].keys()):
                             self.resources["queue_tasks"][model] = {}
                         if model not in list(self.resources["queue"].keys()):
-                            self.resources["queue"][model] = {}  
+                            self.resources["queue"][model] = {}
                         backends = list(self.resources["queues"][model].keys())
                         queues = list(self.resources["queues"][model].keys())
                         for backend in backends:
-                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["endpoint_handler"][model].keys())and backend not in list(self.resources["consumer_tasks"][model].keys()):
-                                                # Get the handler using endpoint_handler method
+                            if (
+                                model in list(self.resources["endpoint_handler"].keys())
+                                and backend
+                                in list(self.resources["endpoint_handler"][model].keys())
+                                and backend
+                                not in list(self.resources["consumer_tasks"][model].keys())
+                            ):
+                                # Get the handler using endpoint_handler method
                                 handler = self.get_endpoint_handler(None, model, backend)
-                                
+
                                 # If endpoint_handler method returned None, fall back to direct access
                                 if handler is None:
                                     handler = self.resources["endpoint_handler"][model][backend]
-                                    
+
                                 # Store the coroutine; the caller is responsible for scheduling it
                                 # (e.g., inside an anyio task group).
-                                self.resources["consumer_tasks"][model][endpoint] = self.endpoint_consumer(
-                                    self.resources["queues"][model][backend],
-                                    64,
-                                    model,
-                                    handler,
+                                self.resources["consumer_tasks"][model][endpoint] = (
+                                    self.endpoint_consumer(
+                                        self.resources["queues"][model][backend],
+                                        64,
+                                        model,
+                                        handler,
+                                    )
                                 )
                             if model in list(self.resources["endpoint_handler"].keys()):
                                 # Store the coroutine; the caller is responsible for scheduling it.
@@ -956,7 +1057,7 @@ class ipfs_accelerate_py:
                                     model,
                                 )
         return None
-    
+
     async def model_consumer(self, queue, batch_size, model):
         # print("consumer started for model " + model_name )
         batch = []
@@ -975,37 +1076,63 @@ class ipfs_accelerate_py:
                         endpoint_queue_lengths[model] = {}
                         endpoint_queue_remaining[model] = {}
                         for endpoint in list(self.resources["queues"][model].keys()):
-                            endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
-                            endpoint_queue_remaining[model][endpoint] = self.resources["queues"][model][endpoint]._maxsize - self.resources["queues"][model][endpoint].qsize()
-                    most_empty_endpoint = max(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
-                    most_full_endpoint = min(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
+                            endpoint_queue_lengths[model][endpoint] = self.resources["queues"][
+                                model
+                            ][endpoint].qsize()
+                            endpoint_queue_remaining[model][endpoint] = (
+                                self.resources["queues"][model][endpoint]._maxsize
+                                - self.resources["queues"][model][endpoint].qsize()
+                            )
+                    most_empty_endpoint = max(
+                        endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get
+                    )
+                    most_full_endpoint = min(
+                        endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get
+                    )
                     if queue_length <= endpoint_queue_remaining[model][most_empty_endpoint]:
                         num_added = 0
-                        while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
+                        while (
+                            not queue.empty()
+                            and num_added < endpoint_queue_remaining[model][most_empty_endpoint]
+                        ):
                             item = await queue.get()
-                            self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                            self.resources["queues"][model][most_empty_endpoint].put_nowait(item)
                             queue.task_done()
                             num_added += 1
                     elif queue_length > endpoint_queue_remaining[model][most_empty_endpoint]:
                         while not queue.empty():
                             num_added = 0
-                            while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
+                            while (
+                                not queue.empty()
+                                and num_added < endpoint_queue_remaining[model][most_empty_endpoint]
+                            ):
                                 item = await queue.get()
-                                self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                                self.resources["queues"][model][most_empty_endpoint].put_nowait(
+                                    item
+                                )
                                 num_added += 1
                                 del item
                                 queue.task_done()
                             num_added = 0
                             for endpoint in list(self.resources["queues"][model].keys()):
-                                endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
-                                endpoint_queue_remaining[model][endpoint] = self.resources["batch_sizes"][model][endpoint] - endpoint_queue_lengths[model][endpoint]
-                            most_full_endpoint = max(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
-                            most_empty_endpoint = min(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+                                endpoint_queue_lengths[model][endpoint] = self.resources["queues"][
+                                    model
+                                ][endpoint].qsize()
+                                endpoint_queue_remaining[model][endpoint] = (
+                                    self.resources["batch_sizes"][model][endpoint]
+                                    - endpoint_queue_lengths[model][endpoint]
+                                )
+                            most_full_endpoint = max(
+                                endpoint_queue_remaining, key=endpoint_queue_remaining.get
+                            )
+                            most_empty_endpoint = min(
+                                endpoint_queue_remaining, key=endpoint_queue_remaining.get
+                            )
             except Exception as e:
                 print("error in model_consumer")
                 print(e)
         return None
-    
+
     async def queue(self, models, batch_data):
         for model in models:
             for item in range(len(batch_data)):
@@ -1014,11 +1141,11 @@ class ipfs_accelerate_py:
                 queue_insert = {ipfs_cid: cid_value}
                 if model in list(self.resources["queues"].keys()):
                     self.resources["queue"][model].put_nowait(queue_insert)
-                    
+
         return None
-    
+
     async def fetch(self, models, batch_data):
-        return_results  = []
+        return_results = []
         for model in models:
             while len(batch_data) != len(return_results):
                 while len(self.resources["caches"][model]["items"]) == 0:
@@ -1027,17 +1154,20 @@ class ipfs_accelerate_py:
                             await anyio.sleep(0.1)
                         else:
                             print("queue not empty")
-                            await anyio.sleep(0.1)       
+                            await anyio.sleep(0.1)
                 for item in range(len(batch_data)):
                     ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
                     if ipfs_cid in list(self.resources["caches"][model]["items"].keys()):
-                        return_results.append({ipfs_cid: self.resources["caches"][model]["items"][ipfs_cid]})
+                        return_results.append(
+                            {ipfs_cid: self.resources["caches"][model]["items"][ipfs_cid]}
+                        )
                         del self.resources["caches"][model]["items"][ipfs_cid]
                 await anyio.sleep(0.1)
         return return_results
-    
+
     async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
         from torch import Tensor
+
         # print("consumer started for model " + model_name + " at endpoint " + endpoint)
         batch = []
         results = None
@@ -1063,7 +1193,12 @@ class ipfs_accelerate_py:
                             results = await endpoint(items)
                         except Exception as e:
                             results = e
-                        if type(results) == ValueError or type(results) == Exception or type(results) or TypeError:
+                        if (
+                            type(results) == ValueError
+                            or type(results) == Exception
+                            or type(results)
+                            or TypeError
+                        ):
                             try:
                                 results = endpoint(items)
                             except Exception as e:
@@ -1080,10 +1215,14 @@ class ipfs_accelerate_py:
                                     filtered_results[key] = results[key]
                             filtered_results = [filtered_results]
                             if len(cids) <= 1:
-                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
+                                self.resources["caches"][model_name]["items"][cids[0]] = (
+                                    filtered_results[0]
+                                )
                             else:
                                 for i in range(len(cids)):
-                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
+                                    self.resources["caches"][model_name]["items"][cids[i]] = (
+                                        filtered_results[i]
+                                    )
                             batch = []
                 else:
                     item = await queue.get()  # Wait for item
@@ -1119,20 +1258,24 @@ class ipfs_accelerate_py:
                                     filtered_results[key] = results[key]
                             filtered_results = [filtered_results]
                             if len(cids) <= 1:
-                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
+                                self.resources["caches"][model_name]["items"][cids[0]] = (
+                                    filtered_results[0]
+                                )
                             else:
                                 for i in range(len(cids)):
-                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
+                                    self.resources["caches"][model_name]["items"][cids[i]] = (
+                                        filtered_results[i]
+                                    )
                             batch = []
             except Exception as e:
                 print(e)
                 pass
         return None
 
-    
     async def max_batch_size(self, model, endpoint, endpoint_handler):
         import torch
         import psutil
+
         process = psutil.Process(os.getpid())
         embed_fail = False
         context_length = None
@@ -1148,7 +1291,11 @@ class ipfs_accelerate_py:
             endpoints = self.endpoints[endpoint_type]
             if model in list(endpoints.keys()):
                 for this_endpoint in endpoints[model]:
-                    if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
+                    if model == this_endpoint[0] and (
+                        endpoint == this_endpoint[1]
+                        or this_endpoint[1]
+                        in list(self.resources["endpoint_handler"][model].keys())
+                    ):
                         context_length = this_endpoint[2]
                         token_length_size = round(int(context_length) * 0.99)
                         break
@@ -1175,7 +1322,7 @@ class ipfs_accelerate_py:
         while not embed_fail:
             test_batch = []
             exponent += 1
-            for i in range(2**(exponent)):
+            for i in range(2 ** (exponent)):
                 test_batch.append(test_text)
             parsed_knn_embeddings = None
             embeddings = None
@@ -1187,7 +1334,12 @@ class ipfs_accelerate_py:
                 if free_memory < (memory_increase * 2):
                     embed_fail = True
                     break
-                    raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
+                    raise (
+                        ValueError(
+                            "the system does not free system memory for batch size "
+                            + str(2 ** (exponent - 1))
+                        )
+                    )
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
@@ -1214,10 +1366,17 @@ class ipfs_accelerate_py:
                 embed_fail = True
                 end_memory = process.memory_info().rss
                 pass
-            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
+            if (
+                request_knn_results is None
+                or type(request_knn_results) is None
+                or type(request_knn_results) is ValueError
+                or type(request_knn_results) is Exception
+                or type(request_knn_results) is str
+                or type(request_knn_results) is int
+            ):
                 embed_fail = True
             end_time = time.time()
-            batch_size = 2**(exponent-1)
+            batch_size = 2 ** (exponent - 1)
             elapsed_time = end_time - start_time
             memory_increase = end_memory - start_mem
             free_memory = psutil.virtual_memory().free
@@ -1225,10 +1384,10 @@ class ipfs_accelerate_py:
                 "batch size": batch_size,
                 "elapsed_time": elapsed_time,
                 "memory_increase": memory_increase,
-                "free_memory": free_memory
+                "free_memory": free_memory,
             }
             print(log)
-            self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
+            self.resources["batch_sizes"][model][endpoint] = int(2 ** (exponent - 1))
             if batch_size >= 4096:
                 embed_fail = True
                 pass
@@ -1236,46 +1395,45 @@ class ipfs_accelerate_py:
             with torch.no_grad():
                 torch.cuda.empty_cache()
             return 1
-        else:  
+        else:
             with torch.no_grad():
                 torch.cuda.empty_cache()
-            return 2**(exponent-1)
-    
-    
+            return 2 ** (exponent - 1)
+
     async def request_local_endpoint(self, model, batch_size):
         if model in self.local_endpoints:
             for endpoint in self.local_endpoints[model]:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
-    
+
     async def request_hf_tei_endpoint(self, model, batch_size):
         return await self.apis.request_hf_tei_endpoint(model, batch_size)
-    
+
     async def request_hf_tgi_endpoint(self, model, batch_size):
         return await self.apis.request_hf_tgi_endpoint(model, batch_size)
 
     async def request_llvm_endpoint(self, model, batch_size):
         return await self.apis.request_llvm_endpoint(model, batch_size)
-    
+
     async def request_groq_endpoint(self, model, batch_size):
         return await self.apis.request_groq_endpoint(model, batch_size)
-    
+
     async def request_ollama_endpoint(self, model, batch_size):
         return await self.apis.request_ollama_endpoint(model, batch_size)
-    
+
     async def request_ovms_endpoint(self, model, batch_size):
         return await self.apis.request_ovms_endpoint(model, batch_size)
-    
+
     async def request_openai_api_endpoint(self, model, batch_size):
         return await self.apis.request_openai_api_endpoint(model, batch_size)
-    
+
     async def request_s3_kit_endpoint(self, model, batch_size):
         return await self.apis.request_s3_kit_endpoint(model, batch_size)
 
     async def test_batch_sizes(self, model, endpoint_handler_object=None):
         test_results = {}
-        try:    
+        try:
             endpoint_handler = self.resources["endpoint_handler"]
             endpoint_tests = {}
             batch_sizes = {}
@@ -1293,7 +1451,9 @@ class ipfs_accelerate_py:
                         batch_sizes[this_model][endpoint_type] = {}
                     this_endpoint = endpoints_by_model[endpoint_type]
                     batch_size = batch_sizes[this_model][endpoint_type]
-                    test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
+                    test_batch_size = await self.max_batch_size(
+                        this_model, endpoint_type, this_endpoint
+                    )
                     self.resources["batch_sizes"][this_model][endpoint_type] = test_batch_size
                     batch_sizes[this_model][endpoint_type] = test_batch_size
                     endpoint_tests[this_model][endpoint_type] = this_endpoint
@@ -1304,18 +1464,19 @@ class ipfs_accelerate_py:
             test_results["endpoint_handler"] = e
             pass
         return test_results
-    
+
     async def test_libp2p_endpoint(self, model, endpoint=None):
         return ValueError("Not implemented")
 
     def get_model_type(self, model_name, model_type=None):
         if model_type is not None:
             return model_type
-            
+
         # Try to use AutoConfig if available
         if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
             try:
                 from transformers import AutoConfig
+
                 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 model_type = config.__class__.model_type
                 return model_type
@@ -1329,14 +1490,16 @@ class ipfs_accelerate_py:
                     return model_type
             except Exception as e:
                 pass
-        
+
         # Fallback to name-based detection
         model_name_lower = model_name.lower()
         if any(x in model_name_lower for x in ["bert", "roberta", "mpnet", "minilm", "deberta"]):
             return "text_embedding"
         elif any(x in model_name_lower for x in ["t5", "mt5", "bart"]):
             return "text2text"
-        elif any(x in model_name_lower for x in ["llama", "gpt", "qwen", "phi", "mistral", "falcon"]):
+        elif any(
+            x in model_name_lower for x in ["llama", "gpt", "qwen", "phi", "mistral", "falcon"]
+        ):
             return "text_generation"
         elif any(x in model_name_lower for x in ["vit", "clip", "detr", "convnext"]):
             return "vision"
@@ -1344,10 +1507,10 @@ class ipfs_accelerate_py:
             return "audio"
         elif any(x in model_name_lower for x in ["llava", "blip", "fuyu", "paligemma"]):
             return "multimodal"
-        
+
         # Default to generic text model
         return "text"
-    
+
     async def test_local_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
@@ -1360,23 +1523,49 @@ class ipfs_accelerate_py:
         endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
         tokenizers_by_model = self.resources["tokenizer"][model]
         if endpoint_list is not None:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+            local_endpoints_by_model_by_endpoint_list = [
+                x
+                for x in local_endpoints_by_model
+                if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x))
+                and x[1] in list(endpoint_handlers_by_model.keys())
+            ]
         else:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ( "openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) ]      
+            local_endpoints_by_model_by_endpoint_list = [
+                x
+                for x in local_endpoints_by_model
+                if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x))
+            ]
         if len(local_endpoints_by_model_by_endpoint_list) > 0:
             for endpoint in local_endpoints_by_model_by_endpoint_list:
                 model_type = self.get_model_type(model)
-                hf_model_types = ["llava", "llama", "qwen2", "bert", "clip", "clap", "wav2vec", "wav2vec2", "t5", "whisper", "xclip"]
+                hf_model_types = [
+                    "llava",
+                    "llama",
+                    "qwen2",
+                    "bert",
+                    "clip",
+                    "clap",
+                    "wav2vec",
+                    "wav2vec2",
+                    "t5",
+                    "whisper",
+                    "xclip",
+                ]
                 method_name = "hf_" + model_type
                 if model_type in hf_model_types:
                     if endpoint[1] in list(endpoint_handlers_by_model.keys()):
                         endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
                         test = None
                         try:
-                            module = __import__('worker.skillset', fromlist=[method_name])
+                            module = __import__("worker.skillset", fromlist=[method_name])
                             this_method = getattr(module, method_name)
                             this_hf = this_method(self.resources, self.metadata)
-                            test = this_hf.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                            test = this_hf.__test__(
+                                model,
+                                endpoint_handlers_by_model[endpoint[1]],
+                                endpoint[1],
+                                tokenizers_by_model[endpoint[1]],
+                            )
                             test_results[endpoint[1]] = test
                             del this_hf
                             del this_method
@@ -1385,7 +1574,7 @@ class ipfs_accelerate_py:
                         except Exception as e:
                             test_results[endpoint[1]] = e
                     else:
-                        test_results[endpoint[1]] = ValueError("endpoint not found")          
+                        test_results[endpoint[1]] = ValueError("endpoint not found")
                 else:
                     test_results[endpoint[1]] = ValueError("Model type not supported")
         return test_results
@@ -1403,8 +1592,9 @@ class ipfs_accelerate_py:
     async def make_post_request_libp2p(self, endpoint, data):
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
-        headers = {'Content-Type': 'application/json'}
-        timeout = ClientTimeout(total=300) 
+
+        headers = {"Content-Type": "application/json"}
+        timeout = ClientTimeout(total=300)
         async with ClientSession(timeout=timeout) as session:
             try:
                 async with session.post(endpoint, headers=headers, json=data) as response:
@@ -1414,7 +1604,7 @@ class ipfs_accelerate_py:
             except Exception as e:
                 print(str(e))
                 if "Can not write request body" in str(e):
-                    print( "endpoint " + endpoint + " is not accepting requests")
+                    print("endpoint " + endpoint + " is not accepting requests")
                     return ValueError(e)
                 if "Timeout" in str(e):
                     print("Timeout error")
@@ -1444,10 +1634,26 @@ class ipfs_accelerate_py:
             api_endpoints = await self.get_endpoints(model, endpoint_type="api")
             libp2p_endpoints = await self.get_endpoints(model, endpoint_type="libp2p")
             local_endpoints = await self.get_endpoints(model, endpoint_type="local")
-            filtered_libp2p_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and libp2p_endpoints is not None and k in list(libp2p_endpoints.keys())}
-            filtered_api_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and api_endpoints is not None and k in list(api_endpoints.keys())}
-            filtered_local_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and local_endpoints is not None and k in list(local_endpoints.keys())}
-            if not filtered_api_endpoints and not filtered_libp2p_endpoints and not filtered_local_endpoints:
+            filtered_libp2p_endpoints = {
+                k: v
+                for k, v in self.endpoint_status.items()
+                if v >= 1 and libp2p_endpoints is not None and k in list(libp2p_endpoints.keys())
+            }
+            filtered_api_endpoints = {
+                k: v
+                for k, v in self.endpoint_status.items()
+                if v >= 1 and api_endpoints is not None and k in list(api_endpoints.keys())
+            }
+            filtered_local_endpoints = {
+                k: v
+                for k, v in self.endpoint_status.items()
+                if v >= 1 and local_endpoints is not None and k in list(local_endpoints.keys())
+            }
+            if (
+                not filtered_api_endpoints
+                and not filtered_libp2p_endpoints
+                and not filtered_local_endpoints
+            ):
                 return None
             else:
                 this_endpoint = None
@@ -1469,18 +1675,38 @@ class ipfs_accelerate_py:
             api_endpoints = await self.get_endpoints_new(model, endpoint_type="api")
             libp2p_endpoints = await self.get_endpoints_new(model, endpoint_type="libp2p")
             local_endpoints = await self.get_endpoints_new(model, endpoint_type="local")
-            filtered_libp2p_endpoints = [x for x in libp2p_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            filtered_api_endpoints = [x for x in api_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            filtered_local_endpoints = [x for x in local_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            if not filtered_api_endpoints and not filtered_libp2p_endpoints  and not filtered_local_endpoints:
+            filtered_libp2p_endpoints = [
+                x
+                for x in libp2p_endpoints
+                if x[1] in list(self.resources["endpoint_handler"][model].keys())
+            ]
+            filtered_api_endpoints = [
+                x
+                for x in api_endpoints
+                if x[1] in list(self.resources["endpoint_handler"][model].keys())
+            ]
+            filtered_local_endpoints = [
+                x
+                for x in local_endpoints
+                if x[1] in list(self.resources["endpoint_handler"][model].keys())
+            ]
+            if (
+                not filtered_api_endpoints
+                and not filtered_libp2p_endpoints
+                and not filtered_local_endpoints
+            ):
                 return None
             else:
                 this_endpoint = None
-                combined_endpoints = filtered_api_endpoints + filtered_libp2p_endpoints + filtered_local_endpoints
+                combined_endpoints = (
+                    filtered_api_endpoints + filtered_libp2p_endpoints + filtered_local_endpoints
+                )
                 random_endpoint = random.choice(combined_endpoints)
                 random_endpoint_model = random_endpoint[0]
                 random_endpoint_type = random_endpoint[1]
-                random_endpoint_handler = self.resources["endpoint_handler"][random_endpoint_model][random_endpoint_type]
+                random_endpoint_handler = self.resources["endpoint_handler"][random_endpoint_model][
+                    random_endpoint_type
+                ]
                 return random_endpoint_handler
 
     @property
@@ -1488,26 +1714,28 @@ class ipfs_accelerate_py:
         """
         Property that returns the endpoint handler dictionary.
         This is for backward compatibility with code that accesses self.endpoint_handler[model][endpoint_type]
-        
+
         Returns:
             dict: The endpoint handler dictionary
         """
         return self.resources["endpoint_handler"]
-    
-    def get_endpoint_handler(self, skill_handler=None, model=None, endpoint_type=None, *args, **kwargs):
+
+    def get_endpoint_handler(
+        self, skill_handler=None, model=None, endpoint_type=None, *args, **kwargs
+    ):
         """
         Returns a callable endpoint handler for the specified model and endpoint type.
-        
+
         This method can be called in two ways:
         1. With model and endpoint_type: Returns the handler for that specific model/endpoint
         2. With no arguments: Can be used directly with model and endpoint_type as attributes
            of self.resources["endpoint_handler"]
-        
+
         Args:
             skill_handler (str, optional): The skill handler name (e.g., "default_embed", "hf_bert").
             model (str, optional): The model name.
             endpoint_type (str, optional): The endpoint type (e.g., "cpu:0", "cuda:0").
-            
+
         Returns:
             callable: A callable endpoint handler function or handler wrapper
         """
@@ -1516,21 +1744,21 @@ class ipfs_accelerate_py:
             # Return the handler dictionary itself, which will be accessed using model and endpoint_type
             # This is for backward compatibility with code that accesses handler[model][endpoint_type]
             return self.resources["endpoint_handler"]
-            
+
         try:
             # Check if the model exists in endpoint_handler resource
             if model not in self.resources["endpoint_handler"]:
                 print(f"Model {model} not found in endpoint_handler")
                 return None
-                
+
             # Check if the endpoint type exists for this model
             if endpoint_type not in self.resources["endpoint_handler"][model]:
                 print(f"Endpoint type {endpoint_type} not found for model {model}")
                 return None
-                
+
             # Get the handler from resources
             handler = self.resources["endpoint_handler"][model][endpoint_type]
-            
+
             # If handler is already a callable function, wrap it
             if callable(handler):
                 # Create a wrapper function that handles both sync and async calls
@@ -1545,27 +1773,29 @@ class ipfs_accelerate_py:
                     except Exception as e:
                         print(f"Error in endpoint handler: {str(e)}")
                         return {"error": str(e)}
-                
+
                 return handler_wrapper
             else:
                 # If handler is not callable (e.g., it's a dictionary), return it
                 # with a warning
-                print(f"Warning: Handler for {model}/{endpoint_type} is not callable, returning as is")
+                print(
+                    f"Warning: Handler for {model}/{endpoint_type} is not callable, returning as is"
+                )
                 return handler
-            
+
         except Exception as e:
             print(f"Error getting endpoint handler: {str(e)}")
             return None
-    
+
     async def remove_endpoint(self, skill_handler=None, model=None, endpoint_type=None):
         """
         Removes an endpoint from the system.
-        
+
         Args:
             skill_handler (str, optional): The skill handler name.
             model (str): The model name.
             endpoint_type (str): The endpoint type.
-            
+
         Returns:
             bool: True if the endpoint was successfully removed, False otherwise.
         """
@@ -1575,7 +1805,7 @@ class ipfs_accelerate_py:
                 # Find and remove the endpoint
                 endpoint_list = self.endpoints["local_endpoints"][model]
                 endpoints_removed = 0
-                
+
                 # Iterate over a copy of the list to avoid issues when modifying during iteration
                 for i, endpoint in enumerate(list(endpoint_list)):
                     if endpoint[1] == endpoint_type:
@@ -1583,39 +1813,51 @@ class ipfs_accelerate_py:
                         self.endpoints["local_endpoints"][model].remove(endpoint)
                         print(f"Removed endpoint {endpoint_type} for model {model}")
                         endpoints_removed += 1
-                
+
                 # Also remove from endpoint_handler if it exists
-                if model in self.resources["endpoint_handler"] and endpoint_type in self.resources["endpoint_handler"][model]:
+                if (
+                    model in self.resources["endpoint_handler"]
+                    and endpoint_type in self.resources["endpoint_handler"][model]
+                ):
                     del self.resources["endpoint_handler"][model][endpoint_type]
                     print(f"Removed endpoint handler for {model}/{endpoint_type}")
-                    
+
                 # Remove from tokenizer if it exists
-                if model in self.resources["tokenizer"] and endpoint_type in self.resources["tokenizer"][model]:
+                if (
+                    model in self.resources["tokenizer"]
+                    and endpoint_type in self.resources["tokenizer"][model]
+                ):
                     del self.resources["tokenizer"][model][endpoint_type]
                     print(f"Removed tokenizer for {model}/{endpoint_type}")
-                    
+
                 # Remove from batch_sizes if it exists
-                if model in self.resources["batch_sizes"] and endpoint_type in self.resources["batch_sizes"][model]:
+                if (
+                    model in self.resources["batch_sizes"]
+                    and endpoint_type in self.resources["batch_sizes"][model]
+                ):
                     del self.resources["batch_sizes"][model][endpoint_type]
                     print(f"Removed batch size for {model}/{endpoint_type}")
-                    
+
                 # Remove from queues if it exists
-                if model in self.resources["queues"] and endpoint_type in self.resources["queues"][model]:
+                if (
+                    model in self.resources["queues"]
+                    and endpoint_type in self.resources["queues"][model]
+                ):
                     del self.resources["queues"][model][endpoint_type]
                     print(f"Removed queue for {model}/{endpoint_type}")
-                
+
                 return endpoints_removed > 0
-            
+
             print(f"Endpoint {endpoint_type} for model {model} not found")
             return False
-            
+
         except Exception as e:
             print(f"Error removing endpoint: {str(e)}")
             return False
-    
+
     async def status(self):
         new_resources = {}
-        included_resources = ["endpoint_handler", "batch_sizes", "queues","hwtest"]
+        included_resources = ["endpoint_handler", "batch_sizes", "queues", "hwtest"]
         for resource in included_resources:
             new_resources[resource] = self.resources[resource]
         new_resources["endpoints"] = self.endpoints
@@ -1712,10 +1954,16 @@ class ipfs_accelerate_py:
                     if isinstance(by_endpoint, dict):
                         # Historically this is "endpoint" (label), but some code
                         # treats it as "endpoint_type"; we surface both views.
-                        capabilities["endpoints_by_model"].setdefault(m, sorted([str(k) for k in by_endpoint.keys()]))
-                        capabilities["endpoint_types_by_model"].setdefault(m, sorted([str(k) for k in by_endpoint.keys()]))
+                        capabilities["endpoints_by_model"].setdefault(
+                            m, sorted([str(k) for k in by_endpoint.keys()])
+                        )
+                        capabilities["endpoint_types_by_model"].setdefault(
+                            m, sorted([str(k) for k in by_endpoint.keys()])
+                        )
                         if detail:
-                            capabilities.setdefault("endpoint_handlers", {})[m] = sorted([str(k) for k in by_endpoint.keys()])
+                            capabilities.setdefault("endpoint_handlers", {})[m] = sorted(
+                                [str(k) for k in by_endpoint.keys()]
+                            )
         except Exception:
             pass
 
@@ -1788,7 +2036,9 @@ class ipfs_accelerate_py:
 
                 # Prefer the existing detector (may use torch/openvino if installed)
                 try:
-                    from ipfs_accelerate_py.hf_model_server.hardware.detector import HardwareDetector
+                    from ipfs_accelerate_py.hf_model_server.hardware.detector import (
+                        HardwareDetector,
+                    )
 
                     det = HardwareDetector()
                     acc = {}
@@ -1798,14 +2048,18 @@ class ipfs_accelerate_py:
                                 "available": bool(getattr(cap, "available", False)),
                                 "device_count": int(getattr(cap, "device_count", 0) or 0),
                                 "memory_total_mb": float(getattr(cap, "memory_total_mb", 0) or 0),
-                                "memory_available_mb": float(getattr(cap, "memory_available_mb", 0) or 0),
+                                "memory_available_mb": float(
+                                    getattr(cap, "memory_available_mb", 0) or 0
+                                ),
                                 "compute_capability": getattr(cap, "compute_capability", None),
                                 "metadata": getattr(cap, "metadata", {}) or {},
                             }
                         except Exception:
                             acc[str(name)] = {"available": bool(getattr(cap, "available", False))}
                     hw["accelerators"] = acc
-                    hw["available"] = sorted([k for k, v in acc.items() if isinstance(v, dict) and v.get("available")])
+                    hw["available"] = sorted(
+                        [k for k, v in acc.items() if isinstance(v, dict) and v.get("available")]
+                    )
                 except Exception:
                     pass
 
@@ -1838,11 +2092,21 @@ class ipfs_accelerate_py:
                         capabilities["mcp"] = manifest
                     else:
                         # Keep payload small by default.
-                        counts = manifest.get("counts") if isinstance(manifest.get("counts"), dict) else {}
-                        tools = manifest.get("tools") if isinstance(manifest.get("tools"), list) else []
+                        counts = (
+                            manifest.get("counts")
+                            if isinstance(manifest.get("counts"), dict)
+                            else {}
+                        )
+                        tools = (
+                            manifest.get("tools") if isinstance(manifest.get("tools"), list) else []
+                        )
                         capabilities["mcp"] = {
                             "counts": counts,
-                            "tools": [{"name": t.get("name", ""), "description": t.get("description", "")} for t in tools if isinstance(t, dict)],
+                            "tools": [
+                                {"name": t.get("name", ""), "description": t.get("description", "")}
+                                for t in tools
+                                if isinstance(t, dict)
+                            ],
                         }
         except Exception:
             pass
@@ -1865,13 +2129,23 @@ class ipfs_accelerate_py:
                     mcp_like = None
 
             if mcp_like is None:
-                return {"tools": [], "resources": [], "prompts": [], "counts": {"tools": 0, "resources": 0, "prompts": 0}}
+                return {
+                    "tools": [],
+                    "resources": [],
+                    "prompts": [],
+                    "counts": {"tools": 0, "resources": 0, "prompts": 0},
+                }
 
             from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest
 
             return extract_mcp_manifest(mcp_like, include_schemas=bool(detail))
         except Exception:
-            return {"tools": [], "resources": [], "prompts": [], "counts": {"tools": 0, "resources": 0, "prompts": 0}}
+            return {
+                "tools": [],
+                "resources": [],
+                "prompts": [],
+                "counts": {"tools": 0, "resources": 0, "prompts": 0},
+            }
 
     async def call_tool(self, tool_name: str, args: dict | None = None):
         """Invoke an MCP tool registered in this instance (async)."""
@@ -1899,10 +2173,10 @@ class ipfs_accelerate_py:
             args=args if isinstance(args, dict) else {},
             accelerate_instance=self,
         )
-    
+
     async def infer(self, model, data, endpoint=None, endpoint_type=None):
         infer_results = {}
-        if endpoint_type is None:        
+        if endpoint_type is None:
             if endpoint is None:
                 endpoint = await self.choose_endpoint_new(model, endpoint_type)
                 if endpoint is None:
@@ -1960,36 +2234,64 @@ class ipfs_accelerate_py:
     async def get_endpoints(self, model, endpoint_type=None):
         if endpoint_type == "tei":
             endpoints_dict = self.tei_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+            filtered_endpoints = [
+                endpoint
+                for endpoint in endpoints_dict
+                if self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         if endpoint_type == "openvino":
             endpoints_dict = self.openvino_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+            filtered_endpoints = [
+                endpoint
+                for endpoint in endpoints_dict
+                if self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         if endpoint_type == "libp2p":
             endpoints_dict = self.libp2p_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+            filtered_endpoints = [
+                endpoint
+                for endpoint in endpoints_dict
+                if self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         if endpoint_type == "local":
             endpoints_dict = self.local_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+            filtered_endpoints = [
+                endpoint
+                for endpoint in endpoints_dict
+                if self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         if endpoint_type == "cuda":
             endpoint_dict = self.local_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
+            filtered_endpoints = [
+                endpoint
+                for endpoint in endpoint_dict
+                if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         else:
-            all_endpoints_dict = self.api_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+            all_endpoints_dict = (
+                self.api_endpoints.get(model, {})
+                + self.libp2p_endpoints.get(model, {})
+                + self.local_endpoints.get(model, {})
+            )
+            filtered_endpoints = [
+                endpoint
+                for endpoint in all_endpoints_dict
+                if self.endpoint_status.get(endpoint, 0) >= 1
+            ]
         return filtered_endpoints
-    
+
     async def get_endpoints_new(self, model, endpoint_type=None):
         filtered_endpoints = []
         endpoints_keys = list(self.endpoints.keys())
         if endpoint_type == "api" and "apiendpoints" in endpoints_keys:
             endpoints_dict = self.endpoints["api_endpoints"].get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict]
         elif endpoint_type == "libp2p" and "libp2p_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.libp2p_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict]
         elif endpoint_type == "local" and "local_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.endpoints["local_endpoints"].get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict]
         elif endpoint_type == "all" or endpoint_type == None:
             all_endpoints = []
             if "api_endpoints" in list(self.endpoints.keys()):
@@ -2003,19 +2305,20 @@ class ipfs_accelerate_py:
                 all_endpoints = all_endpoints + local_endpoints
             filtered_endpoints = [endpoint for endpoint in all_endpoints]
         return filtered_endpoints
-    
+
     async def async_generator(self, iterable):
         for item in iterable:
             yield item
-    
+
     async def __test__(self, resources, metadata):
         results = {}
-        ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
-        test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
+        ipfs_accelerate_init = await self.init_endpoints(metadata["models"], resources)
+        test_endpoints = await self.test_endpoints(metadata["models"], ipfs_accelerate_init)
         return test_endpoints
 
+
 ipfs_accelerate_py = ipfs_accelerate_py
-    
+
 if __name__ == "__main__":
     metadata = {
         "dataset": "laion/gpt4v-dataset",
@@ -2025,10 +2328,10 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             "google-t5/t5-base",
-            "BAAI/bge-small-en-v1.5", 
+            "BAAI/bge-small-en-v1.5",
             # "laion/larger_clap_general",
             # "facebook/wav2vec2-large-960h-lv60-self",
-            # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
+            # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible
             # "openai/whisper-large-v3-turbo",
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
             # "distil-whisper/distil-small.en",
@@ -2043,10 +2346,10 @@ if __name__ == "__main__":
             # "MCG-NJU/videomae-base",
             # "MCG-NJU/videomae-large",
             # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
-            # "lmms-lab/llava-onevision-qwen2-7b-si",  
-            # "lmms-lab/llava-onevision-qwen2-7b-ov", 
-            # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
-            # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
+            # "lmms-lab/llava-onevision-qwen2-7b-si",
+            # "lmms-lab/llava-onevision-qwen2-7b-ov",
+            # "lmms-lab/llava-onevision-qwen2-0.5b-si",
+            # "lmms-lab/llava-onevision-qwen2-0.5b-ov",
             # "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
             # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
@@ -2054,9 +2357,7 @@ if __name__ == "__main__":
             # "AIDC-AI/Ovis1.6-Llama3.2-3B", # ValueError: Trying to export a ovis model, that is a custom or unsupported architecture,
             # "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
         ],
-        "chunk_settings": {
-
-        },
+        "chunk_settings": {},
         "path": "/storage/gpt4v-dataset/data",
         "dst_path": "/storage/gpt4v-dataset/data",
     }
@@ -2065,7 +2366,7 @@ if __name__ == "__main__":
     resources["local_endpoints"] = []
     resources["tei_endpoints"] = []
     resources["libp2p_endpoints"] = []
-    resources["openvino_endpoints"] = []      
+    resources["openvino_endpoints"] = []
     for model in metadata["models"]:
         for endpoint in endpoints:
             resources["local_endpoints"].append([model, endpoint, 32768])

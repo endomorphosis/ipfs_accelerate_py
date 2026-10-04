@@ -108,9 +108,10 @@ from common.hardware_detection import detect_hardware, skip_if_no_cuda
 
 # Get hardware capabilities
 hardware_info = detect_hardware()
-if hardware_info['platforms']['webgpu']['available']:
+if hardware_info["platforms"]["webgpu"]["available"]:
     # WebGPU is available
     ...
+
 
 # Skip tests if CUDA is not available
 @skip_if_no_cuda
@@ -139,6 +140,7 @@ Reusable pytest fixtures:
 
 ```python
 from common.fixtures import cuda_device, bert_model, webgpu_browser
+
 
 def test_bert_inference(bert_model, cuda_device):
     # Use bert_model and cuda_device fixtures
@@ -181,10 +183,10 @@ template = ModelTestTemplate(
     template_name="bert_test",
     output_dir="test",
     parameters={
-        'model_name': 'bert-base-uncased',
-        'model_type': 'text',
-        'test_name': 'bert_base_uncased'
-    }
+        "model_name": "bert-base-uncased",
+        "model_type": "text",
+        "test_name": "bert_base_uncased",
+    },
 )
 
 # Write the test file
@@ -201,11 +203,11 @@ template = HardwareTestTemplate(
     template_name="webgpu_test",
     output_dir="test",
     parameters={
-        'hardware_platform': 'webgpu',
-        'test_name': 'webgpu_matmul',
-        'test_category': 'compute_shaders',
-        'test_operation': 'matmul'
-    }
+        "hardware_platform": "webgpu",
+        "test_name": "webgpu_matmul",
+        "test_category": "compute_shaders",
+        "test_operation": "matmul",
+    },
 )
 
 # Write the test file

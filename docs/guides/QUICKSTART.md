@@ -44,7 +44,7 @@ accelerator = ipfs_accelerate_py({}, {})
 result = accelerator.process(
     model="bert-base-uncased",
     input_data={"input_ids": [101, 2054, 2003, 2026, 2171, 102]},
-    endpoint_type="text_embedding"
+    endpoint_type="text_embedding",
 )
 
 print(result)
@@ -88,21 +88,19 @@ ipfs-accelerate mcp status
 from mcp.server import create_mcp_server
 import anyio
 
+
 async def main():
     # Create MCP server
     mcp = create_mcp_server()
-    
+
     # Call tool for inference
     result = await mcp.call_tool(
         "run_enhanced_inference",
-        {
-            "model": "bert-base-uncased",
-            "input": "Test input",
-            "mode": "auto"
-        }
+        {"model": "bert-base-uncased", "input": "Test input", "mode": "auto"},
     )
-    
+
     print(result)
+
 
 anyio.run(main)
 ```
@@ -118,34 +116,35 @@ See [P2P integration](../features/mcp-integration/p2p-integration.md) for comple
 ### Distributed Task Execution
 
 ```python
-from ipfs_accelerate_py.p2p_workflow_scheduler import (
-    P2PWorkflowScheduler,
-    WorkflowTag
-)
+from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler, WorkflowTag
 import anyio
+
 
 async def main():
     # Create P2P scheduler
     scheduler = P2PWorkflowScheduler(node_id="worker-01")
-    
+
     # Start scheduler
     await scheduler.start()
-    
+
     # Submit distributed workflow
-    workflow_id = await scheduler.submit_workflow({
-        "name": "batch-inference",
-        "tag": WorkflowTag.P2P_ELIGIBLE,
-        "priority": 1,
-        "tasks": [
-            {"model": "bert-base", "input": "text1"},
-            {"model": "bert-base", "input": "text2"},
-            {"model": "bert-base", "input": "text3"}
-        ]
-    })
-    
+    workflow_id = await scheduler.submit_workflow(
+        {
+            "name": "batch-inference",
+            "tag": WorkflowTag.P2P_ELIGIBLE,
+            "priority": 1,
+            "tasks": [
+                {"model": "bert-base", "input": "text1"},
+                {"model": "bert-base", "input": "text2"},
+                {"model": "bert-base", "input": "text3"},
+            ],
+        }
+    )
+
     # Monitor progress
     status = await scheduler.get_workflow_status(workflow_id)
     print(f"Completed: {status['completed']}/{status['total']}")
+
 
 anyio.run(main)
 ```

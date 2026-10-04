@@ -34,13 +34,11 @@ The enhanced model registry now includes detailed hardware and precision informa
 MODEL_REGISTRY = {
     "bert-base-uncased": {
         "description": "Default BERT base (uncased) model",
-        
         # Model dimensions and capabilities
         "embedding_dim": 768,
         "sequence_length": 512,
-        "model_precision": "float32", 
+        "model_precision": "float32",
         "default_batch_size": 1,
-        
         # Hardware compatibility
         "hardware_compatibility": {
             "cpu": True,
@@ -48,9 +46,8 @@ MODEL_REGISTRY = {
             "openvino": True,
             "apple": True,
             "qualcomm": False,
-            "amd": True
+            "amd": True,
         },
-        
         # Precision support by hardware
         "precision_compatibility": {
             "cpu": {
@@ -61,17 +58,16 @@ MODEL_REGISTRY = {
                 "int4": False,
                 "uint4": False,
                 "fp8": False,
-                "fp4": False
+                "fp4": False,
             },
-            "cuda": { ... },
-            "openvino": { ... },
-            "apple": { ... },
-            "amd": { ... },
-            "qualcomm": { ... }
+            "cuda": {...},
+            "openvino": {...},
+            "apple": {...},
+            "amd": {...},
+            "qualcomm": {...},
         },
-        
         # Dependencies including hardware and precision-specific ones
-        "dependencies": { ... }
+        "dependencies": {...},
     }
 }
 ```
@@ -97,7 +93,7 @@ The enhanced hardware detection includes:
        "qualcomm": False,
        "amd": False,
        "amd_version": None,
-       "amd_devices": 0
+       "amd_devices": 0,
    }
    ```
 
@@ -145,10 +141,14 @@ The implementation includes:
    # Check AMD ROCm support
    try:
        # Run rocm-smi to detect ROCm installation
-       result = subprocess.run(['rocm-smi', '--showproductname'], 
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                             universal_newlines=True, check=False)
-       
+       result = subprocess.run(
+           ["rocm-smi", "--showproductname"],
+           stdout=subprocess.PIPE,
+           stderr=subprocess.PIPE,
+           universal_newlines=True,
+           check=False,
+       )
+
        if result.returncode == 0:
            capabilities["amd"] = True
            # Get version and device information...
@@ -183,10 +183,11 @@ The implementation includes:
 
 3. **Handler Method**:
    ```python
-   def create_amd_text_embedding_endpoint_handler(self, endpoint_model, device, 
-                                               hardware_label, endpoint=None, 
-                                               tokenizer=None, precision="fp32"):
+   def create_amd_text_embedding_endpoint_handler(
+       self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, precision="fp32"
+   ):
        """Create a handler function for AMD ROCm inference."""
+
        def handler(text_input):
            # Process input, run model, and return results with precision info
            return {
@@ -195,8 +196,9 @@ The implementation includes:
                "device": device,
                "model": endpoint_model,
                "precision": precision,
-               "is_amd": True
+               "is_amd": True,
            }
+
        return handler
    ```
 
@@ -212,24 +214,24 @@ for precision in ["fp32", "fp16", "bf16", "int8"]:
         if not model_info["precision_compatibility"][hardware].get(precision, False):
             print(f"Precision {precision.upper()} not supported on {hardware}, skipping...")
             continue
-        
+
         # Initialize model with specific precision
         endpoint, processor, handler, queue, batch_size = self.init_hardware(
-            model_name="test-model",
-            model_type="task-type",
-            precision=precision
+            model_name="test-model", model_type="task-type", precision=precision
         )
-        
+
         # Test with simple input
         input_text = f"Test input with {precision.upper()} precision on {hardware}"
         output = handler(input_text)
-        
+
         # Record results with precision information
-        examples.append({
-            "platform": f"{hardware} ({precision.upper()})",
-            "precision": precision,
-            # Other test information...
-        })
+        examples.append(
+            {
+                "platform": f"{hardware} ({precision.upper()})",
+                "precision": precision,
+                # Other test information...
+            }
+        )
     except Exception as e:
         print(f"Error testing on {hardware} with {precision.upper()}: {e}")
 ```
@@ -302,41 +304,43 @@ def run_precision_tests(model_name, hardware_types=None, precision_types=None):
     if not model_info:
         print(f"Model {model_name} not found in registry")
         return
-    
+
     # Set defaults
     hardware_types = hardware_types or ["cpu", "cuda", "amd", "openvino", "apple"]
     precision_types = precision_types or ["fp32", "fp16", "bf16", "int8", "int4"]
-    
+
     # Get hardware capabilities
     hardware_capabilities = detect_hardware()
-    
+
     # Track results
     results = {}
-    
+
     # Test each hardware and precision combination if available
     for hardware in hardware_types:
         # Skip if hardware not available
         if not hardware_capabilities.get(hardware, False):
             results[f"{hardware}_test"] = "Hardware not available"
             continue
-            
+
         for precision in precision_types:
             # Skip if precision not supported on this hardware
             if not model_info["precision_compatibility"][hardware].get(precision, False):
                 results[f"{hardware}_{precision}_test"] = "Precision not supported"
                 continue
-                
+
             # Run test with specific hardware and precision
             try:
                 # Initialize model
-                print(f"Testing {model_name} on {hardware.upper()} with {precision.upper()} precision...")
-                
+                print(
+                    f"Testing {model_name} on {hardware.upper()} with {precision.upper()} precision..."
+                )
+
                 # In actual implementation, would initialize and run model here
-                
+
                 results[f"{hardware}_{precision}_test"] = "Success"
             except Exception as e:
                 results[f"{hardware}_{precision}_test"] = f"Error: {str(e)}"
-    
+
     return results
 ```
 
@@ -369,18 +373,9 @@ You can define custom precision configurations for specific models:
 ```python
 # Define custom precision profile
 custom_precision = {
-    "cpu": {
-        "fp32": True,
-        "int8": True 
-    },
-    "cuda": {
-        "fp16": True,
-        "int8": True
-    },
-    "amd": {
-        "fp32": True,
-        "fp16": True
-    }
+    "cpu": {"fp32": True, "int8": True},
+    "cuda": {"fp16": True, "int8": True},
+    "amd": {"fp32": True, "fp16": True},
 }
 
 # Update model registry with custom precision

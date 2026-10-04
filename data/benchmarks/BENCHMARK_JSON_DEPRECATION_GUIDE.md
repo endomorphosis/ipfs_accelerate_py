@@ -44,12 +44,10 @@ When writing code that deals with benchmark results:
 ```python
 # RECOMMENDED: Store directly in database
 from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+
 api = BenchmarkDBAPI()
 api.store_performance_result(
-    model_name="bert-base-uncased",
-    hardware_type="cuda",
-    throughput=125.7,
-    latency_avg=8.2
+    model_name="bert-base-uncased", hardware_type="cuda", throughput=125.7, latency_avg=8.2
 )
 
 # NOT RECOMMENDED: Writing to JSON files (deprecated)
@@ -72,7 +70,7 @@ When updating existing code:
    ```python
    if not DEPRECATE_JSON_OUTPUT:
        # Legacy JSON writing code (will not execute by default)
-       with open(results_file, 'w') as f:
+       with open(results_file, "w") as f:
            json.dump(self.results, f, indent=2)
    else:
        logger.info("JSON output is deprecated. Results stored directly in database.")
@@ -82,6 +80,7 @@ When updating existing code:
    ```python
    try:
        from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+
        db_api = BenchmarkDBAPI()
        db_api.store_performance_result(**results)
    except ImportError:

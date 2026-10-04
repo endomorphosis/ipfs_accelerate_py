@@ -13,11 +13,13 @@ server = FastMCP(
     description="A simple test server to diagnose MCP registration issues",
 )
 
+
 # Register a simple tool
 @server.tool()
 def test_tool(message: str = "Hello") -> str:
     """A simple test tool that echoes a message"""
     return f"Echo: {message}"
+
 
 # Register a simple resource
 @server.resource("test://resource")
@@ -25,17 +27,19 @@ def test_resource() -> dict:
     """A simple test resource"""
     return {"status": "ok", "message": "This is a test resource"}
 
+
 # Register a simple prompt
 @server.prompt()
 def test_prompt() -> str:
     """A simple test prompt"""
     return "This is a test prompt. Please respond with 'Hello, world!'"
 
+
 # Print server information for debugging
 def print_server_info():
     """Print information about registered components"""
     print("\n===== SERVER INFO =====")
-    
+
     # Try to access tools
     print("\n--- Tools ---")
     if hasattr(server, "_tools"):
@@ -50,7 +54,7 @@ def print_server_info():
                 print(f"  Error accessing name: {e}")
     else:
         print("No tools attribute found")
-    
+
     # Try to access resources
     print("\n--- Resources ---")
     if hasattr(server, "_resources"):
@@ -65,7 +69,7 @@ def print_server_info():
                 print(f"  Error accessing uri: {e}")
     else:
         print("No resources attribute found")
-    
+
     # Try to access prompts
     print("\n--- Prompts ---")
     if hasattr(server, "_prompts"):
@@ -81,21 +85,26 @@ def print_server_info():
     else:
         print("No prompts attribute found")
 
+
 # Print registered components for debugging
 print_server_info()
+
 
 # Attempt to use the mock MCP verification client
 def test_mcp_client():
     """Test mock client operations to diagnose the issue"""
     try:
         from ipfs_accelerate_py.mcp.server.lowlevel.types import (
-            ListToolsRequest, ListToolsResponse,
-            ListResourcesRequest, ListResourcesResponse,
-            ListPromptsRequest, ListPromptsResponse
+            ListToolsRequest,
+            ListToolsResponse,
+            ListResourcesRequest,
+            ListResourcesResponse,
+            ListPromptsRequest,
+            ListPromptsResponse,
         )
-        
+
         print("\n===== MOCK CLIENT TEST =====")
-        
+
         # Test listing tools
         print("\nTesting ListToolsRequest/Response:")
         tools_request = ListToolsRequest()
@@ -109,7 +118,7 @@ def test_mcp_client():
                     print(f"  Name: {tool.name}")
                 except Exception as e:
                     print(f"  Error accessing name: {e}")
-        
+
         # Test listing resources
         print("\nTesting ListResourcesRequest/Response:")
         resources_request = ListResourcesRequest()
@@ -123,7 +132,7 @@ def test_mcp_client():
                     print(f"  URI: {resource.uri}")
                 except Exception as e:
                     print(f"  Error accessing uri: {e}")
-        
+
         # Test listing prompts
         print("\nTesting ListPromptsRequest/Response:")
         prompts_request = ListPromptsRequest()
@@ -137,11 +146,12 @@ def test_mcp_client():
                     print(f"  Name: {prompt.name}")
                 except Exception as e:
                     print(f"  Error accessing name: {e}")
-    
+
     except ImportError as e:
         print(f"Error importing MCP types: {e}")
     except Exception as e:
         print(f"Error testing MCP client: {e}")
+
 
 # Run the MCP client test
 test_mcp_client()
@@ -151,12 +161,16 @@ print("\n===== MCP LIBRARY VERSIONS =====")
 print(f"Python version: {sys.version}")
 try:
     import fastmcp
-    print(f"fastmcp version: {fastmcp.__version__ if hasattr(fastmcp, '__version__') else 'unknown'}")
+
+    print(
+        f"fastmcp version: {fastmcp.__version__ if hasattr(fastmcp, '__version__') else 'unknown'}"
+    )
 except ImportError:
     print("fastmcp not installed")
 
 try:
     import mcp
+
     print(f"mcp version: {mcp.__version__ if hasattr(mcp, '__version__') else 'unknown'}")
 except ImportError:
     print("mcp not installed")

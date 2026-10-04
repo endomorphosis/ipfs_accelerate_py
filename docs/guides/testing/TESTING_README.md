@@ -132,6 +132,7 @@ mocker = create_cuda_environment()
 with mocker.mock_hardware_environment():
     # Your code here will see CUDA as available
     import hardware_detection
+
     detector = hardware_detection.HardwareDetector()
     available = detector.get_available_hardware()
     print(available)  # {'cpu': True, 'cuda': True, ...}
@@ -204,14 +205,15 @@ class MockHardwareConfig:
     def __init__(self):
         self.enabled_hardware = {
             # ... existing hardware ...
-            'new_hardware': os.environ.get('MOCK_NEW_HARDWARE', 'false').lower() in ('true', '1', 'yes'),
+            "new_hardware": os.environ.get("MOCK_NEW_HARDWARE", "false").lower()
+            in ("true", "1", "yes"),
         }
-        
+
         self.hardware_capabilities = {
             # ... existing capabilities ...
-            'new_hardware': {
-                'version': '1.0',
-                'features': ['feature1', 'feature2'],
+            "new_hardware": {
+                "version": "1.0",
+                "features": ["feature1", "feature2"],
             }
         }
 ```

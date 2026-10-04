@@ -54,9 +54,12 @@ The following tasks need to be completed to finalize the DuckDB integration:
 2. Add logging to help diagnose issues:
    ```python
    import logging
-   logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+   logging.basicConfig(
+       level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+   )
    logger = logging.getLogger(__name__)
-   
+
    # Log operations
    logger.info("Connecting to database at %s", db_path)
    ```
@@ -69,21 +72,30 @@ The following tasks need to be completed to finalize the DuckDB integration:
        """Store a test result in the database."""
        try:
            # Extract values from test_result
-           model_id = self._get_or_create_model(test_result.get('model_name'), test_result.get('model_family'))
-           hardware_id = self._get_or_create_hardware(test_result.get('hardware_type'))
-           
+           model_id = self._get_or_create_model(
+               test_result.get("model_name"), test_result.get("model_family")
+           )
+           hardware_id = self._get_or_create_hardware(test_result.get("hardware_type"))
+
            # Insert into test_results table
-           self.con.execute("""
+           self.con.execute(
+               """
                INSERT INTO test_results (
                    model_id, hardware_id, status, error_message, 
                    execution_time, memory_usage, details
                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-           """, (
-               model_id, hardware_id, test_result.get('status'), test_result.get('error_message'),
-               test_result.get('execution_time'), test_result.get('memory_usage'), 
-               json.dumps(test_result.get('details', {}))
-           ))
-           
+           """,
+               (
+                   model_id,
+                   hardware_id,
+                   test_result.get("status"),
+                   test_result.get("error_message"),
+                   test_result.get("execution_time"),
+                   test_result.get("memory_usage"),
+                   json.dumps(test_result.get("details", {})),
+               ),
+           )
+
            return True
        except Exception as e:
            logger.error(f"Error storing test result: {e}")
@@ -99,15 +111,15 @@ The following tasks need to be completed to finalize the DuckDB integration:
    def migrate_json_to_db(json_path, db_path):
        """Migrate JSON test results to the database."""
        try:
-           with open(json_path, 'r') as f:
+           with open(json_path, "r") as f:
                data = json.load(f)
-           
+
            db_handler = TestResultsDBHandler(db_path)
-           
+
            # Migrate each result
            for result in data:
                db_handler.store_test_result(result)
-           
+
            return True
        except Exception as e:
            logger.error(f"Error migrating JSON to database: {e}")

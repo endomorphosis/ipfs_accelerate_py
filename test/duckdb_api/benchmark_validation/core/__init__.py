@@ -18,7 +18,7 @@ from data.duckdb.benchmark_validation.core.base import (
     BenchmarkCertifier,
     ValidationReporter,
     ValidationRepository,
-    BenchmarkValidationFramework
+    BenchmarkValidationFramework,
 )
 
 from data.duckdb.benchmark_validation.core.schema import BenchmarkValidationSchema

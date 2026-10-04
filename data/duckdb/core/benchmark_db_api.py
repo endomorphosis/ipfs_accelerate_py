@@ -41,12 +41,14 @@ except ImportError:
     sys.exit(1)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Add parent directory to path for module imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
+
 
 # Models for API requests and responses
 class PerformanceResult(BaseModel):
@@ -67,7 +69,8 @@ class PerformanceResult(BaseModel):
     warmup_iterations: Optional[int] = None
     run_id: Optional[str] = None
     metrics: Optional[Dict[str, Any]] = None
-    
+
+
 class HardwareCompatibility(BaseModel):
     model_name: str
     hardware_type: str
@@ -82,7 +85,8 @@ class HardwareCompatibility(BaseModel):
     compatibility_score: Optional[float] = None
     run_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
-    
+
+
 class IntegrationTestResult(BaseModel):
     test_module: str
     test_class: Optional[str] = None
@@ -97,78 +101,88 @@ class IntegrationTestResult(BaseModel):
     assertions: Optional[List[Dict[str, Any]]] = None
     run_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
-    
+
+
 class QueryRequest(BaseModel):
     sql: str
     parameters: Optional[Dict[str, Any]] = None
-    
+
+
 class SuccessResponse(BaseModel):
     success: bool = True
     message: str
     result_id: Optional[str] = None
 
+
 class BenchmarkDBAPI:
     """
     API interface to the benchmark database for storing and querying results.
     """
-    
+
     def __init__(self, db_path: str = "./benchmark_db.duckdb", debug: bool = False):
         """
         Initialize the benchmark database API.
-        
+
         Args:
             db_path: Path to the DuckDB database
             debug: Enable debug logging
         """
         self.db_path = db_path
-        
+
         # Set up logging
         if debug:
             logger.setLevel(logging.DEBUG)
-        
+
         # Ensure database exists
         self._ensure_db_exists()
-        
+
         logger.info(f"Initialized BenchmarkDBAPI with database path: {db_path}")
-    
+
     def _ensure_db_exists(self):
         """
         Ensure that the database exists and has the expected schema.
         If not, initialize it with the schema creation script.
         """
         db_file = Path(self.db_path)
-        
+
         # Check if database file exists
         if not db_file.exists():
             logger.info(f"Database file not found at {self.db_path}. Creating new database.")
-            
+
             # Create parent directories if they don't exist
             db_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             try:
                 # Import and run the create_benchmark_schema script
-                schema_script = str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py")
-                
+                schema_script = str(
+                    Path(__file__).parent / "scripts" / "create_benchmark_schema.py"
+                )
+
                 if Path(schema_script).exists():
                     logger.info(f"Creating database using schema script: {schema_script}")
                     import subprocess
-                    subprocess.run([sys.executable, schema_script, "--output", self.db_path, "--sample-data"])
+
+                    subprocess.run(
+                        [sys.executable, schema_script, "--output", self.db_path, "--sample-data"]
+                    )
                 else:
-                    logger.warning(f"Schema script not found at {schema_script}. Creating minimal schema.")
+                    logger.warning(
+                        f"Schema script not found at {schema_script}. Creating minimal schema."
+                    )
                     self._create_minimal_schema()
             except Exception as e:
                 logger.error(f"Error creating database schema: {e}")
                 self._create_minimal_schema()
-    
+
     def _create_minimal_schema(self):
         """
         Create a minimal schema if the full schema creation script is not available.
         """
         logger.info("Creating minimal schema")
-        
+
         # Connect to database
         conn = duckdb.connect(self.db_path)
-        
+
         try:
             # Create basic tables
             conn.execute("""
@@ -185,7 +199,7 @@ class BenchmarkDBAPI:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             conn.execute("""
             CREATE TABLE IF NOT EXISTS models (
                 model_id INTEGER PRIMARY KEY,
@@ -199,7 +213,7 @@ class BenchmarkDBAPI:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             conn.execute("""
             CREATE TABLE IF NOT EXISTS test_runs (
                 run_id INTEGER PRIMARY KEY,
@@ -216,7 +230,7 @@ class BenchmarkDBAPI:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             conn.execute("""
             CREATE TABLE IF NOT EXISTS performance_results (
                 result_id INTEGER PRIMARY KEY,
@@ -239,7 +253,7 @@ class BenchmarkDBAPI:
                 FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
             )
             """)
-            
+
             conn.execute("""
             CREATE TABLE IF NOT EXISTS hardware_compatibility (
                 compatibility_id INTEGER PRIMARY KEY,
@@ -261,123 +275,122 @@ class BenchmarkDBAPI:
                 FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
             )
             """)
-            
+
             logger.info("Minimal schema created successfully")
         except Exception as e:
             logger.error(f"Error creating minimal schema: {e}")
         finally:
             conn.close()
-    
+
     def _get_connection(self):
         """Get a connection to the database."""
         return duckdb.connect(self.db_path)
-    
+
     def _ensure_model_exists(self, conn, model_name: str) -> int:
         """
         Ensure that a model exists in the database, adding it if not.
-        
+
         Args:
             conn: Database connection
             model_name: Name of the model
-            
+
         Returns:
             model_id: ID of the model in the database
         """
         # Check if model exists
         result = conn.execute(
-            "SELECT model_id FROM models WHERE model_name = ?", 
-            [model_name]
+            "SELECT model_id FROM models WHERE model_name = ?", [model_name]
         ).fetchone()
-        
+
         if result:
             return result[0]
-            
+
         # Model doesn't exist, try to infer family and modality
         model_family = None
         modality = None
-        
+
         # Simple inference from model name
         lower_name = model_name.lower()
-        if 'bert' in lower_name:
-            model_family = 'bert'
-            modality = 'text'
-        elif 't5' in lower_name:
-            model_family = 't5'
-            modality = 'text'
-        elif 'gpt' in lower_name or 'llama' in lower_name:
-            model_family = 'llm'
-            modality = 'text'
-        elif 'clip' in lower_name or 'vit' in lower_name:
-            model_family = 'vision'
-            modality = 'image'
-        elif 'whisper' in lower_name or 'wav2vec' in lower_name:
-            model_family = 'audio'
-            modality = 'audio'
-        elif 'llava' in lower_name:
-            model_family = 'multimodal'
-            modality = 'multimodal'
-        
+        if "bert" in lower_name:
+            model_family = "bert"
+            modality = "text"
+        elif "t5" in lower_name:
+            model_family = "t5"
+            modality = "text"
+        elif "gpt" in lower_name or "llama" in lower_name:
+            model_family = "llm"
+            modality = "text"
+        elif "clip" in lower_name or "vit" in lower_name:
+            model_family = "vision"
+            modality = "image"
+        elif "whisper" in lower_name or "wav2vec" in lower_name:
+            model_family = "audio"
+            modality = "audio"
+        elif "llava" in lower_name:
+            model_family = "multimodal"
+            modality = "multimodal"
+
         # Add model to database
         # Get next model_id
         max_id = conn.execute("SELECT MAX(model_id) FROM models").fetchone()[0]
         model_id = 1 if max_id is None else max_id + 1
-        
+
         conn.execute(
             """
             INSERT INTO models (model_id, model_name, model_family, modality, source, version)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            [model_id, model_name, model_family, modality, 'unknown', '1.0']
+            [model_id, model_name, model_family, modality, "unknown", "1.0"],
         )
-        
+
         logger.info(f"Added new model to database: {model_name} (ID: {model_id})")
         return model_id
-    
+
     def _ensure_hardware_exists(self, conn, hardware_type: str, device_name: str = None) -> int:
         """
         Ensure that a hardware platform exists in the database, adding it if not.
-        
+
         Args:
             conn: Database connection
             hardware_type: Type of hardware (cpu, cuda, rocm, etc.)
             device_name: Name of the device
-            
+
         Returns:
             hardware_id: ID of the hardware in the database
         """
         # Use default device name if not provided
         if device_name is None:
-            if hardware_type == 'cpu':
-                device_name = 'CPU'
-            elif hardware_type == 'cuda':
-                device_name = 'NVIDIA GPU'
-            elif hardware_type == 'rocm':
-                device_name = 'AMD GPU'
-            elif hardware_type == 'mps':
-                device_name = 'Apple Silicon'
-            elif hardware_type == 'openvino':
-                device_name = 'OpenVINO'
-            elif hardware_type == 'webnn':
-                device_name = 'WebNN'
-            elif hardware_type == 'webgpu':
-                device_name = 'WebGPU'
+            if hardware_type == "cpu":
+                device_name = "CPU"
+            elif hardware_type == "cuda":
+                device_name = "NVIDIA GPU"
+            elif hardware_type == "rocm":
+                device_name = "AMD GPU"
+            elif hardware_type == "mps":
+                device_name = "Apple Silicon"
+            elif hardware_type == "openvino":
+                device_name = "OpenVINO"
+            elif hardware_type == "webnn":
+                device_name = "WebNN"
+            elif hardware_type == "webgpu":
+                device_name = "WebGPU"
             else:
                 device_name = hardware_type.upper()
-        
+
         # Check if hardware exists
         result = conn.execute(
             "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?",
-            [hardware_type, device_name]
+            [hardware_type, device_name],
         ).fetchone()
-        
+
         if result:
             return result[0]
-            
+
         # Hardware doesn't exist, add it
         # Get next hardware_id
         max_id = conn.execute("SELECT MAX(hardware_id) FROM hardware_platforms").fetchone()[0]
         hardware_id = 1 if max_id is None else max_id + 1
-        
+
         conn.execute(
             """
             INSERT INTO hardware_platforms (
@@ -386,32 +399,34 @@ class BenchmarkDBAPI:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [hardware_id, hardware_type, device_name, 'unknown', 'unknown', 'unknown', 0, 0]
+            [hardware_id, hardware_type, device_name, "unknown", "unknown", "unknown", 0, 0],
         )
-        
-        logger.info(f"Added new hardware to database: {hardware_type} - {device_name} (ID: {hardware_id})")
+
+        logger.info(
+            f"Added new hardware to database: {hardware_type} - {device_name} (ID: {hardware_id})"
+        )
         return hardware_id
-    
+
     def _create_test_run(self, conn, test_name: str, test_type: str, metadata: Dict = None) -> int:
         """
         Create a new test run entry in the database.
-        
+
         Args:
             conn: Database connection
             test_name: Name of the test
             test_type: Type of test (performance, hardware, compatibility, integration)
             metadata: Additional metadata for the test run
-            
+
         Returns:
             run_id: ID of the test run in the database
         """
         # Get next run_id
         max_id = conn.execute("SELECT MAX(run_id) FROM test_runs").fetchone()[0]
         run_id = 1 if max_id is None else max_id + 1
-        
+
         # Current timestamp
         now = datetime.datetime.now()
-        
+
         # Insert test run
         conn.execute(
             """
@@ -421,26 +436,26 @@ class BenchmarkDBAPI:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [run_id, test_name, test_type, now, now, 0, True, json.dumps(metadata or {})]
+            [run_id, test_name, test_type, now, now, 0, True, json.dumps(metadata or {})],
         )
-        
+
         logger.debug(f"Created new test run: {test_name} (ID: {run_id})")
         return run_id
-    
+
     def store_performance_result(self, result: Union[PerformanceResult, Dict]) -> str:
         """
         Store a performance benchmark result in the database.
-        
+
         Args:
             result: Performance benchmark result data
-            
+
         Returns:
             result_id: ID of the stored result
         """
         # Convert dict to PerformanceResult if needed
         if isinstance(result, dict):
             result = PerformanceResult(**result)
-        
+
         # Validate required fields
         if not result.model_name:
             raise ValueError("model_name is required")
@@ -450,30 +465,38 @@ class BenchmarkDBAPI:
             raise ValueError("throughput is required")
         if result.latency_avg is None:
             raise ValueError("latency_avg is required")
-        
+
         conn = self._get_connection()
         try:
             # Get or create model
             model_id = self._ensure_model_exists(conn, result.model_name)
-            
+
             # Get or create hardware
-            hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
+            hardware_id = self._ensure_hardware_exists(
+                conn, result.hardware_type, result.device_name
+            )
+
             # Create test run if run_id not provided
             if result.run_id:
                 # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
-                
+                run_exists = (
+                    conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?", [result.run_id]
+                    ).fetchone()[0]
+                    > 0
+                )
+
                 if not run_exists:
                     logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
                     run_id = self._create_test_run(
                         conn,
                         f"Performance benchmark for {result.model_name}",
                         "performance",
-                        {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                        {
+                            "source": "api",
+                            "model": result.model_name,
+                            "hardware": result.hardware_type,
+                        },
                     )
                 else:
                     run_id = result.run_id
@@ -482,13 +505,13 @@ class BenchmarkDBAPI:
                     conn,
                     f"Performance benchmark for {result.model_name}",
                     "performance",
-                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type},
                 )
-            
+
             # Get next result_id
             max_id = conn.execute("SELECT MAX(result_id) FROM performance_results").fetchone()[0]
             result_id = 1 if max_id is None else max_id + 1
-            
+
             # Store performance result
             conn.execute(
                 """
@@ -500,36 +523,48 @@ class BenchmarkDBAPI:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    result_id, run_id, model_id, hardware_id, result.test_case, result.batch_size,
-                    result.precision, result.total_time_seconds, result.latency_avg,
-                    result.throughput, result.memory_peak, result.iterations,
-                    result.warmup_iterations, json.dumps(result.metrics or {})
-                ]
+                    result_id,
+                    run_id,
+                    model_id,
+                    hardware_id,
+                    result.test_case,
+                    result.batch_size,
+                    result.precision,
+                    result.total_time_seconds,
+                    result.latency_avg,
+                    result.throughput,
+                    result.memory_peak,
+                    result.iterations,
+                    result.warmup_iterations,
+                    json.dumps(result.metrics or {}),
+                ],
             )
-            
-            logger.info(f"Stored performance result for {result.model_name} on {result.hardware_type} (ID: {result_id})")
+
+            logger.info(
+                f"Stored performance result for {result.model_name} on {result.hardware_type} (ID: {result_id})"
+            )
             return str(result_id)
-            
+
         except Exception as e:
             logger.error(f"Error storing performance result: {e}")
             raise
         finally:
             conn.close()
-    
+
     def store_compatibility_result(self, result: Union[HardwareCompatibility, Dict]) -> str:
         """
         Store a hardware compatibility result in the database.
-        
+
         Args:
             result: Hardware compatibility result data
-            
+
         Returns:
             compatibility_id: ID of the stored result
         """
         # Convert dict to HardwareCompatibility if needed
         if isinstance(result, dict):
             result = HardwareCompatibility(**result)
-        
+
         # Validate required fields
         if not result.model_name:
             raise ValueError("model_name is required")
@@ -537,30 +572,38 @@ class BenchmarkDBAPI:
             raise ValueError("hardware_type is required")
         if result.is_compatible is None:
             raise ValueError("is_compatible is required")
-        
+
         conn = self._get_connection()
         try:
             # Get or create model
             model_id = self._ensure_model_exists(conn, result.model_name)
-            
+
             # Get or create hardware
-            hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
+            hardware_id = self._ensure_hardware_exists(
+                conn, result.hardware_type, result.device_name
+            )
+
             # Create test run if run_id not provided
             if result.run_id:
                 # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
-                
+                run_exists = (
+                    conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?", [result.run_id]
+                    ).fetchone()[0]
+                    > 0
+                )
+
                 if not run_exists:
                     logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
                     run_id = self._create_test_run(
                         conn,
                         f"Hardware compatibility test for {result.model_name}",
                         "hardware",
-                        {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                        {
+                            "source": "api",
+                            "model": result.model_name,
+                            "hardware": result.hardware_type,
+                        },
                     )
                 else:
                     run_id = result.run_id
@@ -569,13 +612,15 @@ class BenchmarkDBAPI:
                     conn,
                     f"Hardware compatibility test for {result.model_name}",
                     "hardware",
-                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type},
                 )
-            
+
             # Get next compatibility_id
-            max_id = conn.execute("SELECT MAX(compatibility_id) FROM hardware_compatibility").fetchone()[0]
+            max_id = conn.execute(
+                "SELECT MAX(compatibility_id) FROM hardware_compatibility"
+            ).fetchone()[0]
             compatibility_id = 1 if max_id is None else max_id + 1
-            
+
             # Store compatibility result
             conn.execute(
                 """
@@ -587,36 +632,47 @@ class BenchmarkDBAPI:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    compatibility_id, run_id, model_id, hardware_id, result.is_compatible,
-                    result.detection_success, result.initialization_success, result.error_message,
-                    result.error_type, result.suggested_fix, result.workaround_available,
-                    result.compatibility_score, json.dumps(result.metadata or {})
-                ]
+                    compatibility_id,
+                    run_id,
+                    model_id,
+                    hardware_id,
+                    result.is_compatible,
+                    result.detection_success,
+                    result.initialization_success,
+                    result.error_message,
+                    result.error_type,
+                    result.suggested_fix,
+                    result.workaround_available,
+                    result.compatibility_score,
+                    json.dumps(result.metadata or {}),
+                ],
             )
-            
-            logger.info(f"Stored compatibility result for {result.model_name} on {result.hardware_type} (ID: {compatibility_id})")
+
+            logger.info(
+                f"Stored compatibility result for {result.model_name} on {result.hardware_type} (ID: {compatibility_id})"
+            )
             return str(compatibility_id)
-            
+
         except Exception as e:
             logger.error(f"Error storing compatibility result: {e}")
             raise
         finally:
             conn.close()
-    
+
     def store_integration_test_result(self, result: Union[IntegrationTestResult, Dict]) -> str:
         """
         Store an integration test result in the database.
-        
+
         Args:
             result: Integration test result data
-            
+
         Returns:
             test_result_id: ID of the stored result
         """
         # Convert dict to IntegrationTestResult if needed
         if isinstance(result, dict):
             result = IntegrationTestResult(**result)
-        
+
         # Validate required fields
         if not result.test_module:
             raise ValueError("test_module is required")
@@ -624,34 +680,38 @@ class BenchmarkDBAPI:
             raise ValueError("test_name is required")
         if not result.status:
             raise ValueError("status is required")
-        
+
         conn = self._get_connection()
         try:
             # Get model_id if model_name provided
             model_id = None
             if result.model_name:
                 model_id = self._ensure_model_exists(conn, result.model_name)
-            
+
             # Get hardware_id if hardware_type provided
             hardware_id = None
             if result.hardware_type:
-                hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
+                hardware_id = self._ensure_hardware_exists(
+                    conn, result.hardware_type, result.device_name
+                )
+
             # Create test run if run_id not provided
             if result.run_id:
                 # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
-                
+                run_exists = (
+                    conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?", [result.run_id]
+                    ).fetchone()[0]
+                    > 0
+                )
+
                 if not run_exists:
                     logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
                     run_id = self._create_test_run(
                         conn,
                         f"Integration test for {result.test_module}",
                         "integration",
-                        {"source": "api", "test_module": result.test_module}
+                        {"source": "api", "test_module": result.test_module},
                     )
                 else:
                     run_id = result.run_id
@@ -660,13 +720,15 @@ class BenchmarkDBAPI:
                     conn,
                     f"Integration test for {result.test_module}",
                     "integration",
-                    {"source": "api", "test_module": result.test_module}
+                    {"source": "api", "test_module": result.test_module},
                 )
-            
+
             # Get next test_result_id
-            max_id = conn.execute("SELECT MAX(test_result_id) FROM integration_test_results").fetchone()[0]
+            max_id = conn.execute(
+                "SELECT MAX(test_result_id) FROM integration_test_results"
+            ).fetchone()[0]
             test_result_id = 1 if max_id is None else max_id + 1
-            
+
             # Store integration test result
             conn.execute(
                 """
@@ -677,12 +739,21 @@ class BenchmarkDBAPI:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    test_result_id, run_id, result.test_module, result.test_class, result.test_name,
-                    result.status, result.execution_time_seconds, hardware_id, model_id,
-                    result.error_message, result.error_traceback, json.dumps(result.metadata or {})
-                ]
+                    test_result_id,
+                    run_id,
+                    result.test_module,
+                    result.test_class,
+                    result.test_name,
+                    result.status,
+                    result.execution_time_seconds,
+                    hardware_id,
+                    model_id,
+                    result.error_message,
+                    result.error_traceback,
+                    json.dumps(result.metadata or {}),
+                ],
             )
-            
+
             # Store assertions if provided
             if result.assertions:
                 for i, assertion in enumerate(result.assertions):
@@ -696,29 +767,35 @@ class BenchmarkDBAPI:
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
-                            assertion_id, test_result_id, assertion.get('name', f'assertion_{i}'),
-                            assertion.get('passed', False), assertion.get('expected', ''),
-                            assertion.get('actual', ''), assertion.get('message', '')
-                        ]
+                            assertion_id,
+                            test_result_id,
+                            assertion.get("name", f"assertion_{i}"),
+                            assertion.get("passed", False),
+                            assertion.get("expected", ""),
+                            assertion.get("actual", ""),
+                            assertion.get("message", ""),
+                        ],
                     )
-            
-            logger.info(f"Stored integration test result for {result.test_module}.{result.test_name} (ID: {test_result_id})")
+
+            logger.info(
+                f"Stored integration test result for {result.test_module}.{result.test_name} (ID: {test_result_id})"
+            )
             return str(test_result_id)
-            
+
         except Exception as e:
             logger.error(f"Error storing integration test result: {e}")
             raise
         finally:
             conn.close()
-    
+
     def query(self, sql: str, parameters: Dict = None) -> pd.DataFrame:
         """
         Execute a SQL query against the database.
-        
+
         Args:
             sql: SQL query string
             parameters: Parameters for the query
-            
+
         Returns:
             DataFrame with the query results
         """
@@ -729,28 +806,29 @@ class BenchmarkDBAPI:
                 result = conn.execute(sql, parameters)
             else:
                 result = conn.execute(sql)
-            
+
             # Convert to DataFrame
             df = result.fetch_df()
-            
+
             logger.debug(f"Executed query: {sql}")
             return df
-            
+
         except Exception as e:
             logger.error(f"Error executing query: {e}")
             raise
         finally:
             conn.close()
-    
-    def get_model_hardware_compatibility(self, model_name: Optional[str] = None,
-                                      hardware_type: Optional[str] = None) -> pd.DataFrame:
+
+    def get_model_hardware_compatibility(
+        self, model_name: Optional[str] = None, hardware_type: Optional[str] = None
+    ) -> pd.DataFrame:
         """
         Get model-hardware compatibility data.
-        
+
         Args:
             model_name: Filter by model name (optional)
             hardware_type: Filter by hardware type (optional)
-            
+
         Returns:
             DataFrame with compatibility data
         """
@@ -772,43 +850,46 @@ class BenchmarkDBAPI:
         JOIN
             hardware_platforms hp ON hc.hardware_id = hp.hardware_id
         """
-        
+
         conditions = []
         parameters = {}
-        
+
         if model_name:
             conditions.append("m.model_name = :model_name")
-            parameters['model_name'] = model_name
-        
+            parameters["model_name"] = model_name
+
         if hardware_type:
             conditions.append("hp.hardware_type = :hardware_type")
-            parameters['hardware_type'] = hardware_type
-        
+            parameters["hardware_type"] = hardware_type
+
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
-        
+
         sql += """
         GROUP BY
             m.model_name, m.model_family, hp.hardware_type, hp.device_name
         """
-        
+
         return self.query(sql, parameters)
-    
-    def get_performance_metrics(self, model_name: Optional[str] = None,
-                               hardware_type: Optional[str] = None,
-                               batch_size: Optional[int] = None,
-                               precision: Optional[str] = None,
-                               latest_only: bool = True) -> pd.DataFrame:
+
+    def get_performance_metrics(
+        self,
+        model_name: Optional[str] = None,
+        hardware_type: Optional[str] = None,
+        batch_size: Optional[int] = None,
+        precision: Optional[str] = None,
+        latest_only: bool = True,
+    ) -> pd.DataFrame:
         """
         Get performance metrics data.
-        
+
         Args:
             model_name: Filter by model name (optional)
             hardware_type: Filter by hardware type (optional)
             batch_size: Filter by batch size (optional)
             precision: Filter by precision (optional)
             latest_only: Return only the latest results for each model-hardware combination
-            
+
         Returns:
             DataFrame with performance metrics
         """
@@ -832,29 +913,29 @@ class BenchmarkDBAPI:
         JOIN
             hardware_platforms hp ON pr.hardware_id = hp.hardware_id
         """
-        
+
         conditions = []
         parameters = {}
-        
+
         if model_name:
             conditions.append("m.model_name = :model_name")
-            parameters['model_name'] = model_name
-        
+            parameters["model_name"] = model_name
+
         if hardware_type:
             conditions.append("hp.hardware_type = :hardware_type")
-            parameters['hardware_type'] = hardware_type
-        
+            parameters["hardware_type"] = hardware_type
+
         if batch_size:
             conditions.append("pr.batch_size = :batch_size")
-            parameters['batch_size'] = batch_size
-            
+            parameters["batch_size"] = batch_size
+
         if precision:
             conditions.append("pr.precision = :precision")
-            parameters['precision'] = precision
-        
+            parameters["precision"] = precision
+
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
-        
+
         if latest_only:
             sql = f"""
             WITH ranked_results AS (
@@ -866,16 +947,16 @@ class BenchmarkDBAPI:
             )
             SELECT * FROM ranked_results WHERE rn = 1
             """
-        
+
         return self.query(sql, parameters)
-    
+
     def get_integration_test_summary(self, test_module: Optional[str] = None) -> pd.DataFrame:
         """
         Get integration test summary.
-        
+
         Args:
             test_module: Filter by test module (optional)
-            
+
         Returns:
             DataFrame with integration test summary
         """
@@ -891,16 +972,16 @@ class BenchmarkDBAPI:
         FROM
             integration_test_results
         """
-        
+
         parameters = {}
         if test_module:
             sql += " WHERE test_module = :test_module"
-            parameters['test_module'] = test_module
-        
+            parameters["test_module"] = test_module
+
         sql += " GROUP BY test_module"
-        
+
         return self.query(sql, parameters)
-    
+
     def get_hardware_list(self) -> pd.DataFrame:
         """Get a list of available hardware platforms."""
         sql = """
@@ -916,7 +997,7 @@ class BenchmarkDBAPI:
             usage_count DESC
         """
         return self.query(sql)
-    
+
     def get_model_list(self) -> pd.DataFrame:
         """Get a list of available models."""
         sql = """
@@ -933,15 +1014,17 @@ class BenchmarkDBAPI:
             usage_count DESC
         """
         return self.query(sql)
-    
-    def get_performance_comparison(self, model_name: str, metric: str = "throughput") -> pd.DataFrame:
+
+    def get_performance_comparison(
+        self, model_name: str, metric: str = "throughput"
+    ) -> pd.DataFrame:
         """
         Get performance comparison across hardware platforms for a specific model.
-        
+
         Args:
             model_name: Model name to compare
             metric: Metric to compare ("throughput", "latency", "memory")
-            
+
         Returns:
             DataFrame with performance comparison
         """
@@ -950,7 +1033,7 @@ class BenchmarkDBAPI:
             metric_column = "average_latency_ms"
         elif metric.lower() == "memory":
             metric_column = "memory_peak_mb"
-        
+
         sql = f"""
         WITH latest_results AS (
             SELECT 
@@ -985,8 +1068,9 @@ class BenchmarkDBAPI:
         ORDER BY
             metric_value {"DESC" if metric.lower() == "throughput" else "ASC"}
         """
-        
+
         return self.query(sql, {"model_name": model_name})
+
 
 # Create FastAPI app if module is run directly
 def create_app():
@@ -994,9 +1078,9 @@ def create_app():
     app = FastAPI(
         title="Benchmark Database API",
         description="API for storing and querying benchmark results",
-        version="0.1.0"
+        version="0.1.0",
     )
-    
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -1005,110 +1089,111 @@ def create_app():
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Create API instance
     api = BenchmarkDBAPI()
-    
+
     # Root endpoint
     @app.get("/")
     def read_root():
         return {"message": "Benchmark Database API", "version": "0.1.0"}
-    
+
     # Health check
     @app.get("/health")
     def health_check():
         return {"status": "ok", "timestamp": datetime.datetime.now().isoformat()}
-    
+
     # Performance endpoints
     @app.post("/performance", response_model=SuccessResponse)
     def store_performance(result: PerformanceResult):
         result_id = api.store_performance_result(result)
-        return SuccessResponse(success=True, message="Performance result stored successfully", result_id=result_id)
-    
+        return SuccessResponse(
+            success=True, message="Performance result stored successfully", result_id=result_id
+        )
+
     @app.get("/performance")
     def get_performance(
         model_name: Optional[str] = None,
         hardware_type: Optional[str] = None,
         batch_size: Optional[int] = None,
         precision: Optional[str] = None,
-        latest_only: bool = True
+        latest_only: bool = True,
     ):
-        df = api.get_performance_metrics(model_name, hardware_type, batch_size, precision, latest_only)
+        df = api.get_performance_metrics(
+            model_name, hardware_type, batch_size, precision, latest_only
+        )
         return df.to_dict(orient="records")
-    
+
     @app.get("/performance/comparison/{model_name}")
     def get_performance_comparison(
-        model_name: str,
-        metric: str = Query("throughput", enum=["throughput", "latency", "memory"])
+        model_name: str, metric: str = Query("throughput", enum=["throughput", "latency", "memory"])
     ):
         df = api.get_performance_comparison(model_name, metric)
         return df.to_dict(orient="records")
-    
+
     # Compatibility endpoints
     @app.post("/compatibility", response_model=SuccessResponse)
     def store_compatibility(result: HardwareCompatibility):
         result_id = api.store_compatibility_result(result)
-        return SuccessResponse(success=True, message="Compatibility result stored successfully", result_id=result_id)
-    
+        return SuccessResponse(
+            success=True, message="Compatibility result stored successfully", result_id=result_id
+        )
+
     @app.get("/compatibility")
-    def get_compatibility(
-        model_name: Optional[str] = None,
-        hardware_type: Optional[str] = None
-    ):
+    def get_compatibility(model_name: Optional[str] = None, hardware_type: Optional[str] = None):
         df = api.get_model_hardware_compatibility(model_name, hardware_type)
         return df.to_dict(orient="records")
-    
+
     # Integration test endpoints
     @app.post("/integration", response_model=SuccessResponse)
     def store_integration(result: IntegrationTestResult):
         result_id = api.store_integration_test_result(result)
-        return SuccessResponse(success=True, message="Integration test result stored successfully", result_id=result_id)
-    
+        return SuccessResponse(
+            success=True, message="Integration test result stored successfully", result_id=result_id
+        )
+
     @app.get("/integration")
-    def get_integration(
-        test_module: Optional[str] = None
-    ):
+    def get_integration(test_module: Optional[str] = None):
         df = api.get_integration_test_summary(test_module)
         return df.to_dict(orient="records")
-    
+
     # Utility endpoints
     @app.post("/query")
     def execute_query(query_request: QueryRequest):
         df = api.query(query_request.sql, query_request.parameters)
         return df.to_dict(orient="records")
-    
+
     @app.get("/hardware")
     def get_hardware():
         df = api.get_hardware_list()
         return df.to_dict(orient="records")
-    
+
     @app.get("/models")
     def get_models():
         df = api.get_model_list()
         return df.to_dict(orient="records")
-    
+
     return app
+
 
 def main():
     """Command-line interface for the benchmark database API."""
     parser = argparse.ArgumentParser(description="Benchmark Database API")
-    parser.add_argument("--db-path", default="./benchmark_db.duckdb",
-                       help="Path to the DuckDB database")
-    parser.add_argument("--serve", action="store_true",
-                       help="Start the API server")
-    parser.add_argument("--host", default="0.0.0.0",
-                       help="Host to bind the API server to")
-    parser.add_argument("--port", type=int, default=8000,
-                       help="Port to bind the API server to")
-    parser.add_argument("--debug", action="store_true",
-                       help="Enable debug logging")
+    parser.add_argument(
+        "--db-path", default="./benchmark_db.duckdb", help="Path to the DuckDB database"
+    )
+    parser.add_argument("--serve", action="store_true", help="Start the API server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind the API server to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind the API server to")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
-    
+
     if args.serve:
         app = create_app()
         uvicorn.run(app, host=args.host, port=args.port)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

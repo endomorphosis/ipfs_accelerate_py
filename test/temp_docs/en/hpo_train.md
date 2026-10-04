@@ -76,8 +76,11 @@ The following examples demonstrate how to perform a hyperparameter search for th
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-6, 1e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32, 64, 128]),
+        "per_device_train_batch_size": trial.suggest_categorical(
+            "per_device_train_batch_size", [16, 32, 64, 128]
+        ),
     }
+
 
 best_trials = trainer.hyperparameter_search(
     direction=["minimize", "maximize"],
@@ -100,7 +103,8 @@ def ray_hp_space(trial):
         "per_device_train_batch_size": tune.choice([16, 32, 64, 128]),
     }
 
-best_trials = trainer.hyperparameter_search( 
+
+best_trials = trainer.hyperparameter_search(
     direction=["minimize", "maximize"],
     backend="ray",
     hp_space=ray_hp_space,
@@ -125,7 +129,8 @@ def sigopt_hp_space(trial):
         },
     ]
 
-best_trials = trainer.hyperparameter_search( 
+
+best_trials = trainer.hyperparameter_search(
     direction=["minimize", "maximize"],
     backend="sigopt",
     hp_space=sigopt_hp_space,
@@ -150,7 +155,8 @@ def wandb_hp_space(trial):
         },
     }
 
-best_trials = trainer.hyperparameter_search( 
+
+best_trials = trainer.hyperparameter_search(
     direction=["minimize", "maximize"],
     backend="wandb",
     hp_space=wandb_hp_space,

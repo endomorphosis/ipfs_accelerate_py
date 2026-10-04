@@ -41,6 +41,7 @@ try:
     if MOCK_TORCH:
         raise ImportError("Mocked torch import failure")
     import torch
+
     HAS_TORCH = True
 except ImportError:
     torch = MagicMock()

@@ -20,7 +20,9 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
 def _normalize_delegate_payload(result: Any, *, default_status: str) -> Dict[str, Any]:
     """Normalize delegated rate-limiter payloads into deterministic status envelopes."""
     payload = dict(result or {})
-    failed = payload.get("success") is False or bool(payload.get("error")) or bool(payload.get("errors"))
+    failed = (
+        payload.get("success") is False or bool(payload.get("error")) or bool(payload.get("errors"))
+    )
     if failed:
         payload["status"] = "error"
     else:
@@ -37,7 +39,10 @@ def _load_rate_limiter_api() -> Dict[str, Any]:
 
     for mod_name in candidates:
         try:
-            mod = __import__(mod_name, fromlist=["RateLimitConfig", "RateLimitStrategy", "get_default_rate_limiter"])
+            mod = __import__(
+                mod_name,
+                fromlist=["RateLimitConfig", "RateLimitStrategy", "get_default_rate_limiter"],
+            )
             return {
                 "RateLimitConfig": getattr(mod, "RateLimitConfig"),
                 "RateLimitStrategy": getattr(mod, "RateLimitStrategy"),
@@ -80,8 +85,18 @@ def _load_rate_limiter_api() -> Dict[str, Any]:
         def check_rate_limit(self, name: str, identifier: str) -> Dict[str, Any]:
             cfg = self.limits.get(str(name))
             if cfg is not None and not bool(cfg.enabled):
-                return {"allowed": True, "reason": "limit_disabled", "remaining": None, "retry_after_s": 0}
-            return {"allowed": True, "reason": "fallback_allow", "remaining": None, "retry_after_s": 0}
+                return {
+                    "allowed": True,
+                    "reason": "limit_disabled",
+                    "remaining": None,
+                    "retry_after_s": 0,
+                }
+            return {
+                "allowed": True,
+                "reason": "fallback_allow",
+                "remaining": None,
+                "retry_after_s": 0,
+            }
 
         def get_stats(self, name: str | None = None) -> Dict[str, Any]:
             if name:
@@ -138,7 +153,9 @@ async def configure_rate_limits(
 ) -> Dict[str, Any]:
     """Configure named rate limits using native unified implementation."""
     if not isinstance(limits, list):
-        return _error_result("limits must be a list", configured_count=0, configured_limits=[], errors=[])
+        return _error_result(
+            "limits must be a list", configured_count=0, configured_limits=[], errors=[]
+        )
     if not isinstance(apply_immediately, bool):
         return _error_result("apply_immediately must be a boolean")
     if not isinstance(backup_current, bool):
@@ -182,7 +199,9 @@ async def configure_rate_limits(
                 raise ValueError("requests_per_second must be > 0")
 
             burst_capacity = int(
-                limit_config.get("burst_capacity", int(float(limit_config["requests_per_second"]) * 2))
+                limit_config.get(
+                    "burst_capacity", int(float(limit_config["requests_per_second"]) * 2)
+                )
             )
             if burst_capacity <= 0:
                 raise ValueError("burst_capacity must be > 0")
@@ -193,7 +212,9 @@ async def configure_rate_limits(
 
             cfg = _engine_api["RateLimitConfig"](
                 name=limit_name,
-                strategy=_engine_api["RateLimitStrategy"](limit_config.get("strategy", "token_bucket")),
+                strategy=_engine_api["RateLimitStrategy"](
+                    limit_config.get("strategy", "token_bucket")
+                ),
                 requests_per_second=requests_per_second,
                 burst_capacity=burst_capacity,
                 window_size_seconds=window_size_seconds,

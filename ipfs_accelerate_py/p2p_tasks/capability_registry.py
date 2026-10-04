@@ -77,7 +77,9 @@ class PeerCapabilityRegistry:
             available_images=_as_str_list(payload.get("available_images")),
             queued=int(payload.get("queued") or 0),
             running=int(payload.get("running") or 0),
-            queued_by_type={str(k): int(v) for k, v in dict(payload.get("queued_by_type") or {}).items()},
+            queued_by_type={
+                str(k): int(v) for k, v in dict(payload.get("queued_by_type") or {}).items()
+            },
             metadata=dict(payload.get("metadata") or {}),
         )
 
@@ -132,10 +134,14 @@ class PeerCapabilityRegistry:
         if not pid or not ma:
             return None
 
-        capabilities = status.get("capabilities") if isinstance(status.get("capabilities"), dict) else {}
+        capabilities = (
+            status.get("capabilities") if isinstance(status.get("capabilities"), dict) else {}
+        )
         detail = status.get("detail") if isinstance(status.get("detail"), dict) else {}
 
-        supported_tasks = _as_str_list(capabilities.get("supported_task_types") or capabilities.get("supported_tasks"))
+        supported_tasks = _as_str_list(
+            capabilities.get("supported_task_types") or capabilities.get("supported_tasks")
+        )
 
         hardware_types: List[str] = []
         runtime = detail.get("runtime") if isinstance(detail.get("runtime"), dict) else {}
@@ -150,7 +156,9 @@ class PeerCapabilityRegistry:
         loaded_models = _as_str_list(capabilities.get("loaded_models"))
         available_images = _as_str_list(capabilities.get("available_images"))
 
-        queued_by_type = status.get("queued_by_type") if isinstance(status.get("queued_by_type"), dict) else {}
+        queued_by_type = (
+            status.get("queued_by_type") if isinstance(status.get("queued_by_type"), dict) else {}
+        )
 
         record = PeerCapabilityRecord(
             peer_id=pid,

@@ -56,7 +56,9 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             "methods": [{"input_schema": {"type": "object"}, "name": "x"}],
         }
 
-        self.assertEqual(canonicalize_descriptor(descriptor_a), canonicalize_descriptor(descriptor_b))
+        self.assertEqual(
+            canonicalize_descriptor(descriptor_a), canonicalize_descriptor(descriptor_b)
+        )
         self.assertEqual(compute_interface_cid(descriptor_a), compute_interface_cid(descriptor_b))
 
     def test_descriptor_cid_deterministic_for_stability_corpus(self) -> None:
@@ -66,7 +68,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "name": "alpha",
                     "namespace": "test.ns",
                     "version": "1.0.0",
-                    "methods": [{"name": "alpha/a", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                    "methods": [
+                        {
+                            "name": "alpha/a",
+                            "input_schema": {"type": "object"},
+                            "output_schema": {"type": "object"},
+                        }
+                    ],
                     "errors": [],
                     "requires": ["mcp++/profile-a-idl"],
                     "compatibility": {"compatible_with": [], "supersedes": []},
@@ -75,7 +83,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "compatibility": {"supersedes": [], "compatible_with": []},
                     "requires": ["mcp++/profile-a-idl"],
                     "errors": [],
-                    "methods": [{"output_schema": {"type": "object"}, "input_schema": {"type": "object"}, "name": "alpha/a"}],
+                    "methods": [
+                        {
+                            "output_schema": {"type": "object"},
+                            "input_schema": {"type": "object"},
+                            "name": "alpha/a",
+                        }
+                    ],
                     "version": "1.0.0",
                     "namespace": "test.ns",
                     "name": "alpha",
@@ -87,8 +101,22 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "namespace": "test.ns",
                     "version": "2.1.0",
                     "methods": [
-                        {"name": "beta/x", "input_schema": {"type": "object", "properties": {"x": {"type": "integer"}}}, "output_schema": {"type": "object"}},
-                        {"name": "beta/y", "input_schema": {"type": "object", "properties": {"y": {"type": "string"}}}, "output_schema": {"type": "object"}},
+                        {
+                            "name": "beta/x",
+                            "input_schema": {
+                                "type": "object",
+                                "properties": {"x": {"type": "integer"}},
+                            },
+                            "output_schema": {"type": "object"},
+                        },
+                        {
+                            "name": "beta/y",
+                            "input_schema": {
+                                "type": "object",
+                                "properties": {"y": {"type": "string"}},
+                            },
+                            "output_schema": {"type": "object"},
+                        },
                     ],
                     "errors": [{"name": "ValidationError"}],
                     "requires": ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
@@ -99,8 +127,22 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "name": "beta",
                     "namespace": "test.ns",
                     "methods": [
-                        {"output_schema": {"type": "object"}, "name": "beta/x", "input_schema": {"properties": {"x": {"type": "integer"}}, "type": "object"}},
-                        {"input_schema": {"properties": {"y": {"type": "string"}}, "type": "object"}, "name": "beta/y", "output_schema": {"type": "object"}},
+                        {
+                            "output_schema": {"type": "object"},
+                            "name": "beta/x",
+                            "input_schema": {
+                                "properties": {"x": {"type": "integer"}},
+                                "type": "object",
+                            },
+                        },
+                        {
+                            "input_schema": {
+                                "properties": {"y": {"type": "string"}},
+                                "type": "object",
+                            },
+                            "name": "beta/y",
+                            "output_schema": {"type": "object"},
+                        },
                     ],
                     "version": "2.1.0",
                     "errors": [{"name": "ValidationError"}],
@@ -112,13 +154,25 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     "name": "gamma",
                     "namespace": "test.other",
                     "version": "0.9.3",
-                    "methods": [{"name": "gamma/exec", "input_schema": {"type": "object", "properties": {}, "required": []}, "output_schema": {"type": "object"}}],
+                    "methods": [
+                        {
+                            "name": "gamma/exec",
+                            "input_schema": {"type": "object", "properties": {}, "required": []},
+                            "output_schema": {"type": "object"},
+                        }
+                    ],
                     "errors": [],
                     "requires": [],
                     "compatibility": {"compatible_with": [], "supersedes": ["cidv1-sha256-prev"]},
                 },
                 {
-                    "methods": [{"name": "gamma/exec", "output_schema": {"type": "object"}, "input_schema": {"required": [], "properties": {}, "type": "object"}}],
+                    "methods": [
+                        {
+                            "name": "gamma/exec",
+                            "output_schema": {"type": "object"},
+                            "input_schema": {"required": [], "properties": {}, "type": "object"},
+                        }
+                    ],
                     "namespace": "test.other",
                     "version": "0.9.3",
                     "name": "gamma",
@@ -131,7 +185,9 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
 
         cids: list[str] = []
         for descriptor_a, descriptor_b in corpus:
-            self.assertEqual(canonicalize_descriptor(descriptor_a), canonicalize_descriptor(descriptor_b))
+            self.assertEqual(
+                canonicalize_descriptor(descriptor_a), canonicalize_descriptor(descriptor_b)
+            )
             cid_a = compute_interface_cid(descriptor_a)
             cid_b = compute_interface_cid(descriptor_b)
             self.assertEqual(cid_a, cid_b)
@@ -199,7 +255,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="restricted",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "restricted.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "restricted.call",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-z-nonexistent"],
             )
         )
@@ -215,7 +277,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="compatible-later",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "later.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "later.call",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=[],
             )
         )
@@ -224,7 +292,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="incompatible",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "blocked.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "blocked.call",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-q-unavailable"],
             )
         )
@@ -233,7 +307,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="compatible-earlier",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "earlier.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "earlier.call",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-a-idl"],
             )
         )
@@ -242,7 +322,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="target",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "target.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "target.call",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-z-missing", "mcp++/profile-b-missing"],
             )
         )
@@ -251,8 +337,12 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
 
         self.assertFalse(verdict.compatible)
         self.assertEqual(verdict.reasons, ["missing_required_capabilities"])
-        self.assertEqual(verdict.requires_missing, ["mcp++/profile-b-missing", "mcp++/profile-z-missing"])
-        self.assertEqual(verdict.suggested_alternatives, sorted([compatible_earlier, compatible_later]))
+        self.assertEqual(
+            verdict.requires_missing, ["mcp++/profile-b-missing", "mcp++/profile-z-missing"]
+        )
+        self.assertEqual(
+            verdict.suggested_alternatives, sorted([compatible_earlier, compatible_later])
+        )
         self.assertNotIn(incompatible, verdict.suggested_alternatives)
 
     def test_registry_compatibility_returns_not_found_for_unknown_interface(self) -> None:
@@ -272,7 +362,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="version-tolerant",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "x", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "x",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-a-idl"],
             )
         )
@@ -287,7 +383,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 name="normalized-token",
                 namespace="test.ns",
                 version="1.0.0",
-                methods=[{"name": "x", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "x",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["mcp++/profile-a-idl"],
             )
         )
@@ -305,7 +407,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         cid = registry.register_descriptor(
             self._canonical_descriptor(
                 name="variant-normalization",
-                methods=[{"name": "x", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                methods=[
+                    {
+                        "name": "x",
+                        "input_schema": {"type": "object"},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
                 requires=["  MCP++/PROFILE-A-IDL  ", "mcp++/profile-e-mcp-p2p"],
             )
         )
@@ -334,7 +442,9 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         descriptor["requires"].append("mcp++/profile-e-mcp-p2p")
 
         stored = registry.get_descriptor(cid) or {}
-        method = ((stored.get("methods") or [{}])[0]) if isinstance(stored.get("methods"), list) else {}
+        method = (
+            ((stored.get("methods") or [{}])[0]) if isinstance(stored.get("methods"), list) else {}
+        )
         input_schema = method.get("input_schema") or {}
         properties = input_schema.get("properties") or {}
         self.assertEqual(((properties.get("v") or {}).get("type")), "string")
@@ -350,7 +460,10 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 methods=[
                     {
                         "name": "copy",
-                        "input_schema": {"type": "object", "properties": {"flag": {"type": "boolean"}}},
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {"flag": {"type": "boolean"}},
+                        },
                         "output_schema": {"type": "object"},
                     }
                 ],
@@ -364,7 +477,9 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         first["requires"].append("mcp++/profile-e-mcp-p2p")
 
         second = registry.get_descriptor(cid) or {}
-        second_method = ((second.get("methods") or [{}])[0]) if isinstance(second.get("methods"), list) else {}
+        second_method = (
+            ((second.get("methods") or [{}])[0]) if isinstance(second.get("methods"), list) else {}
+        )
         second_input_schema = second_method.get("input_schema") or {}
         second_properties = second_input_schema.get("properties") or {}
 
@@ -386,13 +501,19 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             self.assertGreaterEqual(listed.get("count", 0), 1)
 
             interface_cid = listed["interface_cids"][0]
-            descriptor_payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+            descriptor_payload = await manager.dispatch(
+                "idl", "interfaces_get", {"interface_cid": interface_cid}
+            )
             self.assertTrue(descriptor_payload.get("found"))
 
-            verdict = await manager.dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+            verdict = await manager.dispatch(
+                "idl", "interfaces_compat", {"interface_cid": interface_cid}
+            )
             self.assertTrue(verdict.get("compatible"))
 
-            selected = await manager.dispatch("idl", "interfaces_select", {"task_hint_cid": "", "budget": 1})
+            selected = await manager.dispatch(
+                "idl", "interfaces_select", {"task_hint_cid": "", "budget": 1}
+            )
             self.assertEqual(selected.get("count"), 1)
             self.assertEqual(len(selected.get("selected_interface_cids", [])), 1)
 
@@ -431,13 +552,23 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
 
             found_ipfs_descriptor = False
             for interface_cid in listed.get("interface_cids", []):
-                payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = await manager.dispatch(
+                    "idl", "interfaces_get", {"interface_cid": interface_cid}
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 if descriptor.get("name") == "ipfs_tools":
                     found_ipfs_descriptor = True
                     methods = descriptor.get("methods", [])
-                    self.assertTrue(any(m.get("name") == "ipfs/ipfs_echo" for m in methods if isinstance(m, dict)))
-                    verdict = await manager.dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                    self.assertTrue(
+                        any(
+                            m.get("name") == "ipfs/ipfs_echo"
+                            for m in methods
+                            if isinstance(m, dict)
+                        )
+                    )
+                    verdict = await manager.dispatch(
+                        "idl", "interfaces_compat", {"interface_cid": interface_cid}
+                    )
                     self.assertTrue(verdict.get("compatible"))
                     break
 
@@ -492,7 +623,9 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             found = {"workflow_tools": False, "p2p_tools": False}
 
             for interface_cid in listed.get("interface_cids", []):
-                payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = await manager.dispatch(
+                    "idl", "interfaces_get", {"interface_cid": interface_cid}
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 name = descriptor.get("name")
                 if name not in found:
@@ -572,7 +705,16 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 ),
             ]
 
-            for category, name, func, properties, required, _requires, _method_name, _descriptor_name in registrations:
+            for (
+                category,
+                name,
+                func,
+                properties,
+                required,
+                _requires,
+                _method_name,
+                _descriptor_name,
+            ) in registrations:
                 manager.register_tool(
                     category=category,
                     name=name,
@@ -599,13 +741,24 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
 
             descriptors_by_name = {}
             for interface_cid in listed.get("interface_cids", []):
-                payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = await manager.dispatch(
+                    "idl", "interfaces_get", {"interface_cid": interface_cid}
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 if descriptor.get("name"):
                     descriptors_by_name[descriptor["name"]] = descriptor
 
             self.assertIn("interfaces", descriptors_by_name)
-            for _category, _name, _func, _properties, _required, expected_requires, expected_method_name, descriptor_name in registrations:
+            for (
+                _category,
+                _name,
+                _func,
+                _properties,
+                _required,
+                expected_requires,
+                expected_method_name,
+                descriptor_name,
+            ) in registrations:
                 descriptor = descriptors_by_name.get(descriptor_name) or {}
                 self.assertTrue(descriptor, msg=f"missing descriptor for {descriptor_name}")
                 methods = [m for m in descriptor.get("methods", []) if isinstance(m, dict)]
@@ -613,8 +766,13 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                 self.assertEqual(method_names, {expected_method_name})
                 self.assertEqual(set(descriptor.get("requires", [])), expected_requires)
 
-                verdict = await manager.dispatch("idl", "interfaces_compat", {"interface_cid": descriptor.get("interface_cid")})
-                self.assertTrue(verdict.get("compatible"), msg=f"unexpected incompatibility for {descriptor_name}: {verdict}")
+                verdict = await manager.dispatch(
+                    "idl", "interfaces_compat", {"interface_cid": descriptor.get("interface_cid")}
+                )
+                self.assertTrue(
+                    verdict.get("compatible"),
+                    msg=f"unexpected incompatibility for {descriptor_name}: {verdict}",
+                )
 
         anyio.run(_run)
 

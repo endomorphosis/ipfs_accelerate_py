@@ -62,7 +62,9 @@ def _load_monitoring_api() -> Dict[str, Any]:
             "manage_alerts": _manage_alerts,
         }
     except Exception:
-        logger.warning("Source monitoring_tools import unavailable, using fallback monitoring functions")
+        logger.warning(
+            "Source monitoring_tools import unavailable, using fallback monitoring functions"
+        )
 
         async def _health_fallback(
             check_type: str = "basic",
@@ -243,7 +245,9 @@ async def health_check(
         }
 
     if components is not None:
-        if not isinstance(components, list) or not all(isinstance(item, str) for item in components):
+        if not isinstance(components, list) or not all(
+            isinstance(item, str) for item in components
+        ):
             return {
                 "status": "error",
                 "message": "components must be an array of strings when provided",
@@ -294,15 +298,15 @@ async def get_performance_metrics(
     if normalized_time_range not in _VALID_TIME_RANGES:
         return {
             "status": "error",
-            "error": (
-                "time_range must be one of: " + ", ".join(sorted(_VALID_TIME_RANGES))
-            ),
+            "error": ("time_range must be one of: " + ", ".join(sorted(_VALID_TIME_RANGES))),
             "time_range": normalized_time_range,
             "metrics": {},
         }
 
     if metric_types is not None:
-        if not isinstance(metric_types, list) or not all(isinstance(item, str) for item in metric_types):
+        if not isinstance(metric_types, list) or not all(
+            isinstance(item, str) for item in metric_types
+        ):
             return {
                 "status": "error",
                 "error": "metric_types must be an array of strings when provided",
@@ -536,7 +540,10 @@ async def collect_metrics(
             "message": "aggregation must be one of: average, min, max, sum",
             "aggregation": aggregation,
         }
-    for name, value in {"include_trends": include_trends, "include_anomalies": include_anomalies}.items():
+    for name, value in {
+        "include_trends": include_trends,
+        "include_anomalies": include_anomalies,
+    }.items():
         if not isinstance(value, bool):
             return {"status": "error", "message": f"{name} must be a boolean", name: value}
     normalized_export = str(export_format or "json").strip().lower()
@@ -684,7 +691,9 @@ async def manage_alerts(
         payload.setdefault("alert_id", normalized_alert_id)
         payload.setdefault("success", True)
         payload.setdefault("timestamp", datetime.now().isoformat())
-        payload.setdefault("message", f"Alert {normalized_alert_id} {normalized_action}d successfully")
+        payload.setdefault(
+            "message", f"Alert {normalized_alert_id} {normalized_action}d successfully"
+        )
     elif normalized_action == "configure_thresholds":
         payload.setdefault("updated_thresholds", threshold_config or {})
         payload.setdefault("current_thresholds", threshold_config or {})
@@ -725,7 +734,11 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "time_range": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "1h"},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "1h",
+                },
                 "metric_types": {"type": ["array", "null"], "items": {"type": "string"}},
                 "include_history": {"type": "boolean", "default": True},
             },
@@ -743,7 +756,11 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["status", "start", "stop", "restart"], "default": "status"},
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "start", "stop", "restart"],
+                    "default": "status",
+                },
                 "services": {"type": ["array", "null"], "items": {"type": "string"}},
                 "check_interval": {"type": "integer", "minimum": 1, "default": 30},
             },
@@ -793,7 +810,10 @@ def register_native_monitoring_tools(manager: Any) -> None:
                     "enum": ["basic", "standard", "comprehensive"],
                     "default": "standard",
                 },
-                "services": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "services": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "include_recommendations": {"type": "boolean", "default": True},
             },
             "required": [],
@@ -810,12 +830,24 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "time_window": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "1h"},
+                "time_window": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "1h",
+                },
                 "metrics": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
-                "aggregation": {"type": "string", "enum": ["average", "min", "max", "sum"], "default": "average"},
+                "aggregation": {
+                    "type": "string",
+                    "enum": ["average", "min", "max", "sum"],
+                    "default": "average",
+                },
                 "include_trends": {"type": "boolean", "default": True},
                 "include_anomalies": {"type": "boolean", "default": False},
-                "export_format": {"type": "string", "enum": ["json", "csv", "parquet"], "default": "json"},
+                "export_format": {
+                    "type": "string",
+                    "enum": ["json", "csv", "parquet"],
+                    "default": "json",
+                },
             },
             "required": [],
         },
@@ -831,10 +863,20 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["list", "acknowledge", "resolve", "configure_thresholds"]},
-                "severity_filter": {"type": ["string", "null"], "enum": ["info", "warning", "critical", None]},
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "acknowledge", "resolve", "configure_thresholds"],
+                },
+                "severity_filter": {
+                    "type": ["string", "null"],
+                    "enum": ["info", "warning", "critical", None],
+                },
                 "resolved_filter": {"type": ["boolean", "null"]},
-                "time_range": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "24h"},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "24h",
+                },
                 "include_metrics": {"type": "boolean", "default": True},
                 "alert_id": {"type": ["string", "null"]},
                 "threshold_config": {"type": ["object", "null"]},

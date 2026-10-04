@@ -89,11 +89,11 @@ Advanced 2-bit, 3-bit, and 4-bit quantization provides unprecedented memory effi
 ```python
 # Configure precision settings
 precision_config = {
-    "embedding": 8,      # 8-bit for embeddings
-    "attention.query": 3, # 3-bit for queries
-    "attention.key": 3,   # 3-bit for keys
-    "feed_forward": 2,   # 2-bit for feed forward
-    "lm_head": 4         # 4-bit for output
+    "embedding": 8,  # 8-bit for embeddings
+    "attention.query": 3,  # 3-bit for queries
+    "attention.key": 3,  # 3-bit for keys
+    "feed_forward": 2,  # 2-bit for feed forward
+    "lm_head": 4,  # 4-bit for output
 }
 
 # Apply mixed precision quantization
@@ -102,23 +102,23 @@ model = quantize_model_mixed_precision(model, precision_config)
 # Platform-specific quantization configuration
 platform_config = {
     "webgpu": {
-        "default_precision": 4,        # 4-bit default for WebGPU
-        "specialized_kernels": True,   # Use specialized compute shaders for 4-bit
-        "group_size": 128,             # Group size for quantization
-        "scheme": "symmetric",         # Symmetric quantization
-        "mixed_precision": True,       # Enable mixed precision for critical layers
+        "default_precision": 4,  # 4-bit default for WebGPU
+        "specialized_kernels": True,  # Use specialized compute shaders for 4-bit
+        "group_size": 128,  # Group size for quantization
+        "scheme": "symmetric",  # Symmetric quantization
+        "mixed_precision": True,  # Enable mixed precision for critical layers
         "browser_optimizations": {
             "chrome": {"workgroup_size": 128},
             "firefox": {"workgroup_size": 256, "audio_optimizations": True},
-            "safari": {"conservative_mode": True}
-        }
+            "safari": {"conservative_mode": True},
+        },
     },
     "webnn": {
-        "default_precision": 8,        # 8-bit only for WebNN
-        "preferred_backend": "gpu",    # Prefer GPU backend when available
-        "fallback_to_cpu": True,       # Fallback to CPU when GPU unavailable
-        "operator_fusion": True        # Enable operator fusion for better performance
-    }
+        "default_precision": 8,  # 8-bit only for WebNN
+        "preferred_backend": "gpu",  # Prefer GPU backend when available
+        "fallback_to_cpu": True,  # Fallback to CPU when GPU unavailable
+        "operator_fusion": True,  # Enable operator fusion for better performance
+    },
 }
 
 # Create WebGPU quantized model (75% memory reduction)
@@ -168,16 +168,13 @@ Seamless fallback for browsers without WebGPU support:
 
 ```python
 # Create WebAssembly fallback with SIMD optimization
-fallback = WebAssemblyFallback(
-    enable_simd=True,
-    use_shared_memory=True
-)
+fallback = WebAssemblyFallback(enable_simd=True, use_shared_memory=True)
 
 # Dispatch operation with optimal backend selection
 result = dispatch_operation(
     operation="matmul",
     inputs={"a": input_tensor, "b": weight_tensor},
-    webgpu_available=detector.get_feature_support("webgpu")
+    webgpu_available=detector.get_feature_support("webgpu"),
 )
 ```
 
@@ -188,10 +185,10 @@ Component-based loading with memory management:
 ```python
 # Create loader with memory optimization
 loader = ProgressiveModelLoader(
-    model_name="llama-7b", 
+    model_name="llama-7b",
     platform="webgpu",
     memory_optimization_level="aggressive",
-    prioritize_components=["embeddings", "lm_head", "first_layer"]
+    prioritize_components=["embeddings", "lm_head", "first_layer"],
 )
 
 # Load model with progress reporting
@@ -416,7 +413,7 @@ The Unified Web Framework provides a comprehensive integration of all web platfo
 from fixed_web_platform.unified_web_framework import (
     WebPlatformAccelerator,
     create_web_endpoint,
-    get_optimal_config
+    get_optimal_config,
 )
 
 # Get optimal configuration for a model
@@ -424,10 +421,7 @@ config = get_optimal_config("bert-base-uncased", "text")
 
 # Create accelerator with auto-detection
 accelerator = WebPlatformAccelerator(
-    model_path="bert-base-uncased", 
-    model_type="text",
-    config=config,
-    auto_detect=True
+    model_path="bert-base-uncased", model_type="text", config=config, auto_detect=True
 )
 
 # Create inference endpoint
@@ -493,7 +487,7 @@ from fixed_web_platform.webnn_inference import (
     WebNNInference,
     get_webnn_capabilities,
     is_webnn_supported,
-    check_webnn_operator_support
+    check_webnn_operator_support,
 )
 
 # Check if WebNN is supported in the current browser
@@ -503,24 +497,22 @@ if is_webnn_supported():
     print(f"WebNN supported with {len(capabilities['operators'])} operators")
     print(f"CPU backend: {capabilities['cpu_backend']}")
     print(f"GPU backend: {capabilities['gpu_backend']}")
-    
+
     # Check specific operator support
-    operator_support = check_webnn_operator_support([
-        "matmul", "conv2d", "relu", "gelu", "softmax", "add"
-    ])
-    
+    operator_support = check_webnn_operator_support(
+        ["matmul", "conv2d", "relu", "gelu", "softmax", "add"]
+    )
+
     # Create WebNN inference handler
     inference = WebNNInference(
         model_path="models/bert-base",
         model_type="text",
-        config={
-            "preferred_backend": capabilities.get("preferred_backend", "gpu")
-        }
+        config={"preferred_backend": capabilities.get("preferred_backend", "gpu")},
     )
-    
+
     # Run inference
     result = inference.run("Example input text")
-    
+
     # Get performance metrics
     metrics = inference.get_performance_metrics()
     print(f"Inference time: {metrics['average_inference_time_ms']:.2f}ms")
@@ -535,21 +527,17 @@ The WebNN implementation is fully integrated with the Unified Web Framework, pro
 ```python
 from fixed_web_platform.webgpu_streaming_inference import (
     WebGPUStreamingInference,
-    optimize_for_streaming
+    optimize_for_streaming,
 )
 
 # Optimize configuration for streaming
-config = optimize_for_streaming({
-    "quantization": "int4",
-    "latency_optimized": True,
-    "adaptive_batch_size": True
-})
+config = optimize_for_streaming(
+    {"quantization": "int4", "latency_optimized": True, "adaptive_batch_size": True}
+)
 
 # Create streaming handler
-streaming_handler = WebGPUStreamingInference(
-    model_path="llama-7b",
-    config=config
-)
+streaming_handler = WebGPUStreamingInference(model_path="llama-7b", config=config)
+
 
 # Option 1: Generate with callback
 def token_callback(token, is_last=False):
@@ -557,29 +545,32 @@ def token_callback(token, is_last=False):
     if is_last:
         print("\nGeneration complete!")
 
+
 result = streaming_handler.generate(
     "Explain the concept of streaming inference",
     max_tokens=100,
     temperature=0.7,
-    callback=token_callback
+    callback=token_callback,
 )
 
 # Option 2: Generate asynchronously
 import anyio
 
+
 async def generate_async():
     result = await streaming_handler.generate_async(
-        "Explain the concept of streaming inference",
-        max_tokens=100,
-        temperature=0.7
+        "Explain the concept of streaming inference", max_tokens=100, temperature=0.7
     )
     return result
+
 
 result = anyio.run(generate_async)
 
 # Get performance statistics
 stats = streaming_handler.get_performance_stats()
-print(f"Generated {stats['tokens_generated']} tokens at {stats['tokens_per_second']:.2f} tokens/sec")
+print(
+    f"Generated {stats['tokens_generated']} tokens at {stats['tokens_per_second']:.2f} tokens/sec"
+)
 print(f"Batch size adaptation: {stats['batch_size_history']}")
 ```
 
@@ -591,10 +582,10 @@ import anyio
 
 # Start WebSocket server
 anyio.run(
-  start_websocket_server,
-  model_path="llama-7b",
-  host="localhost",
-  port=8765,
+    start_websocket_server,
+    model_path="llama-7b",
+    host="localhost",
+    port=8765,
 )
 ```
 
@@ -1436,6 +1427,7 @@ console.log(compatibility);
 1. Enable verbose logging to identify problematic components:
    ```python
    import logging
+
    logging.basicConfig(level=logging.DEBUG)
    ```
 
@@ -1445,23 +1437,24 @@ console.log(compatibility);
    from fixed_web_platform.browser_capability_detector import BrowserCapabilityDetector
    from fixed_web_platform.webgpu_wasm_fallback import setup_wasm_fallback
    from fixed_web_platform.webnn_inference import WebNNInference
-   
+
    # Use components directly
    detector = BrowserCapabilityDetector()
-   
+
    # Try WebNN first
    if is_webnn_supported():
-      inference = WebNNInference(model_path, model_type)
-      result = inference.run(input_data)
+       inference = WebNNInference(model_path, model_type)
+       result = inference.run(input_data)
    else:
-      # Fall back to WebAssembly
-      fallback = setup_wasm_fallback(model_path, model_type)
-      result = fallback(input_data)
+       # Fall back to WebAssembly
+       fallback = setup_wasm_fallback(model_path, model_type)
+       result = fallback(input_data)
    ```
 
 3. Use environment variables to disable problematic features:
    ```python
    import os
+
    # Disable specific features
    os.environ["WEBGPU_SHADER_PRECOMPILE"] = "0"
    os.environ["WEBGPU_COMPUTE_SHADERS"] = "0"
@@ -1490,12 +1483,12 @@ console.log(compatibility);
 2. Check specific operator support:
    ```python
    from fixed_web_platform.webnn_inference import check_webnn_operator_support
-   
+
    # Check which operators are supported
-   operator_status = check_webnn_operator_support([
-       "matmul", "conv2d", "relu", "gelu", "softmax", "add"
-   ])
-   
+   operator_status = check_webnn_operator_support(
+       ["matmul", "conv2d", "relu", "gelu", "softmax", "add"]
+   )
+
    # Use only supported operators
    for op, supported in operator_status.items():
        if not supported:
@@ -1505,10 +1498,10 @@ console.log(compatibility);
 3. Force WebGPU instead of WebNN when needed:
    ```python
    import os
-   
+
    # For browsers like Firefox where WebGPU is better for audio models
    os.environ["WEBNN_AVAILABLE"] = "0"  # Disable WebNN
-   os.environ["FORCE_WEBGPU"] = "1"     # Force WebGPU
+   os.environ["FORCE_WEBGPU"] = "1"  # Force WebGPU
    ```
 
 #### Streaming Inference Issues
@@ -1518,18 +1511,12 @@ console.log(compatibility);
 **Solutions:**
 1. Reduce batch size and disable adaptive batching:
    ```python
-   config = optimize_for_streaming({
-       "adaptive_batch_size": False,
-       "max_batch_size": 2 
-   })
+   config = optimize_for_streaming({"adaptive_batch_size": False, "max_batch_size": 2})
    ```
 
 2. Enable ultra-low latency mode for interactive applications:
    ```python
-   config = optimize_for_streaming({
-       "ultra_low_latency": True,
-       "stream_buffer_size": 1
-   })
+   config = optimize_for_streaming({"ultra_low_latency": True, "stream_buffer_size": 1})
    ```
 
 3. For WebSocket connection issues:
@@ -1537,7 +1524,8 @@ console.log(compatibility);
    # Use direct callback instead of WebSocket
    def token_callback(token, is_last=False):
        print(token, end="", flush=True)
-   
+
+
    result = streaming_handler.generate(prompt, callback=token_callback)
    ```
 

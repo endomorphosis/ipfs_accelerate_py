@@ -16,7 +16,17 @@ from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..event_log import unique_backup_path
 from ..wrapper_utils import with_exclusive_flag_default
-from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
+from .core import (
+    now_iso,
+    parse_timestamp,
+    pid_alive,
+    process_args,
+    read_json,
+    read_pid_file,
+    remove_runtime_marker,
+    terminate_pid_tree,
+    write_json,
+)
 
 
 @dataclass(frozen=True)
@@ -183,8 +193,9 @@ def launch_process_child(
 class SupervisorRuntimeEnsureCallback(Protocol):
     """Callable signature for launching a project-bound supervisor wrapper."""
 
-    def __call__(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
-        ...
+    def __call__(
+        self, argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -344,7 +355,9 @@ def supervisor_is_running(
             pid = int(candidate or 0)
         except (TypeError, ValueError):
             continue
-        if supervisor_pid_matches(pid, process_match_any=process_match_any, process_predicate=process_predicate):
+        if supervisor_pid_matches(
+            pid, process_match_any=process_match_any, process_predicate=process_predicate
+        ):
             return True
     return False
 
@@ -519,7 +532,9 @@ def build_supervisor_runtime_operations(
             implementation_lock_name=implementation_lock_name,
         )
 
-    def ensure_running(argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+    def ensure_running(
+        argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]:
         return ensure_supervisor_running(
             argv,
             state_dir=state_dir,
@@ -633,9 +648,7 @@ def supervised_child_succeeded(
     runner_terminated_child_ids: Sequence[str] = (),
     stop_requested: bool = False,
     allow_runner_terminated: bool = False,
-    runner_terminated_success_codes: frozenset[int] = frozenset(
-        {-signal.SIGTERM, -signal.SIGKILL}
-    ),
+    runner_terminated_success_codes: frozenset[int] = frozenset({-signal.SIGTERM, -signal.SIGKILL}),
 ) -> bool:
     """Return whether one supervised child should count as successful."""
 
@@ -644,10 +657,7 @@ def supervised_child_succeeded(
         return allow_runner_terminated or str(child_id) not in terminated_ids
     if not allow_runner_terminated or stop_requested:
         return False
-    return bool(
-        str(child_id) in terminated_ids
-        and exit_code in runner_terminated_success_codes
-    )
+    return bool(str(child_id) in terminated_ids and exit_code in runner_terminated_success_codes)
 
 
 def supervised_child_group_succeeded(
@@ -687,7 +697,7 @@ def child_summary_age_seconds(
         "started_at",
     ),
     now: Optional[float] = None,
-    ) -> Optional[float]:
+) -> Optional[float]:
     """Return the age of a child summary from known timestamps or mtime."""
 
     now_epoch = time.time() if now is None else float(now)
@@ -760,9 +770,7 @@ def summarize_child_summary_files(
         active_phase = str(data.get(spec.active_phase_field) or "")
         active_ids = data.get(spec.active_ids_field) or []
         has_active_work = bool(
-            active_phase in spec.active_phases
-            and isinstance(active_ids, list)
-            and active_ids
+            active_phase in spec.active_phases and isinstance(active_ids, list) and active_ids
         )
         if has_active_work:
             active_count += 1
@@ -867,17 +875,13 @@ def run_process_group_capture(
         if process is not None:
             terminate_process_group(process, signal.SIGTERM)
             try:
-                stdout, stderr = process.communicate(
-                    timeout=max(0.0, float(kill_wait_seconds))
-                )
+                stdout, stderr = process.communicate(timeout=max(0.0, float(kill_wait_seconds)))
             except subprocess.TimeoutExpired as term_exc:
                 stdout = term_exc.stdout if term_exc.stdout is not None else stdout
                 stderr = term_exc.stderr if term_exc.stderr is not None else stderr
                 terminate_process_group(process, signal.SIGKILL)
                 try:
-                    stdout, stderr = process.communicate(
-                        timeout=max(0.0, float(kill_wait_seconds))
-                    )
+                    stdout, stderr = process.communicate(timeout=max(0.0, float(kill_wait_seconds)))
                 except subprocess.TimeoutExpired as kill_exc:
                     stdout = kill_exc.stdout if kill_exc.stdout is not None else stdout
                     stderr = kill_exc.stderr if kill_exc.stderr is not None else stderr
@@ -973,9 +977,7 @@ def terminate_processes_with_grace(
             pass
         final_exit_code = process.poll()
         if final_exit_code is None:
-            kill_candidates.append(
-                (child_key, process, initial_exit_code, terminate_sent)
-            )
+            kill_candidates.append((child_key, process, initial_exit_code, terminate_sent))
             continue
         results[child_key] = ProcessTerminationResult(
             pid=int(process.pid),
@@ -986,9 +988,7 @@ def terminate_processes_with_grace(
             timed_out=False,
         )
 
-    kill_results: list[
-        tuple[str, subprocess.Popen[Any], Optional[int], bool, bool]
-    ] = []
+    kill_results: list[tuple[str, subprocess.Popen[Any], Optional[int], bool, bool]] = []
     for child_key, process, initial_exit_code, terminate_sent in kill_candidates:
         kill_results.append(
             (
@@ -1037,7 +1037,9 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
 
     log_path = spec.resolve(spec.log_path)
     child_pid_path = spec.resolve(spec.child_pid_path)
-    latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    latest_log_path = (
+        spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
     _prepare_marker_path(log_path, remove_existing_file=False)
@@ -1094,7 +1096,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     if not supervised_child_command_matches(command_line, spec.command):
         return None
     log_path = spec.resolve(spec.log_path)
-    latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    latest_log_path = (
+        spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     return SupervisedChild(
         pid=int(pid),
@@ -1106,7 +1110,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     )
 
 
-def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: Optional[int] = None) -> bool:
+def clear_child_pid_file(
+    child: SupervisedChild | SupervisedChildSpec, *, pid: Optional[int] = None
+) -> bool:
     """Remove a child pid file if it still refers to the expected child."""
 
     child_pid_path = child.child_pid_path

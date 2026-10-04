@@ -178,9 +178,7 @@ from template_utilities.template_database import get_template, store_template, l
 
 # Get a template from the database
 template, parent, modality = get_template(
-    db_path="./template_db.duckdb",
-    model_type="bert",
-    template_type="test"
+    db_path="./template_db.duckdb", model_type="bert", template_type="test"
 )
 
 # Store a template in the database
@@ -191,7 +189,7 @@ store_template(
     template_content=template_content,
     hardware_platform="cuda",  # Optional: for hardware-specific templates
     parent_template="default_text",  # Optional: explicitly set parent template
-    modality="text"  # Optional: explicitly set modality
+    modality="text",  # Optional: explicitly set modality
 )
 
 # List all templates in the database
@@ -224,7 +222,11 @@ except ValueError as e:
 ### Template Validation
 
 ```python
-from template_utilities.template_validation import validate_template_syntax, validate_hardware_support, validate_template
+from template_utilities.template_validation import (
+    validate_template_syntax,
+    validate_hardware_support,
+    validate_template,
+)
 
 # Validate template syntax
 success, errors = validate_template_syntax(template)
@@ -251,7 +253,10 @@ if not success:
 ### Template Inheritance
 
 ```python
-from template_utilities.template_inheritance import get_parent_for_model_type, get_inheritance_hierarchy
+from template_utilities.template_inheritance import (
+    get_parent_for_model_type,
+    get_inheritance_hierarchy,
+)
 
 # Get parent template for a model type
 parent, modality = get_parent_for_model_type("bert")
@@ -449,29 +454,26 @@ The template system includes these standard placeholders with smart defaults:
 To use the template utilities package with existing template generators:
 
 ```python
-from template_utilities import (
-    get_default_context, render_template, get_template
-)
+from template_utilities import get_default_context, render_template, get_template
+
 
 # In your generator script:
 def generate_test_for_model(model_name, model_type, output_path):
     # Get template from database
     template, parent, modality = get_template(
-        db_path="./template_db.duckdb",
-        model_type=model_type,
-        template_type="test"
+        db_path="./template_db.duckdb", model_type=model_type, template_type="test"
     )
-    
+
     # Generate context with hardware detection
     context = get_default_context(model_name)
-    
+
     # Render template
     rendered = render_template(template, context)
-    
+
     # Write to output file
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(rendered)
-    
+
     return output_path
 ```
 

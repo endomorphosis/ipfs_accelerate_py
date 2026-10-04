@@ -351,12 +351,28 @@ The `fixed_web_platform` module exposes these main functions:
 process_for_web(mode, input_data, web_batch_supported=False)
 
 # Initialize WebNN with various options
-init_webnn(self, model_name=None, model_path=None, model_type=None, 
-          device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs)
+init_webnn(
+    self,
+    model_name=None,
+    model_path=None,
+    model_type=None,
+    device="webnn",
+    web_api_mode="simulation",
+    tokenizer=None,
+    **kwargs,
+)
 
 # Initialize WebGPU with various options
-init_webgpu(self, model_name=None, model_path=None, model_type=None, 
-           device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs)
+init_webgpu(
+    self,
+    model_name=None,
+    model_path=None,
+    model_type=None,
+    device="webgpu",
+    web_api_mode="simulation",
+    tokenizer=None,
+    **kwargs,
+)
 
 # Create mock processors for different modalities
 create_mock_processors()
@@ -369,12 +385,14 @@ To use the web platform support in your own code:
 ```python
 from fixed_web_platform import process_for_web, init_webnn, init_webgpu
 
+
 # Initialize a model for WebNN
 class MyModel:
     def __init__(self):
         self.model_name = "my-model"
         self.mode = "text"  # or "vision", "audio", "multimodal"
-        
+
+
 # Initialize WebNN
 model = MyModel()
 webnn_config = init_webnn(model, model_name="my-model", model_type="text")
@@ -395,20 +413,22 @@ For transformer models, you can use the specialized compute shader optimizations
 from fixed_web_platform import init_webgpu
 from fixed_web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
 
+
 # Initialize a transformer model with compute shader optimizations
 class BertModel:
     def __init__(self):
         self.model_name = "bert-base-uncased"
         self.mode = "text"
 
+
 # Initialize WebGPU with transformer optimizations
 model = BertModel()
 webgpu_config = init_webgpu(
-    model, 
-    model_name="bert-base-uncased", 
+    model,
+    model_name="bert-base-uncased",
     model_type="bert",
     compute_shaders=True,
-    transformer_compute=True
+    transformer_compute=True,
 )
 
 # Alternatively, use the transformer compute shader module directly
@@ -416,11 +436,7 @@ compute_shaders = setup_transformer_compute_shaders(
     model_name="bert-base-uncased",
     model_type="bert",
     seq_length=512,
-    config={
-        "hidden_size": 768,
-        "num_heads": 12,
-        "attention_algorithm": "masked_self_attention"
-    }
+    config={"hidden_size": 768, "num_heads": 12, "attention_algorithm": "masked_self_attention"},
 )
 
 # Process a transformer layer with optimizations
@@ -438,20 +454,22 @@ For video models, you can use the specialized video compute shader optimizations
 from fixed_web_platform import init_webgpu
 from fixed_web_platform.webgpu_video_compute_shaders import setup_video_compute_shaders
 
+
 # Initialize a video model with compute shader optimizations
 class XCLIPModel:
     def __init__(self):
         self.model_name = "microsoft/xclip-base-patch32"
         self.mode = "multimodal"
 
+
 # Initialize WebGPU with video optimizations
 model = XCLIPModel()
 webgpu_config = init_webgpu(
-    model, 
-    model_name="microsoft/xclip-base-patch32", 
+    model,
+    model_name="microsoft/xclip-base-patch32",
     model_type="xclip",
     compute_shaders=True,
-    video_compute=True
+    video_compute=True,
 )
 
 # Alternatively, use the video compute shader module directly
@@ -459,7 +477,7 @@ video_compute = setup_video_compute_shaders(
     model_name="microsoft/xclip-base-patch32",
     model_type="xclip",
     frame_count=8,
-    config={"frame_dim": 224}
+    config={"frame_dim": 224},
 )
 
 # Process video with optimizations

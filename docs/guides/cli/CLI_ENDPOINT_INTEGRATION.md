@@ -24,14 +24,11 @@ pip install openai
 ```python
 from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
     ClaudeCodeAdapter,
-    register_cli_endpoint
+    register_cli_endpoint,
 )
 
 # Register Claude Code
-claude = ClaudeCodeAdapter(
-    endpoint_id="claude_primary",
-    config={"model": "claude-3-sonnet"}
-)
+claude = ClaudeCodeAdapter(endpoint_id="claude_primary", config={"model": "claude-3-sonnet"})
 register_cli_endpoint(claude)
 ```
 
@@ -43,10 +40,10 @@ from ipfs_accelerate_py.mcp.tools.enhanced_inference import multiplex_inference
 result = multiplex_inference(
     prompt="Your prompt here",
     model_preferences=[
-        "claude_cli/claude-3-sonnet",   # Try CLI first
-        "openai_cli/gpt-4",             # Fallback to OpenAI CLI
-        "openai/gpt-3.5-turbo"          # API fallback
-    ]
+        "claude_cli/claude-3-sonnet",  # Try CLI first
+        "openai_cli/gpt-4",  # Fallback to OpenAI CLI
+        "openai/gpt-3.5-turbo",  # API fallback
+    ],
 )
 ```
 
@@ -114,13 +111,12 @@ print(f"Registered: {len(endpoints)} endpoints")
 
 # 3. Run inference
 result = execute_cli_inference(
-    endpoint_id="claude1",
-    prompt="What is machine learning?",
-    task_type="text_generation"
+    endpoint_id="claude1", prompt="What is machine learning?", task_type="text_generation"
 )
 
 # 4. Monitor queue
 from ipfs_accelerate_py.mcp.tools.enhanced_inference import get_queue_status
+
 status = get_queue_status()
 print(f"CLI endpoints: {status['summary']['cli_endpoints']}")
 ```
