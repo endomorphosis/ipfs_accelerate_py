@@ -20,6 +20,10 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 
 SCHEMA = "terminal-symbolic-capabilities@1"
 MAX_REPORT_BYTES = 16384
+_GENERIC_WORKFLOWS = {
+    "closed-local-keyword-rename@1": "closed_local_keyword_rename",
+    "closed-imported-alias-call@1": "closed_imported_alias_call",
+}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _REASONS = frozenset({
     "unsupported_or_incomplete_source_inventory", "unsupported_output_effect_or_language",
@@ -30,6 +34,7 @@ _REASONS = frozenset({
     "native_doctor_transaction_not_admitted", "native_doctor_transaction_rejected",
     "ambiguous_header_candidates", "no_supported_header_candidate",
     "local_operator_does_not_cover_declared_outputs",
+    "operator_proof_bounds_exceeded",
 })
 _SUPPORT = {
     ".supervisor-instruction.md": "instruction",
@@ -205,6 +210,10 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
     _require(type(prover_paths) is dict and set(prover_paths) == {"lean", "z3"})
     provers = {key: _prover(prover_paths[key]) for key in sorted(prover_paths)}
     proof = _proof_observation(doctor_result, header=header)
+    operator = doctor_result.get("operator")
+    selected_workflow = ("reviewed_header_guard" if header else
+        "not_reported" if operator is None else
+        _GENERIC_WORKFLOWS.get(operator, "unrecognized") if type(operator) is str else "unrecognized")
     named_structural = all(type(row) is dict and row.get("validation_key") in {
         "public-structural-smoke", "public-smoke"} for row in validations)
     gaps = []
@@ -242,7 +251,8 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
             "validation_count": len(validations), "checks_executed_by_assessment": False,
             "task_behavior_contract": "reviewed_local_header_contract" if header
                 else "not_selected", "whole_task_behavior_verified": False},
-        "operators": {"selected_workflow": "reviewed_header_guard" if header else "closed_local_keyword_rename",
+        "operators": {"selected_workflow": selected_workflow,
+            "supported_generic_workflows": sorted(_GENERIC_WORKFLOWS.values()),
             "generic_operator_effects": ["modify"], "generic_operator_languages": ["python"],
             "declared_output_effect_counts": dict(sorted(effects.items())),
             "non_python_output_count": nonpython, "doctor_status": status,

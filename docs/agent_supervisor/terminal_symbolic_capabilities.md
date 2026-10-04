@@ -46,7 +46,9 @@ source. The harness always adds an instruction Markdown file and a JSON task
 profile, so even a supported Python repair fell into the unsupported-inventory
 route. `runtime/doctor_source_partition.py` now independently replays the signed
 admission and exact canonical profile, instruction binding, task specification,
-and generated smoke. Only those three generated files receive support roles.
+and generated smoke. The shared `runtime/terminal_source_partition.py` checker
+recomputes the selected planning evidence used by the real preparation entrypoint,
+including its acceptance-evidence CID. Only those three generated files receive support roles.
 Every actual input remains in the program population, including JSON, Markdown,
 and other unsupported inputs; their unresolved coverage still blocks mutation.
 All signed file hashes remain in the transaction ledger. Replays before proof
@@ -60,14 +62,25 @@ standard-library imports. Re-prepare trials after this change: old signed task
 specifications with the former argv are not silently rewritten or grandfathered
 into the support partition. Generated smoke is read with an exact producer-derived
 byte bound, including profiles whose escaped paths expand in its Python literal.
-Recognizing support does not relax native admission limits: large declarations
-can still exceed the pending-receipt summary bound, and native manifests permit
-at most 32 created outputs. The profile producer's broader output limit is not
-a promise that every declaration can be materialized.
+The profile producer now checks native cardinality limits before preparation
+mutates the workspace: at most 32 created outputs, at most 256 sources after
+creation (including the three support files), and the existing 128-source limit
+for modify-only tasks. Up to 64 total outputs remain allowed within those limits.
+Large declarations can still exceed the separate pending-receipt summary bound;
+an exact early sizing check remains outstanding.
 
-This enables the existing closed keyword-rename proof and candidate transaction
-on eligible public profiles. It does not add a general repair operator. The
-Lean/Z3 theorem remains about the reviewed local transformation; AST placement,
+Two generic closed operators are available on eligible profiles: a local Python
+keyword rename and an imported alias call repair. For example, an existing
+`from helpers import transform as normalize` can justify changing the unresolved
+`transform(value)` call to `normalize(value)`. The latter route requires a signed,
+flat local donor, an unambiguous alias, inert function bodies and arguments,
+compatible signatures, no shadowing, no unresolved calls or call cycles, and no
+import-time effects. It does not insert dependencies or guess missing imports.
+The source-derived finite binding map is projected to real Lean/Z3 checks for
+alias resolution, the original name's absence, and argument preservation. Local
+module resolution is an explicit assumption, not a theorem about Python's loader.
+The report identifies the actually selected operator using a closed map.
+The theorem remains about the reviewed local transformation; AST placement,
 signature binding, source hashes, dependency impact and transaction validation
 are separate gates. Autoencoder formulas and index results remain nominations,
 not independent behavioral specifications or proofs of the whole task.
@@ -95,7 +108,7 @@ task complete.
 
 ## Prioritized gaps and reusable owners
 
-Local qualification on 2026-10-04 records **316 distinct tests passing in their
+The earlier local qualification on 2026-10-04 records **316 distinct tests passing in their
 latest focused runs**, with no remaining failures or skips in that selection.
 The [qualification evidence](evidence/terminal-symbolic-harness-20261004/qualification.json)
 retains source hashes, exact commands, per-run counts and log/XML digests,
@@ -108,7 +121,7 @@ live supervisor execution.
 
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
-| P0 | Broad operator dispatch beyond one inert Python keyword mismatch | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
+| P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
 | P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
 | P1 | Honest empty-source and zero-symbol context | Existing manifest, corpus inventory and native empty-intent-world capture. Extend initial context, replay, audits and successor refresh together. Do not invent code symbols or remove a guard without a replacement schema. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
@@ -127,3 +140,19 @@ empty-source, and absent-output controls. A real prover run should reject
 unreviewed axioms and `sorry`; successful Lean elaboration or `lake build` still
 requires independent source-to-contract binding before supporting a software
 correctness claim. This helper emits no theorem template and executes no prover.
+
+## Source384 program scope
+
+The native scanner also captures the generated Python smoke check. Scoped
+Source384 inference now consumes only independently verified Python program
+inputs. The complete scanner inventory and all support hashes remain in its
+receipt. A retained signed `source-selection.json` binds the support roles;
+`source384-terminal-program-scope@1` binds that selection to the current source
+population. Neither grants proof, execution, formalization or completion authority.
+
+Replay rejects changed support, selection provenance, scope or source bytes.
+Successor inference reuses the immutable support declaration while binding the
+new program bytes; it does not pretend the original program hashes are still
+current. Newly created outputs remain outside that old scope pending independent
+successor admission. Empty or non-Python program populations explicitly abstain
+before checkpoint consumption. A general source-empty context remains unfinished.

@@ -244,7 +244,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
         del _
-        source384 = prepare_source384_context(repository=root,
+        source384 = prepare_source384_context(repository=root, manifest_envelope=prepared["manifest"],
             source_hashes={name: source["sha256"] for name, source in manifest["sources"].items()},
             output=state / "source384-context", config_path=source384_config,
             timeout_seconds=source384_timeout_seconds,

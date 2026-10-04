@@ -14,6 +14,7 @@ import time
 
 from .security_autoencoder_advisor import _read
 from .source384_config import load_source384_config
+from . import source384_program_scope as scope_owner
 
 SCHEMA = "terminal-source384-repository-context@1"
 HEADER_SCHEMA = "terminal-source384-repository-context@2"
@@ -31,7 +32,7 @@ SUCCESSOR_RECEIPT_FIELDS = frozenset({"schema", "output", "repository", "source_
 
 def _validate_successor_envelope(receipt):
     """Close the advisory envelope independently of any source-current replay."""
-    _require(type(receipt) is dict and set(receipt) == SUCCESSOR_RECEIPT_FIELDS
+    _require(type(receipt) is dict and set(receipt) == SUCCESSOR_RECEIPT_FIELDS | ({"program_scope"} if "program_scope" in receipt else set())
              and receipt["schema"] == SUCCESSOR_SCHEMA
              and receipt["requires_independent_manifest"] is True
              and receipt["planning_authority"] is False and receipt["dispatch_authority"] is False
@@ -85,7 +86,7 @@ def _remaining(deadline):
 
 
 def _pins():
-    from . import source384_config, security_autoencoder_advisor
+    from . import source384_config, security_autoencoder_advisor, terminal_source_partition, terminal_task_profile
     from ipfs_datasets_py.duckdb_control import codebase_catalog
     from ipfs_datasets_py.logic.software_contracts import (
         codebase_ir, duckdb_ast_store, duckdb_ingest, content, python_frontend,
@@ -96,7 +97,8 @@ def _pins():
             "byte_reader": _sha(Path(security_autoencoder_advisor.__file__).read_bytes()),
             "source_owners": {module.__name__: _sha(Path(module.__file__).read_bytes())
                 for module in (codebase_catalog, codebase_ir, duckdb_ast_store, duckdb_ingest,
-                               scanner, snapshot, python_analysis, content, python_frontend)}}
+                               scanner, snapshot, python_analysis, content, python_frontend,
+                               scope_owner, terminal_source_partition, terminal_task_profile)}}
 
 
 def _write(path, value, maximum):
@@ -178,7 +180,8 @@ def _inventory(index, head, source_hashes):
     return rows
 
 
-def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advisory_successor=False):
+def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advisory_successor=False,
+             program_scope=None):
     # The full native receipt is separately retained. Coverage is never inferred
     # from a truncated sample, nor interpreted as a checked property.
     report = inference["report"]
@@ -218,6 +221,12 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
         candidate_samples=candidates, omitted_candidates=total_candidates-len(candidates),
         training_steps=0, provider_calls=0, model_promotion_performed=False,
         nomination_only=True, **AUTHORITY)
+    if program_scope is not None:
+        result.update(program_scope_schema=program_scope["schema"],
+            program_scope_sha256=_sha(_raw(program_scope)),
+            program_source_files=len(program_scope["program_paths"]),
+            harness_support_files=len(program_scope["harness_support"]),
+            inference_python_files=len(report["preparation"]["paths"]))
     if advisory_successor:
         result.update(advice_only=True, requires_independent_manifest=True,
                       planning_authority=False, dispatch_authority=False)
@@ -225,20 +234,40 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
     return result
 
 
-def _validate_population(inference, inventory):
+def _validate_population(inference, inventory, program_scope=None):
     preparation = inference["report"]["preparation"]
-    paths = sorted(row["path"] for row in inventory if row["disposition"] == "captured"
-                   and row["path"].endswith(".py"))
+    paths = _program_python_paths(inventory, program_scope)
     _require(preparation["paths"] == paths and preparation["max_functions"] == 1024
              and preparation["max_selected_units"] == 128,
              "Source384 inference selection differs from the complete declared Python population")
 
 
+def _program_python_paths(inventory, program_scope=None):
+    program = None if program_scope is None else set(program_scope["program_paths"])
+    return sorted(row["path"] for row in inventory if row["disposition"] == "captured"
+                  and row["path"].endswith(".py") and (program is None or row["path"] in program))
+
+
+def _scope_selection(root, output, source_hashes, expected_scope):
+    scope_owner.require_selected_scope(source_hashes, expected_scope)
+    if expected_scope is None:
+        return None
+    raw = _read(output / scope_owner.ARTIFACT, scope_owner.MAX_BYTES)
+    _require(_sha(raw) == expected_scope["selection_sha256"], "Source384 selection manifest bytes changed")
+    envelope = json.loads(raw)
+    _require(raw == _raw(envelope), "canonical Source384 selection artifact required")
+    scope = scope_owner.program_scope(repository=root, source_hashes=source_hashes, envelope=envelope)
+    _require(scope == expected_scope, "Source384 program scope changed")
+    return envelope
+
+
 def prepare_source384_context(*, repository, source_hashes, output, config_path,
-                              timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None):
+                              timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None,
+                              manifest_envelope=None):
     return _prepare_source384_context(repository=repository, source_hashes=source_hashes,
         output=output, config_path=config_path, timeout_seconds=timeout_seconds,
-        scheduler=scheduler, parent_lease=parent_lease, intent_binding=intent_binding)
+        scheduler=scheduler, parent_lease=parent_lease, intent_binding=intent_binding,
+        manifest_envelope=manifest_envelope)
 
 
 def validate_historical_source384_selection(*, repository, expected_receipt):
@@ -263,6 +292,16 @@ def validate_historical_source384_selection(*, repository, expected_receipt):
              "historical Source384 inference bytes changed")
     _require(receipt["schema"] != HEADER_SCHEMA or receipt.get("header_consumer_sha256") == _header_pin(),
              "historical Source384 header producer changed")
+    if "program_scope" in receipt:
+        raw = _read(output / scope_owner.ARTIFACT, scope_owner.MAX_BYTES)
+        scope = receipt["program_scope"]
+        _require(_sha(raw) == scope["selection_sha256"], "historical Source384 selection bytes changed")
+        envelope = json.loads(raw)
+        scope_owner.verified_selection_manifest(envelope, repository=root)
+        _require(raw == _raw(envelope) and scope == scope_owner.recorded_scope(
+            source_hashes=receipt["source_hashes"], envelope=envelope),
+            "historical Source384 selection identity changed")
+    scope_owner.require_selected_scope(receipt["source_hashes"], receipt.get("program_scope"))
     return receipt
 
 
@@ -315,7 +354,7 @@ def prepare_source384_successor_context(*, repository, source_hashes, output, pr
 
 def _prepare_source384_context(*, repository, source_hashes, output, config_path,
                               timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None,
-                              predecessor=None, excluded_new_output_paths=()):
+                              predecessor=None, excluded_new_output_paths=(), manifest_envelope=None):
     started = time.monotonic()
     _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= 180,
              "bounded Source384 preparation deadline required")
@@ -332,8 +371,26 @@ def _prepare_source384_context(*, repository, source_hashes, output, config_path
     config_path = Path(config_path)
     source_hashes = _sources(root, source_hashes)
     producer = _pins()
+    program_scope = None
+    if predecessor is not None and "program_scope" in predecessor:
+        previous_output = _output(root, predecessor["output"])
+        # Original support stays immutable; current program hashes may differ.
+        manifest_envelope = json.loads(_read(previous_output / scope_owner.ARTIFACT, scope_owner.MAX_BYTES))
+        _require(_sha(_raw(manifest_envelope)) == predecessor["program_scope"]["selection_sha256"],
+                 "Source384 predecessor selection changed")
+        program_scope = scope_owner.program_scope(repository=root, source_hashes=source_hashes,
+            envelope=manifest_envelope)
+    elif manifest_envelope is not None and scope_owner.PROFILE in source_hashes:
+        program_scope = scope_owner.program_scope(repository=root, source_hashes=source_hashes,
+            envelope=manifest_envelope, current=True)
+    scope_owner.require_selected_scope(source_hashes, program_scope)
+    if program_scope is not None:
+        _require(any(name.endswith(".py") for name in program_scope["program_paths"]),
+                 "Source384 abstained: no declared Python program inputs; checkpoint not consumed")
     remaining()
     output.mkdir(mode=0o700)
+    if program_scope is not None:
+        _write(output / scope_owner.ARTIFACT, manifest_envelope, scope_owner.MAX_BYTES)
     # Bounds cover signed input only; the native scanner refuses larger trees.
     limits = CodebaseScanLimits(max_entries=len(source_hashes), max_file_bytes=1024 * 1024)
     repository_id = "terminal-source384:" + _sha(_raw(dict(repository=str(root), sources=source_hashes)))
@@ -356,15 +413,14 @@ def _prepare_source384_context(*, repository, source_hashes, output, config_path
             expected_head=None, limits=limits, exclusions=exclusions, parent_lease=lease,
             timeout_seconds=remaining(), memory_mb=4096).head
         inventory = _inventory(index, head, source_hashes)
-        paths = [row["path"] for row in inventory if row["disposition"] == "captured"
-                 and row["path"].endswith(".py")]
-        _require(bool(paths), "Source384 profile requires captured Python source")
+        paths = _program_python_paths(inventory, program_scope)
+        _require(bool(paths), "Source384 abstained: no captured Python program inputs; checkpoint not consumed")
         version = register_shared_parent(registry, checkpoint_path=config["checkpoint_path"],
                                         expected_sha256=config["checkpoint_sha256"])
         inference = infer_shared_parent_units(index, root, expected_head=head, registry=registry,
             version_id=version, paths=paths, embedding_snapshot=config["embedding_snapshot"],
             parent_lease=lease, timeout_seconds=remaining(), memory_mb=4096)
-        _validate_population(inference, inventory)
+        _validate_population(inference, inventory, program_scope)
         nomination = None
         if header_mode:
             from .header_intent_applicability import prepare_runtime_nomination
@@ -385,11 +441,14 @@ def _prepare_source384_context(*, repository, source_hashes, output, config_path
             inference_sha256=inference_sha256, producer=producer,
             summary=_summary(inference, inventory=inventory,
                 checkpoint_sha256=config["checkpoint_sha256"], inference_sha256=inference_sha256,
-                advisory_successor=successor),
+                advisory_successor=successor, program_scope=program_scope),
             seconds=time.monotonic() - started, training_steps=0, neural_inference_replayed=False,
             resource_profile=dict(parent_memory_mb=6144, parent_cpu_slots=3,
                 numerical_worker_memory_mb=4096, memory_enforcement="sampled_process_tree_RSS_may_overshoot"),
             **AUTHORITY)
+        if program_scope is not None:
+            receipt["program_scope"] = program_scope
+            _scope_selection(root, output, source_hashes, program_scope)
         if successor:
             _require(all(receipt[key] == predecessor[key] for key in
                 ("producer", "config_path", "config_sha256", "checkpoint_sha256", "version_id")),
@@ -443,6 +502,8 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
              and all(receipt.get(key) is False for key in AUTHORITY),
              "Source384 receipt, producer or authority changed")
     source_hashes = _sources(root, receipt["source_hashes"])
+    program_scope = receipt.get("program_scope")
+    _scope_selection(root, output, source_hashes, program_scope)
     config_path = Path(receipt["config_path"])
     config = load_source384_config(config_path)
     header_mode = receipt["schema"] == HEADER_SCHEMA
@@ -491,7 +552,7 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
         head = CodebaseHead.from_dict(receipt["source_head"])
         inventory = _inventory(index, head, source_hashes)
         _require(inventory == receipt["source_inventory"], "Source384 inventory differs")
-        _validate_population(inference, inventory)
+        _validate_population(inference, inventory, program_scope)
         validate_shared_parent_units(index, root, inference, registry=registry,
             embedding_snapshot=config["embedding_snapshot"],
             parent_lease=parent_lease, timeout_seconds=_remaining(deadline), memory_mb=4096)
@@ -502,9 +563,10 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
                 parent_lease=parent_lease, remaining=lambda: _remaining(deadline))
     _require(receipt["summary"] == _summary(inference, inventory=inventory,
         checkpoint_sha256=receipt["checkpoint_sha256"], inference_sha256=receipt["inference_sha256"],
-        advisory_successor=successor),
+        advisory_successor=successor, program_scope=program_scope),
         "Source384 summary does not match native coverage")
     _sources(root, source_hashes)
+    _scope_selection(root, output, source_hashes, program_scope)
     _require(config == load_source384_config(config_path) and receipt["producer"] == _pins()
              and _sha(_read(config_path, 131072)) == receipt["config_sha256"]
              and json.loads(_read(output / "receipt.json", MAX_RECEIPT_BYTES)) == receipt

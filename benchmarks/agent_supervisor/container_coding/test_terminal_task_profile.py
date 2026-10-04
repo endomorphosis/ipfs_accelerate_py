@@ -71,6 +71,102 @@ def test_profile_normalizes_line_endings_without_rewording():
     assert profiles.instruction_sha256("A B") != profiles.instruction_sha256("A  B")
 
 
+def output_population(declared, *, creates, modifies):
+    inputs = [f"existing_{index:02d}.py" for index in range(modifies)]
+    declared["input_paths"] = inputs
+    declared["outputs"] = [
+        {"path": name, "effect": "modify", "media_type": "text/x-python"} for name in inputs
+    ] + [
+        {"path": f"new_{index:02d}.py", "effect": "create", "media_type": "text/x-python"}
+        for index in range(creates)
+    ]
+    return declared
+
+
+@pytest.mark.parametrize("creates,modifies", [(32, 0), (32, 32), (0, 64)])
+def test_profile_preserves_native_output_population_boundaries(creates, modifies):
+    declared = output_population(profile(), creates=creates, modifies=modifies)
+    checked = profiles.validate_task_profile(declared)
+    assert len(checked["outputs"]) == creates + modifies
+    assert sum(item["effect"] == "create" for item in checked["outputs"]) == creates
+    assert checked == profiles.validate_task_profile(checked)
+
+
+@pytest.mark.parametrize("creates,modifies", [(33, 0), (33, 31), (64, 0)])
+def test_profile_rejects_created_population_above_native_bound(creates, modifies):
+    declared = output_population(profile(), creates=creates, modifies=modifies)
+    with pytest.raises(ValueError, match="native 32-created-output manifest bound"):
+        profiles.validate_task_profile(declared)
+
+
+@pytest.mark.parametrize("inputs,creates,accepted", [(252, 1, True), (252, 2, False),
+    (221, 32, True), (222, 32, False)])
+def test_profile_counts_support_and_future_creations_in_source_bound(inputs, creates, accepted):
+    declared = output_population(profile(), creates=creates, modifies=0)
+    declared["input_paths"] = [f"source_{index:03d}.py" for index in range(inputs)]
+    if accepted:
+        checked = profiles.validate_task_profile(declared)
+        assert len(profiles.task_profile_worker_inputs(checked)) + len(checked["outputs"]) == 256
+    else:
+        with pytest.raises(ValueError, match="native 256-source published manifest bound"):
+            profiles.validate_task_profile(declared)
+
+
+@pytest.mark.parametrize("inputs,accepted", [(125, True), (126, False)])
+def test_modify_only_profile_retains_native_source_bound(inputs, accepted):
+    names = [f"source_{index:03d}.py" for index in range(inputs)]
+    declared = profile(inputs=names, output=names[0])
+    if accepted:
+        assert len(profiles.task_profile_worker_inputs(declared)) == 128
+    else:
+        with pytest.raises(ValueError, match="native 128-source manifest bound"):
+            profiles.validate_task_profile(declared)
+
+
+@pytest.mark.parametrize("overflow", ["created_population", "published_sources"])
+def test_excess_creations_rejected_before_advice_or_workspace_mutation(tmp_path, monkeypatch, overflow):
+    from ipfs_accelerate_py.agent_supervisor.runtime import intent_autoencoder_advisor as advisor
+
+    args = original(tmp_path, dirty=True)
+    root, _, state, declared = args
+    creates = 33 if overflow == "created_population" else 2
+    declared["outputs"] = output_population(profile(), creates=creates, modifies=0)["outputs"]
+    expected_bound = "32-created-output manifest" if overflow == "created_population" else "256-source published manifest"
+    if overflow == "published_sources":
+        extras = [f"extra_{index:03d}.py" for index in range(251)]
+        for name in extras:
+            (root / name).write_text("pass\n")
+        git(root, "add", "--", *extras)
+        git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "additional public inputs")
+        declared["input_paths"].extend(extras)
+    original_head = git(root, "rev-parse", "HEAD")
+    original_status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    original_source = (root / "source.py").read_bytes()
+
+    def unexpected_advice(**kwargs):
+        pytest.fail("invalid output population must fail before preprocessing")
+
+    monkeypatch.setattr(advisor, "prepare_intent_advice", unexpected_advice)
+    with pytest.raises(ValueError, match="native " + expected_bound + " bound"):
+        prepare(args)
+    assert git(root, "rev-parse", "HEAD") == original_head
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == original_status
+    assert (root / "source.py").read_bytes() == original_source
+    assert not state.exists()
+    assert not (root / ".runtime").exists()
+    assert not any((root / name).exists() for name in (profiles.INSTRUCTION, profiles.PROFILE, profiles.SMOKE))
+
+
+def test_native_prepare_accepts_exactly_32_created_outputs(tmp_path):
+    args = original(tmp_path, empty=True)
+    output_population(args[3], creates=32, modifies=0)
+    result = prepare(args)
+    assert prep._load_prepared(args[2]) == result
+    assert result["manifest"]["payload"]["created_outputs"] == sorted(
+        item["path"] for item in args[3]["outputs"])
+    assert result["provider_calls"] == 0
+
+
 @pytest.mark.parametrize("empty,dirty", [(False, False), (False, True), (True, False)])
 def test_native_prepare_load_preserves_sources_and_signs_exact_profile(tmp_path, empty, dirty):
     args = original(tmp_path, empty=empty, dirty=dirty)

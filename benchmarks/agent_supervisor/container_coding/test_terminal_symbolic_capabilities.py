@@ -59,6 +59,22 @@ def test_complete_inventory_is_not_complete_semantics_or_proof():
     assert len(json.dumps(report).encode()) < caps.MAX_REPORT_BYTES
 
 
+@pytest.mark.parametrize('operator,expected', [
+    ('closed-local-keyword-rename@1', 'closed_local_keyword_rename'),
+    ('closed-imported-alias-call@1', 'closed_imported_alias_call'),
+    (None, 'not_reported'), ('PRIVATE_UNKNOWN_OPERATOR', 'unrecognized'),
+])
+def test_workflow_observation_distinguishes_actual_operator_without_inventing_selection(operator, expected):
+    args = inputs()
+    if operator is not None:
+        args['doctor_result']['operator'] = operator
+    report = caps.assess_terminal_symbolic_capabilities(**args)
+    assert report['operators']['selected_workflow'] == expected
+    assert report['operators']['candidate_ready_reported'] is False
+    assert report['proof']['local_contract_proof_reported'] is False
+    assert 'PRIVATE_UNKNOWN_OPERATOR' not in json.dumps(report)
+
+
 def test_executable_presence_does_not_mean_a_proof_or_execution(tmp_path, monkeypatch):
     args = inputs()
     tool = tmp_path / "not-executed"
@@ -138,6 +154,17 @@ def test_unknown_result_text_is_not_exported_and_return_value_is_detached():
     assert "PRIVATE" not in json.dumps(report)
     report["inventory"]["partition"]["program_input_count"] = 99
     assert args == before
+
+
+def test_native_proof_bounds_remain_an_explicit_residual():
+    args = inputs()
+    args['doctor_result'].update(operator='closed-imported-alias-call@1',
+        reason_codes=['operator_proof_bounds_exceeded'])
+    report = caps.assess_terminal_symbolic_capabilities(**args)
+    assert report['operators']['known_residual_reasons'] == ['operator_proof_bounds_exceeded']
+    assert report['operators']['other_reason_count'] == 0
+    assert report['operators']['candidate_ready_reported'] is False
+    assert report['proof']['local_contract_proof_reported'] is False
 
 
 @pytest.mark.parametrize("mutation", ["foreign_task", "foreign_manifest", "task_not_member",

@@ -47,6 +47,7 @@ from ..proof.deterministic_doctor_hammer import (
 )
 from ..proof.formal_verification_contracts import content_identity
 from .doctor_source_partition import DoctorSourcePartition
+from .doctor_alias_contract import ImportedAliasRepair, ImportedAliasContractError
 
 
 class DoctorCompositionError(ValueError):
@@ -156,6 +157,18 @@ def _keyword_rename_contract(request: DoctorSynthesisRequest, subject: str) -> s
     if ast.dump(tree) != ast.dump(ast.parse(after)):
         raise DoctorCompositionError("rename changes syntax outside the selected keyword")
     return after
+
+
+def operator_contract_reconstruction(request, subject, *, alias_contract=None):
+    """Reconstruct one closed typed contract; serialized proof claims are ignored."""
+    if alias_contract is None:
+        return _keyword_rename_contract(request, subject)
+    if type(alias_contract) is not ImportedAliasRepair:
+        raise DoctorCompositionError("exact imported-alias contract required")
+    try:
+        return alias_contract.reconstruct(request, subject)
+    except ImportedAliasContractError as error:
+        raise DoctorCompositionError("imported alias contract does not reconstruct") from error
 
 
 
@@ -400,6 +413,7 @@ class DoctorCompositionInputs:
     target_ref: str = ""
     base_ref: str = ""
     source_partition: DoctorSourcePartition | None = None
+    alias_contract: ImportedAliasRepair | None = None
 
     def __post_init__(self) -> None:
         for name, cls in (
@@ -451,7 +465,8 @@ class DoctorCompositionInputs:
             raise DoctorCompositionError("impact closure must be freshly computed from the graph")
         if self.impact.base_delta is not None or self.impact.candidate_delta is not None:
             raise DoctorCompositionError("composition derives its own exact operator delta")
-        _keyword_rename_contract(self.synthesis, self.impact.subject_symbol_id)
+        operator_contract_reconstruction(self.synthesis, self.impact.subject_symbol_id,
+                                         alias_contract=self.alias_contract)
         if getattr(self.program_graph, "graph_id", None) != roots.graph_id:
             raise DoctorCompositionError("program graph does not match the graph root")
         graph_roots = getattr(self.program_graph, "roots", None)
@@ -473,6 +488,11 @@ class DoctorCompositionInputs:
             program_paths = set(self.source_partition.program_paths)
             if support & program_paths or support | program_paths != set(hashes):
                 raise DoctorCompositionError("partition must cover the complete source ledger")
+        if self.alias_contract is not None:
+            contract = self.alias_contract.to_dict()
+            if (contract["source_hashes"] != {name: hashes[name] for name in sorted(program_paths)}
+                    or self.alias_contract.contract_id not in self.finding.expected_behavior_refs):
+                raise DoctorCompositionError("alias contract omits independently bound program sources or premises")
         for path, digest in hashes.items():
             pure = PurePosixPath(path)
             if (
@@ -600,7 +620,8 @@ def composition_step_validator(composed: DoctorCompositionResult) -> Any:
         try:
             if plan != composed.plan or step not in plan.steps:
                 raise DoctorCompositionError("validator plan or step mismatch")
-            expected = _keyword_rename_contract(inputs.synthesis, inputs.impact.subject_symbol_id)
+            expected = operator_contract_reconstruction(inputs.synthesis, inputs.impact.subject_symbol_id,
+                                                        alias_contract=inputs.alias_contract)
             path = inputs.synthesis.proposal.edit_site.path
             candidate = (session.worktree_root / path).read_bytes()
             if candidate != expected.encode():
@@ -612,22 +633,25 @@ def composition_step_validator(composed: DoctorCompositionResult) -> Any:
                     != digest
                 ):
                     raise DoctorCompositionError("candidate changed another admitted input")
-            tree = ast.parse(candidate)
-            definitions = {
-                node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
-            }
-            for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
-                if (
-                    not isinstance(call.func, ast.Name)
-                    or call.func.id not in definitions
-                    or any(item.arg is None for item in call.keywords)
-                    or any(isinstance(arg, ast.Starred) for arg in call.args)
-                ):
-                    raise DoctorCompositionError("candidate contains an unsupported call frontier")
-                keywords = {item.arg: None for item in call.keywords}
-                if len(keywords) != len(call.keywords):
-                    raise DoctorCompositionError("candidate has duplicate keywords")
-                _signature(definitions[call.func.id]).bind(*([None] * len(call.args)), **keywords)
+            if inputs.alias_contract is not None:
+                inputs.alias_contract.validate_candidate(candidate.decode("utf-8"))
+            else:
+                tree = ast.parse(candidate)
+                definitions = {
+                    node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+                }
+                for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+                    if (
+                        not isinstance(call.func, ast.Name)
+                        or call.func.id not in definitions
+                        or any(item.arg is None for item in call.keywords)
+                        or any(isinstance(arg, ast.Starred) for arg in call.args)
+                    ):
+                        raise DoctorCompositionError("candidate contains an unsupported call frontier")
+                    keywords = {item.arg: None for item in call.keywords}
+                    if len(keywords) != len(call.keywords):
+                        raise DoctorCompositionError("candidate has duplicate keywords")
+                    _signature(definitions[call.func.id]).bind(*([None] * len(call.args)), **keywords)
             receipts = tuple(
                 content_identity(
                     {
@@ -639,7 +663,8 @@ def composition_step_validator(composed: DoctorCompositionResult) -> Any:
                             "exact_reconstruction",
                             "unrelated_inputs_unchanged",
                             "ast_parse",
-                            "local_signature_residual_free",
+                            "imported_alias_signature_residual_free" if inputs.alias_contract is not None
+                            else "local_signature_residual_free",
                         ],
                         "task_completion_authorized": False,
                     }
@@ -651,7 +676,7 @@ def composition_step_validator(composed: DoctorCompositionResult) -> Any:
                 diagnostic_refs=receipts,
                 static_replay=True,
             )
-        except (DoctorCompositionError, SyntaxError, TypeError, OSError) as exc:
+        except (DoctorCompositionError, ImportedAliasContractError, SyntaxError, TypeError, OSError) as exc:
             return DoctorStepApplyResult(
                 disposition=DoctorStepDisposition.FAILED,
                 reason_codes=("composition_candidate_validation_failed",),
