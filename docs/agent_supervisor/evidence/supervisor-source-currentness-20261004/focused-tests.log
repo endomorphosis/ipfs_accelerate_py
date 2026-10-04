@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test
+configfile: pytest.ini
+collected 76 items
+
+test/api/test_agent_supervisor_proof_scope_index.py .................... [ 26%]
+                                                                         [ 26%]
+test/api/test_agent_supervisor_cross_domain_proof_scope.py .......       [ 35%]
+test/api/test_agent_supervisor_code_proof_cache_integration.py ......... [ 47%]
+                                                                         [ 47%]
+test/api/semantic_state/test_security_source_program_advisor_384.py .... [ 52%]
+....................................                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-source-currentness-20261004/focused-tests.xml -
+============================= slowest 10 durations =============================
+0.52s call     api/semantic_state/test_security_source_program_advisor_384.py::test_repository_scope_is_persisted_and_rechecked
+0.43s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_single_flight_collapses_concurrent_prove
+0.28s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_metrics_expose_hit_miss_reject_counts
+0.18s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_miss_proves_puts_and_second_call_hits
+0.16s call     api/semantic_state/test_security_source_program_advisor_384.py::test_explicit_config_uses_shared_runtime_and_actual_native_source_qualification
+0.13s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_candidate_only_never_authoritative_hit
+0.13s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_poisoned_entry_reason_surfaces_on_lookup
+0.11s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_cache_hit_rederives_assurance_and_skips_provider
+0.06s call     api/test_agent_supervisor_code_proof_cache_integration.py::test_private_material_rejected_on_put
+0.02s call     api/test_agent_supervisor_proof_scope_index.py::test_dataset_store_round_trips_content_addressed_index
+============================= 76 passed in 34.22s ==============================
