@@ -11,6 +11,7 @@ PROFILE = ".supervisor-task-profile.json"
 INSTRUCTION = ".supervisor-instruction.md"
 SMOKE = ".supervisor-public-smoke.py"
 MAX_INPUTS = 252
+MAX_CREATED_OUTPUTS = 32
 MAX_OUTPUT_BYTES = 1_000_000
 MAX_TOTAL_OUTPUT_BYTES = 4_000_000
 
@@ -67,11 +68,19 @@ def validate_task_profile(profile: dict, *, instruction: str | None = None) -> d
     output_names = [item["path"] for item in checked]
     if len(set(output_names)) != len(output_names):
         raise ValueError("public task outputs must be unique")
+    created_count = sum(item["effect"] == "create" for item in checked)
+    # Match native manifest admission before preparation mutates the workspace.
+    if created_count > MAX_CREATED_OUTPUTS:
+        raise ValueError("public task exceeds the native 32-created-output manifest bound")
+    # Publication observes both the signed baseline (including three support
+    # files) and all newly created outputs under the same native source limit.
+    if created_count and len(inputs) + 3 + created_count > 256:
+        raise ValueError("public task exceeds the native 256-source published manifest bound")
     paths = set(inputs) | set(output_names)
     if any(str(parent) in paths for name in paths for parent in PurePosixPath(name).parents if str(parent) != "."):
         raise ValueError("public task file paths cannot contain another declared file")
     # Native manifests without creations have a deliberately smaller bound.
-    if not any(item["effect"] == "create" for item in checked) and len(inputs) + 3 > 128:
+    if not created_count and len(inputs) + 3 > 128:
         raise ValueError("modify-only public task exceeds the native 128-source manifest bound")
     canonical = {"schema": SCHEMA, "instruction_sha256": profile["instruction_sha256"],
                  "input_paths": sorted(inputs), "outputs": sorted(checked, key=lambda item: item["path"])}

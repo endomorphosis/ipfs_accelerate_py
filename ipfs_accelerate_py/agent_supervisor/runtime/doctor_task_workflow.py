@@ -1,7 +1,7 @@
 """Bounded automatic Doctor repair for an existing, independently admitted task.
 
-The reviewed operator repairs one unambiguous keyword/signature mismatch in
-an inert local Python module. Expectations come from the existing declaration,
+Reviewed operators repair one unambiguous local keyword/signature mismatch
+or a direct call that ignores an explicit, closed local import alias. Expectations come from the existing declaration,
 not a candidate or model. Native proof, synthesis, impact and worktree gates
 produce an isolated candidate ref. Publication and task completion remain the
 ordinary supervisor's responsibility. Unsupported cases propose native Doctor
@@ -37,6 +37,7 @@ from ..planning.deterministic_doctor_transforms import build_default_doctor_oper
 from ..proof.deterministic_doctor_hammer import (
     DeterministicDoctorHammer, DoctorExactLoweringReceipt, DoctorExecutableRole,
     DoctorHammerBounds, DoctorPinnedExecutable, DoctorReviewedTheorem,
+    MAX_TEXT_BYTES, MAX_THEOREM_BYTES,
 )
 from ..proof.doctor_proof_cache import DoctorSealedReceiptStore
 from ..proof.formal_verification_contracts import canonical_json, content_identity
@@ -45,9 +46,10 @@ from . import local_planning_admission as local
 from .deterministic_doctor_runtime import DeterministicDoctorRuntime
 from .doctor_repair_composition import (
     DoctorCompositionError, DoctorCompositionInputs, _inert_function_module,
-    _keyword_rename_contract, _signature, composition_snapshot, operator_consequence_ref,
+    _signature, composition_snapshot, operator_consequence_ref, operator_contract_reconstruction,
 )
 from .doctor_worktree_adapter import DoctorWorktreeAdapter
+from . import doctor_alias_contract as alias_owner
 from .doctor_source_partition import terminal_doctor_source_partition
 
 
@@ -185,7 +187,8 @@ def _refill(prepared: PreparedDoctorTaskRepair, reasons: tuple[str, ...], *, tra
     task = prepared.task
     contract = task["body"][local.CONTRACT_KEY]["payload"]
     outputs = tuple(row["path"] for row in contract["task_spec"]["outputs"])
-    issue = content_identity({"task_cid": task["task_cid"], "reasons": list(reasons), "operator": OPERATOR})
+    operator = prepared.report.get("operator", OPERATOR)
+    issue = content_identity({"task_cid": task["task_cid"], "reasons": list(reasons), "operator": operator})
     root_id, evidence_refs = _residual_evidence(prepared)
     capability = ("doctor:screened-source-analysis" if prepared.analysis_failure else
         "doctor:local-lean-z3-proof" if "required_local_prover_unavailable" in reasons else "")
@@ -196,7 +199,7 @@ def _refill(prepared: PreparedDoctorTaskRepair, reasons: tuple[str, ...], *, tra
         parent_goal_cid=task["goal_cid"], parent_goal_id=prepared.plan_context.nodes[0].goal_id,
         plan_id=task["plan_cid"],
         predicted_files=outputs[:8], context_paths=outputs[:8],
-        attempted_strategies=("native-source-analysis",) if prepared.analysis_failure else (OPERATOR,),
+        attempted_strategies=("native-source-analysis",) if prepared.analysis_failure else (operator,),
         required_capability=capability or "doctor:operator-contract-coverage",
         reason_codes=reasons, evidence_refs=evidence_refs,
         validation_commands=tuple(shlex.join(check["argv"]) for check in contract["task_spec"]["validations"]),
@@ -301,6 +304,7 @@ def prepare_doctor_task_repair(
            for row in evidence.source_inventory):
         reasons.append("unsupported_or_incomplete_source_inventory")
     selected = []
+    aliases = {}
     for output in contract["task_spec"]["outputs"]:
         name = output["path"]
         if output["effect"] != "modify" or name not in program_paths or not name.endswith(".py"):
@@ -310,7 +314,22 @@ def prepare_doctor_task_repair(
             text = (root / name).read_text(encoding="utf-8")
             selected.extend({**candidate, "path": name, "text": text} for candidate in _candidates(text))
         except (DoctorCompositionError, SyntaxError, UnicodeError):
-            reasons.append("unsupported_module_or_signature_shape")
+            # Imports cannot enter the legacy inert-module contract. A separate
+            # strict source-derived contract may authorize exactly one alias
+            # edit; unsupported donor or scope shapes retain the residual.
+            try:
+                if "unsupported_or_incomplete_source_inventory" in reasons:
+                    raise alias_owner.ImportedAliasContractError("incomplete alias source inventory")
+                sources = alias_owner.read_imported_alias_sources(repository=root,
+                    source_hashes={path: ledger[path] for path in program_paths})
+                alias = alias_owner.discover_imported_alias_repair(sources=sources, path=name)
+                if alias is None:
+                    raise alias_owner.ImportedAliasContractError("no closed alias repair")
+                alias.assert_current(root)
+                aliases[name] = alias
+                selected.append({**alias.to_dict(), "text": sources[name]})
+            except (alias_owner.ImportedAliasContractError, OSError, SyntaxError, UnicodeError):
+                reasons.append("unsupported_module_or_signature_shape")
     if len(selected) != 1:
         reasons.append("ambiguous_supported_repairs" if len(selected) > 1 else "no_supported_keyword_mismatch")
     report = {**report, "analysis_status": "available", "evidence_id": evidence.evidence_id,
@@ -324,6 +343,11 @@ def prepare_doctor_task_repair(
         return replace(prepared, report={**report, "status": "residual", "reason_codes": sorted(set(reasons)),
             "plan_refill": _refill(prepared, tuple(sorted(set(reasons))))})
     choice = selected[0]
+    alias_contract = aliases.get(choice["path"])
+    operator = alias_owner.OPERATOR if alias_contract is not None else OPERATOR
+    proof_scope = alias_owner.PROOF_SCOPE if alias_contract is not None else PROOF_SCOPE
+    report = {**report, "operator": operator}
+    prepared = replace(prepared, report=report)
     try:
         lean, z3 = Path(kernel_executable).resolve(strict=True), Path(solver_executable).resolve(strict=True)
         if not all(path.is_file() and os.access(path, os.X_OK) for path in (lean, z3)):
@@ -343,13 +367,15 @@ def prepare_doctor_task_repair(
     roots = replace(observed, graph_id=program_graph.graph_id, toolchain_id=toolchain,
         lease_id=content_identity({"task_cid": task_cid, "source": ledger, "candidate_ref": candidate_ref, "base": base,
             **({"source_partition": partition.observation()["partition_cid"]} if partition is not None else {})}),
-        translator_id="translator:" + OPERATOR)
+        translator_id="translator:" + operator)
     snapshot = composition_snapshot(evidence.snapshot, roots)
-    expected = content_identity({"declaration": choice["declaration"], "source": ledger[choice["path"]]})
+    expected = (alias_contract.contract_id if alias_contract is not None else
+        content_identity({"declaration": choice["declaration"], "source": ledger[choice["path"]]}))
     finding = DeterministicDoctorFinding(
-        roots=roots, finding_id=content_identity({"operator": OPERATOR, "choice": {k:v for k,v in choice.items() if k != "text"}, "sources": ledger}),
+        roots=roots, finding_id=content_identity({"operator": operator, "choice": {k:v for k,v in choice.items() if k != "text"}, "sources": ledger}),
         snapshot_id=snapshot.snapshot_id, disposition=DoctorRepairDisposition.SUPPORTED,
-        observed_fact_refs=(content_identity({"keyword": choice["previous"], "source": ledger[choice["path"]]}),),
+        observed_fact_refs=(content_identity({("callee" if alias_contract is not None else "keyword"): choice["previous"],
+            "source": ledger[choice["path"]]}),),
         expected_behavior_refs=(expected,), affected_symbol_refs=(choice["subject"],),
         invalidation_refs=(roots.tree_id,),
     )
@@ -360,7 +386,7 @@ def prepare_doctor_task_repair(
     synthesis = DoctorSynthesisRequest(roots=roots, proposal=proposal, span_text=choice["previous"],
         file_text=choice["text"], value_ref=expected, placement_ref=proposal.edit_site.content_id)
     try:
-        _keyword_rename_contract(synthesis, choice["subject"])
+        operator_contract_reconstruction(synthesis, choice["subject"], alias_contract=alias_contract)
     except DoctorCompositionError:
         _assert_task_current(prepared)
         reasons = ("unsupported_binding_scope",)
@@ -379,26 +405,48 @@ def prepare_doctor_task_repair(
         "theorem preserved_value {α : Type} (value : α) : (renameKeyword value).2 = value := by rfl\n"
         "#print axioms selected_name\n#print axioms preserved_value\n"
     )
-    theorem = DoctorReviewedTheorem(roots=proof_roots, theorem_id="theorem:" + OPERATOR,
-        property_id="property:keyword-value-preservation", claim_id="claim:exact-keyword-binding",
+    projection = alias_contract.formal_projection(consequence) if alias_contract is not None else None
+    if projection is not None:
+        lean_source = projection["lean"]
+        if len(lean_source.encode("utf-8")) > MAX_THEOREM_BYTES:
+            _assert_task_current(prepared)
+            reasons = ("operator_proof_bounds_exceeded",)
+            return replace(prepared, report={**report, "status": "residual", "reason_codes": list(reasons),
+                "plan_refill": _refill(prepared, reasons)})
+    theorem = DoctorReviewedTheorem(roots=proof_roots, theorem_id="theorem:" + operator,
+        property_id="property:source-alias-argument-preservation" if projection else "property:keyword-value-preservation",
+        claim_id="claim:closed-local-alias-binding" if projection else "claim:exact-keyword-binding",
         consequence_ref=consequence, theorem_body=lean_source, body_format="lean4", premise_ids=(expected,),
-        assumption_ids=("assumption:exact-ast-identifier-projection",),
-        review_receipt_id=content_identity({"reviewed_operator": OPERATOR, "implementation": _sha(Path(__file__).read_bytes()), "consequence": consequence}),
+        assumption_ids=(("assumption:exact-ast-identifier-projection", "assumption:closed-local-module-resolution")
+                        if projection else ("assumption:exact-ast-identifier-projection",)),
+        review_receipt_id=content_identity({"reviewed_operator": operator, "implementation": _sha(Path(__file__).read_bytes()),
+            **({"alias_contract_implementation": _sha(Path(alias_owner.__file__).read_bytes())} if projection else {}),
+            "consequence": consequence}),
         translator_id=roots.translator_id, toolchain_id=toolchain, policy_id=roots.policy_id)
     lowering = DoctorExactLoweringReceipt.create(theorem, logic_ir_statement=lean_source, native_statement=lean_source)
     config = {"lean": str(lean), "z3": str(z3), "lean_sha256": _sha(lean.read_bytes()), "z3_sha256": _sha(z3.read_bytes()),
         "source_sha256": _sha(lean_source.encode()),
         "smt": f'(set-logic QF_SLIA)\n(declare-const value Int)\n(assert (or (not (= {label} {label})) (not (= value value))))\n(check-sat)\n',
         "expected_axioms": ["'selected_name' does not depend on any axioms", "'preserved_value' does not depend on any axioms"]}
+    if projection is not None:
+        config.update(smt=projection["smt"], expected_axioms=projection["expected_axioms"],
+                      kernel_id="kernel:lean4-closed-imported-alias")
     executable = Path(sys.executable).resolve()
+    command_prefix = ("-I", "-c", _PROVER_ADAPTER, str(Path(__file__).resolve().parents[3]), json.dumps(config))
+    if projection is not None and any(len(arg.encode("utf-8")) > MAX_TEXT_BYTES
+                                     for arg in (*command_prefix, "solver", "kernel")):
+        _assert_task_current(prepared)
+        reasons = ("operator_proof_bounds_exceeded",)
+        return replace(prepared, report={**report, "status": "residual", "reason_codes": list(reasons),
+            "plan_refill": _refill(prepared, reasons)})
     pins = tuple(DoctorPinnedExecutable(role=DoctorExecutableRole(role), executable_path=str(executable),
         executable_sha256="sha256:" + _sha(executable.read_bytes()),
-        argv=("-I", "-c", _PROVER_ADAPTER, str(Path(__file__).resolve().parents[3]), json.dumps(config), role),
-        verifier_id="verifier:" + role + ":lean-z3-keyword", toolchain_id=toolchain, environment_id=roots.environment_id)
+        argv=(*command_prefix, role),
+        verifier_id="verifier:" + role + (":lean-z3-imported-alias" if projection else ":lean-z3-keyword"), toolchain_id=toolchain, environment_id=roots.environment_id)
         for role in ("solver", "kernel"))
     state.mkdir(parents=True)
     hammer = DeterministicDoctorHammer(bounds=DoctorHammerBounds(wall_time_ms=60_000),
-        authoritative_store=DoctorSealedReceiptStore(state / "proof.sqlite", authority_id="authority:" + OPERATOR),
+        authoritative_store=DoctorSealedReceiptStore(state / "proof.sqlite", authority_id="authority:" + operator),
         trusted_executable_pins=pins)
     adapter = DoctorWorktreeAdapter(repository_root=root, state_root=state / "worktrees",
         permitted_paths=(choice["path"],), permitted_refs=(candidate_ref,))
@@ -414,12 +462,12 @@ def prepare_doctor_task_repair(
         solver_pin=pins[0], kernel_pin=pins[1], hammer=hammer,
         impact=DoctorImpactRequest(roots=roots, subject_symbol_id=choice["subject"], change_set_id=consequence,
             before_contract_ref=finding.observed_fact_refs[0], after_contract_ref=expected, evidence_refs=(finding.content_id,)),
-        program_graph=program_graph, source_hashes=ledger, proof_scope=PROOF_SCOPE,
-        worktree_adapter=adapter, target_ref=candidate_ref, base_ref=base, source_partition=partition)
+        program_graph=program_graph, source_hashes=ledger, proof_scope=proof_scope,
+        worktree_adapter=adapter, target_ref=candidate_ref, base_ref=base, source_partition=partition, alias_contract=alias_contract)
     _assert_task_current(prepared)
     runtime.bind_composition(inputs)
     return replace(prepared, inputs=inputs, report={**report, "status": "prepared", "reason_codes": [],
-        "selected_path": choice["path"], "candidate_ref": candidate_ref, "proof_scope": PROOF_SCOPE,
+        "selected_path": choice["path"], "candidate_ref": candidate_ref, "proof_scope": proof_scope,
         "operator_finding_id": finding.finding_id, "expected_contract_cid": expected})
 
 
@@ -462,18 +510,19 @@ def execute_doctor_task_repair(prepared: PreparedDoctorTaskRepair) -> dict:
     after = adapter._git(runtime.checkout_root, "show", cas.desired_ref + ":" + path).stdout
     if isinstance(after, str):
         after = after.encode()
-    expected_after = _keyword_rename_contract(inputs.synthesis, inputs.impact.subject_symbol_id).encode()
+    expected_after = operator_contract_reconstruction(inputs.synthesis, inputs.impact.subject_symbol_id,
+                                                       alias_contract=inputs.alias_contract).encode()
     if after != expected_after:
         raise DoctorCompositionError("native Doctor candidate bytes differ from validated synthesis")
     handoff = {
-        "schema": "supervisor-doctor-candidate-handoff@1", "operator": OPERATOR,
+        "schema": "supervisor-doctor-candidate-handoff@1", "operator": prepared.report["operator"],
         "task_cid": prepared.task["task_cid"], "task_id": prepared.task["task_alias"],
         "task_revision": prepared.task["revision"], "manifest_cid": prepared.report["manifest_cid"],
         "repository": str(runtime.checkout_root), "base_commit": inputs.base_ref,
         "candidate_commit": cas.desired_ref, "candidate_ref": cas.ref_name,
         "permitted_outputs": [row["path"] for row in prepared.task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["outputs"]],
         "transaction_id": transaction.transaction_id, "transaction_receipt_id": transaction.content_id,
-        "proof_receipt_id": composed.proof.content_id, "proof_scope": PROOF_SCOPE,
+        "proof_receipt_id": composed.proof.content_id, "proof_scope": inputs.proof_scope,
         "edits": [{"path": path, "before_sha256": inputs.source_hashes[path], "after_sha256": _sha(after),
                    "after_bytes_base64": base64.b64encode(after).decode()}],
         "provider_calls": 0, "publication_authority": False, "completion_authority": False,
