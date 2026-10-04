@@ -22,32 +22,20 @@ from typing import Any, Final
 
 V2_BENCHMARK_CONTRACT_VERSION: Final = 1
 V2_BENCHMARK_CORPUS_VERSION: Final = "generation-2@1"
-V2_CAUSAL_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/v2-causal-receipt@1"
-)
-V2_PAIRED_CASE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/v2-paired-benchmark-case@1"
-)
-V2_PAIRED_CORPUS_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/v2-paired-benchmark-corpus@1"
-)
-V2_BENCHMARK_REPORT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/v2-benchmark-report@1"
-)
+V2_CAUSAL_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/v2-causal-receipt@1"
+V2_PAIRED_CASE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/v2-paired-benchmark-case@1"
+V2_PAIRED_CORPUS_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/v2-paired-benchmark-corpus@1"
+V2_BENCHMARK_REPORT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/v2-benchmark-report@1"
 
 # Producer-owned evidence identity referenced by ASI-G200.  A string constant
 # is used to match the repository's existing objective-evidence vocabulary.
-V2_PAIRED_BASELINE_REQUIREMENT_ID: Final = (
-    "278718548022626862973862211376400215092"
-)
+V2_PAIRED_BASELINE_REQUIREMENT_ID: Final = "278718548022626862973862211376400215092"
 V2_PAIRED_BASELINE_GOAL_ID: Final = "ASI-G200"
 
 # The benchmark envelope is intentionally literal rather than derived from the
 # current checkout.  Changing any identity requires a corpus-version change.
 V2_FROZEN_REPOSITORY_ID: Final = "repository:supervisor-v2-benchmark@1"
-V2_FROZEN_TREE_ID: Final = (
-    "sha256:f993b0b7bda1c3c13bcf4a352f45c286f72d2e40783ff79ac75c50fd991ed7d1"
-)
+V2_FROZEN_TREE_ID: Final = "sha256:f993b0b7bda1c3c13bcf4a352f45c286f72d2e40783ff79ac75c50fd991ed7d1"
 V2_FROZEN_OBJECTIVE_ID: Final = V2_PAIRED_BASELINE_GOAL_ID
 V2_FROZEN_OBJECTIVE_REVISION: Final = (
     "sha256:51279ffa477f90486f0eee8ef6209465a3089c053797296df6b0d83949b689a4"
@@ -126,9 +114,7 @@ class V2FixtureKind(str, Enum):
     UNTRUSTED_REPOSITORY = "untrusted-repository"
 
 
-REQUIRED_V2_FIXTURE_KINDS: Final[tuple[V2FixtureKind, ...]] = tuple(
-    V2FixtureKind
-)
+REQUIRED_V2_FIXTURE_KINDS: Final[tuple[V2FixtureKind, ...]] = tuple(V2FixtureKind)
 
 
 class V2BenchmarkArm(str, Enum):
@@ -196,15 +182,11 @@ def _canonical_json(value: Any) -> str:
             allow_nan=False,
         )
     except (TypeError, ValueError) as exc:
-        raise V2BenchmarkValidationError(
-            "benchmark data must be canonical JSON"
-        ) from exc
+        raise V2BenchmarkValidationError("benchmark data must be canonical JSON") from exc
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _fixture_digest(label: str) -> str:
@@ -218,9 +200,7 @@ def _text(value: Any, name: str, *, maximum: int = 512) -> str:
         raise V2BenchmarkValidationError(f"{name} must be non-empty text")
     result = value.strip()
     if "\x00" in result or len(result.encode("utf-8")) > maximum:
-        raise V2BenchmarkValidationError(
-            f"{name} is unsafe or exceeds its {maximum}-byte bound"
-        )
+        raise V2BenchmarkValidationError(f"{name} is unsafe or exceeds its {maximum}-byte bound")
     return result
 
 
@@ -234,9 +214,7 @@ def _code(value: Any, name: str) -> str:
 def _content_id(value: Any, name: str) -> str:
     result = _text(value, name, maximum=71).lower()
     if not _CONTENT_ID.fullmatch(result):
-        raise V2BenchmarkValidationError(
-            f"{name} must be a sha256 content ID"
-        )
+        raise V2BenchmarkValidationError(f"{name} must be a sha256 content ID")
     return result
 
 
@@ -247,12 +225,7 @@ def _integer(
     maximum: int = MAX_V2_COUNTER,
     minimum: int = 0,
 ) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < minimum
-        or value > maximum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum or value > maximum:
         raise V2BenchmarkValidationError(
             f"{name} must be an integer from {minimum} through {maximum}"
         )
@@ -273,9 +246,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise V2BenchmarkValidationError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise V2BenchmarkValidationError(f"{name} must be one of: {allowed}") from exc
 
 
 def _codes(
@@ -287,9 +258,7 @@ def _codes(
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
         raise V2BenchmarkValidationError(f"{name} must be a sequence")
     if len(values) > maximum:
-        raise V2BenchmarkValidationError(
-            f"{name} exceeds its {maximum}-item bound"
-        )
+        raise V2BenchmarkValidationError(f"{name} exceeds its {maximum}-item bound")
     result = tuple(sorted(_code(value, name) for value in values))
     if len(result) != len(set(result)):
         raise V2BenchmarkValidationError(f"{name} must be unique")
@@ -307,9 +276,7 @@ def _ordered_codes(
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
         raise V2BenchmarkValidationError(f"{name} must be a sequence")
     if len(values) > maximum:
-        raise V2BenchmarkValidationError(
-            f"{name} exceeds its {maximum}-item bound"
-        )
+        raise V2BenchmarkValidationError(f"{name} exceeds its {maximum}-item bound")
     result = tuple(_code(value, name) for value in values)
     if len(result) != len(set(result)):
         raise V2BenchmarkValidationError(f"{name} must be unique")
@@ -332,21 +299,15 @@ def _strict_keys(
             details.append("missing " + ", ".join(missing))
         if extras:
             details.append("unexpected " + ", ".join(extras))
-        raise V2BenchmarkValidationError(
-            f"{name} has invalid fields: {'; '.join(details)}"
-        )
+        raise V2BenchmarkValidationError(f"{name} has invalid fields: {'; '.join(details)}")
 
 
 def _reject_forbidden_payload(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, item in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if normalized in _FORBIDDEN_PAYLOAD_KEYS or normalized.endswith(
-                "_body"
-            ):
-                raise V2BenchmarkValidationError(
-                    f"benchmark payload cannot contain {key!r}"
-                )
+            if normalized in _FORBIDDEN_PAYLOAD_KEYS or normalized.endswith("_body"):
+                raise V2BenchmarkValidationError(f"benchmark payload cannot contain {key!r}")
             _reject_forbidden_payload(item)
     elif isinstance(value, (list, tuple)):
         for item in value:
@@ -358,9 +319,7 @@ def _load_json(value: str | bytes | bytearray, *, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise V2BenchmarkValidationError(
-                    f"{name} JSON contains duplicate object keys"
-                )
+                raise V2BenchmarkValidationError(f"{name} JSON contains duplicate object keys")
             result[key] = item
         return result
 
@@ -404,16 +363,11 @@ class V2FrozenIdentity:
     @property
     def pairing_identity(self) -> tuple[str, ...]:
         return tuple(
-            getattr(self, name)
-            for name in self.__dataclass_fields__
-            if name != "observation_id"
+            getattr(self, name) for name in self.__dataclass_fields__ if name != "observation_id"
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "V2FrozenIdentity":
@@ -522,9 +476,7 @@ class V2CausalMetrics:
             or not isinstance(self.stage_latencies, Sequence)
             or len(self.stage_latencies) > MAX_V2_STAGES
         ):
-            raise V2BenchmarkValidationError(
-                "stage_latencies must be a bounded sequence"
-            )
+            raise V2BenchmarkValidationError("stage_latencies must be a bounded sequence")
         for item in self.stage_latencies:
             if isinstance(item, Mapping):
                 item = V2StageLatency.from_dict(item)
@@ -535,9 +487,7 @@ class V2CausalMetrics:
             stages.append(item)
         stages.sort(key=lambda item: item.stage)
         if len({item.stage for item in stages}) != len(stages):
-            raise V2BenchmarkValidationError(
-                "stage_latencies must have unique stage names"
-            )
+            raise V2BenchmarkValidationError("stage_latencies must have unique stage names")
         object.__setattr__(self, "stage_latencies", tuple(stages))
 
         for name in (
@@ -559,13 +509,9 @@ class V2CausalMetrics:
                 ),
             )
         if self.queue_delay_ms > self.elapsed_ms:
-            raise V2BenchmarkValidationError(
-                "queue_delay_ms cannot exceed elapsed_ms"
-            )
+            raise V2BenchmarkValidationError("queue_delay_ms cannot exceed elapsed_ms")
         if any(item.latency_ms > self.elapsed_ms for item in stages):
-            raise V2BenchmarkValidationError(
-                "stage latency cannot exceed elapsed_ms"
-            )
+            raise V2BenchmarkValidationError("stage latency cannot exceed elapsed_ms")
 
         for name in (
             "provider_input_tokens",
@@ -592,9 +538,7 @@ class V2CausalMetrics:
             "unbounded_artifact_count",
             "untrusted_repository_mutation_count",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         object.__setattr__(
             self,
             "idle_cpu_milli_percent",
@@ -609,9 +553,7 @@ class V2CausalMetrics:
                 "provider_reused_input_tokens cannot exceed input tokens"
             )
         if self.cache_hit_count > self.cache_lookup_count:
-            raise V2BenchmarkValidationError(
-                "cache_hit_count cannot exceed cache_lookup_count"
-            )
+            raise V2BenchmarkValidationError("cache_hit_count cannot exceed cache_lookup_count")
         if self.retry_input_tokens > self.provider_input_tokens:
             raise V2BenchmarkValidationError(
                 "retry_input_tokens cannot exceed provider input tokens"
@@ -638,9 +580,8 @@ class V2CausalMetrics:
             ("merge_status", "merge_latency_ms"),
             ("persistence_status", "persistence_latency_ms"),
         ):
-            if (
-                getattr(self, status_name) is V2GateStatus.NOT_REQUIRED
-                and getattr(self, latency_name)
+            if getattr(self, status_name) is V2GateStatus.NOT_REQUIRED and getattr(
+                self, latency_name
             ):
                 raise V2BenchmarkValidationError(
                     f"{latency_name} must be zero when work is not required"
@@ -649,14 +590,10 @@ class V2CausalMetrics:
         object.__setattr__(
             self,
             "artifact_manifest_digest",
-            _content_id(
-                self.artifact_manifest_digest, "artifact_manifest_digest"
-            ),
+            _content_id(self.artifact_manifest_digest, "artifact_manifest_digest"),
         )
         for name in ("expected_terminal_outcome", "terminal_outcome"):
-            object.__setattr__(
-                self, name, _code(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _code(getattr(self, name), name))
         object.__setattr__(
             self,
             "required_criterion_ids",
@@ -679,9 +616,7 @@ class V2CausalMetrics:
             raise V2BenchmarkValidationError(
                 "each observation requires at least one terminal criterion"
             )
-        if not set(self.terminal_accepted_criterion_ids).issubset(
-            self.required_criterion_ids
-        ):
+        if not set(self.terminal_accepted_criterion_ids).issubset(self.required_criterion_ids):
             raise V2BenchmarkValidationError(
                 "terminal accepted criteria must be drawn from the frozen "
                 "required criterion population"
@@ -693,9 +628,7 @@ class V2CausalMetrics:
 
     @property
     def terminal_criteria_complete(self) -> bool:
-        return set(self.required_criterion_ids).issubset(
-            self.terminal_accepted_criterion_ids
-        )
+        return set(self.required_criterion_ids).issubset(self.terminal_accepted_criterion_ids)
 
     @property
     def artifact_bounds_passed(self) -> bool:
@@ -705,73 +638,52 @@ class V2CausalMetrics:
             and self.unbounded_artifact_count == 0
         )
 
-    def safety_gates(
-        self, fixture_kind: V2FixtureKind | str
-    ) -> dict[str, bool]:
+    def safety_gates(self, fixture_kind: V2FixtureKind | str) -> dict[str, bool]:
         kind = _enum(fixture_kind, V2FixtureKind, "fixture_kind")
         accepted = self.terminal_outcome == "accepted"
         return {
-            "authority": (
-                self.authority_violation_count == 0
-                and self.false_completion_count == 0
-            ),
+            "authority": (self.authority_violation_count == 0 and self.false_completion_count == 0),
             "terminal-criteria": (
                 self.terminal_outcome == self.expected_terminal_outcome
                 and self.terminal_criteria_complete
             ),
             "validation": (
                 self.escaped_validation_failure_count == 0
-                and (
-                    not accepted
-                    or self.validation_status is V2GateStatus.PASSED
-                )
+                and (not accepted or self.validation_status is V2GateStatus.PASSED)
             ),
             "proof": (
                 self.escaped_proof_failure_count == 0
                 and (
                     not accepted
-                    or self.proof_status
-                    in {V2GateStatus.PASSED, V2GateStatus.NOT_REQUIRED}
+                    or self.proof_status in {V2GateStatus.PASSED, V2GateStatus.NOT_REQUIRED}
                 )
             ),
             "merge": (
                 self.merge_safety_violation_count == 0
                 and (
                     not accepted
-                    or self.merge_status
-                    in {V2GateStatus.PASSED, V2GateStatus.NOT_REQUIRED}
+                    or self.merge_status in {V2GateStatus.PASSED, V2GateStatus.NOT_REQUIRED}
                 )
             ),
             "persistence": (
-                self.persistence_loss_count == 0
-                and self.persistence_status is V2GateStatus.PASSED
+                self.persistence_loss_count == 0 and self.persistence_status is V2GateStatus.PASSED
             ),
-            "cache-authority": (
-                self.stale_authoritative_cache_hit_count == 0
-            ),
-            "restart-recovery": (
-                self.restart_inconsistency_count == 0
-            ),
+            "cache-authority": (self.stale_authoritative_cache_hit_count == 0),
+            "restart-recovery": (self.restart_inconsistency_count == 0),
             "idle-board": (
                 kind is not V2FixtureKind.DRAINED_BOARD
                 or (
                     self.idle_observation_ms >= MIN_DRAINED_OBSERVATION_MS
-                    and self.idle_cpu_milli_percent
-                    < MAX_DRAINED_IDLE_CPU_MILLI_PERCENT
+                    and self.idle_cpu_milli_percent < MAX_DRAINED_IDLE_CPU_MILLI_PERCENT
                     and self.persistence_write_count == 0
                 )
             ),
             "artifact-bounds": self.artifact_bounds_passed,
-            "repository-trust": (
-                self.untrusted_repository_mutation_count == 0
-            ),
+            "repository-trust": (self.untrusted_repository_mutation_count == 0),
         }
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            name: _jsonable(getattr(self, name))
-            for name in self.__dataclass_fields__
-        }
+        return {name: _jsonable(getattr(self, name)) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "V2CausalMetrics":
@@ -780,8 +692,7 @@ class V2CausalMetrics:
         _strict_keys(payload, allowed, name="v2 causal metrics")
         values = {name: payload[name] for name in allowed}
         values["stage_latencies"] = tuple(
-            V2StageLatency.from_dict(item)
-            for item in values["stage_latencies"]
+            V2StageLatency.from_dict(item) for item in values["stage_latencies"]
         )
         return cls(**values)
 
@@ -805,28 +716,20 @@ class V2CausalReceipt:
             "fixture_kind",
             _enum(self.fixture_kind, V2FixtureKind, "fixture_kind"),
         )
-        object.__setattr__(
-            self, "arm", _enum(self.arm, V2BenchmarkArm, "arm")
-        )
+        object.__setattr__(self, "arm", _enum(self.arm, V2BenchmarkArm, "arm"))
         identity = self.identity
         if isinstance(identity, Mapping):
             identity = V2FrozenIdentity.from_dict(identity)
         if not isinstance(identity, V2FrozenIdentity):
-            raise V2BenchmarkValidationError(
-                "identity must be V2FrozenIdentity"
-            )
+            raise V2BenchmarkValidationError("identity must be V2FrozenIdentity")
         object.__setattr__(self, "identity", identity)
         object.__setattr__(self, "input_id", _content_id(self.input_id, "input_id"))
         metrics = self.metrics
         if isinstance(metrics, Mapping):
             metrics = V2CausalMetrics.from_dict(metrics)
         if not isinstance(metrics, V2CausalMetrics):
-            raise V2BenchmarkValidationError(
-                "metrics must be V2CausalMetrics"
-            )
-        if metrics.expected_terminal_outcome != _EXPECTED_TERMINAL_OUTCOME[
-            self.fixture_kind
-        ]:
+            raise V2BenchmarkValidationError("metrics must be V2CausalMetrics")
+        if metrics.expected_terminal_outcome != _EXPECTED_TERMINAL_OUTCOME[self.fixture_kind]:
             raise V2BenchmarkValidationError(
                 "expected terminal outcome is not frozen for fixture kind"
             )
@@ -846,13 +749,9 @@ class V2CausalReceipt:
                 "causal receipts require a frozen intervention identity"
             )
         if self.arm is V2BenchmarkArm.BASELINE and self.causal_parent_ids:
-            raise V2BenchmarkValidationError(
-                "baseline receipts cannot have a paired causal parent"
-            )
+            raise V2BenchmarkValidationError("baseline receipts cannot have a paired causal parent")
         if len(self.canonical_bytes()) > MAX_V2_RECEIPT_BYTES:
-            raise V2BenchmarkValidationError(
-                "v2 causal receipt exceeds its serialized byte bound"
-            )
+            raise V2BenchmarkValidationError("v2 causal receipt exceeds its serialized byte bound")
 
     @property
     def receipt_id(self) -> str:
@@ -911,17 +810,11 @@ class V2CausalReceipt:
             name="v2 causal receipt",
         )
         if payload["schema"] != V2_CAUSAL_RECEIPT_SCHEMA:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 causal receipt schema"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 causal receipt schema")
         if payload["contract_version"] != V2_BENCHMARK_CONTRACT_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark contract version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark contract version")
         if payload["corpus_version"] != V2_BENCHMARK_CORPUS_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark corpus version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark corpus version")
         result = cls(
             fixture_kind=payload["fixture_kind"],
             arm=payload["arm"],
@@ -933,15 +826,11 @@ class V2CausalReceipt:
             intervention_ids=tuple(payload["intervention_ids"]),
         )
         if payload.get("receipt_id", result.receipt_id) != result.receipt_id:
-            raise V2BenchmarkValidationError(
-                "v2 causal receipt identity does not match payload"
-            )
+            raise V2BenchmarkValidationError("v2 causal receipt identity does not match payload")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "V2CausalReceipt":
+    def from_json(cls, value: str | bytes | bytearray) -> "V2CausalReceipt":
         return cls.from_dict(_load_json(value, name="v2 causal receipt"))
 
 
@@ -991,45 +880,30 @@ class V2PairedBenchmarkCase:
             if isinstance(value, Mapping):
                 value = V2CausalReceipt.from_dict(value)
             if not isinstance(value, V2CausalReceipt):
-                raise V2BenchmarkValidationError(
-                    f"{name} must be V2CausalReceipt"
-                )
+                raise V2BenchmarkValidationError(f"{name} must be V2CausalReceipt")
             if value.fixture_kind is not kind or value.arm is not arm:
-                raise V2BenchmarkValidationError(
-                    f"{name} receipt is detached from its fixture arm"
-                )
+                raise V2BenchmarkValidationError(f"{name} receipt is detached from its fixture arm")
             object.__setattr__(self, name, value)
         if self.baseline.input_id != self.candidate.input_id:
-            raise V2BenchmarkValidationError(
-                "paired receipts must freeze the same input identity"
-            )
-        if (
-            self.baseline.identity.pairing_identity
-            != self.candidate.identity.pairing_identity
-        ):
+            raise V2BenchmarkValidationError("paired receipts must freeze the same input identity")
+        if self.baseline.identity.pairing_identity != self.candidate.identity.pairing_identity:
             raise V2BenchmarkValidationError(
                 "paired receipts must freeze identical semantic identities"
             )
         if self.baseline.identity.fault_id != _fault_id(kind):
-            raise V2BenchmarkValidationError(
-                "fixture fault identity is not frozen"
-            )
+            raise V2BenchmarkValidationError("fixture fault identity is not frozen")
         for receipt, arm in (
             (self.baseline, V2BenchmarkArm.BASELINE),
             (self.candidate, V2BenchmarkArm.CANDIDATE),
         ):
             if receipt.identity.observation_id != _observation_id(kind, arm):
-                raise V2BenchmarkValidationError(
-                    "fixture observation identity is not frozen"
-                )
+                raise V2BenchmarkValidationError("fixture observation identity is not frozen")
         if self.candidate.causal_parent_ids != (self.baseline.receipt_id,):
             raise V2BenchmarkValidationError(
                 "candidate must causally reference its paired baseline"
             )
         if len(self.canonical_bytes()) > 2 * MAX_V2_RECEIPT_BYTES:
-            raise V2BenchmarkValidationError(
-                "v2 paired case exceeds its serialized byte bound"
-            )
+            raise V2BenchmarkValidationError("v2 paired case exceeds its serialized byte bound")
 
     @property
     def case_id(self) -> str:
@@ -1074,9 +948,7 @@ class V2PairedBenchmarkCase:
             name="v2 paired benchmark case",
         )
         if payload["schema"] != V2_PAIRED_CASE_SCHEMA:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 paired benchmark case schema"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 paired benchmark case schema")
         result = cls(
             fixture_id=payload["fixture_id"],
             fixture_kind=payload["fixture_kind"],
@@ -1085,9 +957,7 @@ class V2PairedBenchmarkCase:
             candidate=V2CausalReceipt.from_dict(payload["candidate"]),
         )
         if payload.get("case_id", result.case_id) != result.case_id:
-            raise V2BenchmarkValidationError(
-                "v2 paired case identity does not match payload"
-            )
+            raise V2BenchmarkValidationError("v2 paired case identity does not match payload")
         return result
 
 
@@ -1101,41 +971,27 @@ class V2PairedBenchmarkCorpus:
 
     def __post_init__(self) -> None:
         if self.corpus_version != V2_BENCHMARK_CORPUS_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 paired corpus version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 paired corpus version")
         if self.requirement_id != V2_PAIRED_BASELINE_REQUIREMENT_ID:
-            raise V2BenchmarkValidationError(
-                "v2 paired corpus requirement identity is not frozen"
-            )
+            raise V2BenchmarkValidationError("v2 paired corpus requirement identity is not frozen")
         normalized: list[V2PairedBenchmarkCase] = []
-        if isinstance(self.cases, (str, bytes)) or not isinstance(
-            self.cases, Sequence
-        ):
+        if isinstance(self.cases, (str, bytes)) or not isinstance(self.cases, Sequence):
             raise V2BenchmarkValidationError("cases must be a sequence")
         for value in self.cases:
             if isinstance(value, Mapping):
                 value = V2PairedBenchmarkCase.from_dict(value)
             if not isinstance(value, V2PairedBenchmarkCase):
-                raise V2BenchmarkValidationError(
-                    "cases must contain V2PairedBenchmarkCase values"
-                )
+                raise V2BenchmarkValidationError("cases must contain V2PairedBenchmarkCase values")
             normalized.append(value)
         by_kind = {item.fixture_kind: item for item in normalized}
-        if (
-            len(by_kind) != len(normalized)
-            or set(by_kind) != set(REQUIRED_V2_FIXTURE_KINDS)
-        ):
+        if len(by_kind) != len(normalized) or set(by_kind) != set(REQUIRED_V2_FIXTURE_KINDS):
             raise V2BenchmarkValidationError(
-                "v2 fixture population is closed and cannot be narrowed, "
-                "duplicated, or widened"
+                "v2 fixture population is closed and cannot be narrowed, duplicated, or widened"
             )
         normalized = [by_kind[kind] for kind in REQUIRED_V2_FIXTURE_KINDS]
         object.__setattr__(self, "cases", tuple(normalized))
         if len(self.canonical_bytes()) > MAX_V2_CORPUS_BYTES:
-            raise V2BenchmarkValidationError(
-                "v2 paired corpus exceeds its serialized byte bound"
-            )
+            raise V2BenchmarkValidationError("v2 paired corpus exceeds its serialized byte bound")
 
     @property
     def fixture_population_ids(self) -> tuple[str, ...]:
@@ -1183,37 +1039,22 @@ class V2PairedBenchmarkCorpus:
             name="v2 paired benchmark corpus",
         )
         if payload["schema"] != V2_PAIRED_CORPUS_SCHEMA:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 paired benchmark corpus schema"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 paired benchmark corpus schema")
         if payload["contract_version"] != V2_BENCHMARK_CONTRACT_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark contract version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark contract version")
         result = cls(
-            cases=tuple(
-                V2PairedBenchmarkCase.from_dict(item)
-                for item in payload["cases"]
-            ),
+            cases=tuple(V2PairedBenchmarkCase.from_dict(item) for item in payload["cases"]),
             corpus_version=payload["corpus_version"],
             requirement_id=payload["requirement_id"],
         )
-        if tuple(payload["fixture_population_ids"]) != (
-            result.fixture_population_ids
-        ):
-            raise V2BenchmarkValidationError(
-                "fixture population identity does not match cases"
-            )
+        if tuple(payload["fixture_population_ids"]) != (result.fixture_population_ids):
+            raise V2BenchmarkValidationError("fixture population identity does not match cases")
         if payload.get("corpus_id", result.corpus_id) != result.corpus_id:
-            raise V2BenchmarkValidationError(
-                "v2 paired corpus identity does not match payload"
-            )
+            raise V2BenchmarkValidationError("v2 paired corpus identity does not match payload")
         return result
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "V2PairedBenchmarkCorpus":
+    def from_json(cls, value: str | bytes | bytearray) -> "V2PairedBenchmarkCorpus":
         return cls.from_dict(_load_json(value, name="v2 paired corpus"))
 
 
@@ -1258,10 +1099,7 @@ class V2AggregateMetrics:
             )
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "V2AggregateMetrics":
@@ -1274,71 +1112,34 @@ def _aggregate(
     receipts: Sequence[V2CausalReceipt],
 ) -> V2AggregateMetrics:
     fields = {
-        "stage_latency_ms": sum(
-            item.metrics.stage_latency_ms for item in receipts
-        ),
+        "stage_latency_ms": sum(item.metrics.stage_latency_ms for item in receipts),
         "elapsed_ms": sum(item.metrics.elapsed_ms for item in receipts),
-        "queue_delay_ms": sum(
-            item.metrics.queue_delay_ms for item in receipts
-        ),
-        "provider_input_tokens": sum(
-            item.metrics.provider_input_tokens for item in receipts
-        ),
-        "provider_output_tokens": sum(
-            item.metrics.provider_output_tokens for item in receipts
-        ),
+        "queue_delay_ms": sum(item.metrics.queue_delay_ms for item in receipts),
+        "provider_input_tokens": sum(item.metrics.provider_input_tokens for item in receipts),
+        "provider_output_tokens": sum(item.metrics.provider_output_tokens for item in receipts),
         "provider_reused_input_tokens": sum(
             item.metrics.provider_reused_input_tokens for item in receipts
         ),
-        "cache_lookup_count": sum(
-            item.metrics.cache_lookup_count for item in receipts
-        ),
-        "cache_hit_count": sum(
-            item.metrics.cache_hit_count for item in receipts
-        ),
-        "cache_reused_bytes": sum(
-            item.metrics.cache_reused_bytes for item in receipts
-        ),
+        "cache_lookup_count": sum(item.metrics.cache_lookup_count for item in receipts),
+        "cache_hit_count": sum(item.metrics.cache_hit_count for item in receipts),
+        "cache_reused_bytes": sum(item.metrics.cache_reused_bytes for item in receipts),
         "retry_count": sum(item.metrics.retry_count for item in receipts),
-        "retry_input_tokens": sum(
-            item.metrics.retry_input_tokens for item in receipts
-        ),
-        "retry_output_tokens": sum(
-            item.metrics.retry_output_tokens for item in receipts
-        ),
-        "validation_latency_ms": sum(
-            item.metrics.validation_latency_ms for item in receipts
-        ),
-        "proof_latency_ms": sum(
-            item.metrics.proof_latency_ms for item in receipts
-        ),
-        "merge_latency_ms": sum(
-            item.metrics.merge_latency_ms for item in receipts
-        ),
-        "persistence_latency_ms": sum(
-            item.metrics.persistence_latency_ms for item in receipts
-        ),
-        "persistence_write_count": sum(
-            item.metrics.persistence_write_count for item in receipts
-        ),
-        "persistence_bytes": sum(
-            item.metrics.persistence_bytes for item in receipts
-        ),
-        "idle_cpu_milli_percent": sum(
-            item.metrics.idle_cpu_milli_percent for item in receipts
-        ),
-        "artifact_count": sum(
-            item.metrics.artifact_count for item in receipts
-        ),
-        "artifact_bytes": sum(
-            item.metrics.artifact_bytes for item in receipts
-        ),
+        "retry_input_tokens": sum(item.metrics.retry_input_tokens for item in receipts),
+        "retry_output_tokens": sum(item.metrics.retry_output_tokens for item in receipts),
+        "validation_latency_ms": sum(item.metrics.validation_latency_ms for item in receipts),
+        "proof_latency_ms": sum(item.metrics.proof_latency_ms for item in receipts),
+        "merge_latency_ms": sum(item.metrics.merge_latency_ms for item in receipts),
+        "persistence_latency_ms": sum(item.metrics.persistence_latency_ms for item in receipts),
+        "persistence_write_count": sum(item.metrics.persistence_write_count for item in receipts),
+        "persistence_bytes": sum(item.metrics.persistence_bytes for item in receipts),
+        "idle_cpu_milli_percent": sum(item.metrics.idle_cpu_milli_percent for item in receipts),
+        "artifact_count": sum(item.metrics.artifact_count for item in receipts),
+        "artifact_bytes": sum(item.metrics.artifact_bytes for item in receipts),
         "terminal_required_criteria": sum(
             len(item.metrics.required_criterion_ids) for item in receipts
         ),
         "terminal_accepted_criteria": sum(
-            len(item.metrics.terminal_accepted_criterion_ids)
-            for item in receipts
+            len(item.metrics.terminal_accepted_criterion_ids) for item in receipts
         ),
     }
     return V2AggregateMetrics(**fields)
@@ -1379,9 +1180,7 @@ class V2BenchmarkReport:
                     maximum=len(REQUIRED_V2_FIXTURE_KINDS),
                 ),
             )
-        expected_population = tuple(
-            _fixture_id(kind) for kind in REQUIRED_V2_FIXTURE_KINDS
-        )
+        expected_population = tuple(_fixture_id(kind) for kind in REQUIRED_V2_FIXTURE_KINDS)
         calculated_population_complete = (
             self.fixture_population_ids == expected_population
             and len(self.case_ids) == len(expected_population)
@@ -1393,21 +1192,15 @@ class V2BenchmarkReport:
             if isinstance(value, Mapping):
                 value = V2AggregateMetrics.from_dict(value)
             if not isinstance(value, V2AggregateMetrics):
-                raise V2BenchmarkValidationError(
-                    f"{name} must be V2AggregateMetrics"
-                )
+                raise V2BenchmarkValidationError(f"{name} must be V2AggregateMetrics")
             object.__setattr__(self, name, value)
         expected_delta = {
             name: getattr(self.candidate, name) - getattr(self.baseline, name)
             for name in self.baseline.__dataclass_fields__
         }
         if dict(self.candidate_minus_baseline) != expected_delta:
-            raise V2BenchmarkValidationError(
-                "causal delta does not match paired aggregate metrics"
-            )
-        object.__setattr__(
-            self, "candidate_minus_baseline", expected_delta
-        )
+            raise V2BenchmarkValidationError("causal delta does not match paired aggregate metrics")
+        object.__setattr__(self, "candidate_minus_baseline", expected_delta)
         if set(self.gate_failures) != set(V2_NON_COMPENSABLE_SAFETY_GATES):
             raise V2BenchmarkValidationError(
                 "report must contain every non-compensable safety gate"
@@ -1432,32 +1225,23 @@ class V2BenchmarkReport:
             "non_compensable_safety_passed",
             "passed",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
         calculated_safety = not any(normalized_failures.values())
         calculated_passed = (
-            calculated_population_complete
-            and self.baseline_candidate_paired
-            and calculated_safety
+            calculated_population_complete and self.baseline_candidate_paired and calculated_safety
         )
         if self.population_complete is not calculated_population_complete:
             raise V2BenchmarkValidationError(
-                "population completeness claim does not match the exact "
-                "closed paired population"
+                "population completeness claim does not match the exact closed paired population"
             )
         if self.non_compensable_safety_passed is not calculated_safety:
             raise V2BenchmarkValidationError(
                 "non-compensable safety claim does not match gate failures"
             )
         if self.passed is not calculated_passed:
-            raise V2BenchmarkValidationError(
-                "report pass claim does not match mandatory gates"
-            )
+            raise V2BenchmarkValidationError("report pass claim does not match mandatory gates")
         if len(self.canonical_bytes()) > MAX_V2_REPORT_BYTES:
-            raise V2BenchmarkValidationError(
-                "v2 benchmark report exceeds its byte bound"
-            )
+            raise V2BenchmarkValidationError("v2 benchmark report exceeds its byte bound")
 
     @property
     def report_id(self) -> str:
@@ -1465,11 +1249,7 @@ class V2BenchmarkReport:
 
     @property
     def evidence_claim_ids(self) -> tuple[str, ...]:
-        return (
-            (V2_PAIRED_BASELINE_REQUIREMENT_ID,)
-            if self.passed
-            else ()
-        )
+        return (V2_PAIRED_BASELINE_REQUIREMENT_ID,) if self.passed else ()
 
     def to_dict(self, *, include_report_id: bool = False) -> dict[str, Any]:
         payload = {
@@ -1485,14 +1265,11 @@ class V2BenchmarkReport:
             "candidate": self.candidate.to_dict(),
             "candidate_minus_baseline": dict(self.candidate_minus_baseline),
             "gate_failures": {
-                name: list(self.gate_failures[name])
-                for name in V2_NON_COMPENSABLE_SAFETY_GATES
+                name: list(self.gate_failures[name]) for name in V2_NON_COMPENSABLE_SAFETY_GATES
             },
             "population_complete": self.population_complete,
             "baseline_candidate_paired": self.baseline_candidate_paired,
-            "non_compensable_safety_passed": (
-                self.non_compensable_safety_passed
-            ),
+            "non_compensable_safety_passed": (self.non_compensable_safety_passed),
             "passed": self.passed,
             "evidence_claim_ids": list(self.evidence_claim_ids),
         }
@@ -1522,17 +1299,11 @@ class V2BenchmarkReport:
             name="v2 benchmark report",
         )
         if payload["schema"] != V2_BENCHMARK_REPORT_SCHEMA:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark report schema"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark report schema")
         if payload["contract_version"] != V2_BENCHMARK_CONTRACT_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark contract version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark contract version")
         if payload["corpus_version"] != V2_BENCHMARK_CORPUS_VERSION:
-            raise V2BenchmarkValidationError(
-                "unsupported v2 benchmark corpus version"
-            )
+            raise V2BenchmarkValidationError("unsupported v2 benchmark corpus version")
         actual = dict(payload)
         claimed_id = actual.pop("report_id", expected.report_id)
         if actual != expected.to_dict():
@@ -1540,9 +1311,7 @@ class V2BenchmarkReport:
                 "persisted report does not match deterministic corpus replay"
             )
         if claimed_id != expected.report_id:
-            raise V2BenchmarkValidationError(
-                "v2 benchmark report identity does not match replay"
-            )
+            raise V2BenchmarkValidationError("v2 benchmark report identity does not match replay")
         return expected
 
     @classmethod
@@ -1566,9 +1335,7 @@ def build_v2_benchmark_report(
     if isinstance(corpus, Mapping):
         corpus = V2PairedBenchmarkCorpus.from_dict(corpus)
     if not isinstance(corpus, V2PairedBenchmarkCorpus):
-        raise V2BenchmarkValidationError(
-            "corpus must be V2PairedBenchmarkCorpus"
-        )
+        raise V2BenchmarkValidationError("corpus must be V2PairedBenchmarkCorpus")
     baseline = tuple(item.baseline for item in corpus.cases)
     candidate = tuple(item.candidate for item in corpus.cases)
     baseline_total = _aggregate(baseline)
@@ -1584,12 +1351,9 @@ def build_v2_benchmark_report(
         failures[gate] = tuple(
             item.fixture_id
             for item in corpus.cases
-            if not item.baseline.safety_gates[gate]
-            or not item.candidate.safety_gates[gate]
+            if not item.baseline.safety_gates[gate] or not item.candidate.safety_gates[gate]
         )
-    expected_population = tuple(
-        _fixture_id(kind) for kind in REQUIRED_V2_FIXTURE_KINDS
-    )
+    expected_population = tuple(_fixture_id(kind) for kind in REQUIRED_V2_FIXTURE_KINDS)
     population_complete = corpus.fixture_population_ids == expected_population
     paired = all(item.pair_integrity_passed for item in corpus.cases)
     safety_passed = not any(failures.values())
@@ -1597,12 +1361,8 @@ def build_v2_benchmark_report(
         corpus_id=corpus.corpus_id,
         fixture_population_ids=corpus.fixture_population_ids,
         case_ids=tuple(item.case_id for item in corpus.cases),
-        baseline_receipt_ids=tuple(
-            item.baseline.receipt_id for item in corpus.cases
-        ),
-        candidate_receipt_ids=tuple(
-            item.candidate.receipt_id for item in corpus.cases
-        ),
+        baseline_receipt_ids=tuple(item.baseline.receipt_id for item in corpus.cases),
+        candidate_receipt_ids=tuple(item.candidate.receipt_id for item in corpus.cases),
         baseline=baseline_total,
         candidate=candidate_total,
         candidate_minus_baseline=delta,
@@ -1625,20 +1385,12 @@ def verify_v2_benchmark_report(
     elif isinstance(report, Mapping):
         payload = report
     else:
-        raise V2BenchmarkValidationError(
-            "report must be V2BenchmarkReport or an object"
-        )
+        raise V2BenchmarkValidationError("report must be V2BenchmarkReport or an object")
     return V2BenchmarkReport.from_dict(payload, corpus=corpus)
 
 
 def replay_v2_benchmark(
-    corpus: (
-        V2PairedBenchmarkCorpus
-        | Mapping[str, Any]
-        | str
-        | bytes
-        | bytearray
-    ),
+    corpus: (V2PairedBenchmarkCorpus | Mapping[str, Any] | str | bytes | bytearray),
     *,
     expected_report: V2BenchmarkReport | Mapping[str, Any] | None = None,
 ) -> V2BenchmarkReport:
@@ -1720,18 +1472,14 @@ def adapt_v1_efficiency_receipt(
         cache_observations = tuple(receipt.cache_observations)
         retries = tuple(receipt.retries)
         terminal_accepted = bool(receipt.accepted)
-        actual_outcome = str(
-            getattr(receipt.terminal.outcome, "value", receipt.terminal.outcome)
-        )
+        actual_outcome = str(getattr(receipt.terminal.outcome, "value", receipt.terminal.outcome))
         source_id = str(receipt.receipt_id)
     except (AttributeError, TypeError) as exc:
         raise V2BenchmarkValidationError(
             "v1 receipt does not expose the efficiency receipt contract"
         ) from exc
     expected = expected_terminal_outcome or _EXPECTED_TERMINAL_OUTCOME[kind]
-    actual = terminal_outcome or (
-        "accepted" if terminal_accepted else actual_outcome
-    )
+    actual = terminal_outcome or ("accepted" if terminal_accepted else actual_outcome)
     metrics = V2CausalMetrics(
         stage_latencies=stages,
         elapsed_ms=receipt.elapsed_ms,
@@ -1763,10 +1511,7 @@ def adapt_v1_efficiency_receipt(
         artifact_count=len(receipt.artifacts),
         artifact_bytes=sum(item.byte_count for item in receipt.artifacts),
         artifact_manifest_digest=_digest(
-            tuple(
-                (item.reference_id, item.digest, item.byte_count)
-                for item in receipt.artifacts
-            )
+            tuple((item.reference_id, item.digest, item.byte_count) for item in receipt.artifacts)
         ),
         expected_terminal_outcome=expected,
         terminal_outcome=actual,
@@ -1785,9 +1530,7 @@ def adapt_v1_efficiency_receipt(
     )
 
 
-def _default_identity(
-    kind: V2FixtureKind, arm: V2BenchmarkArm
-) -> V2FrozenIdentity:
+def _default_identity(kind: V2FixtureKind, arm: V2BenchmarkArm) -> V2FrozenIdentity:
     return V2FrozenIdentity(
         repository_id=V2_FROZEN_REPOSITORY_ID,
         tree_id=V2_FROZEN_TREE_ID,
@@ -1804,9 +1547,7 @@ def _default_identity(
     )
 
 
-def _base_metrics(
-    kind: V2FixtureKind, arm: V2BenchmarkArm
-) -> V2CausalMetrics:
+def _base_metrics(kind: V2FixtureKind, arm: V2BenchmarkArm) -> V2CausalMetrics:
     accepted = _EXPECTED_TERMINAL_OUTCOME[kind]
     candidate = arm is V2BenchmarkArm.CANDIDATE
     no_provider = kind in {
@@ -1817,14 +1558,11 @@ def _base_metrics(
     input_tokens = 0 if no_provider else (2_400 if candidate else 4_000)
     output_tokens = 0 if no_provider else (360 if candidate else 600)
     warm = kind in {V2FixtureKind.WARM, V2FixtureKind.RESTART}
-    reused_tokens = (
-        (1_800 if candidate else 2_400)
-        if warm
-        else 0
-    )
+    reused_tokens = (1_800 if candidate else 2_400) if warm else 0
     retry_count = (
         1
-        if kind in {
+        if kind
+        in {
             V2FixtureKind.MALFORMED_OUTPUT,
             V2FixtureKind.FAILED_VALIDATION,
             V2FixtureKind.RESTART,
@@ -1853,11 +1591,7 @@ def _base_metrics(
         if kind in {V2FixtureKind.BROAD_GOAL, V2FixtureKind.RESTART}
         else V2GateStatus.NOT_REQUIRED
     )
-    merge = (
-        V2GateStatus.PASSED
-        if is_terminal_accept
-        else V2GateStatus.NOT_REQUIRED
-    )
+    merge = V2GateStatus.PASSED if is_terminal_accept else V2GateStatus.NOT_REQUIRED
     stages = (
         ()
         if no_provider
@@ -1887,45 +1621,29 @@ def _base_metrics(
         retry_output_tokens=retry_output,
         validation_status=validation,
         validation_latency_ms=(
-            (1_100 if candidate else 2_000)
-            if validation is not V2GateStatus.NOT_REQUIRED
-            else 0
+            (1_100 if candidate else 2_000) if validation is not V2GateStatus.NOT_REQUIRED else 0
         ),
         proof_status=proof,
         proof_latency_ms=(
-            (500 if candidate else 900)
-            if proof is not V2GateStatus.NOT_REQUIRED
-            else 0
+            (500 if candidate else 900) if proof is not V2GateStatus.NOT_REQUIRED else 0
         ),
         merge_status=merge,
         merge_latency_ms=(
-            (450 if candidate else 800)
-            if merge is not V2GateStatus.NOT_REQUIRED
-            else 0
+            (450 if candidate else 800) if merge is not V2GateStatus.NOT_REQUIRED else 0
         ),
         persistence_status=V2GateStatus.PASSED,
         persistence_latency_ms=30 if candidate else 60,
-        persistence_write_count=(
-            0 if kind is V2FixtureKind.DRAINED_BOARD else 1
-        ),
-        persistence_bytes=(
-            0 if kind is V2FixtureKind.DRAINED_BOARD else 512
-        ),
+        persistence_write_count=(0 if kind is V2FixtureKind.DRAINED_BOARD else 1),
+        persistence_bytes=(0 if kind is V2FixtureKind.DRAINED_BOARD else 512),
         idle_cpu_milli_percent=(
-            (700 if candidate else 1_400)
-            if kind is V2FixtureKind.DRAINED_BOARD
-            else 0
+            (700 if candidate else 1_400) if kind is V2FixtureKind.DRAINED_BOARD else 0
         ),
         idle_observation_ms=(
-            MIN_DRAINED_OBSERVATION_MS
-            if kind is V2FixtureKind.DRAINED_BOARD
-            else 0
+            MIN_DRAINED_OBSERVATION_MS if kind is V2FixtureKind.DRAINED_BOARD else 0
         ),
         artifact_count=artifact_count,
         artifact_bytes=artifact_bytes,
-        artifact_manifest_digest=_fixture_digest(
-            f"v2:{kind.value}:{arm.value}:artifact-manifest"
-        ),
+        artifact_manifest_digest=_fixture_digest(f"v2:{kind.value}:{arm.value}:artifact-manifest"),
         expected_terminal_outcome=accepted,
         terminal_outcome=accepted,
         required_criterion_ids=criterion,
@@ -1967,9 +1685,7 @@ def build_frozen_v2_paired_corpus() -> V2PairedBenchmarkCorpus:
         )
     corpus = V2PairedBenchmarkCorpus(cases=tuple(cases))
     if corpus.corpus_id != V2_FROZEN_CORPUS_ID:
-        raise V2BenchmarkValidationError(
-            "canonical v2 corpus drifted without a version change"
-        )
+        raise V2BenchmarkValidationError("canonical v2 corpus drifted without a version change")
     report = build_v2_benchmark_report(corpus)
     if report.report_id != V2_CAUSAL_BASELINE_REPORT_ID:
         raise V2BenchmarkValidationError(

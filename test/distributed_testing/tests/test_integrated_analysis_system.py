@@ -45,7 +45,8 @@ except ImportError:
 
 try:
     import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend for testing
+
+    matplotlib.use("Agg")  # Use non-interactive backend for testing
     import matplotlib.pyplot as plt
     import seaborn as sns
 except ImportError:
@@ -70,37 +71,37 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test"""
         # Create a temporary database file
-        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix='.duckdb')
-        
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".duckdb")
+
         # Create test directories
         os.makedirs("test_reports", exist_ok=True)
         os.makedirs("test_visualizations", exist_ok=True)
-        
+
         # Mock coordinator for testing
         self.mock_coordinator = MagicMock()
         self.mock_coordinator.coordinator_id = "test-coordinator"
-        
+
         # Create the analysis system instance
         self.analysis_system = IntegratedAnalysisSystem(
             db_path=self.temp_db_path,
             enable_ml=ML_AVAILABLE,
             enable_visualization=VISUALIZATION_AVAILABLE,
             enable_real_time_analysis=True,
-            analysis_interval=timedelta(seconds=1)  # Short interval for testing
+            analysis_interval=timedelta(seconds=1),  # Short interval for testing
         )
 
     def tearDown(self):
         """Clean up after each test"""
         # Close the analysis system
         self.analysis_system.close()
-        
+
         # Remove temporary database file
         os.close(self.temp_db_fd)
         try:
             os.unlink(self.temp_db_path)
         except:
             pass
-            
+
         # Clean up test directories
         shutil.rmtree("test_reports", ignore_errors=True)
         shutil.rmtree("test_visualizations", ignore_errors=True)
@@ -119,31 +120,27 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         integration = self.analysis_system.register_with_coordinator(self.mock_coordinator)
         self.assertIsNotNone(integration)
         self.assertIsNotNone(self.analysis_system.coordinator_integration)
-        
+
     def test_notification_handlers(self):
         """Test notification handler registration and removal"""
         # Mock notification handler
         mock_handler = MagicMock()
-        
+
         # Register handler
         result = self.analysis_system.register_notification_handler(mock_handler)
         self.assertTrue(result)
         self.assertEqual(len(self.analysis_system.notification_handlers), 1)
-        
+
         # Test sending a notification
-        notification = {
-            "type": "test",
-            "severity": "info",
-            "message": "Test notification"
-        }
+        notification = {"type": "test", "severity": "info", "message": "Test notification"}
         self.analysis_system._send_notification(notification)
         mock_handler.assert_called_once_with(notification)
-        
+
         # Unregister handler
         result = self.analysis_system.unregister_notification_handler(mock_handler)
         self.assertTrue(result)
         self.assertEqual(len(self.analysis_system.notification_handlers), 0)
-        
+
         # Try unregistering a non-existent handler
         result = self.analysis_system.unregister_notification_handler(mock_handler)
         self.assertFalse(result)
@@ -156,29 +153,21 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
             "worker_id": "test_worker_1",
             "type": "benchmark",
             "status": "success",
-            "metrics": {
-                "throughput": 150.5,
-                "latency": 6.2,
-                "memory_usage": 1024.0
-            },
-            "details": {
-                "model": "bert",
-                "batch_size": 8,
-                "precision": "fp16"
-            }
+            "metrics": {"throughput": 150.5, "latency": 6.2, "memory_usage": 1024.0},
+            "details": {"model": "bert", "batch_size": 8, "precision": "fp16"},
         }
-        
+
         # Mock the service methods
         self.analysis_system.service.store_result = MagicMock(return_value=1)
         self.analysis_system.service.get_result = MagicMock(return_value=test_result)
         self.analysis_system._analyze_result = MagicMock()
-        
+
         # Store the result
         result_id = self.analysis_system.store_result(test_result)
         self.assertEqual(result_id, 1)
         self.analysis_system.service.store_result.assert_called_once_with(test_result)
         self.analysis_system._analyze_result.assert_called_once_with(1)
-        
+
         # Retrieve the result
         result = self.analysis_system.get_result(1)
         self.assertEqual(result, test_result)
@@ -187,34 +176,57 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
     def test_analyze_results(self):
         """Test analyzing results"""
         # Mock the service methods
-        self.analysis_system.get_results = MagicMock(return_value=[
-            {"id": 1, "task_id": "task_1", "worker_id": "worker_1", "status": "success", 
-             "metrics": {"throughput": 150, "latency": 6}, "type": "benchmark",
-             "timestamp": datetime.now().isoformat(), "duration": 10,
-             "details": {"hardware": "cuda", "model": "bert", "batch_size": 8}}
-        ])
-        
-        self.analysis_system.service.analyze_performance_trends = MagicMock(return_value={"throughput": {"trend": "stable"}})
+        self.analysis_system.get_results = MagicMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "task_id": "task_1",
+                    "worker_id": "worker_1",
+                    "status": "success",
+                    "metrics": {"throughput": 150, "latency": 6},
+                    "type": "benchmark",
+                    "timestamp": datetime.now().isoformat(),
+                    "duration": 10,
+                    "details": {"hardware": "cuda", "model": "bert", "batch_size": 8},
+                }
+            ]
+        )
+
+        self.analysis_system.service.analyze_performance_trends = MagicMock(
+            return_value={"throughput": {"trend": "stable"}}
+        )
         self.analysis_system.service.detect_anomalies = MagicMock(return_value=[])
-        
+
         # If pandas is available, mock the analyze functions
         if DATA_ANALYSIS_AVAILABLE:
-            with patch('result_aggregator.integrated_analysis_system.analyze_workload_distribution') as mock_wl:
-                with patch('result_aggregator.integrated_analysis_system.analyze_failure_patterns') as mock_fp:
-                    with patch('result_aggregator.integrated_analysis_system.analyze_multi_dimensional_performance') as mock_mp:
+            with patch(
+                "result_aggregator.integrated_analysis_system.analyze_workload_distribution"
+            ) as mock_wl:
+                with patch(
+                    "result_aggregator.integrated_analysis_system.analyze_failure_patterns"
+                ) as mock_fp:
+                    with patch(
+                        "result_aggregator.integrated_analysis_system.analyze_multi_dimensional_performance"
+                    ) as mock_mp:
                         # Set up mock returns
                         mock_wl.return_value = {"worker_stats": {}}
                         mock_fp.return_value = {"failure_counts": {}}
                         mock_mp.return_value = {"dimensions": []}
-                        
+
                         # Call analyze_results
                         results = self.analysis_system.analyze_results(
-                            analysis_types=["trends", "anomalies", "workload", "failures", "performance"],
+                            analysis_types=[
+                                "trends",
+                                "anomalies",
+                                "workload",
+                                "failures",
+                                "performance",
+                            ],
                             metrics=["throughput", "latency"],
                             group_by="hardware",
-                            time_period_days=7
+                            time_period_days=7,
                         )
-                        
+
                         # Verify calls
                         self.assertIn("trends", results)
                         self.assertIn("anomalies", results)
@@ -225,8 +237,7 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         else:
             # Just test basic functionality without pandas
             results = self.analysis_system.analyze_results(
-                analysis_types=["trends", "anomalies"],
-                metrics=["throughput", "latency"]
+                analysis_types=["trends", "anomalies"], metrics=["throughput", "latency"]
             )
             self.assertIn("trends", results)
             self.assertIn("anomalies", results)
@@ -236,32 +247,34 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         # Mock the service methods
         mock_report = "# Test Report\n\nThis is a test report."
         self.analysis_system.service.generate_analysis_report = MagicMock(return_value=mock_report)
-        self.analysis_system.service.generate_performance_report = MagicMock(return_value=mock_report)
-        
+        self.analysis_system.service.generate_performance_report = MagicMock(
+            return_value=mock_report
+        )
+
         # Generate a report without analysis results
         report = self.analysis_system.generate_report(
             report_type="comprehensive",
             format="markdown",
-            output_path="test_reports/test_report.md"
+            output_path="test_reports/test_report.md",
         )
-        
+
         self.assertEqual(report, mock_report)
         self.analysis_system.service.generate_analysis_report.assert_called_once()
-        
+
         # Check if file was created
         self.assertTrue(os.path.exists("test_reports/test_report.md"))
-        
+
         # Generate with pre-computed analysis
         analysis_results = {"trends": {}, "anomalies": []}
         self.analysis_system.analyze_results = MagicMock(return_value=analysis_results)
-        
+
         report = self.analysis_system.generate_report(
             analysis_results=analysis_results,
             report_type="performance",
             format="markdown",
-            output_path="test_reports/perf_report.md"
+            output_path="test_reports/perf_report.md",
         )
-        
+
         self.assertEqual(report, mock_report)
         self.analysis_system.service.generate_performance_report.assert_called_once()
         self.assertTrue(os.path.exists("test_reports/perf_report.md"))
@@ -273,39 +286,39 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         self.analysis_system._visualize_trends = MagicMock(return_value=True)
         self.analysis_system._visualize_anomalies = MagicMock(return_value=True)
         self.analysis_system._visualize_workload_distribution = MagicMock(return_value=True)
-        
+
         # Test trends visualization
         self.analysis_system.visualize_results(
             visualization_type="trends",
             data={"throughput": {"trend": "increasing"}},
             metrics=["throughput"],
-            output_path="test_visualizations/trends.png"
+            output_path="test_visualizations/trends.png",
         )
         self.analysis_system._visualize_trends.assert_called_once()
-        
+
         # Test anomalies visualization
         self.analysis_system.visualize_results(
             visualization_type="anomalies",
             data=[{"score": 0.9, "type": "outlier"}],
-            output_path="test_visualizations/anomalies.png"
+            output_path="test_visualizations/anomalies.png",
         )
         self.analysis_system._visualize_anomalies.assert_called_once()
-        
+
         # Test workload visualization
         self.analysis_system.visualize_results(
             visualization_type="workload_distribution",
             data={"worker_stats": {}},
-            output_path="test_visualizations/workload.png"
+            output_path="test_visualizations/workload.png",
         )
         self.analysis_system._visualize_workload_distribution.assert_called_once()
-        
+
         # Test with disabled visualization
         temp_viz = self.analysis_system.enable_visualization
         self.analysis_system.enable_visualization = False
         result = self.analysis_system.visualize_results(
             visualization_type="trends",
             data={"throughput": {"trend": "increasing"}},
-            metrics=["throughput"]
+            metrics=["throughput"],
         )
         self.assertFalse(result)
         self.analysis_system.enable_visualization = temp_viz
@@ -323,10 +336,10 @@ class TestIntegratedAnalysisSystem(unittest.TestCase):
         self.analysis_system._stop_analysis_thread = MagicMock()
         self.analysis_system.service.close = MagicMock()
         self.analysis_system.coordinator_integration = MagicMock()
-        
+
         # Close the system
         self.analysis_system.close()
-        
+
         # Verify calls
         self.analysis_system._stop_analysis_thread.assert_called_once()
         self.analysis_system.service.close.assert_called_once()
@@ -346,33 +359,33 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.TestCase):
         """Set up test environment before each test"""
         if not DUCKDB_AVAILABLE:
             self.skipTest("DuckDB not available, skipping tests")
-            
+
         # Create a temporary database file
-        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix='.duckdb')
-        
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".duckdb")
+
         # Import coordinator
         from coordinator import DistributedTestingCoordinator
-        
+
         # Create the coordinator
         self.coordinator = DistributedTestingCoordinator(
             db_path=self.temp_db_path,
             port=8081,
             enable_advanced_scheduler=True,
-            enable_plugins=True
+            enable_plugins=True,
         )
-        
+
         # Create the analysis system instance
         self.analysis_system = IntegratedAnalysisSystem(
             db_path=self.temp_db_path,
             enable_ml=ML_AVAILABLE,
             enable_visualization=VISUALIZATION_AVAILABLE,
             enable_real_time_analysis=True,
-            analysis_interval=timedelta(seconds=1)  # Short interval for testing
+            analysis_interval=timedelta(seconds=1),  # Short interval for testing
         )
-        
+
         # Register with coordinator
         self.analysis_system.register_with_coordinator(self.coordinator)
-        
+
         # Create a test worker
         self.worker_id = "test-worker"
         self.coordinator.workers[self.worker_id] = {
@@ -381,14 +394,14 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.TestCase):
             "capabilities": {"hardware": ["cuda", "cpu"]},
             "status": "active",
             "tasks_completed": 0,
-            "tasks_failed": 0
+            "tasks_failed": 0,
         }
 
     async def _async_tear_down(self):
         """Clean up after each test"""
         # Close the analysis system
         self.analysis_system.close()
-        
+
         # Remove temporary database file
         os.close(self.temp_db_fd)
         try:
@@ -403,7 +416,7 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.TestCase):
         """Test integration with task completion"""
         # Create a test task
         task_id = "test-task"
-        
+
         # Create task in coordinator
         self.coordinator.tasks[task_id] = {
             "task_id": task_id,
@@ -413,58 +426,50 @@ class TestIntegratedAnalysisSystemWithCoordinator(unittest.TestCase):
             "requirements": {"hardware": ["cuda"]},
             "metadata": {"model": "bert", "batch_size": 8},
             "attempts": 1,
-            "started": datetime.now().isoformat()
+            "started": datetime.now().isoformat(),
         }
-        
+
         # Associate task with worker
         self.coordinator.running_tasks[task_id] = self.worker_id
-        
+
         # Create test result
         result = {
             "status": "success",
-            "metrics": {
-                "throughput": 150.5,
-                "latency": 6.2,
-                "memory_usage": 1024.0
-            },
-            "details": {
-                "model": "bert",
-                "batch_size": 8,
-                "precision": "fp16"
-            }
+            "metrics": {"throughput": 150.5, "latency": 6.2, "memory_usage": 1024.0},
+            "details": {"model": "bert", "batch_size": 8, "precision": "fp16"},
         }
-        
+
         # Set up notification receiver
         notifications = []
+
         def notification_handler(notification):
             notifications.append(notification)
-        
+
         self.analysis_system.register_notification_handler(notification_handler)
-        
+
         # Call the task completion handler
         test_duration = 10.5
-        await self.coordinator._handle_task_completed(task_id, self.worker_id, result, test_duration)
-        
+        await self.coordinator._handle_task_completed(
+            task_id, self.worker_id, result, test_duration
+        )
+
         # Wait for processing
         await anyio.sleep(1)
-        
+
         # Verify that the task was completed
         self.assertNotIn(task_id, self.coordinator.running_tasks)
         self.assertEqual(self.coordinator.tasks[task_id]["status"], "completed")
-        
+
         # Check for any notifications (we may not get any for a single task)
         # This is mostly to ensure the process completes without errors
-        
+
         # Generate and check a report
-        report = self.analysis_system.generate_report(
-            report_type="summary",
-            format="json"
-        )
-        
+        report = self.analysis_system.generate_report(report_type="summary", format="json")
+
         # Basic validation - should contain valid JSON
         report_data = json.loads(report)
         self.assertIsInstance(report_data, dict)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

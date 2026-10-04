@@ -796,9 +796,7 @@ api = PromptWorkflowPublicAPI(
 )
 request = PromptWorkflowControlRequest(action="automatic")
 assert api.python(request).to_dict() == api.cli(request.to_dict()).to_dict()
-assert api.mcp(request.to_dict()).decision.effective_mode.value == (
-    decision.effective_mode.value
-)
+assert api.mcp(request.to_dict()).decision.effective_mode.value == (decision.effective_mode.value)
 # Immediate operator rollback of the affected behavior only.
 assert api.rollback().decision.effective_mode.value == "shadow"
 ```

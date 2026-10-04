@@ -2,7 +2,7 @@
 """
 Apply Improvements to All Generators
 
-This script applies database integration, cross-platform hardware support, and 
+This script applies database integration, cross-platform hardware support, and
 web platform improvements to all test generators and benchmark scripts.
 
 Usage:
@@ -21,8 +21,7 @@ from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("apply_improvements")
 
@@ -38,19 +37,20 @@ GENERATORS = [
     TEST_DIR / "merged_test_generator.py",
     TEST_DIR / "fixed_merged_test_generator.py",
     TEST_DIR / "integrated_skillset_generator.py",
-    TEST_DIR / "implementation_generator.py"
+    TEST_DIR / "implementation_generator.py",
 ]
 
 BENCHMARK_SCRIPTS = [
     TEST_DIR / "benchmark_all_key_models.py",
     TEST_DIR / "run_model_benchmarks.py",
     TEST_DIR / "benchmark_hardware_models.py",
-    TEST_DIR / "run_benchmark_with_db.py"
+    TEST_DIR / "run_benchmark_with_db.py",
 ]
+
 
 def create_backup(file_path):
     """Create a backup of the file."""
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = BACKUP_DIR / f"{file_path.name}.bak_{timestamp}"
     try:
         shutil.copy2(file_path, backup_path)
@@ -60,24 +60,25 @@ def create_backup(file_path):
         logger.error(f"Failed to create backup of {file_path}: {e}")
         return False
 
+
 def apply_database_integration(file_path):
     """Apply database integration to file."""
     if not file_path.exists():
         logger.warning(f"File not found: {file_path}")
         return False
-    
+
     # Check if it's a test generator or benchmark script
     is_benchmark = "benchmark" in file_path.name.lower() or "run_" in file_path.name.lower()
-    
+
     # Modify the file to add database integration
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
-    
+
     # Check if database integration already exists
     if "integrated_improvements.database_integration" in content:
         logger.info(f"Database integration already exists in {file_path.name}")
         return True
-    
+
     # Add database imports
     db_imports = """
 # Database integration
@@ -99,7 +100,7 @@ except ImportError:
     HAS_DB_INTEGRATION = False
     DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
 """
-    
+
     # Find a place to insert imports
     import_section_end = content.find("# Configure logging")
     if import_section_end == -1:
@@ -109,10 +110,10 @@ except ImportError:
             last_import = content.rfind("import ", 0, 1000)
             if last_import != -1:
                 import_section_end = content.find("\n", last_import)
-    
+
     if import_section_end != -1:
         content = content[:import_section_end] + db_imports + content[import_section_end:]
-    
+
     # Add database storage function for test generators
     if not is_benchmark:
         db_store_function = """
@@ -175,8 +176,10 @@ def store_test_in_database(test_data, db_path=None):
             # Find first blank line after function declarations
             first_function_end = content.find("\ndef ", function_section)
             if first_function_end != -1:
-                content = content[:first_function_end] + db_store_function + content[first_function_end:]
-    
+                content = (
+                    content[:first_function_end] + db_store_function + content[first_function_end:]
+                )
+
     # Add database storage function for benchmark scripts
     else:
         db_store_function = """
@@ -241,8 +244,10 @@ def store_benchmark_in_database(result, db_path=None):
             # Find first blank line after function declarations
             first_function_end = content.find("\ndef ", function_section)
             if first_function_end != -1:
-                content = content[:first_function_end] + db_store_function + content[first_function_end:]
-    
+                content = (
+                    content[:first_function_end] + db_store_function + content[first_function_end:]
+                )
+
     # Find save results function and add database storage
     if is_benchmark:
         save_function = content.find("def save_results")
@@ -251,9 +256,12 @@ def store_benchmark_in_database(result, db_path=None):
             if save_function_end != -1:
                 # Extract save results function
                 save_function_content = content[save_function:save_function_end]
-                
+
                 # Check if it already has database integration
-                if "if not DEPRECATE_JSON_OUTPUT:" not in save_function_content and "if DEPRECATE_JSON_OUTPUT:" not in save_function_content:
+                if (
+                    "if not DEPRECATE_JSON_OUTPUT:" not in save_function_content
+                    and "if DEPRECATE_JSON_OUTPUT:" not in save_function_content
+                ):
                     # Modify the save_results function
                     modified_save_function = """def save_results(result, output_dir=None, db_path=None):
     # Save benchmark results to file or database
@@ -277,7 +285,7 @@ def store_benchmark_in_database(result, db_path=None):
 """
                     # Replace old save_results function
                     content = content.replace(save_function_content, modified_save_function)
-    
+
     # Add CLI argument for database path
     argparse_section = content.find("parser = argparse.ArgumentParser")
     if argparse_section != -1:
@@ -292,29 +300,30 @@ def store_benchmark_in_database(result, db_path=None):
                       default=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
 """
                 content = content[:args_section_end] + db_path_arg + content[args_section_end:]
-    
+
     # Write the modified content back
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Applied database integration to {file_path.name}")
     return True
+
 
 def apply_hardware_detection(file_path):
     """Apply improved hardware detection."""
     if not file_path.exists():
         logger.warning(f"File not found: {file_path}")
         return False
-    
+
     # Read the file
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
-    
+
     # Check if hardware detection already exists
     if "integrated_improvements.improved_hardware_detection" in content:
         logger.info(f"Hardware detection already applied to {file_path.name}")
         return True
-    
+
     # Add hardware detection imports
     hardware_imports = """
 # Improved hardware detection
@@ -335,7 +344,7 @@ except ImportError:
     logger.warning("Improved hardware detection not available")
     HAS_HARDWARE_MODULE = False
 """
-    
+
     # Find a place to insert imports
     import_section_end = content.find("# Configure logging")
     if import_section_end == -1:
@@ -345,10 +354,10 @@ except ImportError:
             last_import = content.rfind("import ", 0, 1000)
             if last_import != -1:
                 import_section_end = content.find("\n", last_import)
-    
+
     if import_section_end != -1:
         content = content[:import_section_end] + hardware_imports + content[import_section_end:]
-    
+
     # Replace any existing hardware detection
     if "def detect_available_hardware" in content:
         # Find the function
@@ -358,7 +367,7 @@ except ImportError:
             if hw_detect_end != -1:
                 # Extract old function
                 old_hw_function = content[hw_detect_start:hw_detect_end]
-                
+
                 # Replace with improved function calling the imported version
                 new_hw_function = """def detect_available_hardware():
     # Detect available hardware platforms on the current system
@@ -380,29 +389,30 @@ except ImportError:
         return available_hardware
 """
                 content = content.replace(old_hw_function, new_hw_function)
-    
+
     # Write the modified content back
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Applied hardware detection improvements to {file_path.name}")
     return True
+
 
 def apply_web_platform_improvements(file_path):
     """Apply web platform improvements."""
     if not file_path.exists():
         logger.warning(f"File not found: {file_path}")
         return False
-    
+
     # Read the file
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
-    
+
     # Check if web platform optimizations already exist
     if "check_web_optimizations" in content:
         logger.info(f"Web platform optimizations already applied to {file_path.name}")
         return True
-    
+
     # Add web platform optimization handling
     web_platform_code = """
 def apply_web_platform_optimizations(model_type, platform="webgpu"):
@@ -434,65 +444,71 @@ def apply_web_platform_optimizations(model_type, platform="webgpu"):
         
         return optimizations
 """
-    
+
     # Find a place to add the function
     function_section = content.find("def ")
     if function_section != -1:
         # Find first blank line after function declarations
         first_function_end = content.find("\ndef ", function_section)
         if first_function_end != -1:
-            content = content[:first_function_end] + web_platform_code + content[first_function_end:]
-    
+            content = (
+                content[:first_function_end] + web_platform_code + content[first_function_end:]
+            )
+
     # Write the modified content
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Applied web platform improvements to {file_path.name}")
     return True
+
 
 def fix_file(file_path):
     """Apply all fixes to a file."""
     if not os.path.exists(file_path):
         logger.warning(f"File not found: {file_path}")
         return False
-    
+
     # Create backup
     if not create_backup(file_path):
         logger.error(f"Failed to create backup of {file_path}, skipping")
         return False
-    
+
     # Apply all fixes
     success = True
     success = apply_database_integration(file_path) and success
     success = apply_hardware_detection(file_path) and success
     success = apply_web_platform_improvements(file_path) and success
-    
+
     if success:
         logger.info(f"Successfully fixed {file_path}")
     else:
         logger.error(f"Failed to fully fix {file_path}")
-    
+
     return success
+
 
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Apply improvements to generators and benchmarks")
     parser.add_argument("--fix-all", action="store_true", help="Fix all files")
     parser.add_argument("--fix-tests-only", action="store_true", help="Fix only test generators")
-    parser.add_argument("--fix-benchmarks-only", action="store_true", help="Fix only benchmark scripts")
+    parser.add_argument(
+        "--fix-benchmarks-only", action="store_true", help="Fix only benchmark scripts"
+    )
     args = parser.parse_args()
-    
+
     # Determine what to fix
     fix_tests = args.fix_all or args.fix_tests_only
     fix_benchmarks = args.fix_all or args.fix_benchmarks_only
-    
+
     if not (fix_tests or fix_benchmarks):
         # If no arguments provided, fix everything
         fix_tests = True
         fix_benchmarks = True
-    
+
     success = True
-    
+
     if fix_tests:
         logger.info("Fixing test generators...")
         for generator in GENERATORS:
@@ -500,7 +516,7 @@ def main():
                 success = fix_file(generator) and success
             else:
                 logger.warning(f"Generator not found: {generator}")
-    
+
     if fix_benchmarks:
         logger.info("Fixing benchmark scripts...")
         for benchmark in BENCHMARK_SCRIPTS:
@@ -508,13 +524,14 @@ def main():
                 success = fix_file(benchmark) and success
             else:
                 logger.warning(f"Benchmark script not found: {benchmark}")
-    
+
     if success:
         logger.info("Successfully applied all improvements")
         return 0
     else:
         logger.error("Failed to apply some improvements")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

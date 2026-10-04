@@ -30,6 +30,7 @@ from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 
 cache = GitHubAPICache(enable_p2p=False)
 
+
 async def read_cache():
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, partial(cache.get, "key"))

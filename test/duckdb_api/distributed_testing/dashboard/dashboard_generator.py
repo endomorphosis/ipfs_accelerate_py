@@ -25,8 +25,7 @@ import tempfile
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("dashboard_generator")
 
@@ -38,35 +37,37 @@ if parent_dir not in sys.path:
 # Try to import the visualization engine
 try:
     from data.duckdb.distributed_testing.dashboard.visualization import VisualizationEngine
+
     VISUALIZATION_ENGINE_AVAILABLE = True
 except ImportError:
     logger.warning("VisualizationEngine not available. Using basic dashboard generation.")
     VISUALIZATION_ENGINE_AVAILABLE = False
 
+
 class DashboardGenerator:
     """Dashboard generator for the distributed testing framework."""
-    
+
     def __init__(self, result_aggregator=None, output_dir: str = "./dashboards"):
         """Initialize the dashboard generator.
-        
+
         Args:
             result_aggregator: Result aggregator for accessing result data
             output_dir: Directory to save dashboards
         """
         self.result_aggregator = result_aggregator
         self.output_dir = output_dir
-        
+
         # Create visualization engine if available
         self.visualization_engine = None
         if VISUALIZATION_ENGINE_AVAILABLE:
             self.visualization_engine = VisualizationEngine(
                 result_aggregator=result_aggregator,
-                output_dir=os.path.join(output_dir, "visualizations")
+                output_dir=os.path.join(output_dir, "visualizations"),
             )
-        
+
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Configuration
         self.config = {
             "theme": "light",  # light or dark
@@ -81,7 +82,7 @@ class DashboardGenerator:
             "chart_width": 800,
             "chart_height": 400,
         }
-        
+
         # Define colors based on theme
         self.colors = {
             "primary": "#1f77b4",
@@ -95,37 +96,38 @@ class DashboardGenerator:
             "text": "#333333" if self.config["theme"] == "light" else "#f8f9fa",
             "border": "#dee2e6" if self.config["theme"] == "light" else "#495057",
         }
-        
+
         logger.info("Dashboard generator initialized")
-    
+
     def configure(self, config_updates: Dict[str, Any]) -> None:
         """Update the dashboard generator configuration.
-        
+
         Args:
             config_updates: Dictionary of configuration updates
         """
         self.config.update(config_updates)
-        
+
         # Update colors based on theme
         if "theme" in config_updates:
             self.colors["background"] = "#ffffff" if self.config["theme"] == "light" else "#222222"
             self.colors["text"] = "#333333" if self.config["theme"] == "light" else "#f8f9fa"
             self.colors["border"] = "#dee2e6" if self.config["theme"] == "light" else "#495057"
-            
+
             # Update visualization engine theme if available
             if self.visualization_engine:
                 self.visualization_engine.configure({"theme": self.config["theme"]})
-        
+
         logger.info(f"Dashboard generator configuration updated: {config_updates}")
-    
-    def generate_dashboard(self, data: Optional[Dict[str, Any]] = None, 
-                          output_path: Optional[str] = None) -> Optional[str]:
+
+    def generate_dashboard(
+        self, data: Optional[Dict[str, Any]] = None, output_path: Optional[str] = None
+    ) -> Optional[str]:
         """Generate a comprehensive dashboard.
-        
+
         Args:
             data: Optional data to use for the dashboard (uses result_aggregator if None)
             output_path: Optional path for the dashboard HTML file
-            
+
         Returns:
             Path to the generated dashboard, or None if generation failed
         """
@@ -138,48 +140,51 @@ class DashboardGenerator:
                 "task_type_analysis": self.result_aggregator.task_type_analysis,
                 "dimension_analysis": self.result_aggregator.get_dimension_analysis(),
                 "regression_results": self.result_aggregator.get_regressions(),
-                "historical_performance": getattr(self.result_aggregator, 'historical_performance', {})
+                "historical_performance": getattr(
+                    self.result_aggregator, "historical_performance", {}
+                ),
             }
-        
+
         # Ensure we have data to work with
         if not data:
             logger.error("No data provided and no result aggregator available")
             return None
-        
+
         # Generate default output path if not provided
         if not output_path:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = os.path.join(self.output_dir, f"dashboard_{timestamp}.html")
-        
+
         try:
             # Start building the HTML
             html_content = self._generate_dashboard_html(data)
-            
+
             # Write the HTML to the output file
             with open(output_path, "w") as f:
                 f.write(html_content)
-            
+
             logger.info(f"Dashboard generated: {output_path}")
             return output_path
-            
+
         except Exception as e:
             logger.error(f"Error generating dashboard: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             return None
-    
+
     def _generate_dashboard_html(self, data: Dict[str, Any]) -> str:
         """Generate the HTML content for the dashboard.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
         # Define page title
         title = "Distributed Testing Dashboard"
-        
+
         # Start HTML document
         html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -430,7 +435,7 @@ class DashboardGenerator:
 
         # Add auto-refresh meta tag if enabled
         if self.config["refresh_interval"] > 0:
-            html += f"""    <meta http-equiv="refresh" content="{self.config['refresh_interval']}">
+            html += f"""    <meta http-equiv="refresh" content="{self.config["refresh_interval"]}">
 """
 
         # Add JavaScript libraries if needed
@@ -479,27 +484,27 @@ class DashboardGenerator:
 
         # Add summary cards
         html += self._generate_summary_cards(data)
-        
+
         # Add performance trends section
         if self.config["include_performance_charts"]:
             html += self._generate_performance_section(data)
-        
+
         # Add regression detection section
         if self.config["include_regression_detection"]:
             html += self._generate_regression_section(data)
-        
+
         # Add dimension analysis section
         if self.config["include_dimension_analysis"]:
             html += self._generate_dimension_section(data)
-        
+
         # Add test details section
         if self.config["include_test_details"]:
             html += self._generate_test_section(data)
-        
+
         # Add worker details section
         if self.config["include_worker_details"]:
             html += self._generate_worker_section(data)
-        
+
         # Add footer
         html += """        <div class="footer">
             Distributed Testing Framework - Advanced Dashboard
@@ -509,20 +514,20 @@ class DashboardGenerator:
 </html>"""
 
         return html
-    
+
     def _generate_summary_cards(self, data: Dict[str, Any]) -> str:
         """Generate HTML for summary cards.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
         # Extract overall status
         overall_status = data.get("overall_status", {})
         regression_results = data.get("regression_results", {})
-        
+
         # Calculate summary metrics
         test_count = overall_status.get("test_count", 0)
         worker_count = overall_status.get("worker_count", 0)
@@ -530,7 +535,7 @@ class DashboardGenerator:
         total_executions = overall_status.get("total_executions", 0)
         regression_count = overall_status.get("regression_count", 0)
         significant_regression_count = overall_status.get("significant_regression_count", 0)
-        
+
         # Generate HTML
         html = """        <div class="summary-cards">
 """
@@ -570,18 +575,25 @@ class DashboardGenerator:
         if "aggregated_metrics" in overall_status:
             aggregated_metrics = overall_status["aggregated_metrics"]
             metrics_html = ""
-            
+
             # Find key metrics
-            for metric in ["throughput_mean", "latency_mean", "memory_usage_mean", "success_rate_mean"]:
+            for metric in [
+                "throughput_mean",
+                "latency_mean",
+                "memory_usage_mean",
+                "success_rate_mean",
+            ]:
                 if metric in aggregated_metrics:
                     # Format the metric value
                     value = aggregated_metrics[metric]
-                    formatted_value = f"{value:.2f}" if isinstance(value, (int, float)) else str(value)
-                    
+                    formatted_value = (
+                        f"{value:.2f}" if isinstance(value, (int, float)) else str(value)
+                    )
+
                     # Add to metrics HTML
                     metric_name = metric.replace("_mean", "").replace("_", " ").title()
                     metrics_html += f"<div>{metric_name}: {formatted_value}</div>"
-            
+
             html += f"""            <div class="card">
                 <div class="card-title">Performance</div>
                 <div class="card-details">
@@ -593,13 +605,13 @@ class DashboardGenerator:
         html += """        </div>
 """
         return html
-    
+
     def _generate_performance_section(self, data: Dict[str, Any]) -> str:
         """Generate HTML for performance trends section.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
@@ -610,64 +622,72 @@ class DashboardGenerator:
 """
 
         # Check if we have a visualization engine and historical performance data
-        if self.visualization_engine and "historical_performance" in data and data["historical_performance"]:
+        if (
+            self.visualization_engine
+            and "historical_performance" in data
+            and data["historical_performance"]
+        ):
             # Create temp directory for visualizations if embedding
             if self.config["embed_images"]:
                 temp_dir = tempfile.mkdtemp()
                 visualization_path = os.path.join(temp_dir, "performance_trend.png")
             else:
-                visualization_path = os.path.join(self.output_dir, "visualizations", "performance_trend.png")
-            
+                visualization_path = os.path.join(
+                    self.output_dir, "visualizations", "performance_trend.png"
+                )
+
             # Get metrics to visualize
             metrics = ["throughput", "latency", "memory_usage"]
             available_metrics = set()
-            
+
             # Check which metrics are available in the data
             for test_id, dates in data["historical_performance"].items():
                 for date, date_data in dates.items():
                     for metric in list(metrics):
                         if metric in date_data.get("metrics", {}):
                             available_metrics.add(metric)
-            
+
             if available_metrics:
                 # Create visualization data
                 visualization_data = {}
-                
+
                 # Add time series data for each test and metric
                 for test_id, dates in data["historical_performance"].items():
                     for metric in available_metrics:
                         # Create time series for this test and metric
                         time_series = []
-                        
+
                         for date_str, date_data in sorted(dates.items()):
                             if metric in date_data.get("metrics", {}):
                                 metric_data = date_data["metrics"][metric]
                                 if isinstance(metric_data, dict) and "mean" in metric_data:
                                     date = datetime.strptime(date_str, "%Y-%m-%d")
                                     time_series.append((date, metric_data["mean"]))
-                        
+
                         if time_series:
                             if "time_series" not in visualization_data:
                                 visualization_data["time_series"] = {}
-                            
+
                             visualization_data["time_series"][f"{test_id} - {metric}"] = time_series
-                
+
                 if visualization_data:
                     # Create visualization
                     visualization_data["metric"] = list(available_metrics)[0]
                     visualization_data["title"] = "Performance Trends Over Time"
-                    
-                    visualization_path = self.visualization_engine._create_time_series_visualization(
-                        visualization_data, visualization_path
+
+                    visualization_path = (
+                        self.visualization_engine._create_time_series_visualization(
+                            visualization_data, visualization_path
+                        )
                     )
-                    
+
                     if visualization_path:
                         # Add visualization to HTML
                         if self.config["embed_images"]:
                             # Embed image as base64
                             with open(visualization_path, "rb") as img_file:
                                 img_data = base64.b64encode(img_file.read()).decode("utf-8")
-                            
+
                             html += f"""            <div class="chart-container">
                 <div class="chart-title">Performance Trends Over Time</div>
                 <img src="data:image/png;base64,{img_data}" alt="Performance Trends" width="100%">
@@ -675,7 +695,9 @@ class DashboardGenerator:
 """
                         else:
                             # Link to image file
-                            rel_path = os.path.relpath(visualization_path, os.path.dirname(self.output_dir))
+                            rel_path = os.path.relpath(
+                                visualization_path, os.path.dirname(self.output_dir)
+                            )
                             html += f"""            <div class="chart-container">
                 <div class="chart-title">Performance Trends Over Time</div>
                 <img src="{rel_path}" alt="Performance Trends" width="100%">
@@ -697,13 +719,13 @@ class DashboardGenerator:
         html += """        </div>
 """
         return html
-    
+
     def _generate_regression_section(self, data: Dict[str, Any]) -> str:
         """Generate HTML for regression detection section.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
@@ -715,7 +737,7 @@ class DashboardGenerator:
 
         # Check if we have regression data
         regression_results = data.get("regression_results", {})
-        
+
         if regression_results:
             # Create regression visualization if visualization engine is available
             if self.visualization_engine:
@@ -724,22 +746,24 @@ class DashboardGenerator:
                     temp_dir = tempfile.mkdtemp()
                     visualization_path = os.path.join(temp_dir, "regression_analysis.png")
                 else:
-                    visualization_path = os.path.join(self.output_dir, "visualizations", "regression_analysis.png")
-                
+                    visualization_path = os.path.join(
+                        self.output_dir, "visualizations", "regression_analysis.png"
+                    )
+
                 # Create visualization data
                 visualization_data = {"regressions": regression_results}
-                
+
                 visualization_path = self.visualization_engine._create_regression_visualization(
                     visualization_data, visualization_path
                 )
-                
+
                 if visualization_path:
                     # Add visualization to HTML
                     if self.config["embed_images"]:
                         # Embed image as base64
                         with open(visualization_path, "rb") as img_file:
                             img_data = base64.b64encode(img_file.read()).decode("utf-8")
-                        
+
                         html += f"""            <div class="chart-container">
                 <div class="chart-title">Regression Analysis</div>
                 <img src="data:image/png;base64,{img_data}" alt="Regression Analysis" width="100%">
@@ -747,13 +771,15 @@ class DashboardGenerator:
 """
                     else:
                         # Link to image file
-                        rel_path = os.path.relpath(visualization_path, os.path.dirname(self.output_dir))
+                        rel_path = os.path.relpath(
+                            visualization_path, os.path.dirname(self.output_dir)
+                        )
                         html += f"""            <div class="chart-container">
                 <div class="chart-title">Regression Analysis</div>
                 <img src="{rel_path}" alt="Regression Analysis" width="100%">
             </div>
 """
-            
+
             # Add regression table
             html += """            <table>
                 <thead>
@@ -771,7 +797,7 @@ class DashboardGenerator:
 
             # Add rows for significant regressions first, then non-significant
             rows = []
-            
+
             for test_id, regression_info in regression_results.items():
                 for metric, metric_info in regression_info.get("metrics", {}).items():
                     if metric_info.get("is_regression", False):
@@ -779,11 +805,11 @@ class DashboardGenerator:
                         percent_change = metric_info.get("percent_change", 0)
                         baseline = metric_info.get("baseline_mean", 0)
                         current = metric_info.get("current_mean", 0)
-                        
+
                         # Create row with appropriate styling
                         badge_class = "badge-danger" if is_significant else "badge-warning"
                         significance_text = "Significant" if is_significant else "Not significant"
-                        
+
                         row = {
                             "test_id": test_id,
                             "metric": metric,
@@ -799,21 +825,23 @@ class DashboardGenerator:
                         <td>{baseline:.2f}</td>
                         <td>{current:.2f}</td>
                     </tr>
-"""
+""",
                         }
-                        
+
                         rows.append(row)
-            
+
             # Sort rows by significance, then by percent change
-            rows.sort(key=lambda x: (-int(x["is_significant"]), abs(x["percent_change"])), reverse=True)
-            
+            rows.sort(
+                key=lambda x: (-int(x["is_significant"]), abs(x["percent_change"])), reverse=True
+            )
+
             # Add rows to HTML, limited by max_items
             max_items = self.config["max_items_per_section"]
             for i, row in enumerate(rows):
                 if i >= max_items:
                     break
                 html += row["html"]
-            
+
             html += """                </tbody>
             </table>
 """
@@ -827,13 +855,13 @@ class DashboardGenerator:
         html += """        </div>
 """
         return html
-    
+
     def _generate_dimension_section(self, data: Dict[str, Any]) -> str:
         """Generate HTML for dimension analysis section.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
@@ -847,16 +875,16 @@ class DashboardGenerator:
 
         # Get dimensions
         dimension_analysis = data.get("dimension_analysis", {})
-        
+
         if dimension_analysis:
             # Create tabs for each dimension
             dimensions = list(dimension_analysis.keys())
-            
+
             for i, dimension in enumerate(dimensions):
                 active_class = "active" if i == 0 else ""
-                html += f"""                <div class="tab {active_class}" onclick="switchTab('dimension-{dimension}', 'dimension-tabs')">{dimension.replace('_', ' ').title()}</div>
+                html += f"""                <div class="tab {active_class}" onclick="switchTab('dimension-{dimension}', 'dimension-tabs')">{dimension.replace("_", " ").title()}</div>
 """
-            
+
             html += """            </div>
 """
 
@@ -865,7 +893,7 @@ class DashboardGenerator:
                 active_class = "active" if i == 0 else ""
                 html += f"""            <div id="dimension-{dimension}" class="tab-content {active_class}">
 """
-                
+
                 # Create dimension visualization if visualization engine is available
                 if self.visualization_engine:
                     # Create temp directory for visualizations if embedding
@@ -873,8 +901,10 @@ class DashboardGenerator:
                         temp_dir = tempfile.mkdtemp()
                         visualization_path = os.path.join(temp_dir, f"dimension_{dimension}.png")
                     else:
-                        visualization_path = os.path.join(self.output_dir, "visualizations", f"dimension_{dimension}.png")
-                    
+                        visualization_path = os.path.join(
+                            self.output_dir, "visualizations", f"dimension_{dimension}.png"
+                        )
+
                     # Get a metric to visualize
                     metric = None
                     # Look for throughput, latency, or memory_usage in the first value
@@ -883,7 +913,7 @@ class DashboardGenerator:
                         if f"{possible_metric}_mean" in first_value:
                             metric = possible_metric
                             break
-                    
+
                     if metric:
                         # Create visualization data
                         values = {}
@@ -891,39 +921,43 @@ class DashboardGenerator:
                             mean_key = f"{metric}_mean"
                             if mean_key in metrics:
                                 values[value] = metrics[mean_key]
-                        
+
                         visualization_data = {
                             "dimension": dimension,
                             "metric": metric,
                             "values": values,
-                            "title": f"{metric.replace('_', ' ').title()} by {dimension.replace('_', ' ').title()}"
+                            "title": f"{metric.replace('_', ' ').title()} by {dimension.replace('_', ' ').title()}",
                         }
-                        
-                        visualization_path = self.visualization_engine._create_dimension_comparison_visualization(
-                            visualization_data, visualization_path
+
+                        visualization_path = (
+                            self.visualization_engine._create_dimension_comparison_visualization(
+                                visualization_data, visualization_path
+                            )
                         )
-                        
+
                         if visualization_path:
                             # Add visualization to HTML
                             if self.config["embed_images"]:
                                 # Embed image as base64
                                 with open(visualization_path, "rb") as img_file:
                                     img_data = base64.b64encode(img_file.read()).decode("utf-8")
-                                
+
                                 html += f"""                <div class="chart-container">
-                    <div class="chart-title">{metric.replace('_', ' ').title()} by {dimension.replace('_', ' ').title()}</div>
+                    <div class="chart-title">{metric.replace("_", " ").title()} by {dimension.replace("_", " ").title()}</div>
                     <img src="data:image/png;base64,{img_data}" alt="Dimension Analysis" width="100%">
                 </div>
 """
                             else:
                                 # Link to image file
-                                rel_path = os.path.relpath(visualization_path, os.path.dirname(self.output_dir))
+                                rel_path = os.path.relpath(
+                                    visualization_path, os.path.dirname(self.output_dir)
+                                )
                                 html += f"""                <div class="chart-container">
-                    <div class="chart-title">{metric.replace('_', ' ').title()} by {dimension.replace('_', ' ').title()}</div>
+                    <div class="chart-title">{metric.replace("_", " ").title()} by {dimension.replace("_", " ").title()}</div>
                     <img src="{rel_path}" alt="Dimension Analysis" width="100%">
                 </div>
 """
-                
+
                 # Add dimension data table
                 html += """                <table>
                     <thead>
@@ -937,13 +971,13 @@ class DashboardGenerator:
                     for key in value_data.keys():
                         if key.endswith("_mean"):
                             metrics.add(key)
-                
+
                 # Add metric columns
                 for metric in sorted(metrics):
                     metric_name = metric.replace("_mean", "").replace("_", " ").title()
                     html += f"""                            <th>{metric_name}</th>
 """
-                
+
                 html += """                        </tr>
                     </thead>
                     <tbody>
@@ -954,20 +988,24 @@ class DashboardGenerator:
                     html += f"""                        <tr>
                             <td>{value}</td>
 """
-                    
+
                     for metric in sorted(metrics):
                         if metric in value_data:
                             metric_value = value_data[metric]
-                            formatted_value = f"{metric_value:.2f}" if isinstance(metric_value, (int, float)) else str(metric_value)
+                            formatted_value = (
+                                f"{metric_value:.2f}"
+                                if isinstance(metric_value, (int, float))
+                                else str(metric_value)
+                            )
                             html += f"""                            <td>{formatted_value}</td>
 """
                         else:
                             html += """                            <td>-</td>
 """
-                    
+
                     html += """                        </tr>
 """
-                
+
                 html += """                    </tbody>
                 </table>
             </div>
@@ -984,13 +1022,13 @@ class DashboardGenerator:
         html += """        </div>
 """
         return html
-    
+
     def _generate_test_section(self, data: Dict[str, Any]) -> str:
         """Generate HTML for test details section.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
@@ -1014,33 +1052,31 @@ class DashboardGenerator:
 
         # Add rows for each test
         test_analysis = data.get("test_analysis", {})
-        
+
         if test_analysis:
             # Sort tests by execution count
             sorted_tests = sorted(
-                test_analysis.items(),
-                key=lambda x: x[1].get("execution_count", 0),
-                reverse=True
+                test_analysis.items(), key=lambda x: x[1].get("execution_count", 0), reverse=True
             )
-            
+
             # Add rows, limited by max_items
             max_items = self.config["max_items_per_section"]
             for i, (test_id, analysis) in enumerate(sorted_tests):
                 if i >= max_items:
                     break
-                
+
                 # Extract metrics
                 execution_count = analysis.get("execution_count", 0)
                 success_rate = analysis.get("success_rate", 0) * 100
                 avg_duration = analysis.get("average_duration", 0)
                 last_execution = analysis.get("last_execution", datetime.now())
-                
+
                 # Format last execution
                 if isinstance(last_execution, datetime):
                     last_execution_str = last_execution.strftime("%Y-%m-%d %H:%M")
                 else:
                     last_execution_str = str(last_execution)
-                
+
                 # Determine success rate badge class
                 if success_rate >= 90:
                     badge_class = "badge-success"
@@ -1048,7 +1084,7 @@ class DashboardGenerator:
                     badge_class = "badge-warning"
                 else:
                     badge_class = "badge-danger"
-                
+
                 html += f"""                <tr>
                     <td>{test_id}</td>
                     <td>{execution_count}</td>
@@ -1068,13 +1104,13 @@ class DashboardGenerator:
         </div>
 """
         return html
-    
+
     def _generate_worker_section(self, data: Dict[str, Any]) -> str:
         """Generate HTML for worker details section.
-        
+
         Args:
             data: Dashboard data
-            
+
         Returns:
             HTML content as string
         """
@@ -1098,40 +1134,40 @@ class DashboardGenerator:
 
         # Add rows for each worker
         worker_analysis = data.get("worker_analysis", {})
-        
+
         if worker_analysis:
             # Sort workers by execution count
             sorted_workers = sorted(
-                worker_analysis.items(),
-                key=lambda x: x[1].get("execution_count", 0),
-                reverse=True
+                worker_analysis.items(), key=lambda x: x[1].get("execution_count", 0), reverse=True
             )
-            
+
             # Add rows, limited by max_items
             max_items = self.config["max_items_per_section"]
             for i, (worker_id, analysis) in enumerate(sorted_workers):
                 if i >= max_items:
                     break
-                
+
                 # Extract metrics
                 execution_count = analysis.get("execution_count", 0)
                 success_rate = analysis.get("success_rate", 0) * 100
                 avg_duration = analysis.get("average_duration", 0)
-                
+
                 # Get task type distribution
                 task_distribution = analysis.get("task_type_distribution", {})
                 task_distribution_html = ""
-                
+
                 if task_distribution and "type_percentages" in task_distribution:
                     task_percentages = task_distribution["type_percentages"]
-                    
-                    for task_type, percentage in sorted(task_percentages.items(), key=lambda x: x[1], reverse=True)[:3]:
+
+                    for task_type, percentage in sorted(
+                        task_percentages.items(), key=lambda x: x[1], reverse=True
+                    )[:3]:
                         task_distribution_html += f"""
                         <div>{task_type}: {percentage:.1f}%</div>
 """
                 else:
                     task_distribution_html = "No data"
-                
+
                 # Determine success rate badge class
                 if success_rate >= 90:
                     badge_class = "badge-success"
@@ -1139,7 +1175,7 @@ class DashboardGenerator:
                     badge_class = "badge-warning"
                 else:
                     badge_class = "badge-danger"
-                
+
                 html += f"""                <tr>
                     <td>{worker_id}</td>
                     <td>{execution_count}</td>
@@ -1159,16 +1195,20 @@ class DashboardGenerator:
         </div>
 """
         return html
-    
-    def generate_report(self, report_type: str, data: Optional[Dict[str, Any]] = None, 
-                       output_path: Optional[str] = None) -> Optional[str]:
+
+    def generate_report(
+        self,
+        report_type: str,
+        data: Optional[Dict[str, Any]] = None,
+        output_path: Optional[str] = None,
+    ) -> Optional[str]:
         """Generate a specific type of report.
-        
+
         Args:
             report_type: Type of report to generate
             data: Optional data to use for the report
             output_path: Optional path for the report
-            
+
         Returns:
             Path to the generated report, or None if generation failed
         """
@@ -1181,19 +1221,21 @@ class DashboardGenerator:
                 "task_type_analysis": self.result_aggregator.task_type_analysis,
                 "dimension_analysis": self.result_aggregator.get_dimension_analysis(),
                 "regression_results": self.result_aggregator.get_regressions(),
-                "historical_performance": getattr(self.result_aggregator, 'historical_performance', {})
+                "historical_performance": getattr(
+                    self.result_aggregator, "historical_performance", {}
+                ),
             }
-        
+
         # Ensure we have data to work with
         if not data:
             logger.error("No data provided and no result aggregator available")
             return None
-        
+
         # Generate default output path if not provided
         if not output_path:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = os.path.join(self.output_dir, f"{report_type}_report_{timestamp}.html")
-        
+
         # Generate the requested report
         if report_type == "regression":
             if self.visualization_engine:
@@ -1201,7 +1243,7 @@ class DashboardGenerator:
             else:
                 logger.error("Visualization engine not available for regression report")
                 return None
-        
+
         elif report_type == "performance":
             # Generate performance report
             if self.visualization_engine:
@@ -1209,7 +1251,7 @@ class DashboardGenerator:
             else:
                 logger.error("Visualization engine not available for performance report")
                 return None
-        
+
         else:
             logger.error(f"Unknown report type: {report_type}")
             return None

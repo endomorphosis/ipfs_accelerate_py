@@ -30,7 +30,7 @@ from unittest.mock import patch, MagicMock
 from typing import Dict, List, Any, Optional
 
 # 2. Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # 3. Add parent directory to path for imports
@@ -39,16 +39,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 4. Try to import required packages with fallbacks
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
     HAS_TORCH = False
     logger.warning("torch not available, using mock")
 
+
 # 5. Hardware detection function
 def check_hardware():
     """Check available hardware and return capabilities."""
     # Implementation details
+
 
 # 6. Models registry
 MODEL_REGISTRY = {
@@ -58,26 +61,29 @@ MODEL_REGISTRY = {
     }
 }
 
+
 # 7. Test class
 class TestModelFamily:
     """Test class for model family."""
-    
+
     def __init__(self, model_id=None):
         """Initialize the test class."""
         # Implementation details
-    
+
     def test_pipeline(self, device="auto"):
         """Test the model using pipeline API."""
         # Implementation details
-    
+
     def run_tests(self, all_hardware=False):
         """Run all tests for this model."""
         # Implementation details
+
 
 # 8. Command-line entry point
 def main():
     """Command-line entry point."""
     # Implementation details
+
 
 if __name__ == "__main__":
     main()
@@ -209,7 +215,7 @@ MODEL_REGISTRY = {
     "bert-large-uncased": {
         "description": "BERT large model (uncased)",
         "class": "BertModel",
-    }
+    },
 }
 ```
 

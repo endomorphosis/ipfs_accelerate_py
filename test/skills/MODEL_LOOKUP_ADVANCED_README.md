@@ -126,10 +126,7 @@ To add a new hardware profile, update the `HARDWARE_PROFILES` dictionary:
 ```python
 HARDWARE_PROFILES = {
     # Existing profiles...
-    "new-profile-name": {
-        "max_size_mb": 8000,
-        "description": "Description of the profile"
-    },
+    "new-profile-name": {"max_size_mb": 8000, "description": "Description of the profile"},
 }
 ```
 

@@ -136,9 +136,7 @@ def test_image_encoding_supports_bytes_urls_and_local_files(
     image_path.write_bytes(raw)
 
     encoded_bytes, bytes_kind = multimodal_router._encode_image_for_api(raw)
-    encoded_path, path_kind = multimodal_router._encode_image_for_api(
-        str(image_path)
-    )
+    encoded_path, path_kind = multimodal_router._encode_image_for_api(str(image_path))
     encoded_url, url_kind = multimodal_router._encode_image_for_api(
         "https://example.invalid/image.png"
     )

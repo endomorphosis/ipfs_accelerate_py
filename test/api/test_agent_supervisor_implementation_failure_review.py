@@ -26,9 +26,7 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
             "tests/unit/benchmarks/semantic_roundtrip/test_modal_spacy_constructor.py",
             "tests/unit/benchmarks/semantic_roundtrip/test_stage_metrics.py",
         ),
-        changed_paths=(
-            "benchmarks/semantic_roundtrip/constructors/modal_spacy.py",
-        ),
+        changed_paths=("benchmarks/semantic_roundtrip/constructors/modal_spacy.py",),
         validation_result={
             "attempted": True,
             "passed": False,
@@ -42,10 +40,7 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value in review.reason_codes
     assert "stage_metrics.py" in "\n".join(review.missing_expected_outputs)
     assert "declared Outputs" in review.guidance_markdown
     assert "stage_metrics.py" in review.next_attempt_prompt_addendum
@@ -85,25 +80,16 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
             "scope_adjudication": {
                 "accepted": False,
                 "justified_paths": [],
-                "denied_paths": [
-                    "benchmarks/semantic_roundtrip/helpers/new_utils.py"
-                ],
+                "denied_paths": ["benchmarks/semantic_roundtrip/helpers/new_utils.py"],
             },
         },
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.SCOPE_EXPANSION_DENIED.value in review.reason_codes
-    )
-    assert (
-        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.SCOPE_EXPANSION_DENIED.value in review.reason_codes
+    assert FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value in review.reason_codes
     assert "new_utils.py" in review.guidance_markdown
-    assert "Do not modify these out-of-scope paths" in (
-        review.next_attempt_prompt_addendum
-    )
+    assert "Do not modify these out-of-scope paths" in (review.next_attempt_prompt_addendum)
 
 
 def test_reject_hard_deny_secret_findings() -> None:
@@ -144,9 +130,7 @@ def test_accept_justified_scope_expansion_when_proposal_gate_only() -> None:
         proposal_accepted=False,
         scope_adjudication={
             "accepted": True,
-            "justified_paths": [
-                "benchmarks/semantic_roundtrip/constructors/typed_deontic.py"
-            ],
+            "justified_paths": ["benchmarks/semantic_roundtrip/constructors/typed_deontic.py"],
             "denied_paths": [],
         },
         validation_result={
@@ -170,14 +154,8 @@ def test_accept_justified_scope_expansion_when_proposal_gate_only() -> None:
     # were changed.
     assert review.decision is FailureReviewDecision.ACCEPT
     assert review.accepted is True
-    assert (
-        FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value
-        in review.reason_codes
-    )
-    assert (
-        "benchmarks/semantic_roundtrip/constructors/typed_deontic.py"
-        in review.justified_paths
-    )
+    assert FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value in review.reason_codes
+    assert "benchmarks/semantic_roundtrip/constructors/typed_deontic.py" in review.justified_paths
 
 
 def test_environment_failure_is_guided_not_accepted() -> None:
@@ -203,16 +181,12 @@ def test_environment_failure_is_guided_not_accepted() -> None:
             ],
         },
         log_excerpt=(
-            "/usr/bin/python3.12: No module named pytest\n"
-            "[validation failed] returncode=1\n"
+            "/usr/bin/python3.12: No module named pytest\n[validation failed] returncode=1\n"
         ),
     )
 
     assert review.decision is FailureReviewDecision.GUIDE_RESCUE
-    assert (
-        FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value
-        in review.reason_codes
-    )
+    assert FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value in review.reason_codes
     assert "pytest" in review.guidance_markdown.lower()
 
 
@@ -266,6 +240,4 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     )
     assert normalized["failure_review"]["decision"] == "guide_rescue"
     assert "b.py" in normalized["next_attempt_prompt_addendum"]
-    assert normalized["validation"]["failure_review"]["decision"] == (
-        "guide_rescue"
-    )
+    assert normalized["validation"]["failure_review"]["decision"] == ("guide_rescue")

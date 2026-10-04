@@ -23,9 +23,9 @@ You can use ExecuTorch with Transformers with [torch.export](https://pytorch.org
 ```py
 import torch
 from transformers import LlamaForCausalLM, AutoTokenizer, GenerationConfig
-from transformers.integrations.executorch import(
+from transformers.integrations.executorch import (
     TorchExportableModuleWithStaticCache,
-    convert_and_export_with_cache
+    convert_and_export_with_cache,
 )
 
 generation_config = GenerationConfig(
@@ -34,11 +34,19 @@ generation_config = GenerationConfig(
     cache_config={
         "batch_size": 1,
         "max_cache_len": 20,
-    }
+    },
 )
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B", pad_token="</s>", padding_side="right")
-model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B", device_map="auto", torch_dtype=torch.bfloat16, attn_implementation="sdpa", generation_config=generation_config)
+tokenizer = AutoTokenizer.from_pretrained(
+    "meta-llama/Llama-3.2-1B", pad_token="</s>", padding_side="right"
+)
+model = LlamaForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.2-1B",
+    device_map="auto",
+    torch_dtype=torch.bfloat16,
+    attn_implementation="sdpa",
+    generation_config=generation_config,
+)
 
 exported_program = convert_and_export_with_cache(model)
 ```
@@ -51,9 +59,11 @@ prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True).to(model.d
 prompt_token_ids = prompt_tokens["input_ids"]
 
 generated_ids = TorchExportableModuleWithStaticCache.generate(
-    exported_program=exported_program, prompt_token_ids=prompt_token_ids, max_new_tokens=20,
+    exported_program=exported_program,
+    prompt_token_ids=prompt_token_ids,
+    max_new_tokens=20,
 )
 generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 print(generated_text)
-['Simply put, the theory of relativity states that 1) the speed of light is the']
+["Simply put, the theory of relativity states that 1) the speed of light is the"]
 ```

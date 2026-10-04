@@ -3,15 +3,17 @@ IPFS Accelerate MCP Prompts
 
 This module defines prompt templates for interacting with the IPFS Accelerate MCP server.
 """
+
 import logging
 from fastmcp import FastMCP
 
 logger = logging.getLogger("ipfs_accelerate_mcp.prompts")
 
+
 def register_prompts(mcp: FastMCP) -> None:
     """
     Register prompt templates with the MCP server.
-    
+
     Args:
         mcp: The FastMCP server instance
     """
@@ -32,9 +34,9 @@ For technical operations, you can use the provided tools to interact with the IP
 
 When users ask about running models or accessing accelerated infrastructure, guide them through 
 the most appropriate approach based on their hardware and requirements.
-"""
+""",
     )
-    
+
     # Prompt for hardware optimization
     mcp.prompt(
         name="hardware-optimization",
@@ -48,9 +50,9 @@ To provide the best recommendation, I need to gather some information:
 
 Based on this information, I'll analyze your available hardware using IPFS Accelerate's 
 hardware detection capabilities and recommend the best configuration.
-"""
+""",
     )
-    
+
     # Prompt for distributed inference
     mcp.prompt(
         name="distributed-inference",
@@ -68,5 +70,5 @@ To get started, I'll need to know:
 
 I can then guide you through configuring the distributed inference pipeline using 
 IPFS Accelerate's built-in capabilities.
-"""
+""",
     )

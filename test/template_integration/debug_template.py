@@ -6,7 +6,7 @@ import sys
 import logging
 import argparse
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 TEMP_FILE = "temp_test.py"
@@ -130,7 +130,6 @@ class TestVitModel(ModelTest):
         # Verify at least one device works
         self.assertTrue(any(results.values()))
 """,
-    
     "bert": """#!/usr/bin/env python3
 \"\"\"
 Test file for BERT models using the refactored test suite structure.
@@ -253,7 +252,6 @@ class TestBertModel(ModelTest):
         # Verify at least one device works
         self.assertTrue(any(results.values()))
 """,
-    
     "gpt": """#!/usr/bin/env python3
 \"\"\"
 Test file for GPT models using the refactored test suite structure.
@@ -385,7 +383,6 @@ class TestGptModel(ModelTest):
         # Verify at least one device works
         self.assertTrue(any(results.values()))
 """,
-
     "speech": """#!/usr/bin/env python3
 \"\"\"
 Test file for speech models using the refactored test suite structure.
@@ -593,7 +590,7 @@ class TestSpeechModel(ModelTest):
         
         # Verify at least one device works
         self.assertTrue(any(results.values()))
-"""
+""",
 }
 
 # Model configurations
@@ -601,85 +598,90 @@ MODEL_CONFIGS = {
     "vision": {
         "model_id": "google/vit-base-patch16-224",
         "output_dir": "vision",
-        "output_file": "test_vit_base_patch16_224.py"
+        "output_file": "test_vit_base_patch16_224.py",
     },
     "bert": {
         "model_id": "bert-base-uncased",
         "output_dir": "text",
-        "output_file": "test_bert_base_uncased.py"
+        "output_file": "test_bert_base_uncased.py",
     },
-    "gpt": {
-        "model_id": "gpt2",
-        "output_dir": "text",
-        "output_file": "test_gpt2.py"
-    },
+    "gpt": {"model_id": "gpt2", "output_dir": "text", "output_file": "test_gpt2.py"},
     "speech": {
         "model_id": "openai/whisper-tiny",
         "output_dir": "audio",
-        "output_file": "test_whisper_tiny.py"
-    }
+        "output_file": "test_whisper_tiny.py",
+    },
 }
+
 
 def create_test_file(model_type="vision", model_id=None):
     """Create a test file using the template."""
     # Validate model type
     if model_type not in TEMPLATES:
-        logger.error(f"Invalid model type: {model_type}. Available types: {', '.join(TEMPLATES.keys())}")
+        logger.error(
+            f"Invalid model type: {model_type}. Available types: {', '.join(TEMPLATES.keys())}"
+        )
         return False
-        
+
     # Get config
     config = MODEL_CONFIGS[model_type]
-    
+
     # Override model ID if provided
     if model_id:
         config["model_id"] = model_id
         # Update output file name
         model_name = model_id.split("/")[-1] if "/" in model_id else model_id
         config["output_file"] = f"test_{model_name.replace('-', '_')}.py"
-    
+
     # Get template content
     content = TEMPLATES[model_type]
-    
+
     # Replace MODEL_ID with actual model ID
     content = content.replace("MODEL_ID", config["model_id"])
-    
+
     # Write to temp file
     with open(TEMP_FILE, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Created temporary test file: {TEMP_FILE}")
-    
+
     # Validate syntax
     try:
         with open(TEMP_FILE, "r") as f:
             source = f.read()
-        
+
         # Compile to check syntax
         compile(source, TEMP_FILE, "exec")
         logger.info("Syntax check passed")
-        
+
         # Create final path
-        output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                "refactored_test_suite", "models", config["output_dir"])
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "refactored_test_suite",
+            "models",
+            config["output_dir"],
+        )
         os.makedirs(output_dir, exist_ok=True)
-        
+
         output_path = os.path.join(output_dir, config["output_file"])
-        
+
         # Create a backup if file exists
         if os.path.exists(output_path):
             import datetime
+
             backup_path = f"{output_path}.bak.{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
             try:
                 import shutil
+
                 shutil.copy2(output_path, backup_path)
                 logger.info(f"Created backup: {backup_path}")
             except Exception as e:
                 logger.warning(f"Failed to create backup: {e}")
-        
+
         # Copy to final location
         with open(output_path, "w") as f:
             f.write(content)
-        
+
         logger.info(f"Created validated test file: {output_path}")
         return True
     except SyntaxError as e:
@@ -690,17 +692,24 @@ def create_test_file(model_type="vision", model_id=None):
         logger.error(f"Error: {e}")
         return False
 
+
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(description="Debug template generation for refactored tests")
-    parser.add_argument("--model-type", type=str, choices=TEMPLATES.keys(), default="vision", 
-                        help="Type of model to generate test for (vision, bert, gpt, speech)")
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        choices=TEMPLATES.keys(),
+        default="vision",
+        help="Type of model to generate test for (vision, bert, gpt, speech)",
+    )
     parser.add_argument("--model-id", type=str, help="Model ID to use (overrides default)")
-    
+
     args = parser.parse_args()
-    
+
     # Generate test file
     create_test_file(args.model_type, args.model_id)
+
 
 if __name__ == "__main__":
     main()

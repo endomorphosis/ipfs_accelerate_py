@@ -20,7 +20,7 @@ The template validation system checks for:
 ```python
 from generators.validators.template_validator_integration import (
     validate_template_for_generator,
-    validate_template_file_for_generator
+    validate_template_file_for_generator,
 )
 
 # Validate a template string
@@ -29,7 +29,7 @@ is_valid, errors = validate_template_for_generator(
     template_content,
     generator_type="merged_test_generator",
     validate_hardware=True,
-    check_resource_pool=True
+    check_resource_pool=True,
 )
 
 if not is_valid:
@@ -39,8 +39,7 @@ if not is_valid:
 # Validate a template file
 file_path = "path/to/template.py"
 is_valid, errors = validate_template_file_for_generator(
-    file_path, 
-    generator_type="merged_test_generator"
+    file_path, generator_type="merged_test_generator"
 )
 ```
 
@@ -67,11 +66,13 @@ try:
     sys.path.append(str(Path(__file__).parent.parent))
     from generators.validators.template_validator_integration import (
         validate_template_for_generator,
-        validate_template_file_for_generator
+        validate_template_file_for_generator,
     )
+
     HAS_VALIDATOR = True
 except ImportError:
     HAS_VALIDATOR = False
+
     # Define minimal validation function as fallback
     def validate_template_for_generator(template_content, generator_type, **kwargs):
         return True, []
@@ -81,26 +82,21 @@ Then, in your generator code:
 
 ```python
 # Add validation command line arguments
-parser.add_argument("--validate", action="store_true", 
-                    help="Validate templates before generation")
-parser.add_argument("--skip-validation", action="store_true",
-                    help="Skip template validation")
-parser.add_argument("--strict-validation", action="store_true",
-                    help="Fail on validation errors")
+parser.add_argument("--validate", action="store_true", help="Validate templates before generation")
+parser.add_argument("--skip-validation", action="store_true", help="Skip template validation")
+parser.add_argument("--strict-validation", action="store_true", help="Fail on validation errors")
 
 # Use validation in your code
 should_validate = HAS_VALIDATOR and (args.validate and not args.skip_validation)
 if should_validate:
     is_valid, validation_errors = validate_template_for_generator(
-        template_content, 
-        "your_generator_name",
-        validate_hardware=True
+        template_content, "your_generator_name", validate_hardware=True
     )
-    
+
     if not is_valid:
         for error in validation_errors:
             logger.warning(f"Template validation error: {error}")
-        
+
         if args.strict_validation:
             raise ValueError("Template validation failed")
 ```

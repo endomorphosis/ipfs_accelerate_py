@@ -215,7 +215,9 @@ def supervisor_maintenance_snapshot(
 
     now_at = _as_utc_datetime(now) or now_utc()
     started_at = _as_utc_datetime(
-        parse_timestamp(supervisor.get("active_agentic_maintenance_started_at") or supervisor.get("updated_at"))
+        parse_timestamp(
+            supervisor.get("active_agentic_maintenance_started_at") or supervisor.get("updated_at")
+        )
     )
     age_seconds = None
     fresh = False
@@ -513,8 +515,7 @@ def _strictly_fence_pid_tree(
     initial_root = initial_table.get(pid)
     root_starttime = (
         initial_root[4]
-        if initial_root is not None
-        and (not own_group or initial_root[2] == own_group)
+        if initial_root is not None and (not own_group or initial_root[2] == own_group)
         else ""
     )
 
@@ -524,11 +525,7 @@ def _strictly_fence_pid_tree(
         table: Dict[int, Tuple[str, int, int, int, str]],
     ) -> bool:
         current = table.get(process_id)
-        return bool(
-            current is not None
-            and current[0] != "Z"
-            and current[4] == starttime
-        )
+        return bool(current is not None and current[0] != "Z" and current[4] == starttime)
 
     def closure(
         table: Dict[int, Tuple[str, int, int, int, str]],
@@ -676,10 +673,7 @@ def _snapshot_pid_tree(pid: int) -> List[Tuple[int, int, int]]:
             if relation is None:
                 continue
             snapshot.append((process_id, relation[1], depth))
-            pending.extend(
-                (child, depth + 1)
-                for child in children_by_parent.get(process_id, ())
-            )
+            pending.extend((child, depth + 1) for child in children_by_parent.get(process_id, ()))
         return snapshot
 
     # Non-/proc platforms retain the previous pgrep-based behavior, but still
@@ -798,9 +792,7 @@ def terminate_pid_tree(
     group_depths = {
         process_group: depth
         for process_id, process_group, depth in snapshot
-        if process_group == process_id
-        and process_group > 1
-        and process_group != os.getpgrp()
+        if process_group == process_id and process_group > 1 and process_group != os.getpgrp()
     }
     for process_group, _depth in sorted(
         group_depths.items(),
@@ -841,7 +833,9 @@ def terminate_pid_tree(
     return terminated
 
 
-def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float = 180.0) -> DaemonHealth:
+def check_daemon_health(
+    spec: ManagedDaemonSpec, *, stale_after_seconds: float = 180.0
+) -> DaemonHealth:
     """Return the same health payload shape that the shell check script used."""
 
     status = read_json(spec.resolve(spec.status_path))
@@ -860,11 +854,15 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
     if heartbeat_at is not None:
         heartbeat_age = max(0.0, (checked_at - heartbeat_at).total_seconds())
 
-    supervisor_pid = supervisor.get("supervisor_pid") or read_pid_file(spec.resolve(spec.supervisor_pid_path))
+    supervisor_pid = supervisor.get("supervisor_pid") or read_pid_file(
+        spec.resolve(spec.supervisor_pid_path)
+    )
     supervisor_alive = bool(supervisor_pid and pid_alive(supervisor_pid))
     supervisor_daemon_pid = supervisor.get("daemon_pid")
     status_daemon_pid = first_present(status.get("heartbeat_pid"), status.get("pid"))
-    daemon_pid = supervisor_daemon_pid if supervisor_alive and supervisor_daemon_pid else status_daemon_pid
+    daemon_pid = (
+        supervisor_daemon_pid if supervisor_alive and supervisor_daemon_pid else status_daemon_pid
+    )
     daemon_alive = bool(daemon_pid and pid_alive(daemon_pid))
     fresh = heartbeat_age is not None and heartbeat_age <= stale_after_seconds
 
@@ -875,8 +873,12 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
     )
 
     alive = bool(supervisor_alive and ((daemon_alive and fresh) or maintenance.fresh))
-    status_label = "maintenance_running" if maintenance.fresh else "running" if alive else "stale_or_stopped"
-    active_state = first_present(status.get("active_state"), status.get("state"), progress.get("active_state"))
+    status_label = (
+        "maintenance_running" if maintenance.fresh else "running" if alive else "stale_or_stopped"
+    )
+    active_state = first_present(
+        status.get("active_state"), status.get("state"), progress.get("active_state")
+    )
 
     payload: JsonDict = {
         "alive": alive,
@@ -969,13 +971,23 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
         "agentic_task_failures": supervisor.get("agentic_task_failures"),
         "agentic_proposal_failures": supervisor.get("agentic_proposal_failures"),
         "agentic_rollback_failures": supervisor.get("agentic_rollback_failures"),
-        "agentic_typescript_quality_failures": supervisor.get("agentic_typescript_quality_failures"),
+        "agentic_typescript_quality_failures": supervisor.get(
+            "agentic_typescript_quality_failures"
+        ),
         "agentic_cooldown_seconds": supervisor.get("agentic_cooldown_seconds"),
         "agentic_timeout_seconds": supervisor.get("agentic_timeout_seconds"),
-        "agentic_stuck_maintenance_timeout_seconds": supervisor.get("agentic_stuck_maintenance_timeout_seconds"),
-        "task_board_path": first_present(supervisor.get("task_board_path"), spec.repo_relative(spec.task_board_path)),
-        "active_agentic_maintenance_started_at": supervisor.get("active_agentic_maintenance_started_at"),
-        "active_agentic_maintenance_timeout_seconds": supervisor.get("active_agentic_maintenance_timeout_seconds"),
+        "agentic_stuck_maintenance_timeout_seconds": supervisor.get(
+            "agentic_stuck_maintenance_timeout_seconds"
+        ),
+        "task_board_path": first_present(
+            supervisor.get("task_board_path"), spec.repo_relative(spec.task_board_path)
+        ),
+        "active_agentic_maintenance_started_at": supervisor.get(
+            "active_agentic_maintenance_started_at"
+        ),
+        "active_agentic_maintenance_timeout_seconds": supervisor.get(
+            "active_agentic_maintenance_timeout_seconds"
+        ),
         "active_agentic_maintenance_age_seconds": maintenance.rounded_age_seconds,
         "active_agentic_maintenance_fresh": maintenance.fresh,
         "agentic_state_path": supervisor.get("agentic_state_path"),
@@ -986,7 +998,9 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
     return DaemonHealth(payload=payload, exit_code=0 if alive else 1)
 
 
-def _merged_launch_env(spec: ManagedDaemonSpec, extra_env: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+def _merged_launch_env(
+    spec: ManagedDaemonSpec, extra_env: Optional[Mapping[str, str]] = None
+) -> Dict[str, str]:
     env = dict(os.environ)
     env.update({key: str(value) for key, value in spec.launch_env.items()})
     if extra_env:
@@ -1059,11 +1073,20 @@ def launch_supervisor(
             f"while true; do {exports} {command} </dev/null > {out_quoted} 2>&1; "
             "rc=$?; "
             f"printf '%s supervisor exited with code %s; tmux wrapper restarting in {restart_delay}s\\n' "
-            "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$rc\" >> "
+            '"$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" >> '
             f"{out_quoted}; sleep {restart_delay}; done"
         )
         result = subprocess.run(
-            ("tmux", "new-session", "-d", "-s", spec.tmux_session_name, "-c", str(spec.repo_root), wrapper),
+            (
+                "tmux",
+                "new-session",
+                "-d",
+                "-s",
+                spec.tmux_session_name,
+                "-c",
+                str(spec.repo_root),
+                wrapper,
+            ),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -1190,9 +1213,13 @@ def _matches_all(args: str, patterns: Sequence[str]) -> bool:
 def _is_managed_codex_process(spec: ManagedDaemonSpec, pid: int, args: str) -> bool:
     if "codex exec --skip-git-repo-check" not in args:
         return False
-    if spec.llm_process_match_any and not any(pattern in args for pattern in spec.llm_process_match_any):
+    if spec.llm_process_match_any and not any(
+        pattern in args for pattern in spec.llm_process_match_any
+    ):
         return False
-    if spec.protected_ancestor_patterns and pid_has_ancestor_matching(pid, spec.protected_ancestor_patterns):
+    if spec.protected_ancestor_patterns and pid_has_ancestor_matching(
+        pid, spec.protected_ancestor_patterns
+    ):
         return False
     worktree_root = spec.resolve(spec.worktree_root)
     cwd = ""
@@ -1248,7 +1275,12 @@ def stop_daemon(
                 stopped.append(pid)
 
     tmux_killed = False
-    if cleanup_tmux and spec.tmux_session_name and _tmux_available() and _tmux_has_session(spec.tmux_session_name):
+    if (
+        cleanup_tmux
+        and spec.tmux_session_name
+        and _tmux_available()
+        and _tmux_has_session(spec.tmux_session_name)
+    ):
         result = subprocess.run(
             ("tmux", "kill-session", "-t", spec.tmux_session_name),
             stdout=subprocess.DEVNULL,

@@ -39,23 +39,24 @@ The refactored benchmark system is built around these key components:
 ```python
 from benchmark_core import BenchmarkBase, BenchmarkRegistry
 
+
 @BenchmarkRegistry.register(
     name="model_inference",
     category="inference",
     models=["bert", "vit"],
-    hardware=["cpu", "cuda", "webgpu"]
+    hardware=["cpu", "cuda", "webgpu"],
 )
 class ModelInferenceBenchmark(BenchmarkBase):
     """Benchmark for model inference performance."""
-    
+
     def setup(self):
         """Set up benchmark environment."""
         # Load model, prepare data, etc.
-        
+
     def execute(self):
         """Execute the benchmark."""
         # Run inference and collect metrics
-        
+
     def process_results(self, raw_results):
         """Process raw benchmark results."""
         # Calculate metrics and return standardized results
@@ -70,11 +71,9 @@ from benchmark_core import BenchmarkRunner
 runner = BenchmarkRunner()
 
 # Run a single benchmark
-result = runner.execute("model_inference", {
-    "hardware": "cuda",
-    "model": "bert-base-uncased",
-    "batch_size": 16
-})
+result = runner.execute(
+    "model_inference", {"hardware": "cuda", "model": "bert-base-uncased", "batch_size": 16}
+)
 
 # Save results
 results_path = runner.save_results()
@@ -98,21 +97,13 @@ suite = {
     "benchmarks": [
         {
             "name": "model_inference",
-            "params": {
-                "hardware": "cuda",
-                "model": "bert-base-uncased",
-                "batch_size": 16
-            }
+            "params": {"hardware": "cuda", "model": "bert-base-uncased", "batch_size": 16},
         },
         {
             "name": "model_inference",
-            "params": {
-                "hardware": "cuda",
-                "model": "vit-base-patch16-224",
-                "batch_size": 8
-            }
-        }
-    ]
+            "params": {"hardware": "cuda", "model": "vit-base-patch16-224", "batch_size": 8},
+        },
+    ],
 }
 
 # Run suite

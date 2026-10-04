@@ -247,11 +247,7 @@ def test_refill_receipt_metrics_distinguish_terminal_outcomes_and_dedupe_cids() 
     scans = snapshot["scan_metrics"]
 
     assert (
-        scans["attempts"]
-        == scans["attempted"]
-        == scans["receipts"]
-        == scans["receipt_count"]
-        == 9
+        scans["attempts"] == scans["attempted"] == scans["receipts"] == scans["receipt_count"] == 9
     )
     assert scans["skipped"] == 3
     assert scans["failed_total"] == 2
@@ -402,7 +398,9 @@ def test_scheduler_decisions_reference_the_exposed_event_snapshot(tmp_path: Path
     manifest = scheduler.reconcile_once()
 
     assert started
-    decision = next(item for item in manifest["scheduler_decisions"] if item["decision"] == "launched")
+    decision = next(
+        item for item in manifest["scheduler_decisions"] if item["decision"] == "launched"
+    )
     assert decision["snapshot_id"] == manifest["scheduler_decision_snapshot_id"]
     assert manifest["scheduler_decision_snapshot"]["snapshot_id"] == decision["snapshot_id"]
     assert manifest["scheduler_snapshot"]["authoritative"] is True
@@ -551,9 +549,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
                 },
                 "diagnostics": {
                     "confidence": 0.25,
-                    "stale_evidence": [
-                        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-                    ],
+                    "stale_evidence": [{"receipt_cid": "bafy-old", "reason": "tree_changed"}],
                     "analyzer_health": {"status": "unknown"},
                 },
             },
@@ -575,9 +571,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
     assert migrated["lifecycle_state"] == "provisionally_complete"
     assert migrated["confidence"] == 0.25
     assert migrated["uncovered_criteria"] == ["Current validation"]
-    assert migrated["stale_evidence"] == [
-        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-    ]
+    assert migrated["stale_evidence"] == [{"receipt_cid": "bafy-old", "reason": "tree_changed"}]
     assert projection["by_goal_id"]["G2"]["lifecycle_state"] == "verified_complete"
     assert projection["by_goal_id"]["G2"]["exhaustion_quorum"]["satisfied"] is True
 

@@ -14,7 +14,9 @@ class TestPolicyAuditLog(unittest.TestCase):
     def test_record_and_stats_when_enabled(self) -> None:
         log = PolicyAuditLog(enabled=True, max_entries=10)
 
-        log.record(decision="allow", tool="smoke.echo", actor="did:model:worker", intent_cid="cid-i")
+        log.record(
+            decision="allow", tool="smoke.echo", actor="did:model:worker", intent_cid="cid-i"
+        )
         log.record(
             decision="policy_denied",
             tool="smoke.echo",

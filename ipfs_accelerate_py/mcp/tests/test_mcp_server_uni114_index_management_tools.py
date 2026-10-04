@@ -100,7 +100,9 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
 
     def test_manage_index_configuration_rejects_non_integer_optimization_level(self) -> None:
         async def _run() -> None:
-            result = await manage_index_configuration(action="update_config", optimization_level="high")  # type: ignore[arg-type]
+            result = await manage_index_configuration(
+                action="update_config", optimization_level="high"
+            )  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("between 1 and 3", str(result.get("message", "")))
 

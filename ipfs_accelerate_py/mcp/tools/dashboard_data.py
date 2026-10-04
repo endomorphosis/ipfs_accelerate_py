@@ -38,6 +38,7 @@ except ImportError:
             def get_storage_wrapper(*args, **kwargs):
                 return None
 
+
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.dashboard_data")
 
 # Initialize storage wrapper at module level
@@ -46,6 +47,7 @@ _storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
 # Try to import psutil for system metrics
 try:
     import psutil
+
     HAVE_PSUTIL = True
 except ImportError:
     HAVE_PSUTIL = False
@@ -81,29 +83,29 @@ def get_user_info() -> Dict[str, Any]:
         import json
 
         # Quick check for GITHUB_TOKEN environment variable first
-        github_token = os.environ.get('GITHUB_TOKEN')
+        github_token = os.environ.get("GITHUB_TOKEN")
         if github_token:
             # Try to get user info directly with token
             try:
                 result = subprocess.run(
-                    ['gh', 'api', '/user'],
+                    ["gh", "api", "/user"],
                     capture_output=True,
                     text=True,
                     timeout=3,
-                    env={**os.environ, 'GH_TOKEN': github_token}
+                    env={**os.environ, "GH_TOKEN": github_token},
                 )
                 if result.returncode == 0:
                     user_data = json.loads(result.stdout)
                     return {
-                        'authenticated': True,
-                        'username': user_data.get('login', 'Unknown'),
-                        'name': user_data.get('name', ''),
-                        'email': user_data.get('email', ''),
-                        'avatar_url': user_data.get('avatar_url', ''),
-                        'public_repos': user_data.get('public_repos', 0),
-                        'followers': user_data.get('followers', 0),
-                        'following': user_data.get('following', 0),
-                        'token_type': 'environment'
+                        "authenticated": True,
+                        "username": user_data.get("login", "Unknown"),
+                        "name": user_data.get("name", ""),
+                        "email": user_data.get("email", ""),
+                        "avatar_url": user_data.get("avatar_url", ""),
+                        "public_repos": user_data.get("public_repos", 0),
+                        "followers": user_data.get("followers", 0),
+                        "following": user_data.get("following", 0),
+                        "token_type": "environment",
                     }
             except subprocess.TimeoutExpired:
                 logger.debug("Timeout fetching user info via GITHUB_TOKEN")
@@ -113,59 +115,50 @@ def get_user_info() -> Dict[str, Any]:
         # Try using GitHubCLI wrapper with short timeout
         try:
             from ipfs_accelerate_py.github_cli import GitHubCLI
+
             # Disable auto_refresh to avoid interactive prompts
             gh = GitHubCLI(auto_refresh_token=False)
             auth_status = gh.get_auth_status()
 
-            if auth_status.get('authenticated'):
+            if auth_status.get("authenticated"):
                 # Try to get detailed user info with very short timeout
                 try:
                     result = subprocess.run(
-                        ['gh', 'api', '/user'],
-                        capture_output=True,
-                        text=True,
-                        timeout=2
+                        ["gh", "api", "/user"], capture_output=True, text=True, timeout=2
                     )
                     if result.returncode == 0:
                         user_data = json.loads(result.stdout)
                         return {
-                            'authenticated': True,
-                            'username': user_data.get('login', auth_status.get('username', 'Unknown')),
-                            'name': user_data.get('name', ''),
-                            'email': user_data.get('email', ''),
-                            'avatar_url': user_data.get('avatar_url', ''),
-                            'public_repos': user_data.get('public_repos', 0),
-                            'followers': user_data.get('followers', 0),
-                            'following': user_data.get('following', 0),
-                            'token_type': auth_status.get('token_type', 'unknown')
+                            "authenticated": True,
+                            "username": user_data.get(
+                                "login", auth_status.get("username", "Unknown")
+                            ),
+                            "name": user_data.get("name", ""),
+                            "email": user_data.get("email", ""),
+                            "avatar_url": user_data.get("avatar_url", ""),
+                            "public_repos": user_data.get("public_repos", 0),
+                            "followers": user_data.get("followers", 0),
+                            "following": user_data.get("following", 0),
+                            "token_type": auth_status.get("token_type", "unknown"),
                         }
                 except (subprocess.TimeoutExpired, Exception) as e:
                     logger.debug(f"Could not fetch detailed user info: {e}")
 
                 # Fallback to basic auth status
                 return {
-                    'authenticated': True,
-                    'username': auth_status.get('username', 'Unknown'),
-                    'token_type': auth_status.get('token_type', 'unknown')
+                    "authenticated": True,
+                    "username": auth_status.get("username", "Unknown"),
+                    "token_type": auth_status.get("token_type", "unknown"),
                 }
             else:
-                return {
-                    'authenticated': False,
-                    'error': 'Not authenticated with GitHub'
-                }
+                return {"authenticated": False, "error": "Not authenticated with GitHub"}
         except Exception as e:
             logger.debug(f"GitHubCLI not available: {e}")
-            return {
-                'authenticated': False,
-                'error': 'GitHub CLI not configured'
-            }
+            return {"authenticated": False, "error": "GitHub CLI not configured"}
 
     except Exception as e:
         logger.error(f"Error getting user info: {e}")
-        return {
-            'authenticated': False,
-            'error': str(e)
-        }
+        return {"authenticated": False, "error": str(e)}
 
 
 def get_cache_stats() -> Dict[str, Any]:
@@ -194,54 +187,55 @@ def get_cache_stats() -> Dict[str, Any]:
     """
     try:
         from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
         cache = get_global_cache()
         stats = cache.get_stats()
 
-        total_size_bytes = float(stats.get('total_size_bytes', 0) or 0)
+        total_size_bytes = float(stats.get("total_size_bytes", 0) or 0)
         total_size_mb = total_size_bytes / (1024 * 1024)
 
         # hit_rate is 0..1 in the cache layer
-        hit_rate_float = float(stats.get('hit_rate', 0) or 0)
+        hit_rate_float = float(stats.get("hit_rate", 0) or 0)
         hit_rate_percent = max(0.0, min(1.0, hit_rate_float)) * 100.0
 
         connected_peers = int(
-            (stats.get('connected_peers') if stats.get('connected_peers') is not None else stats.get('p2p_peers'))
+            (
+                stats.get("connected_peers")
+                if stats.get("connected_peers") is not None
+                else stats.get("p2p_peers")
+            )
             or 0
         )
 
         return {
-            'available': True,
-            'total_entries': stats.get('total_entries', 0),
-            'total_size_mb': total_size_mb,
+            "available": True,
+            "total_entries": stats.get("total_entries", 0),
+            "total_size_mb": total_size_mb,
             # Back-compat numeric hit rate (0..1)
-            'hit_rate': hit_rate_float,
+            "hit_rate": hit_rate_float,
             # Dashboard-friendly formatted strings
-            'cache_size': f"{total_size_mb:.2f} MB",
-            'hit_rate_percent': hit_rate_percent,
-            'hit_rate_display': f"{hit_rate_percent:.1f}%",
-            'total_hits': stats.get('hits', 0),
-            'total_misses': stats.get('misses', 0),
-            'total_requests': stats.get('hits', 0) + stats.get('misses', 0),
-            'cache_dir': str(stats.get('cache_dir', '')),
-            'p2p_enabled': stats.get('p2p_enabled', False),
-            'p2p_peers': connected_peers,
-            'connected_peers': connected_peers,
-            'content_addressing_available': stats.get('content_addressing_available', False),
-
+            "cache_size": f"{total_size_mb:.2f} MB",
+            "hit_rate_percent": hit_rate_percent,
+            "hit_rate_display": f"{hit_rate_percent:.1f}%",
+            "total_hits": stats.get("hits", 0),
+            "total_misses": stats.get("misses", 0),
+            "total_requests": stats.get("hits", 0) + stats.get("misses", 0),
+            "cache_dir": str(stats.get("cache_dir", "")),
+            "p2p_enabled": stats.get("p2p_enabled", False),
+            "p2p_peers": connected_peers,
+            "connected_peers": connected_peers,
+            "content_addressing_available": stats.get("content_addressing_available", False),
             # P2P cache sharing metrics
-            'local_hits': stats.get('local_hits', stats.get('hits', 0)),
-            'peer_hits': stats.get('peer_hits', 0),
-            'peer_id': stats.get('peer_id'),
-            'known_peer_multiaddrs': stats.get('known_peer_multiaddrs'),
-            'peer_exchange_last_iso': stats.get('peer_exchange_last_iso'),
-            'peer_exchange_last': stats.get('peer_exchange_last'),
+            "local_hits": stats.get("local_hits", stats.get("hits", 0)),
+            "peer_hits": stats.get("peer_hits", 0),
+            "peer_id": stats.get("peer_id"),
+            "known_peer_multiaddrs": stats.get("known_peer_multiaddrs"),
+            "peer_exchange_last_iso": stats.get("peer_exchange_last_iso"),
+            "peer_exchange_last": stats.get("peer_exchange_last"),
         }
     except Exception as e:
         logger.error(f"Error getting cache stats: {e}")
-        return {
-            'available': False,
-            'error': str(e)
-        }
+        return {"available": False, "error": str(e)}
 
 
 def get_peer_status() -> Dict[str, Any]:
@@ -264,15 +258,13 @@ def get_peer_status() -> Dict[str, Any]:
         >>> if peer_status['enabled']:
         ...     print(f"Connected to {peer_status['peer_count']} peers")
     """
+
     def _get_libp2p_info() -> Dict[str, Any]:
         """Return installed libp2p version and (if available) VCS ref info."""
         try:
             dist = importlib.metadata.distribution("libp2p")
         except importlib.metadata.PackageNotFoundError:
-            return {
-                "available": False,
-                "error": "libp2p not installed"
-            }
+            return {"available": False, "error": "libp2p not installed"}
 
         info: Dict[str, Any] = {
             "available": True,
@@ -287,7 +279,9 @@ def get_peer_status() -> Dict[str, Any]:
                 info["direct_url"] = direct_url
                 vcs_info = direct_url.get("vcs_info") or {}
                 if isinstance(vcs_info, dict):
-                    info["vcs_ref"] = vcs_info.get("commit_id") or vcs_info.get("requested_revision")
+                    info["vcs_ref"] = vcs_info.get("commit_id") or vcs_info.get(
+                        "requested_revision"
+                    )
                     info["vcs"] = vcs_info.get("vcs")
         except Exception:
             # Best-effort only
@@ -297,84 +291,90 @@ def get_peer_status() -> Dict[str, Any]:
 
     try:
         from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
         cache = get_global_cache()
 
         # Get cache stats which include P2P info
         stats = cache.get_stats()
 
         # Try to get more detailed P2P info if available
-        enabled = bool(stats.get('p2p_enabled', False))
+        enabled = bool(stats.get("p2p_enabled", False))
         connected_peer_count = int(
-            (stats.get('connected_peers') if stats.get('connected_peers') is not None else stats.get('p2p_peers'))
+            (
+                stats.get("connected_peers")
+                if stats.get("connected_peers") is not None
+                else stats.get("p2p_peers")
+            )
             or 0
         )
 
         peer_info = {
             # Back-compat fields
-            'enabled': enabled,
-            'active': enabled,
+            "enabled": enabled,
+            "active": enabled,
             # peer_count is the libp2p network connected-peer count
-            'peer_count': connected_peer_count,
-            'peers': [],
-
+            "peer_count": connected_peer_count,
+            "peers": [],
             # Frontend-friendly aliases
-            'p2p_enabled': enabled,
-            'status': 'Active' if enabled else 'Disabled',
-
+            "p2p_enabled": enabled,
+            "status": "Active" if enabled else "Disabled",
             # Explicit counters (useful for debugging/telemetry)
-            'connected_peer_count': connected_peer_count,
-            'registered_peer_count': 0,
-
+            "connected_peer_count": connected_peer_count,
+            "registered_peer_count": 0,
             # Diagnostics
-            'libp2p': _get_libp2p_info(),
+            "libp2p": _get_libp2p_info(),
         }
 
         # Pass through peer-exchange debug fields if available
         for k in (
-            'peer_exchange_protocol',
-            'peer_exchange_interval_s',
-            'peer_exchange_last',
-            'peer_exchange_last_iso',
-            'peer_exchange_last_by_peer',
-            'known_peer_multiaddrs',
+            "peer_exchange_protocol",
+            "peer_exchange_interval_s",
+            "peer_exchange_last",
+            "peer_exchange_last_iso",
+            "peer_exchange_last_by_peer",
+            "known_peer_multiaddrs",
         ):
             if k in stats:
                 peer_info[k] = stats.get(k)
 
         # Pass through universal-connectivity diagnostics if available
-        if isinstance(stats.get('connectivity'), dict):
-            peer_info['connectivity'] = stats.get('connectivity')
+        if isinstance(stats.get("connectivity"), dict):
+            peer_info["connectivity"] = stats.get("connectivity")
 
         # Try to get peer registry info if available
         try:
-            repo = os.environ.get('IPFS_ACCELERATE_GITHUB_REPO') or os.environ.get('GITHUB_REPOSITORY', '')
-            if repo and peer_info['enabled']:
+            repo = os.environ.get("IPFS_ACCELERATE_GITHUB_REPO") or os.environ.get(
+                "GITHUB_REPOSITORY", ""
+            )
+            if repo and peer_info["enabled"]:
                 from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
+
                 registry = P2PPeerRegistry(repo=repo)
 
                 # Get registered peers (back-compat with older registry APIs)
                 peers = []
-                list_peers = getattr(registry, 'list_peers', None)
+                list_peers = getattr(registry, "list_peers", None)
                 if callable(list_peers):
                     peers = list_peers(max_peers=50)
                 else:
-                    discover_peers = getattr(registry, 'discover_peers', None)
+                    discover_peers = getattr(registry, "discover_peers", None)
                     if callable(discover_peers):
                         peers = discover_peers(max_peers=50)
 
                 if isinstance(peers, list):
-                    peer_info['peers'] = [
+                    peer_info["peers"] = [
                         {
-                            'peer_id': p.get('peer_id', 'unknown'),
-                            'runner_name': p.get('runner_name') or p.get('metadata', {}).get('runner_name', 'unknown'),
-                            'listen_port': p.get('listen_port', 0),
-                            'last_seen': p.get('last_seen', '')
+                            "peer_id": p.get("peer_id", "unknown"),
+                            "runner_name": p.get("runner_name")
+                            or p.get("metadata", {}).get("runner_name", "unknown"),
+                            "listen_port": p.get("listen_port", 0),
+                            "last_seen": p.get("last_seen", ""),
                         }
                         for p in peers
                         if isinstance(p, dict)
                     ]
-                    peer_info['registered_peer_count'] = len(peer_info['peers'])
-                peer_info['status'] = 'Active' if enabled else peer_info['status']
+                    peer_info["registered_peer_count"] = len(peer_info["peers"])
+                peer_info["status"] = "Active" if enabled else peer_info["status"]
         except Exception as e:
             logger.debug(f"Could not get detailed peer info: {e}")
 
@@ -382,14 +382,14 @@ def get_peer_status() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error getting peer status: {e}")
         return {
-            'enabled': False,
-            'active': False,
-            'peer_count': 0,
-            'peers': [],
-            'p2p_enabled': False,
-            'status': 'Error',
-            'libp2p': _get_libp2p_info(),
-            'error': str(e)
+            "enabled": False,
+            "active": False,
+            "peer_count": 0,
+            "peers": [],
+            "p2p_enabled": False,
+            "status": "Error",
+            "libp2p": _get_libp2p_info(),
+            "error": str(e),
         }
 
 
@@ -432,8 +432,8 @@ def get_system_metrics(start_time: Optional[float] = None) -> Dict[str, Any]:
             # Get memory info
             memory = psutil.virtual_memory()
             memory_percent = memory.percent
-            memory_used_gb = memory.used / (1024 ** 3)
-            memory_total_gb = memory.total / (1024 ** 3)
+            memory_used_gb = memory.used / (1024**3)
+            memory_total_gb = memory.total / (1024**3)
 
             # Get process info for uptime
             process = psutil.Process(os.getpid())
@@ -463,27 +463,27 @@ def get_system_metrics(start_time: Optional[float] = None) -> Dict[str, Any]:
             uptime = f"{int(uptime_seconds / 86400)}d"
 
         return {
-            'cpu_percent': round(cpu_percent, 1),
-            'memory_percent': round(memory_percent, 1),
-            'memory_used_gb': round(memory_used_gb, 2),
-            'memory_total_gb': round(memory_total_gb, 2),
-            'uptime': uptime,
-            'uptime_seconds': int(uptime_seconds),
-            'active_connections': connections,
-            'pid': os.getpid()
+            "cpu_percent": round(cpu_percent, 1),
+            "memory_percent": round(memory_percent, 1),
+            "memory_used_gb": round(memory_used_gb, 2),
+            "memory_total_gb": round(memory_total_gb, 2),
+            "uptime": uptime,
+            "uptime_seconds": int(uptime_seconds),
+            "active_connections": connections,
+            "pid": os.getpid(),
         }
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}")
         # Return fallback data
         return {
-            'cpu_percent': 0,
-            'memory_percent': 0,
-            'memory_used_gb': 0,
-            'memory_total_gb': 0,
-            'uptime': 'unknown',
-            'uptime_seconds': 0,
-            'active_connections': 0,
-            'error': str(e)
+            "cpu_percent": 0,
+            "memory_percent": 0,
+            "memory_used_gb": 0,
+            "memory_total_gb": 0,
+            "uptime": "unknown",
+            "uptime_seconds": 0,
+            "active_connections": 0,
+            "error": str(e),
         }
 
 
@@ -499,12 +499,14 @@ def register_tools(mcp):
     """
 
     import warnings
+
     warnings.warn(
         "ipfs_accelerate_py.mcp.tools.dashboard_data.register_tools is deprecated. "
         "Use ipfs_accelerate_py.mcp_server.tools.dashboard_tools instead.",
         DeprecationWarning,
         stacklevel=2,
     )
+
     @mcp.tool()
     def get_dashboard_user_info() -> Dict[str, Any]:
         """

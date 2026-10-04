@@ -59,7 +59,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -116,7 +118,11 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
                 }
             },
         }
-        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+        payload_b64 = (
+            base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+            .decode("ascii")
+            .rstrip("=")
+        )
         token = "e30." + payload_b64 + ".sig"
 
         result = validate_raw_delegation_chain(
@@ -136,7 +142,11 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             "prf": ["cid-proof-parent"],
             "capabilities": [{"with": "smoke.echo", "can": "invoke"}],
         }
-        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+        payload_b64 = (
+            base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+            .decode("ascii")
+            .rstrip("=")
+        )
         token = "e30." + payload_b64 + ".sig"
 
         parsed = parse_delegation_chain([{"ucan": token}])
@@ -153,7 +163,11 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             "prf": "cid-proof-parent-string",
             "capabilities": [{"with": "smoke.echo", "can": "invoke"}],
         }
-        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+        payload_b64 = (
+            base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+            .decode("ascii")
+            .rstrip("=")
+        )
         token = "e30." + payload_b64 + ".sig"
 
         parsed = parse_delegation_chain([{"jwt": token}])
@@ -229,12 +243,16 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         signed_raw = []
         for d in chain:
             proof_cid = compute_delegation_proof_cid(d)
-            signature = compute_delegation_signature(delegation=d, issuer_key_hint=issuer_keys.get(d.issuer, ""))
+            signature = compute_delegation_signature(
+                delegation=d, issuer_key_hint=issuer_keys.get(d.issuer, "")
+            )
             signed_raw.append(
                 {
                     "issuer": d.issuer,
                     "audience": d.audience,
-                    "capabilities": [{"resource": c.resource, "ability": c.ability} for c in d.capabilities],
+                    "capabilities": [
+                        {"resource": c.resource, "ability": c.ability} for c in d.capabilities
+                    ],
                     "proof_cid": proof_cid,
                     "signature": signature,
                 }
@@ -293,7 +311,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -325,7 +345,12 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             self.assertEqual(authorization.get("reason"), "allowed")
             self.assertEqual(authorization.get("failure_hop"), None)
             self.assertEqual(len(authorization.get("proof_lineage") or []), 2)
-            self.assertTrue(all(str(x).startswith("cidv1-sha256-") for x in (authorization.get("proof_lineage") or [])))
+            self.assertTrue(
+                all(
+                    str(x).startswith("cidv1-sha256-")
+                    for x in (authorization.get("proof_lineage") or [])
+                )
+            )
 
         anyio.run(_run_flow)
 
@@ -336,7 +361,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             delegation = parse_delegation_chain(
@@ -349,7 +376,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
                 ]
             )[0]
             proof_cid = compute_delegation_proof_cid(delegation)
-            signature = compute_delegation_signature(delegation=delegation, issuer_key_hint="pk-alice")
+            signature = compute_delegation_signature(
+                delegation=delegation, issuer_key_hint="pk-alice"
+            )
 
             response = await dispatch(
                 "smoke",
@@ -797,7 +826,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -823,7 +854,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             self.assertFalse(response.get("ok"))
             self.assertEqual(response.get("error"), "authorization_denied")
             self.assertEqual(((response.get("authorization") or {}).get("scheme")), "ucan")
-            self.assertEqual(((response.get("authorization") or {}).get("reason")), "missing_delegation_chain")
+            self.assertEqual(
+                ((response.get("authorization") or {}).get("reason")), "missing_delegation_chain"
+            )
             self.assertNotIn("policy", response)
             self.assertNotIn("policy_decision", response)
 
@@ -836,7 +869,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(
@@ -868,7 +903,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             self.assertFalse(response.get("ok"))
             self.assertEqual(response.get("error"), "authorization_denied")
             self.assertEqual(((response.get("authorization") or {}).get("scheme")), "ucan")
-            self.assertEqual(((response.get("authorization") or {}).get("reason")), "missing_delegation_chain")
+            self.assertEqual(
+                ((response.get("authorization") or {}).get("reason")), "missing_delegation_chain"
+            )
             self.assertNotIn("policy", response)
             self.assertNotIn("policy_decision", response)
 
@@ -881,7 +918,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(

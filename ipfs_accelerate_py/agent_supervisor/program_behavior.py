@@ -44,24 +44,12 @@ from .conflict_graph import ASTBlobRecord, build_python_ast_blob_record
 
 
 PROGRAM_BEHAVIOR_SCHEMA_VERSION = 1
-PROGRAM_BEHAVIOR_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-behavior@1"
-)
-REPOSITORY_SNAPSHOT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/repository-snapshot@1"
-)
-PROGRAM_OBSERVATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-observations@1"
-)
-TOOL_CATALOG_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/tool-catalog@1"
-)
-ENVIRONMENT_FACTS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/environment-facts@1"
-)
-PROPOSED_EFFECT_MANIFEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proposed-effect-manifest@1"
-)
+PROGRAM_BEHAVIOR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-behavior@1"
+REPOSITORY_SNAPSHOT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/repository-snapshot@1"
+PROGRAM_OBSERVATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-observations@1"
+TOOL_CATALOG_SCHEMA = "ipfs_accelerate_py/agent-supervisor/tool-catalog@1"
+ENVIRONMENT_FACTS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/environment-facts@1"
+PROPOSED_EFFECT_MANIFEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proposed-effect-manifest@1"
 
 DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_TOTAL_BYTES = 128 * 1024 * 1024
@@ -132,16 +120,11 @@ def _canonical_json_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ProgramBehaviorError(
-            "program behavior values must be canonical JSON"
-        ) from exc
+        raise ProgramBehaviorError("program behavior values must be canonical JSON") from exc
 
 
 def _identity(prefix: str, value: Any) -> str:
-    return (
-        f"{prefix}:sha256:"
-        + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
-    )
+    return f"{prefix}:sha256:" + hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
 
 
 def _sha256(data: bytes) -> str:
@@ -170,22 +153,13 @@ def _frozen_json(value: Any, *, name: str, depth: int = 0) -> Any:
         for raw_key in sorted(value):
             key = str(raw_key)
             if key.casefold() in _SOURCE_BODY_KEYS:
-                raise ProgramBehaviorError(
-                    f"{name} cannot embed body or credential field {key!r}"
-                )
-            result[key] = _frozen_json(
-                value[raw_key], name=name, depth=depth + 1
-            )
+                raise ProgramBehaviorError(f"{name} cannot embed body or credential field {key!r}")
+            result[key] = _frozen_json(value[raw_key], name=name, depth=depth + 1)
         return MappingProxyType(result)
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         if len(value) > 1_024:
             raise RequiredInputTooLargeError(f"{name} has too many items")
-        return tuple(
-            _frozen_json(item, name=name, depth=depth + 1)
-            for item in value
-        )
+        return tuple(_frozen_json(item, name=name, depth=depth + 1) for item in value)
     raise ProgramBehaviorError(f"{name} contains a non-JSON value")
 
 
@@ -207,18 +181,14 @@ def _repo_path(value: Any, *, allow_root: bool = False) -> str:
         or ".." in candidate.parts
         or (candidate.parts and candidate.parts[0].endswith(":"))
     ):
-        raise RepositoryPathEscapeError(
-            f"repository path escapes its root: {value!r}"
-        )
+        raise RepositoryPathEscapeError(f"repository path escapes its root: {value!r}")
     normalized = candidate.as_posix()
     if normalized == ".":
         if allow_root:
             return "."
         raise RepositoryPathEscapeError("repository entry path is required")
     if normalized != raw.rstrip("/"):
-        raise RepositoryPathEscapeError(
-            f"repository path is not canonical: {value!r}"
-        )
+        raise RepositoryPathEscapeError(f"repository path is not canonical: {value!r}")
     return normalized
 
 
@@ -243,8 +213,7 @@ def _path_in_scope(path: str, scopes: Sequence[str]) -> bool:
 def _path_excluded(path: str, exclusions: Sequence[str]) -> bool:
     candidate = PurePosixPath(path)
     return any(
-        candidate == PurePosixPath(item)
-        or PurePosixPath(item) in candidate.parents
+        candidate == PurePosixPath(item) or PurePosixPath(item) in candidate.parents
         for item in exclusions
     )
 
@@ -299,10 +268,7 @@ class SnapshotBounds:
             raise ValueError("max_file_bytes cannot exceed max_total_bytes")
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 class RepositoryEntryKind(str, Enum):
@@ -344,25 +310,18 @@ class RepositoryEntry:
         object.__setattr__(self, "kind", RepositoryEntryKind(self.kind))
         object.__setattr__(self, "status", RepositoryEntryStatus(self.status))
         if self.rename_from:
-            object.__setattr__(
-                self, "rename_from", _repo_path(self.rename_from)
-            )
+            object.__setattr__(self, "rename_from", _repo_path(self.rename_from))
         for name in ("head_mode", "index_mode", "worktree_mode"):
             mode = str(getattr(self, name) or "")
             if mode and mode not in {"100644", "100755", "120000"}:
-                raise RepositoryStateError(
-                    f"unsupported Git mode {mode!r} for {self.path}"
-                )
+                raise RepositoryStateError(f"unsupported Git mode {mode!r} for {self.path}")
             object.__setattr__(self, name, mode)
         for name in ("head_object_id", "index_object_id"):
             value = str(getattr(self, name) or "")
             if value and (
-                len(value) not in {40, 64}
-                or any(char not in "0123456789abcdef" for char in value)
+                len(value) not in {40, 64} or any(char not in "0123456789abcdef" for char in value)
             ):
-                raise RepositoryStateError(
-                    f"invalid Git object identity for {self.path}"
-                )
+                raise RepositoryStateError(f"invalid Git object identity for {self.path}")
             object.__setattr__(self, name, value)
 
     @property
@@ -381,9 +340,7 @@ class RepositoryEntry:
             "index_object_id": self.index_object_id,
             "index_blob": self.index_blob.to_dict() if self.index_blob else None,
             "worktree_mode": self.worktree_mode,
-            "worktree_blob": (
-                self.worktree_blob.to_dict() if self.worktree_blob else None
-            ),
+            "worktree_blob": (self.worktree_blob.to_dict() if self.worktree_blob else None),
             "rename_from": self.rename_from,
         }
 
@@ -406,10 +363,7 @@ class RepositorySnapshotStats:
     untracked_entry_count: int
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: int(getattr(self, name))
-            for name in self.__dataclass_fields__
-        }
+        return {name: int(getattr(self, name)) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -431,9 +385,7 @@ class RepositorySnapshot:
     def __post_init__(self) -> None:
         root = Path(self.repository_root)
         if not root.is_absolute() or root == Path("/"):
-            raise RepositoryPathEscapeError(
-                "repository_root must be a non-root absolute path"
-            )
+            raise RepositoryPathEscapeError("repository_root must be a non-root absolute path")
         object.__setattr__(self, "repository_root", str(root))
         object.__setattr__(self, "git_directory", str(self.git_directory))
         object.__setattr__(
@@ -461,10 +413,7 @@ class RepositorySnapshot:
             and self.head_tree_id == self.index_tree_id
             and self.scopes == (".",)
             and not self.excluded_paths
-            and all(
-                item.status is RepositoryEntryStatus.CLEAN
-                for item in self.entries
-            )
+            and all(item.status is RepositoryEntryStatus.CLEAN for item in self.entries)
         )
 
     @property
@@ -507,9 +456,7 @@ class RepositorySnapshot:
 
     def entry_for_path(self, path: str) -> RepositoryEntry | None:
         normalized = _repo_path(path)
-        return next(
-            (item for item in self.entries if item.path == normalized), None
-        )
+        return next((item for item in self.entries if item.path == normalized), None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -534,9 +481,7 @@ class RepositorySnapshot:
             verify_after_hash=False,
         )
         if current.snapshot_id != self.snapshot_id:
-            raise RepositoryRaceError(
-                "repository changed after its behavior snapshot was hashed"
-            )
+            raise RepositoryRaceError("repository changed after its behavior snapshot was hashed")
 
 
 @dataclass(frozen=True)
@@ -572,9 +517,7 @@ def _parse_head_entries(root: Path) -> dict[str, _GitEntry]:
         if kind != "blob":
             # Submodules are executable external state and cannot be safely
             # represented as in-repository bytes by this contract.
-            raise RepositoryStateError(
-                f"unsupported HEAD entry kind {kind!r} at {path!r}"
-            )
+            raise RepositoryStateError(f"unsupported HEAD entry kind {kind!r} at {path!r}")
         result[_repo_path(path)] = _GitEntry(mode, object_id)
     return result
 
@@ -592,9 +535,7 @@ def _parse_index_entries(root: Path) -> dict[str, _GitEntry]:
         except (ValueError, UnicodeDecodeError) as exc:
             raise RepositoryStateError("index contains an undecodable entry") from exc
         if stage != "0":
-            raise RepositoryStateError(
-                f"unmerged index entry is unsupported at {path!r}"
-            )
+            raise RepositoryStateError(f"unmerged index entry is unsupported at {path!r}")
         result[_repo_path(path)] = _GitEntry(mode, object_id)
     return result
 
@@ -604,19 +545,13 @@ def _safe_scope_path(root: Path, relative: str) -> Path:
     # The repository root's parent is necessarily outside the repository; for
     # the "." scope the already canonicalized root itself is the containment
     # anchor.
-    resolved_parent = (
-        root if candidate == root else candidate.parent.resolve(strict=True)
-    )
+    resolved_parent = root if candidate == root else candidate.parent.resolve(strict=True)
     if not _is_within(resolved_parent, root):
-        raise SymlinkEscapeError(
-            f"scope or parent symlink escapes repository root: {relative!r}"
-        )
+        raise SymlinkEscapeError(f"scope or parent symlink escapes repository root: {relative!r}")
     if candidate.exists() and not candidate.is_symlink():
         resolved = candidate.resolve(strict=True)
         if not _is_within(resolved, root):
-            raise SymlinkEscapeError(
-                f"scope escapes repository root: {relative!r}"
-            )
+            raise SymlinkEscapeError(f"scope escapes repository root: {relative!r}")
     return candidate
 
 
@@ -624,9 +559,7 @@ def _stable_read(root: Path, path: Path, relative: str, bound: int) -> _Worktree
     try:
         before = path.lstat()
     except OSError as exc:
-        raise RequiredInputUnreadableError(
-            f"required input is unreadable: {relative}"
-        ) from exc
+        raise RequiredInputUnreadableError(f"required input is unreadable: {relative}") from exc
     if stat.S_ISLNK(before.st_mode):
         try:
             target = os.readlink(path)
@@ -651,25 +584,17 @@ def _stable_read(root: Path, path: Path, relative: str, bound: int) -> _Worktree
             raise RepositoryRaceError(f"symlink changed while hashing: {relative}")
         resolved = (path.parent / target).resolve(strict=False)
         if not _is_within(resolved, root):
-            raise SymlinkEscapeError(
-                f"symlink escapes repository root: {relative!r} -> {target!r}"
-            )
+            raise SymlinkEscapeError(f"symlink escapes repository root: {relative!r} -> {target!r}")
         data = os.fsencode(target)
         if len(data) > bound:
-            raise RequiredInputTooLargeError(
-                f"required input exceeds {bound} bytes: {relative}"
-            )
-        return _WorktreeFile(
-            relative, "120000", RepositoryEntryKind.SYMLINK, data
-        )
+            raise RequiredInputTooLargeError(f"required input exceeds {bound} bytes: {relative}")
+        return _WorktreeFile(relative, "120000", RepositoryEntryKind.SYMLINK, data)
     if not stat.S_ISREG(before.st_mode):
         raise RequiredInputUnreadableError(
             f"required input is not a regular file or symlink: {relative}"
         )
     if before.st_size > bound:
-        raise RequiredInputTooLargeError(
-            f"required input exceeds {bound} bytes: {relative}"
-        )
+        raise RequiredInputTooLargeError(f"required input exceeds {bound} bytes: {relative}")
     flags = os.O_RDONLY
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -690,9 +615,7 @@ def _stable_read(root: Path, path: Path, relative: str, bound: int) -> _Worktree
                 before.st_size,
                 before.st_mtime_ns,
             ):
-                raise RepositoryRaceError(
-                    f"file changed before hashing: {relative}"
-                )
+                raise RepositoryRaceError(f"file changed before hashing: {relative}")
             chunks: list[bytes] = []
             total = 0
             while True:
@@ -712,9 +635,7 @@ def _stable_read(root: Path, path: Path, relative: str, bound: int) -> _Worktree
     except ProgramBehaviorError:
         raise
     except OSError as exc:
-        raise RequiredInputUnreadableError(
-            f"required input is unreadable: {relative}"
-        ) from exc
+        raise RequiredInputUnreadableError(f"required input is unreadable: {relative}") from exc
     signatures = (
         before.st_dev,
         before.st_ino,
@@ -737,9 +658,7 @@ def _stable_read(root: Path, path: Path, relative: str, bound: int) -> _Worktree
     ):
         raise RepositoryRaceError(f"file changed while hashing: {relative}")
     mode = "100755" if before.st_mode & 0o111 else "100644"
-    return _WorktreeFile(
-        relative, mode, RepositoryEntryKind.REGULAR, b"".join(chunks)
-    )
+    return _WorktreeFile(relative, mode, RepositoryEntryKind.REGULAR, b"".join(chunks))
 
 
 def _scan_worktree(
@@ -762,12 +681,8 @@ def _scan_worktree(
         if _path_excluded(normalized, exclusions):
             return
         if len(result) >= bounds.max_files:
-            raise RequiredInputTooLargeError(
-                f"repository scope exceeds {bounds.max_files} files"
-            )
-        result[normalized] = _stable_read(
-            root, path, normalized, bounds.max_file_bytes
-        )
+            raise RequiredInputTooLargeError(f"repository scope exceeds {bounds.max_files} files")
+        result[normalized] = _stable_read(root, path, normalized, bounds.max_file_bytes)
 
     for scope in scopes:
         start = _safe_scope_path(root, scope)
@@ -808,19 +723,16 @@ def _scan_worktree(
         if item.kind is not RepositoryEntryKind.SYMLINK:
             continue
         target = os.fsdecode(item.data)
-        resolved = (
-            root.joinpath(*PurePosixPath(relative).parts).parent / target
-        ).resolve(strict=False)
+        resolved = (root.joinpath(*PurePosixPath(relative).parts).parent / target).resolve(
+            strict=False
+        )
         if not _is_within(resolved, root):
             # _stable_read already catches this; retain the assertion here so
             # future alternate scanners cannot bypass the invariant.
-            raise SymlinkEscapeError(
-                f"symlink escapes repository root: {relative!r}"
-            )
+            raise SymlinkEscapeError(f"symlink escapes repository root: {relative!r}")
         target_relative = resolved.relative_to(root).as_posix()
-        if (
-            not _path_in_scope(target_relative, scopes)
-            or _path_excluded(target_relative, exclusions)
+        if not _path_in_scope(target_relative, scopes) or _path_excluded(
+            target_relative, exclusions
         ):
             raise SymlinkEscapeError(
                 f"symlink target is outside the declared byte scope: {relative!r}"
@@ -879,12 +791,8 @@ def _git_blob(
         byte_counter[0] += len(data)
         counted.add(digest)
     if byte_counter[0] > bounds.max_total_bytes:
-        raise RequiredInputTooLargeError(
-            f"repository inputs exceed {bounds.max_total_bytes} bytes"
-        )
-    return _blob_from_bytes(
-        data, kind="repository-source", store=store, cache=cache
-    )
+        raise RequiredInputTooLargeError(f"repository inputs exceed {bounds.max_total_bytes} bytes")
+    return _blob_from_bytes(data, kind="repository-source", store=store, cache=cache)
 
 
 def _entry_status(
@@ -902,16 +810,9 @@ def _entry_status(
         if index is None:
             return RepositoryEntryStatus.STAGED_DELETION
         return RepositoryEntryStatus.DELETED
-    head_equal_index = bool(
-        head
-        and index
-        and head.mode == index.mode
-        and head_blob == index_blob
-    )
+    head_equal_index = bool(head and index and head.mode == index.mode and head_blob == index_blob)
     index_equal_worktree = bool(
-        index
-        and index.mode == worktree.mode
-        and index_blob == worktree_blob
+        index and index.mode == worktree.mode and index_blob == worktree_blob
     )
     if rename_from:
         return RepositoryEntryStatus.RENAMED
@@ -948,40 +849,34 @@ def build_repository_snapshot(
     try:
         root = requested.resolve(strict=True)
     except OSError as exc:
-        raise RequiredInputUnreadableError(
-            "repository root is unreadable"
-        ) from exc
+        raise RequiredInputUnreadableError("repository root is unreadable") from exc
     discovered_raw = _run_git(root, ("rev-parse", "--show-toplevel"))
     try:
-        discovered = Path(discovered_raw.decode("utf-8").strip()).resolve(
-            strict=True
-        )
+        discovered = Path(discovered_raw.decode("utf-8").strip()).resolve(strict=True)
     except (OSError, UnicodeDecodeError) as exc:
         raise RepositoryStateError("could not resolve Git repository root") from exc
     if discovered != root:
-        raise RepositoryPathEscapeError(
-            "repository_root must name the exact Git worktree root"
-        )
-    normalized_scopes = tuple(
-        sorted({_repo_path(item, allow_root=True) for item in scopes})
-    )
+        raise RepositoryPathEscapeError("repository_root must name the exact Git worktree root")
+    normalized_scopes = tuple(sorted({_repo_path(item, allow_root=True) for item in scopes}))
     if not normalized_scopes:
         raise RepositoryPathEscapeError("at least one repository scope is required")
-    normalized_exclusions = tuple(
-        sorted({_repo_path(item) for item in excluded_paths})
-    )
+    normalized_exclusions = tuple(sorted({_repo_path(item) for item in excluded_paths}))
     for scope in normalized_scopes:
         _safe_scope_path(root, scope)
 
-    git_directory = _run_git(
-        root, ("rev-parse", "--absolute-git-dir")
-    ).decode("utf-8", "strict").strip()
-    head_commit = _run_git(
-        root, ("rev-parse", "--verify", "HEAD"), allow_failure=True
-    ).decode("ascii", "strict").strip()
-    head_tree = _run_git(
-        root, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True
-    ).decode("ascii", "strict").strip()
+    git_directory = (
+        _run_git(root, ("rev-parse", "--absolute-git-dir")).decode("utf-8", "strict").strip()
+    )
+    head_commit = (
+        _run_git(root, ("rev-parse", "--verify", "HEAD"), allow_failure=True)
+        .decode("ascii", "strict")
+        .strip()
+    )
+    head_tree = (
+        _run_git(root, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True)
+        .decode("ascii", "strict")
+        .strip()
+    )
     # write-tree is the canonical Git index tree operation.  It does not alter
     # the index or worktree, and fails for an unmerged index.
     index_tree = _run_git(root, ("write-tree",)).decode("ascii", "strict").strip()
@@ -989,14 +884,11 @@ def build_repository_snapshot(
     head_all = _parse_head_entries(root)
     index_all = _parse_index_entries(root)
     in_scope = lambda path: (
-        _path_in_scope(path, normalized_scopes)
-        and not _path_excluded(path, normalized_exclusions)
+        _path_in_scope(path, normalized_scopes) and not _path_excluded(path, normalized_exclusions)
     )
     head = {path: item for path, item in head_all.items() if in_scope(path)}
     index = {path: item for path, item in index_all.items() if in_scope(path)}
-    worktree = _scan_worktree(
-        root, normalized_scopes, normalized_exclusions, selected_bounds
-    )
+    worktree = _scan_worktree(root, normalized_scopes, normalized_exclusions, selected_bounds)
 
     paths = sorted(set(head) | set(index) | set(worktree))
     if len(paths) > selected_bounds.max_files:
@@ -1084,8 +976,7 @@ def build_repository_snapshot(
             worktree_item.kind
             if worktree_item is not None
             else RepositoryEntryKind.SYMLINK
-            if (index_item or head_item)
-            and (index_item or head_item).mode == "120000"
+            if (index_item or head_item) and (index_item or head_item).mode == "120000"
             else RepositoryEntryKind.REGULAR
         )
         source = rename_from.get(path, "")
@@ -1138,16 +1029,12 @@ def build_repository_snapshot(
             executed_file_count=len(worktree),
             unique_blob_count=len(counted),
             hashed_bytes=byte_counter[0],
-            reused_blob_count=len(
-                referenced_digests.intersection(initially_cached)
-            ),
+            reused_blob_count=len(referenced_digests.intersection(initially_cached)),
             changed_entry_count=sum(
-                item.status is not RepositoryEntryStatus.CLEAN
-                for item in entries
+                item.status is not RepositoryEntryStatus.CLEAN for item in entries
             ),
             untracked_entry_count=sum(
-                item.status is RepositoryEntryStatus.UNTRACKED
-                for item in entries
+                item.status is RepositoryEntryStatus.UNTRACKED for item in entries
             ),
         ),
         bounds=selected_bounds,
@@ -1163,9 +1050,7 @@ def build_repository_snapshot(
             verify_after_hash=False,
         )
         if verification.snapshot_id != snapshot.snapshot_id:
-            raise RepositoryRaceError(
-                "repository changed after its behavior snapshot was hashed"
-            )
+            raise RepositoryRaceError("repository changed after its behavior snapshot was hashed")
     return snapshot
 
 
@@ -1202,9 +1087,7 @@ class ProgramObservation:
         ):
             value = str(getattr(self, name) or "").strip()
             if not value and name not in {"subject", "symbol_hash"}:
-                raise ProgramBehaviorError(
-                    f"program observation {name} is required"
-                )
+                raise ProgramBehaviorError(f"program observation {name} is required")
             object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1359,10 +1242,7 @@ def build_program_analysis(
     """Parse current Python bytes and incrementally reuse unchanged AST facts."""
 
     prior_records = (
-        {
-            item.path: item.ast_record
-            for item in previous.ast_index.path_records
-        }
+        {item.path: item.ast_record for item in previous.ast_index.path_records}
         if previous is not None
         else {}
     )
@@ -1380,9 +1260,7 @@ def build_program_analysis(
         ):
             record = prior
         else:
-            absolute = Path(snapshot.repository_root).joinpath(
-                *PurePosixPath(entry.path).parts
-            )
+            absolute = Path(snapshot.repository_root).joinpath(*PurePosixPath(entry.path).parts)
             worktree = _stable_read(
                 Path(snapshot.repository_root),
                 absolute,
@@ -1390,9 +1268,7 @@ def build_program_analysis(
                 snapshot.bounds.max_file_bytes,
             )
             if _sha256(worktree.data) != reference.digest:
-                raise RepositoryRaceError(
-                    f"Python source changed after snapshot: {entry.path}"
-                )
+                raise RepositoryRaceError(f"Python source changed after snapshot: {entry.path}")
             try:
                 source = worktree.data.decode("utf-8")
             except UnicodeDecodeError as exc:
@@ -1407,23 +1283,24 @@ def build_program_analysis(
         path_records.append((entry.path, record))
         observations.extend(_observations_for(entry.path, reference, record))
         if len(observations) > snapshot.bounds.max_observations:
-            raise RequiredInputTooLargeError(
-                "program observations exceed the declared bound"
-            )
+            raise RequiredInputTooLargeError("program observations exceed the declared bound")
     index = build_analysis_ast_index(
         path_records,
         previous=previous.ast_index if previous is not None else None,
     )
-    observation_dicts = [item.to_dict() for item in sorted(
-        observations,
-        key=lambda item: (
-            item.path,
-            item.kind.value,
-            item.subject,
-            item.relationship,
-            item.target,
-        ),
-    )]
+    observation_dicts = [
+        item.to_dict()
+        for item in sorted(
+            observations,
+            key=lambda item: (
+                item.path,
+                item.kind.value,
+                item.subject,
+                item.relationship,
+                item.target,
+            ),
+        )
+    ]
     cache: dict[str, BlobReference] = {}
     # Cache statistics and invalidation history describe how this snapshot was
     # reached, not the current program.  Keep the referenced AST projection
@@ -1433,9 +1310,7 @@ def build_program_analysis(
             "schema": "ipfs_accelerate_py/agent-supervisor/analysis-ast-index@1",
             "schema_version": index.schema_version,
             "index_id": index.index_id,
-            "path_records": [
-                item.to_dict() for item in index.path_records
-            ],
+            "path_records": [item.to_dict() for item in index.path_records],
         }
     )
     observation_bytes = _canonical_json_bytes(
@@ -1445,12 +1320,8 @@ def build_program_analysis(
         ("AST index", ast_bytes),
         ("program observations", observation_bytes),
     ):
-        if len(encoded) > min(
-            snapshot.bounds.max_total_bytes, DEFAULT_MAX_MANIFEST_BYTES
-        ):
-            raise RequiredInputTooLargeError(
-                f"{label} exceeds its serialized byte bound"
-            )
+        if len(encoded) > min(snapshot.bounds.max_total_bytes, DEFAULT_MAX_MANIFEST_BYTES):
+            raise RequiredInputTooLargeError(f"{label} exceeds its serialized byte bound")
     ast_ref = _blob_from_bytes(
         ast_bytes,
         kind="analysis-ast-index",
@@ -1549,9 +1420,7 @@ def capture_tool_catalog(
     descriptors: list[ToolDescriptor] = []
     for tool_id, command in sorted(commands.items()):
         if isinstance(command, str) or not command:
-            raise ProgramBehaviorError(
-                f"tool command for {tool_id!r} must be a non-empty sequence"
-            )
+            raise ProgramBehaviorError(f"tool command for {tool_id!r} must be a non-empty sequence")
         try:
             result = subprocess.run(
                 tuple(str(item) for item in command),
@@ -1561,18 +1430,12 @@ def capture_tool_catalog(
                 check=False,
             )
         except OSError as exc:
-            raise RequiredInputUnreadableError(
-                f"required tool is unavailable: {tool_id}"
-            ) from exc
+            raise RequiredInputUnreadableError(f"required tool is unavailable: {tool_id}") from exc
         output = result.stdout
         if len(output) > DEFAULT_MAX_TOOL_OUTPUT_BYTES:
-            raise RequiredInputTooLargeError(
-                f"tool version output is oversized: {tool_id}"
-            )
+            raise RequiredInputTooLargeError(f"tool version output is oversized: {tool_id}")
         if result.returncode:
-            raise RequiredInputUnreadableError(
-                f"tool version command failed: {tool_id}"
-            )
+            raise RequiredInputUnreadableError(f"tool version command failed: {tool_id}")
         version = output.decode("utf-8", "replace").strip()
         if not version:
             raise RequiredInputUnreadableError(
@@ -1581,9 +1444,7 @@ def capture_tool_catalog(
         requested_executable = str(command[0])
         resolved_executable = shutil.which(requested_executable)
         if resolved_executable is None:
-            raise RequiredInputUnreadableError(
-                f"required tool is unavailable: {tool_id}"
-            )
+            raise RequiredInputUnreadableError(f"required tool is unavailable: {tool_id}")
         executable = str(Path(resolved_executable).resolve())
         descriptors.append(
             ToolDescriptor(
@@ -1621,13 +1482,9 @@ class EnvironmentFacts:
             if (
                 not rendered.startswith("sha256:")
                 or len(rendered) != 71
-                or any(
-                    char not in "0123456789abcdef" for char in rendered[7:]
-                )
+                or any(char not in "0123456789abcdef" for char in rendered[7:])
             ):
-                raise ProgramBehaviorError(
-                    "environment variables must contain only value digests"
-                )
+                raise ProgramBehaviorError("environment variables must contain only value digests")
             variables[name] = rendered
         object.__setattr__(self, "variables", MappingProxyType(variables))
 
@@ -1664,17 +1521,11 @@ def capture_environment_facts(
 
     names = tuple(sorted({str(item) for item in variable_names}))
     if len(names) > 256:
-        raise RequiredInputTooLargeError(
-            "environment fact selection exceeds 256 variables"
-        )
+        raise RequiredInputTooLargeError("environment fact selection exceeds 256 variables")
     # Bind presence and exact bytes without serializing credential-like ambient
     # values into decision receipts.
     variables = {
-        name: _sha256(
-            b"\x01" + os.fsencode(os.environ[name])
-            if name in os.environ
-            else b"\x00"
-        )
+        name: _sha256(b"\x01" + os.fsencode(os.environ[name]) if name in os.environ else b"\x00")
         for name in names
     }
     implementation = platform.python_implementation()
@@ -1707,25 +1558,19 @@ _EFFECT_OPERATIONS = {
     ProposedEffectKind.FILE: frozenset(
         {"read", "create", "write", "append", "delete", "rename", "chmod", "symlink"}
     ),
-    ProposedEffectKind.PROCESS: frozenset(
-        {"execute", "start", "stop", "signal"}
-    ),
+    ProposedEffectKind.PROCESS: frozenset({"execute", "start", "stop", "signal"}),
     ProposedEffectKind.NETWORK: frozenset(
         {"connect", "request", "listen", "download", "upload", "publish"}
     ),
     ProposedEffectKind.CREDENTIAL: frozenset(
         {"read", "use", "create", "update", "delete", "rotate"}
     ),
-    ProposedEffectKind.DATASET: frozenset(
-        {"read", "create", "write", "delete", "publish"}
-    ),
+    ProposedEffectKind.DATASET: frozenset({"read", "create", "write", "delete", "publish"}),
     ProposedEffectKind.TASK_BOARD: frozenset(
         {"read", "create", "update", "delete", "complete", "reopen"}
     ),
     ProposedEffectKind.COMMIT: frozenset({"create", "amend", "sign"}),
-    ProposedEffectKind.MERGE: frozenset(
-        {"merge", "rebase", "cherry_pick", "fast_forward"}
-    ),
+    ProposedEffectKind.MERGE: frozenset({"merge", "rebase", "cherry_pick", "fast_forward"}),
 }
 
 
@@ -1751,29 +1596,21 @@ class ProposedEffect:
         try:
             kind = ProposedEffectKind(self.kind)
         except ValueError as exc:
-            raise UnsupportedEffectError(
-                f"unsupported effect kind {self.kind!r}"
-            ) from exc
+            raise UnsupportedEffectError(f"unsupported effect kind {self.kind!r}") from exc
         object.__setattr__(self, "kind", kind)
         operation = str(self.operation or "").strip()
         if operation not in _EFFECT_OPERATIONS[kind]:
-            raise UnsupportedEffectError(
-                f"unsupported {kind.value} effect operation {operation!r}"
-            )
+            raise UnsupportedEffectError(f"unsupported {kind.value} effect operation {operation!r}")
         object.__setattr__(self, "operation", operation)
         paths = tuple(sorted({_repo_path(item) for item in self.repository_paths}))
         if kind is ProposedEffectKind.FILE and not paths:
-            raise UnsupportedEffectError(
-                "file effects require exact repository_paths"
-            )
+            raise UnsupportedEffectError("file effects require exact repository_paths")
         object.__setattr__(self, "repository_paths", paths)
         credentials = tuple(sorted({str(item).strip() for item in self.credential_ids}))
         if any(not item for item in credentials):
             raise UnsupportedEffectError("credential IDs must not be empty")
         if kind is ProposedEffectKind.CREDENTIAL and not credentials:
-            raise UnsupportedEffectError(
-                "credential effects require opaque credential_ids"
-            )
+            raise UnsupportedEffectError("credential effects require opaque credential_ids")
         object.__setattr__(self, "credential_ids", credentials)
         object.__setattr__(
             self,
@@ -1813,9 +1650,7 @@ class ProposedEffectManifest:
             }
         )
         if len(encoded) > 1_048_576:
-            raise RequiredInputTooLargeError(
-                "effect manifest exceeds 1048576 serialized bytes"
-            )
+            raise RequiredInputTooLargeError("effect manifest exceeds 1048576 serialized bytes")
 
     @property
     def manifest_root(self) -> str:

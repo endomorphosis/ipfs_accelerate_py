@@ -56,18 +56,20 @@ image_prompt = ds[29]["image"]
 mask_prompt = ds[29]["label"]
 
 inputs = image_processor(
-    images=image_input, 
+    images=image_input,
     prompt_images=image_prompt,
-    segmentation_maps=mask_prompt, 
+    segmentation_maps=mask_prompt,
     num_labels=num_labels,
-    return_tensors="pt"
+    return_tensors="pt",
 )
 
 with torch.no_grad():
     outputs = model(**inputs)
 
 target_sizes = [image_input.size[::-1]]
-mask = image_processor.post_process_semantic_segmentation(outputs, target_sizes, num_labels=num_labels)[0]
+mask = image_processor.post_process_semantic_segmentation(
+    outputs, target_sizes, num_labels=num_labels
+)[0]
 ```
 
 This model was contributed by [EduardoPacheco](https://huggingface.co/EduardoPacheco).

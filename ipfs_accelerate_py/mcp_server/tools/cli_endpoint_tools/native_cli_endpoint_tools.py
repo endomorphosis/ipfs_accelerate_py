@@ -31,9 +31,7 @@ def _load_cli_endpoint_tools_api() -> Dict[str, Any]:
             "execute_cli_inference": _execute_cli_inference,
         }
     except Exception:
-        logger.warning(
-            "Source cli_endpoint_adapters import unavailable, using fallback stubs"
-        )
+        logger.warning("Source cli_endpoint_adapters import unavailable, using fallback stubs")
         _registry: Dict[str, Any] = {}
 
         def _register_fallback(adapter: Any) -> Dict[str, Any]:
@@ -117,7 +115,11 @@ async def cli_endpoint_get(endpoint_id: str) -> Dict[str, Any]:
         endpoint = _API["get_cli_endpoint"](endpoint_id)
         if endpoint is None:
             return _error_result(f"CLI endpoint {endpoint_id!r} not found", endpoint_id=endpoint_id)
-        info = endpoint if isinstance(endpoint, dict) else getattr(endpoint, "__dict__", {"endpoint_id": endpoint_id})
+        info = (
+            endpoint
+            if isinstance(endpoint, dict)
+            else getattr(endpoint, "__dict__", {"endpoint_id": endpoint_id})
+        )
         return _normalize_payload({"endpoint": info})
     except Exception as exc:
         return _error_result(str(exc), endpoint_id=endpoint_id)
@@ -136,10 +138,10 @@ async def cli_endpoint_execute(
             kwargs["max_tokens"] = max_tokens
         if temperature is not None:
             kwargs["temperature"] = temperature
-        result = _API["execute_cli_inference"](
-            endpoint_id=endpoint_id, prompt=prompt, **kwargs
+        result = _API["execute_cli_inference"](endpoint_id=endpoint_id, prompt=prompt, **kwargs)
+        return _normalize_payload(
+            result if isinstance(result, dict) else {"response": result, "endpoint_id": endpoint_id}
         )
-        return _normalize_payload(result if isinstance(result, dict) else {"response": result, "endpoint_id": endpoint_id})
     except Exception as exc:
         return _error_result(str(exc), endpoint_id=endpoint_id, prompt=prompt)
 
@@ -155,6 +157,7 @@ async def cli_endpoint_register(
             from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (  # type: ignore
                 CLIEndpointAdapter,
             )
+
             adapter_config = config or {}
             adapter_config["tool"] = tool
             if endpoint_id:

@@ -121,33 +121,33 @@ python run_complete_scraping.py
 class ModelRecord:
     # Identity
     model_id: str
-    model_name: str  
+    model_name: str
     author: str
-    
+
     # Statistics
     downloads: int
     likes: int
-    
+
     # Metadata
     architecture: str
     task_type: str
     model_size_mb: float
     tags: List[str]
     languages: List[str]
-    
+
     # Performance
     inference_time_ms: float
     throughput_tokens_per_sec: float
     memory_usage_mb: float
-    
+
     # Hardware
     hardware_requirements: Dict[str, Any]
     gpu_memory_mb: float
     cpu_cores_recommended: int
-    
+
     # Search
     embedding_vector: List[float]  # 384-dim
-    
+
     # Scores
     popularity_score: float
     efficiency_score: float
@@ -292,7 +292,7 @@ SCRAPER_CONFIG = {
     "rate_limit_delay": 0.1,
     "batch_size": 1000,
     "embedding_dim": 384,
-    "compression": "snappy"
+    "compression": "snappy",
 }
 ```
 
@@ -316,10 +316,12 @@ for result in results:
 from production_hf_scraper import ProductionHFScraper
 import anyio
 
+
 async def scrape_all():
     scraper = ProductionHFScraper(api_token="your_token")
     results = await scraper.scrape_production_models()
     print(f"Scraped {results['total_models']} models")
+
 
 anyio.run(scrape_all)
 ```
@@ -332,9 +334,9 @@ import pandas as pd
 df = pd.read_parquet("model_data/hf_models.parquet")
 
 # Analytics queries
-top_authors = df.groupby('author')['downloads'].sum().sort_values(ascending=False)
-size_distribution = df['model_size_mb'].describe()
-task_counts = df['task_type'].value_counts()
+top_authors = df.groupby("author")["downloads"].sum().sort_values(ascending=False)
+size_distribution = df["model_size_mb"].describe()
+task_counts = df["task_type"].value_counts()
 
 print(f"Total models: {len(df):,}")
 print(f"Top author: {top_authors.index[0]} ({top_authors.iloc[0]:,} downloads)")
@@ -346,12 +348,12 @@ print(f"Top author: {top_authors.index[0]} ({top_authors.iloc[0]:,} downloads)")
 filters = {
     "task_type": "text-generation",
     "max_size_mb": 2000,  # Under 2GB
-    "min_downloads": 10000
+    "min_downloads": 10000,
 }
 
 results = scraper.search_models("fast inference", top_k=10, filters=filters)
 for result in results:
-    hw = result['hardware_requirements']
+    hw = result["hardware_requirements"]
     print(f"{result['model_name']}: {hw['min_ram_gb']}GB RAM, GPU: {hw['gpu_required']}")
 ```
 
@@ -372,10 +374,10 @@ for result in results:
 ```python
 # For large-scale scraping
 SCRAPER_CONFIG = {
-    "max_workers": 20,        # More concurrent workers
-    "rate_limit_delay": 0.05, # Faster requests (if API allows)
-    "batch_size": 2000,       # Larger batches
-    "enable_caching": True,   # Resume interrupted scraping
+    "max_workers": 20,  # More concurrent workers
+    "rate_limit_delay": 0.05,  # Faster requests (if API allows)
+    "batch_size": 2000,  # Larger batches
+    "enable_caching": True,  # Resume interrupted scraping
 }
 ```
 

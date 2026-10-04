@@ -70,41 +70,46 @@ The enhanced detection system first tries to use the centralized module, then fa
 def detect_available_hardware(try_advanced_detection=True):
     """
     Detect available hardware platforms.
-    
+
     Args:
         try_advanced_detection: Whether to try using the advanced detection module
-        
+
     Returns:
         dict: Dictionary mapping hardware platform to availability status
     """
     available_hardware = {"cpu": True}  # CPU is always available
-    
+
     # Try to use the advanced hardware detection if available
     if try_advanced_detection:
         try:
             # First try centralized hardware detection
-            from centralized_hardware_detection.hardware_detection import detect_hardware_capabilities
+            from centralized_hardware_detection.hardware_detection import (
+                detect_hardware_capabilities,
+            )
+
             capabilities = detect_hardware_capabilities()
-            
+
             # Map capabilities to hardware availability
-            available_hardware.update({
-                "cuda": capabilities.get("cuda", {}).get("available", False),
-                "rocm": capabilities.get("rocm", {}).get("available", False),
-                "mps": capabilities.get("mps", {}).get("available", False),
-                "openvino": capabilities.get("openvino", {}).get("available", False),
-                "qnn": capabilities.get("qnn", {}).get("available", False),
-                "webnn": capabilities.get("webnn", {}).get("available", False),
-                "webgpu": capabilities.get("webgpu", {}).get("available", False)
-            })
-            
+            available_hardware.update(
+                {
+                    "cuda": capabilities.get("cuda", {}).get("available", False),
+                    "rocm": capabilities.get("rocm", {}).get("available", False),
+                    "mps": capabilities.get("mps", {}).get("available", False),
+                    "openvino": capabilities.get("openvino", {}).get("available", False),
+                    "qnn": capabilities.get("qnn", {}).get("available", False),
+                    "webnn": capabilities.get("webnn", {}).get("available", False),
+                    "webgpu": capabilities.get("webgpu", {}).get("available", False),
+                }
+            )
+
             return available_hardware
         except ImportError:
             # Fallback to basic detection
             pass
-    
+
     # Fallback to basic detection
     # ... basic detection implementation ...
-    
+
     return available_hardware
 ```
 

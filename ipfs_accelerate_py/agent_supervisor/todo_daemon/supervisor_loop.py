@@ -41,7 +41,9 @@ class SupervisorLoopDecision:
         return cls(action="continue")
 
     @classmethod
-    def recycle(cls, reason: str, *, detail: Optional[Mapping[str, Any]] = None) -> "SupervisorLoopDecision":
+    def recycle(
+        cls, reason: str, *, detail: Optional[Mapping[str, Any]] = None
+    ) -> "SupervisorLoopDecision":
         return cls(action="recycle", reason=reason, detail=dict(detail or {}))
 
     @classmethod
@@ -81,7 +83,9 @@ class SupervisorLoopResult:
     last_log_path: str = ""
 
 
-WatchdogHook = Callable[["SupervisorLoop", SupervisedChild, Mapping[str, Any]], SupervisorLoopDecision]
+WatchdogHook = Callable[
+    ["SupervisorLoop", SupervisedChild, Mapping[str, Any]], SupervisorLoopDecision
+]
 SupervisorLoopConfigFactory = Callable[[argparse.Namespace], SupervisorLoopConfig]
 
 
@@ -185,9 +189,7 @@ class SupervisorLoop:
                     "active_worker_count": len(worker_pids),
                     "active_worker_pids": worker_pids,
                     "worker_phase": str(self._last_worker_status.get("phase") or ""),
-                    "worker_phase_age_seconds": self._last_worker_status.get(
-                        "phase_age_seconds"
-                    ),
+                    "worker_phase_age_seconds": self._last_worker_status.get("phase_age_seconds"),
                     "worker_absence_age_seconds": self._last_worker_status.get(
                         "worker_absence_age_seconds"
                     )
@@ -200,9 +202,7 @@ class SupervisorLoop:
                     ),
                     "stalled_without_active_worker": bool(
                         child is not None
-                        and self._last_worker_status.get(
-                            "stalled_without_active_worker"
-                        )
+                        and self._last_worker_status.get("stalled_without_active_worker")
                     ),
                 }
             )
@@ -241,12 +241,16 @@ class SupervisorLoop:
         except Exception:
             return False
 
-    def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
+    def default_watchdog(
+        self, child: SupervisedChild, current_status: Mapping[str, Any]
+    ) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
-        if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
+        if heartbeat.stale or (
+            heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0
+        ):
             return SupervisorLoopDecision.recycle(
                 "stale_heartbeat",
                 detail=heartbeat.to_payload(),
@@ -351,7 +355,11 @@ class SupervisorLoop:
                     log_path=log_path,
                     last_exit_code=self.last_exit_code,
                 )
-                self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=0.0))
+                self.sleep(
+                    self.config.restart_policy.delay_for_status(
+                        self.last_recycle_reason, run_duration=0.0
+                    )
+                )
                 continue
             child_started_at = self.monotonic()
             self._worker_tracking_phase = ""
@@ -367,12 +375,17 @@ class SupervisorLoop:
                     self.last_exit_code = exit_code
                     break
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
-                if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
+                if (
+                    self.monotonic() - child_started_at
+                    >= self.config.watchdog_startup_grace_seconds
+                ):
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        terminate_supervised_child(
+                            child, grace_seconds=self.config.stop_grace_seconds
+                        )
                         self.last_exit_code = wait_for_child_exit(child)
                         stop_requested = True
                         break
@@ -385,11 +398,18 @@ class SupervisorLoop:
                             log_path=log_path,
                             extra={"watchdog_decision": decision.detail},
                         )
-                        terminate_supervised_child(child, grace_seconds=self.config.stop_grace_seconds)
+                        terminate_supervised_child(
+                            child, grace_seconds=self.config.stop_grace_seconds
+                        )
                         self.last_exit_code = wait_for_child_exit(child)
                         recycled = True
                         break
-                self.sleep(max(0.01, min(float(self.config.heartbeat_seconds), float(self.config.poll_seconds))))
+                self.sleep(
+                    max(
+                        0.01,
+                        min(float(self.config.heartbeat_seconds), float(self.config.poll_seconds)),
+                    )
+                )
 
             clear_child_pid_file(child)
             if stop_requested:
@@ -406,7 +426,11 @@ class SupervisorLoop:
                 log_path=log_path,
                 last_exit_code=self.last_exit_code,
             )
-            self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=run_duration))
+            self.sleep(
+                self.config.restart_policy.delay_for_status(
+                    self.last_recycle_reason, run_duration=run_duration
+                )
+            )
 
         self._safe_write_status(
             final_status,
@@ -434,22 +458,51 @@ def build_supervisor_loop_arg_parser(
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--repo-root", default=_env("REPO_ROOT", "."))
     parser.add_argument("--name", default=_env("TODO_SUPERVISOR_NAME", "todo-daemon"))
-    parser.add_argument("--schema", default=_env("TODO_SUPERVISOR_SCHEMA", "ipfs_datasets_py.todo_daemon"))
+    parser.add_argument(
+        "--schema", default=_env("TODO_SUPERVISOR_SCHEMA", "ipfs_datasets_py.todo_daemon")
+    )
     parser.add_argument("--daemon-dir", default=_env("TODO_SUPERVISOR_DAEMON_DIR", ".daemon"))
-    parser.add_argument("--status-path", default=_env("TODO_SUPERVISOR_STATUS_PATH", ".daemon/todo.status.json"))
-    parser.add_argument("--progress-path", default=_env("TODO_SUPERVISOR_PROGRESS_PATH", ".daemon/todo.progress.json"))
+    parser.add_argument(
+        "--status-path", default=_env("TODO_SUPERVISOR_STATUS_PATH", ".daemon/todo.status.json")
+    )
+    parser.add_argument(
+        "--progress-path",
+        default=_env("TODO_SUPERVISOR_PROGRESS_PATH", ".daemon/todo.progress.json"),
+    )
     parser.add_argument(
         "--supervisor-status-path",
         default=_env("TODO_SUPERVISOR_STATUS_FILE", ".daemon/todo.supervisor.json"),
     )
-    parser.add_argument("--supervisor-pid-path", default=_env("TODO_SUPERVISOR_PID_PATH", ".daemon/todo.supervisor.pid"))
-    parser.add_argument("--child-pid-path", default=_env("TODO_SUPERVISOR_CHILD_PID_PATH", ".daemon/todo.child.pid"))
-    parser.add_argument("--supervisor-out-path", default=_env("TODO_SUPERVISOR_OUT_PATH", ".daemon/todo.supervisor.out"))
-    parser.add_argument("--ensure-status-path", default=_env("TODO_SUPERVISOR_ENSURE_STATUS_PATH", ".daemon/todo.ensure.json"))
-    parser.add_argument("--ensure-check-path", default=_env("TODO_SUPERVISOR_ENSURE_CHECK_PATH", ".daemon/todo.ensure-check.json"))
-    parser.add_argument("--supervisor-lock-path", default=_env("TODO_SUPERVISOR_LOCK_PATH", ".daemon/todo.supervisor.lock"))
-    parser.add_argument("--latest-log-path", default=_env("TODO_SUPERVISOR_LATEST_LOG_PATH", ".daemon/todo.latest.log"))
-    parser.add_argument("--log-prefix", default=_env("TODO_SUPERVISOR_LOG_PREFIX", "todo_supervised"))
+    parser.add_argument(
+        "--supervisor-pid-path",
+        default=_env("TODO_SUPERVISOR_PID_PATH", ".daemon/todo.supervisor.pid"),
+    )
+    parser.add_argument(
+        "--child-pid-path", default=_env("TODO_SUPERVISOR_CHILD_PID_PATH", ".daemon/todo.child.pid")
+    )
+    parser.add_argument(
+        "--supervisor-out-path",
+        default=_env("TODO_SUPERVISOR_OUT_PATH", ".daemon/todo.supervisor.out"),
+    )
+    parser.add_argument(
+        "--ensure-status-path",
+        default=_env("TODO_SUPERVISOR_ENSURE_STATUS_PATH", ".daemon/todo.ensure.json"),
+    )
+    parser.add_argument(
+        "--ensure-check-path",
+        default=_env("TODO_SUPERVISOR_ENSURE_CHECK_PATH", ".daemon/todo.ensure-check.json"),
+    )
+    parser.add_argument(
+        "--supervisor-lock-path",
+        default=_env("TODO_SUPERVISOR_LOCK_PATH", ".daemon/todo.supervisor.lock"),
+    )
+    parser.add_argument(
+        "--latest-log-path",
+        default=_env("TODO_SUPERVISOR_LATEST_LOG_PATH", ".daemon/todo.latest.log"),
+    )
+    parser.add_argument(
+        "--log-prefix", default=_env("TODO_SUPERVISOR_LOG_PREFIX", "todo_supervised")
+    )
     parser.add_argument(
         "--heartbeat-seconds",
         type=float,

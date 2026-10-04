@@ -39,9 +39,7 @@ _NAME = re.compile(r"^[a-z0-9](?:[a-z0-9._/-]{0,126}[a-z0-9])?$")
 _ROUTER = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 _MIME = re.compile(r"^[a-z0-9!#$&^_.+-]+/(?:[a-z0-9!#$&^_.+-]+|\*)$")
 _LABEL_KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
-_RFC3339 = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$"
-)
+_RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
 _T = TypeVar("_T")
 
 
@@ -229,8 +227,7 @@ def _uri(value: Any, field_name: str, *, endpoint: bool = False) -> Optional[str
     if ":" in host and not host.startswith("["):
         host = "[%s]" % host
     if port is not None and not (
-        (scheme == "http" and port == 80)
-        or (scheme == "https" and port == 443)
+        (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
     ):
         host = "%s:%d" % (host, port)
     path = parts.path or "/"
@@ -382,16 +379,9 @@ class CapabilityDescriptor:
         ):
             _fail("media_types must be an array")
         media_types = tuple(
-            sorted(
-                {
-                    _text(item, "media type", 128).casefold()
-                    for item in self.media_types
-                }
-            )
+            sorted({_text(item, "media type", 128).casefold() for item in self.media_types})
         )
-        if len(media_types) > 64 or any(
-            not _MIME.fullmatch(item) for item in media_types
-        ):
+        if len(media_types) > 64 or any(not _MIME.fullmatch(item) for item in media_types):
             _fail("media_types contains an invalid or excessive MIME type")
         object.__setattr__(self, "media_types", media_types)
         for name, maximum in (
@@ -406,10 +396,7 @@ class CapabilityDescriptor:
                 name,
                 _optional_positive(getattr(self, name), name, maximum),
             )
-        if (
-            self.embedding_dimensions is not None
-            and Operation.EMBEDDING_GENERATE not in operations
-        ):
+        if self.embedding_dimensions is not None and Operation.EMBEDDING_GENERATE not in operations:
             _fail("embedding_dimensions requires embedding.generate")
         if self.max_batch_size is not None and Operation.BATCH not in operations:
             _fail("max_batch_size requires the batch operation")
@@ -476,11 +463,7 @@ class Provenance:
     @classmethod
     def from_dict(cls, data: Any) -> "Provenance":
         fields = tuple(cls.__dataclass_fields__)  # type: ignore[attr-defined]
-        return cls(
-            **_strict_mapping(
-                data, fields, ("schema_version", "source"), "Provenance"
-            )
-        )
+        return cls(**_strict_mapping(data, fields, ("schema_version", "source"), "Provenance"))
 
 
 ProvenanceDescriptor = Provenance
@@ -494,17 +477,13 @@ def _capabilities(values: Any) -> Tuple[CapabilityDescriptor, ...]:
     if len(values) > MAX_CAPABILITIES:
         _fail("capabilities exceeds maximum count")
     parsed = tuple(
-        item
-        if isinstance(item, CapabilityDescriptor)
-        else CapabilityDescriptor.from_dict(item)
+        item if isinstance(item, CapabilityDescriptor) else CapabilityDescriptor.from_dict(item)
         for item in values
     )
     keys = [canonical_json(item) for item in parsed]
     if len(keys) != len(set(keys)):
         _fail("capabilities contains duplicates")
-    return tuple(
-        item for _, item in sorted(zip(keys, parsed), key=lambda pair: pair[0])
-    )
+    return tuple(item for _, item in sorted(zip(keys, parsed), key=lambda pair: pair[0]))
 
 
 def _provenance(values: Any) -> Tuple[Provenance, ...]:
@@ -515,15 +494,12 @@ def _provenance(values: Any) -> Tuple[Provenance, ...]:
     if len(values) > MAX_PROVENANCE:
         _fail("provenance exceeds maximum count")
     parsed = tuple(
-        item if isinstance(item, Provenance) else Provenance.from_dict(item)
-        for item in values
+        item if isinstance(item, Provenance) else Provenance.from_dict(item) for item in values
     )
     keys = [canonical_json(item) for item in parsed]
     if len(keys) != len(set(keys)):
         _fail("provenance contains duplicates")
-    return tuple(
-        item for _, item in sorted(zip(keys, parsed), key=lambda pair: pair[0])
-    )
+    return tuple(item for _, item in sorted(zip(keys, parsed), key=lambda pair: pair[0]))
 
 
 def _state(value: Any) -> OperationalState:
@@ -614,9 +590,7 @@ class ProviderDescriptor:
     @classmethod
     def from_dict(cls, data: Any) -> "ProviderDescriptor":
         fields = tuple(cls.__dataclass_fields__)  # type: ignore[attr-defined]
-        values = _strict_mapping(
-            data, fields, ("schema_version", "name"), "ProviderDescriptor"
-        )
+        values = _strict_mapping(data, fields, ("schema_version", "name"), "ProviderDescriptor")
         return cls(**values)
 
     @property
@@ -647,10 +621,7 @@ class ModelDescriptor:
         object.__setattr__(self, "provider_id", provider_id)
         object.__setattr__(self, "name", name)
         expected = model_identity(provider_id, name)
-        if (
-            self.model_id is not None
-            and _identifier(self.model_id, "model_id") != expected
-        ):
+        if self.model_id is not None and _identifier(self.model_id, "model_id") != expected:
             _fail("model_id does not match canonical identity fields")
         object.__setattr__(self, "model_id", expected)
         if self.display_name is not None:
@@ -738,11 +709,7 @@ class DeploymentDescriptor:
     def __post_init__(self) -> None:
         object.__setattr__(self, "schema_version", _version(self.schema_version))
         provider_id = _identifier(self.provider_id, "provider_id")
-        model_id = (
-            ""
-            if self.model_id is None
-            else _identifier(self.model_id, "model_id")
-        )
+        model_id = "" if self.model_id is None else _identifier(self.model_id, "model_id")
         name = _name(self.name)
         endpoint = _uri(self.endpoint_uri, "endpoint_uri", endpoint=True)
         if endpoint is None:
@@ -827,15 +794,9 @@ class RouterBinding:
         if not _ROUTER.fullmatch(router):
             _fail("router is not a canonical name")
         provider_id = _identifier(self.provider_id, "provider_id")
-        model_id = (
-            ""
-            if self.model_id is None
-            else _identifier(self.model_id, "model_id")
-        )
+        model_id = "" if self.model_id is None else _identifier(self.model_id, "model_id")
         deployment_id = (
-            ""
-            if self.deployment_id is None
-            else _identifier(self.deployment_id, "deployment_id")
+            "" if self.deployment_id is None else _identifier(self.deployment_id, "deployment_id")
         )
         if not model_id and not deployment_id:
             _fail("a router binding requires model_id or deployment_id")
@@ -854,10 +815,7 @@ class RouterBinding:
         object.__setattr__(self, "deployment_id", deployment_id or None)
         object.__setattr__(self, "operations", operations)
         expected = router_binding_identity(router, provider_id, model_id, deployment_id)
-        if (
-            self.binding_id is not None
-            and _identifier(self.binding_id, "binding_id") != expected
-        ):
+        if self.binding_id is not None and _identifier(self.binding_id, "binding_id") != expected:
             _fail("binding_id does not match canonical identity fields")
         object.__setattr__(self, "binding_id", expected)
         object.__setattr__(self, "state", _state(self.state))
@@ -958,9 +916,7 @@ class CatalogSnapshot:
     @classmethod
     def from_dict(cls, data: Any) -> "CatalogSnapshot":
         fields = tuple(cls.__dataclass_fields__)  # type: ignore[attr-defined]
-        values = _strict_mapping(
-            data, fields, ("schema_version",), "CatalogSnapshot"
-        )
+        values = _strict_mapping(data, fields, ("schema_version",), "CatalogSnapshot")
         return cls(**values)
 
     @property

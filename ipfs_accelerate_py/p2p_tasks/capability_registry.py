@@ -178,7 +178,9 @@ class PeerCapabilityRegistry:
             available_images=_as_str_list(payload.get("available_images")),
             queued=int(payload.get("queued") or 0),
             running=int(payload.get("running") or 0),
-            queued_by_type={str(k): int(v) for k, v in dict(payload.get("queued_by_type") or {}).items()},
+            queued_by_type={
+                str(k): int(v) for k, v in dict(payload.get("queued_by_type") or {}).items()
+            },
             audio_capabilities=dict(payload.get("audio_capabilities") or {}),
             available_memory_bytes=_as_non_negative_int(payload.get("available_memory_bytes")),
             metadata=dict(payload.get("metadata") or {}),
@@ -235,9 +237,13 @@ class PeerCapabilityRegistry:
         if not pid or not ma:
             return None
 
-        capabilities = status.get("capabilities") if isinstance(status.get("capabilities"), dict) else {}
+        capabilities = (
+            status.get("capabilities") if isinstance(status.get("capabilities"), dict) else {}
+        )
         detail = status.get("detail") if isinstance(status.get("detail"), dict) else {}
-        local_worker = status.get("local_worker") if isinstance(status.get("local_worker"), dict) else {}
+        local_worker = (
+            status.get("local_worker") if isinstance(status.get("local_worker"), dict) else {}
+        )
 
         supported_tasks = normalize_task_types(
             [
@@ -261,7 +267,9 @@ class PeerCapabilityRegistry:
             if not hardware_types:
                 hardware_types.append("cpu")
 
-        loaded_models = _as_str_list(capabilities.get("loaded_models") or capabilities.get("models"))
+        loaded_models = _as_str_list(
+            capabilities.get("loaded_models") or capabilities.get("models")
+        )
         available_images = _as_str_list(capabilities.get("available_images"))
         audio_raw = capabilities.get("audio_capabilities")
         if not isinstance(audio_raw, Mapping):

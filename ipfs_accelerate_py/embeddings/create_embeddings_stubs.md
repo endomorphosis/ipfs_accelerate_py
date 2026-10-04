@@ -48,7 +48,7 @@ async def create_embeddings(self, dataset, split, column, dst_path, models):
 ## index_dataset
 
 ```python
-async def index_dataset(self, dataset, split = None, column = None, dst_path = None, models = None):
+async def index_dataset(self, dataset, split=None, column=None, dst_path=None, models=None):
     """
     Index a dataset to create embeddings
     """

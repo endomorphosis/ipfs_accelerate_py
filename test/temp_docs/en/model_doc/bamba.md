@@ -56,7 +56,7 @@ model = AutoModelForCausalLM.from_pretrained("ibm-fms/Bamba-9B")
 tokenizer = AutoTokenizer.from_pretrained("ibm-fms/Bamba-9B")
 
 message = ["Mamba is a snake with following properties  "]
-inputs = tokenizer(message, return_tensors='pt', return_token_type_ids=False)
+inputs = tokenizer(message, return_tensors="pt", return_token_type_ids=False)
 response = model.generate(**inputs, max_new_tokens=64)
 print(tokenizer.batch_decode(response, skip_special_tokens=True)[0])
 ```

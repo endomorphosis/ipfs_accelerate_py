@@ -272,9 +272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = list(sys.argv[1:] if argv is None else argv)
     workspace = Path(
-        args[0]
-        if args
-        else os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_WORKSPACE", os.getcwd())
+        args[0] if args else os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_WORKSPACE", os.getcwd())
     )
     prompt = sys.stdin.read()
     lock_handle = _acquire_git_lock(workspace)

@@ -156,10 +156,7 @@ The system integrates with the existing coordinator through the following flow:
 
 ```python
 # Create detector
-detector = HardwareCapabilityDetector(
-    db_path="./hardware_db.duckdb",
-    enable_browser_detection=True
-)
+detector = HardwareCapabilityDetector(db_path="./hardware_db.duckdb", enable_browser_detection=True)
 
 # Detect capabilities
 capabilities = detector.detect_all_capabilities()
@@ -176,7 +173,7 @@ hardware_integration = CoordinatorHardwareIntegration(
     coordinator=coordinator,
     db_path=args.db_path,
     enable_browser_detection=True,
-    cache_capabilities=True
+    cache_capabilities=True,
 )
 
 # Initialize integration
@@ -190,7 +187,7 @@ await hardware_integration.initialize()
 workers = hardware_integration.find_compatible_workers(
     hardware_requirements={"hardware_type": "gpu", "vendor": "nvidia"},
     min_memory_gb=8.0,
-    preferred_hardware_types=["gpu", "cpu"]
+    preferred_hardware_types=["gpu", "cpu"],
 )
 ```
 

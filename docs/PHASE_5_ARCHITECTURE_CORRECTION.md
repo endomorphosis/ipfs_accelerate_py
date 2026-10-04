@@ -99,15 +99,15 @@ The following components need to be implemented to complete Phase 5:
 
 ```python
 # Add ipfs-files subcommand
-parser_ipfs_files = subparsers.add_parser('ipfs-files', help='IPFS file operations')
-ipfs_files_subparsers = parser_ipfs_files.add_subparsers(dest='ipfs_files_command')
+parser_ipfs_files = subparsers.add_parser("ipfs-files", help="IPFS file operations")
+ipfs_files_subparsers = parser_ipfs_files.add_subparsers(dest="ipfs_files_command")
 
 # Commands: add, get, cat, pin, unpin, list, validate-cid
 # Each command should import and call ipfs_files_kit methods
 
 # Add network subcommand
-parser_network = subparsers.add_parser('network', help='Network and peer operations')
-network_subparsers = parser_network.add_subparsers(dest='network_command')
+parser_network = subparsers.add_parser("network", help="Network and peer operations")
+network_subparsers = parser_network.add_subparsers(dest="network_command")
 
 # Commands: list-peers, connect, disconnect, dht-put, dht-get, swarm-info, bandwidth, ping
 # Each command should import and call network_kit methods
@@ -129,7 +129,9 @@ def ipfs_files_add(path: str, pin: bool = True) -> dict:
     result = kit.add_file(path, pin)
     return result.to_dict()
 
+
 # Similar tools for: get, cat, pin, unpin, list, validate-cid
+
 
 # Network Tools (8 tools)
 def network_list_peers() -> dict:
@@ -137,6 +139,7 @@ def network_list_peers() -> dict:
     kit = get_network_kit()
     result = kit.list_peers()
     return result.to_dict()
+
 
 # Similar tools for: connect, disconnect, dht-put, dht-get, swarm-info, bandwidth, ping
 ```

@@ -58,9 +58,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
 model = AutoModelForCausalLM.from_pretrained(
-  "TheBloke/zephyr-7B-alpha-AWQ",
-  torch_dtype=torch.float32,
-  device_map="cuda:0"
+    "TheBloke/zephyr-7B-alpha-AWQ", torch_dtype=torch.float32, device_map="cuda:0"
 )
 ```
 
@@ -70,9 +68,7 @@ Use `attn_implementation` to enable [FlashAttention2](../perf_infer_gpu_one.md#f
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 model = AutoModelForCausalLM.from_pretrained(
-  "TheBloke/zephyr-7B-alpha-AWQ",
-  attn_implementation="flash_attention_2",
-  device_map="cuda:0"
+    "TheBloke/zephyr-7B-alpha-AWQ", attn_implementation="flash_attention_2", device_map="cuda:0"
 )
 ```
 
@@ -100,8 +96,7 @@ quantization_config = AwqConfig(
     do_fuse=True,
 )
 model = AutoModelForCausalLM.from_pretrained(
-  "TheBloke/Mistral-7B-OpenOrca-AWQ",
-  quantization_config=quantization_config
+    "TheBloke/Mistral-7B-OpenOrca-AWQ", quantization_config=quantization_config
 ).to(0)
 ```
 
@@ -165,13 +160,12 @@ quantization_config = AwqConfig(
         "use_alibi": False,
         "num_attention_heads": 56,
         "num_key_value_heads": 8,
-        "hidden_size": 7168
-    }
+        "hidden_size": 7168,
+    },
 )
 
 model = AutoModelForCausalLM.from_pretrained(
-  "TheBloke/Yi-34B-AWQ",
-  quantization_config=quantization_config
+    "TheBloke/Yi-34B-AWQ", quantization_config=quantization_config
 ).to(0)
 ```
 
@@ -236,7 +230,7 @@ Set `version="ipex"` in [`AwqConfig`] to enable ExLlamaV2 kernels.
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, AwqConfig
 
-device = "cpu" # set to "xpu" for Intel GPU
+device = "cpu"  # set to "xpu" for Intel GPU
 quantization_config = AwqConfig(version="ipex")
 
 model = AutoModelForCausalLM.from_pretrained(
