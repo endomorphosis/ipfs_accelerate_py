@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="28.947" timestamp="2026-10-04T20:45:47.876210+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_missing_selection_cannot_silently_use_legacy_profile" time="2.676"><failure message="Failed: DID NOT RAISE ValueError">original = (PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/app'), PosixPath('/tmp/pytest-of-barber...ssing_selecti0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfdf84422f0b0&gt;
+
+    def test_source384_missing_selection_cannot_silently_use_legacy_profile(original, monkeypatch):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        prep.initial_context(state=state)
+        (state / "source384-selection.json").write_text("{}")
+&gt;       with pytest.raises(ValueError, match="selected Source384 context is missing"):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:112: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_rejects_legacy_training_before_writes" time="0.430"><failure message="TypeError: prepare_initial_context() got an unexpected keyword argument 'source384_config'">original = (PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_rejects_legacy_0/app'), PosixPath('/tmp/pytest-of-barber...jects_legacy_0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_rejects_legacy_0/state'))
+
+    def test_source384_rejects_legacy_training_before_writes(original):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+&gt;           initial.prepare_initial_context(state=state, prepared=prepared, model_snapshot=None,
+                model_revision="", required_raw_paths=[prep.INSTRUCTION, prep.SMOKE],
+                source384_config=state / "absent.json", train_autoencoder=True)
+E           TypeError: prepare_initial_context() got an unexpected keyword argument 'source384_config'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:138: TypeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_nomination_staging" name="test_staging_has_no_numerical_currentness_and_full_gate_remains" time="2.041"><failure message="AttributeError: module 'benchmarks.agent_supervisor.container_coding.terminal_initial_context' has no attribute 'stage_initial_context_nomination'">selected = namespace(root=PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/app'), state=PosixPath('/...g_has_no_numerical_0/state/source384-context'), calls=[], checker=&lt;function selected.&lt;locals&gt;.check at 0xfdf7fd7ce480&gt;)
+
+    def test_staging_has_no_numerical_currentness_and_full_gate_remains(selected):
+        c=selected
+&gt;       staged=initial.stage_initial_context_nomination(state=c.state,prepared=c.prepared,require_empty_owner=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'benchmarks.agent_supervisor.container_coding.terminal_initial_context' has no attribute 'stage_initial_context_nomination'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py:71: AttributeError</failure></testcase></testsuite></testsuites>

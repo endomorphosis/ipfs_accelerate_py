@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "elapsed_seconds": 62.087364147999324,
+  "source_sha256_after": {
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2",
+    "tests/unit/logic/software_contracts/test_codebase_resources.py": "fcad4e07a46acc3066d4e7553b638d76e85cc45c75568358b385d234bfd17a9d",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_admission_observation.py": "5c1c6c37b33afc97f084417003526712b2f9a5b9edc71d66de60fc2af8b583be",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_local_benchmark_resource_profile.py": "6f28e6bc1bf3427a0422f3aff387be117df83af104ea9ce4b2d545d654edbc38",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_pressure_source_attribution.py": "b9439a5bf5dea71a2bcdf653c91fbd18a4d778c81612528237de6cdf58243294",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_proof_resource_safety.py": "1ce5b627c6bdcf9d8848ef150da2daa8a55d40e869606b302fdf9aca3acb40ad",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": "f8f79fdfa0724293e3de612c81992361cfbafd9e0e0662979db6c3b7095e9f1f",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": "20c5a9bc39a7f8896991524290818a95fda051369361682c48002cb240cbac70"
+  },
+  "unchanged": true
+}

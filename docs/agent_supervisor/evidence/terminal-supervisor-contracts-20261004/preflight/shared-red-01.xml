@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="4.736" timestamp="2026-10-04T21:08:28.053011+00:00" hostname="spark-b271"><testcase classname="artifacts.terminal-supervisor-contracts-20261004.preflight.test_shared_preflight_store_red" name="test_overlapping_portals_preserve_receipt_kind_and_reference" time="2.006"><failure message="ValueError: dependency preflight artifact reference does not bind the receipt">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1089/test_overlapping_portals_prese0')
+
+    def test_overlapping_portals_preserve_receipt_kind_and_reference(tmp_path):
+        def portal(name):
+            root = tmp_path / name
+            return PortalImplementationDaemon(todo_path=root / 'tasks.md', state_path=root / 'state.json',
+                strategy_path=root / 'strategy.json', events_path=root / 'events.jsonl', repo_root=tmp_path,
+                dependency_preflight_artifact_store_path=tmp_path / 'shared-artifacts')
+        a, b = portal('a'), portal('b')
+        ra = project_dependency_preflight_error_receipt(tmp_path, ['true'], RuntimeError('a'))
+        rb = project_dependency_preflight_error_receipt(tmp_path, ['false'], RuntimeError('b'))
+        try:
+            a._record_event('preflight_failed', {'dependency_preflight': ra})
+            b._record_event('preflight_failed', {'dependency_preflight': rb})
+        finally:
+            b.close_event_runtime()
+            a.close_event_runtime()
+        c = portal('c')
+        try:
+&gt;           c._record_event('preflight_failed', {'dependency_preflight': rb})
+
+../../artifacts/terminal-supervisor-contracts-20261004/preflight/test_shared_preflight_store_red.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:66736: in _record_event
+    enriched = self._project_dependency_preflight_event_payload(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:66730: in _project_dependency_preflight_event_payload
+    return visit(payload)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:66719: in visit
+    return {key: visit(item, depth + 1) for key, item in value.items()}
+                 ^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:66714: in visit
+    else self._persist_dependency_preflight_receipt(value)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:66679: in _persist_dependency_preflight_receipt
+    return project_dependency_preflight_for_event(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+receipt = {'schema': 'ipfs_accelerate_py/agent-supervisor/validation-project-dependency-preflight@1', 'workspace': '/tmp/pytest-of-barberb/pytest-1089/test_overlapping_portals_prese0', 'passed': False, 'applicable': True, ...}
+full_receipt_reference = {'schema': 'ipfs_accelerate_py.agent_supervisor.bounded-blob-reference@1', 'artifact_id': 'blob:sha256:fc5e0aae670496b...84562ad3', 'digest': 'sha256:fc5e0aae670496b985393469e4b82f8a6e0262734cd5de4054d0c87c84562ad3', 'size_bytes': 845, ...}
+
+    def project_dependency_preflight_for_event(
+        receipt: Mapping[str, Any],
+        *,
+        full_receipt_reference: Mapping[str, Any] | None,
+    ) -&gt; dict[str, Any]:
+        """Build a bounded, proof-carrying event view of an existing receipt.
+    
+        Large receipt bodies must be persisted through the existing bounded
+        artifact store before this projection is emitted.  A small inline receipt
+        is accepted only as an explicit fallback for reporting artifact-store
+        failure before provider dispatch.
+        """
+    
+        canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+        reference: dict[str, Any] | None = None
+        inline_receipt: dict[str, Any] | None = None
+        if full_receipt_reference is None:
+            if len(canonical) &gt; MAX_PREFLIGHT_INLINE_RECEIPT_BYTES:
+                raise ValueError(
+                    "oversized dependency preflight receipt requires an artifact reference"
+                )
+            inline_receipt = dict(receipt)
+        else:
+            from ..runtime.artifact_store import BlobReference
+    
+            typed_reference = BlobReference.from_dict(full_receipt_reference)
+            expected_digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
+            if (
+                typed_reference.digest != expected_digest
+                or typed_reference.artifact_id != f"blob:{expected_digest}"
+                or typed_reference.size_bytes != len(canonical)
+                or typed_reference.kind
+                != "validation_project_dependency_preflight_receipt"
+            ):
+&gt;               raise ValueError(
+                    "dependency preflight artifact reference does not bind the receipt"
+                )
+E               ValueError: dependency preflight artifact reference does not bind the receipt
+
+ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py:3846: ValueError</failure></testcase></testsuite></testsuites>

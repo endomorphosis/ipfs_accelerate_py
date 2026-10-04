@@ -1,0 +1,113 @@
+
+test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[staged] FAILED [ 33%]
+test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[untracked] PASSED [ 66%]
+test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[mixed] FAILED [100%]
+
+=================================== FAILURES ===================================
+________ test_proposal_patch_roundtrips_new_and_existing_files[staged] _________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1113/test_proposal_patch_roundtrips0')
+mode = 'staged'
+
+    @pytest.mark.parametrize("mode", ["staged", "untracked", "mixed"])
+    def test_proposal_patch_roundtrips_new_and_existing_files(tmp_path: Path, mode: str) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init")
+        _git(repo, "config", "user.name", "Test User")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        (repo / "existing.py").write_text("value = 1\n")
+        (repo / "unrelated.py").write_text("unrelated = 1\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "baseline")
+        baseline = _git(repo, "rev-parse", "HEAD")
+        replica = tmp_path / "replica"
+        _git(repo, "worktree", "add", "--detach", str(replica), baseline)
+        expected = {}
+        entries = []
+    
+        def add_entry(path: str, content: str, kind: str) -> None:
+            (repo / path).write_text(content)
+            expected[path] = content
+            entries.append(SimpleNamespace(
+                change_kind=SimpleNamespace(value=kind),
+                old_path=path if kind == "modify" else "",
+                new_path=path,
+                path=path,
+            ))
+    
+        if mode in {"staged", "mixed"}:
+            add_entry("staged.py", "staged = 2\n", "add")
+            _git(repo, "add", "staged.py")
+        if mode in {"untracked", "mixed"}:
+            add_entry("untracked.py", "untracked = 3\n", "add")
+        if mode == "mixed":
+            add_entry("existing.py", "value = 4\n", "modify")
+        (repo / "unrelated.py").write_text("unrelated = 99\n")
+    
+        patch = PortalImplementationDaemon._proposal_repo_patch_text(
+            repo, baseline_ref=baseline, entries=entries,
+        )
+>       assert patch.count("diff --git ") == len(entries)
+E       AssertionError: assert 0 == 1
+E        +  where 0 = <built-in method count of str object at 0xb204d0>('diff --git ')
+E        +    where <built-in method count of str object at 0xb204d0> = ''.count
+E        +  and   1 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py')])
+
+test/api/test_agent_supervisor_prior_attempt_seed.py:510: AssertionError
+_________ test_proposal_patch_roundtrips_new_and_existing_files[mixed] _________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1113/test_proposal_patch_roundtrips2')
+mode = 'mixed'
+
+    @pytest.mark.parametrize("mode", ["staged", "untracked", "mixed"])
+    def test_proposal_patch_roundtrips_new_and_existing_files(tmp_path: Path, mode: str) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init")
+        _git(repo, "config", "user.name", "Test User")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        (repo / "existing.py").write_text("value = 1\n")
+        (repo / "unrelated.py").write_text("unrelated = 1\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "baseline")
+        baseline = _git(repo, "rev-parse", "HEAD")
+        replica = tmp_path / "replica"
+        _git(repo, "worktree", "add", "--detach", str(replica), baseline)
+        expected = {}
+        entries = []
+    
+        def add_entry(path: str, content: str, kind: str) -> None:
+            (repo / path).write_text(content)
+            expected[path] = content
+            entries.append(SimpleNamespace(
+                change_kind=SimpleNamespace(value=kind),
+                old_path=path if kind == "modify" else "",
+                new_path=path,
+                path=path,
+            ))
+    
+        if mode in {"staged", "mixed"}:
+            add_entry("staged.py", "staged = 2\n", "add")
+            _git(repo, "add", "staged.py")
+        if mode in {"untracked", "mixed"}:
+            add_entry("untracked.py", "untracked = 3\n", "add")
+        if mode == "mixed":
+            add_entry("existing.py", "value = 4\n", "modify")
+        (repo / "unrelated.py").write_text("unrelated = 99\n")
+    
+        patch = PortalImplementationDaemon._proposal_repo_patch_text(
+            repo, baseline_ref=baseline, entries=entries,
+        )
+>       assert patch.count("diff --git ") == len(entries)
+E       AssertionError: assert 2 == 3
+E        +  where 2 = <built-in method count of str object at 0xe22b75344810>('diff --git ')
+E        +    where <built-in method count of str object at 0xe22b75344810> = 'diff --git a/existing.py b/existing.py\nindex 0a979d4..74c4131 100644\n--- a/existing.py\n+++ b/existing.py\n@@ -1 +1 @@\n-value = 1\n+value = 4\ndiff --git a/untracked.py b/untracked.py\nnew file mode 100644\nindex 0000000..5cfc50b\n--- /dev/null\n+++ b/untracked.py\n@@ -0,0 +1 @@\n+untracked = 3\n'.count
+E        +  and   3 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py'), namespace(change_kind=namespace(value='add'), old_path='', new_path='untracked.py', path='untracked.py'), namespace(change_kind=namespace(value='modify'), old_path='existing.py', new_path='existing.py', path='existing.py')])
+
+test/api/test_agent_supervisor_prior_attempt_seed.py:510: AssertionError
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/preflight/staged-add-red-01.xml -
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[staged]
+FAILED test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[mixed]
+========================= 2 failed, 1 passed in 15.54s =========================

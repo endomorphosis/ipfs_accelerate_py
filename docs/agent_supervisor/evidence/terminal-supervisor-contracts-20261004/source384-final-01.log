@@ -1,0 +1,112 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-04 23:37:16 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-04 23:37:16 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-04 23:37:16 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-04 23:37:16 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-04 23:37:16 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-04 23:37:16 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-04 23:37:16 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_real_cpu_checkpoint_inference_selects_program_and_replays_without_model 
+-------------------------------- live log call ---------------------------------
+2026-10-04 23:37:56 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:37:56 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:37:57 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  1%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission 
+-------------------------------- live log call ---------------------------------
+2026-10-04 23:38:07 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:38:07 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:38:08 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:38:08 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:38:09 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1131/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  2%]
+test/api/semantic_state/test_source384_successor_context.py::test_advisory_successor_preserves_assets_scope_and_historical_lineage PASSED [  3%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[predecessor_bytes] PASSED [  4%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[config_bytes] PASSED [  5%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[source_during_inference] PASSED [  6%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[source_during_validation] PASSED [  8%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[authority] PASSED [  9%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[nomination] PASSED [ 10%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[lineage_digest] PASSED [ 11%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[extra_lineage] PASSED [ 12%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_pin] PASSED [ 13%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[worker_observation] PASSED [ 14%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_count_bool] PASSED [ 16%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_count_negative] PASSED [ 17%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[extra_receipt] PASSED [ 18%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[direct_cycle] PASSED [ 19%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_excludes_declared_new_output_without_expanding_original_population PASSED [ 20%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_preflight_time_consumes_original_budget PASSED [ 21%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[authority] PASSED [ 22%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[extra_field] PASSED [ 24%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[direct_cycle] PASSED [ 25%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[nan] PASSED [ 26%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[inf] PASSED [ 27%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[True] PASSED [ 28%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[100] PASSED [ 29%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_prefix_consumes_whole_refresh_deadline PASSED [ 31%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_scope_dimensions_map_to_dependent_obligations_and_receipts PASSED [ 32%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_explicit_template_toolchain_and_policy_changes_invalidate_dependents PASSED [ 33%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_canonical_scope_keys_survive_typed_and_serialized_index_rebuilds PASSED [ 34%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_receipt_only_canonical_dependency_is_retained_alongside_aliases PASSED [ 35%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file-changed] PASSED [ 36%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file-deleted] PASSED [ 37%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file-renamed] PASSED [ 39%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file_without_scopes-changed] PASSED [ 40%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file_without_scopes-deleted] PASSED [ 41%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[file_without_scopes-renamed] PASSED [ 42%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[symbol-changed] PASSED [ 43%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[symbol-deleted] PASSED [ 44%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[symbol-renamed] PASSED [ 45%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[scope_id-changed] PASSED [ 47%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[scope_id-deleted] PASSED [ 48%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_rebuild_invalidates_receipt_only_source_dependencies[scope_id-renamed] PASSED [ 49%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path PASSED [ 50%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_invalidation_is_transitive_and_reason_chains_are_bounded PASSED [ 51%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_delete_invalidates_stale_evidence_and_unrelated_evidence_stays_active PASSED [ 52%]
+test/api/test_agent_supervisor_proof_scope_index.py::test_dataset_store_round_trips_content_addressed_index PASSED [ 54%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_disabled_is_inert_and_no_default_model_is_selected PASSED [ 55%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_explicit_config_uses_shared_runtime_and_actual_native_source_qualification PASSED [ 56%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_wrong_or_unsupported_candidates_remain_unchanged_and_fail_open[def assess(capacity: int, threshold: int) -> bool:\n    return capacity < threshold\n-<=-mismatch] PASSED [ 57%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_wrong_or_unsupported_candidates_remain_unchanged_and_fail_open[def assess(capacity, threshold) -> bool:\n    return capacity < threshold\n-<-unsupported] PASSED [ 58%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_target_leak_or_input_identity_mismatch_never_reaches_decoder[extra_target] PASSED [ 59%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_target_leak_or_input_identity_mismatch_never_reaches_decoder[sha] PASSED [ 60%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_target_leak_or_input_identity_mismatch_never_reaches_decoder[duplicate] PASSED [ 62%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_target_leak_or_input_identity_mismatch_never_reaches_decoder[too_many] PASSED [ 63%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected0] PASSED [ 64%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected1] PASSED [ 65%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected2] PASSED [ 66%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected3] PASSED [ 67%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected4] PASSED [ 68%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected5] PASSED [ 70%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected6] PASSED [ 71%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_bad_optional_configuration_fails_open[selected7] PASSED [ 72%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_unavailable_checkpoint_is_reported_without_blocking_planning PASSED [ 73%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_changed_inference_source_hash_is_discarded PASSED [ 74%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_explicit_lake_selection_is_bounded_and_receives_unchanged_source PASSED [ 75%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[row_fields-loading] PASSED [ 77%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[row_fields-inference] PASSED [ 78%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[append-loading] PASSED [ 79%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[append-inference] PASSED [ 80%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[clear-loading] PASSED [ 81%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_owner_callbacks_cannot_replace_captured_source_inputs[clear-inference] PASSED [ 82%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_optional_lake_failure_keeps_the_original_candidate PASSED [ 83%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_repository_scope_is_persisted_and_rechecked PASSED [ 85%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_repository_source_drift_discards_stale_advice PASSED [ 86%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_repository_escape_or_symlink_is_not_read[../foreign.py] PASSED [ 87%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_repository_escape_or_symlink_is_not_read[/foreign.py] PASSED [ 88%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_repository_escape_or_symlink_is_not_read[alias.py] PASSED [ 89%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_config_file_selection_is_explicit_and_local PASSED [ 90%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_raw_input_never_dispatches_normalized_runtime[False] PASSED [ 91%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_raw_input_never_dispatches_normalized_runtime[True] PASSED [ 93%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_explicit_normalized_dispatch_retains_provenance_and_original_lake_source PASSED [ 94%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_normalized_inference_must_report_selected_profile[changed0] PASSED [ 95%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_normalized_inference_must_report_selected_profile[changed1] PASSED [ 96%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_normalized_inference_must_report_selected_profile[changed2] PASSED [ 97%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_normalized_inference_must_report_selected_profile[changed3] PASSED [ 98%]
+test/api/semantic_state/test_security_source_program_advisor_384.py::test_normalized_unsupported_source_keeps_original_candidate_and_abstention PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384-final-01.xml -
+============================= 87 passed in 55.12s ==============================

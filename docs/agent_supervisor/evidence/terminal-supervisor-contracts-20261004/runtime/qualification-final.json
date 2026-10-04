@@ -1,0 +1,66 @@
+{
+  "schema": "native-runtime-followup-qualification@1",
+  "accelerate_head": "bc4e6fdf20462fc31e6b1ba19207b2dc3844cc20",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "runs": [
+    {
+      "stem": "core-final-02",
+      "job_exit_code": 1,
+      "job_test_count": 108,
+      "selected_scope": "all cases except superseded cache fixture tests",
+      "selected_test_count": 101,
+      "selected_pass_count": 101,
+      "source_unchanged": true,
+      "command_sha256": "962e76bb22f1f6e03e22bfcbfd4d3a1860165fbd6f2374d745c8ed24f15eab0d",
+      "junit_sha256": "8703842b76066565f12084bbf9613d314749d1bad18b961aebcb15997b2b67d7",
+      "log_sha256": "3015fb9575ebf778cd86e633f9f40774aafd6720f783c0c63097c71cb34fb216",
+      "seconds": 153.99724897698616
+    },
+    {
+      "stem": "native-full-01",
+      "job_exit_code": 0,
+      "job_test_count": 123,
+      "selected_scope": "all cases",
+      "selected_test_count": 123,
+      "selected_pass_count": 123,
+      "source_unchanged": true,
+      "command_sha256": "04e54fb89061b9d27e157c595d4d4480e98f827307e1936d3be07bba3a68b57f",
+      "junit_sha256": "e0a04f70fef736c41483d5c0577c493a8c037ba536ba283fe9a275075dc74c9d",
+      "log_sha256": "013b548f37824b0fcc6d243275a2482d95b090b0f77392c3bf42b491882d207a",
+      "seconds": 253.31068273601704
+    },
+    {
+      "stem": "post-rebase-01",
+      "job_exit_code": 0,
+      "job_test_count": 10,
+      "selected_scope": "all cases",
+      "selected_test_count": 10,
+      "selected_pass_count": 10,
+      "source_unchanged": true,
+      "command_sha256": "44d3c8d4b45b78adb697e7555dee01f07fd5fc10f486afacdd579c8e8e01ab82",
+      "junit_sha256": "86891845b18b5fd86e2600865327e6d9887c3a2c42b1a0cc85ee28b23cd8b487",
+      "log_sha256": "45736cc3f44a59930f32916f00f7a523a87c405ff5ab0c12abad3221923a363f",
+      "seconds": 112.19934434798779
+    }
+  ],
+  "distinct_selected_passed_tests": 231,
+  "final_pair_replay": {
+    "stem": "post-rebase-01",
+    "passed": 10,
+    "skipped": 0,
+    "actual_native_lifecycle_cases": 3,
+    "current_native_cache_publication_cases": 7
+  },
+  "source_comparison_artifact": "native-full-01-post-rebase-comparison.json",
+  "cleanup": {
+    "scope": "/tmp/pytest-of-barberb/pytest-1130/",
+    "remaining_selected_processes": [],
+    "signals": []
+  },
+  "limitations": [
+    "Provider-free authored local processes only; no Docker or paid provider calls and no Terminal-Bench score.",
+    "The core-final-02 job retained four failures from fixtures for removed pooled-cache/replica architecture; the seven current native publication/cache tests all passed in post-rebase-01.",
+    "The retired raw SQL mutation/inbox test module remains incompatible with current production APIs; its full suite was not qualified.",
+    "The 123-case native qualification precedes four subsequent source-file changes listed in the exact source comparison artifact; final pair replay covered actual native lifecycle and repair paths."
+  ]
+}

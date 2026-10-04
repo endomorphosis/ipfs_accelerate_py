@@ -1,0 +1,436 @@
+
+test/api/test_formal_cache_exact_path.py::test_exact_path_survives_reopen_while_default_still_relocates FAILED [ 16%]
+test/api/test_doctor_cache_durable_state.py::test_new_process_cannot_revive_positive_after_durable_refusal[quarantine-quarantined] 
+-------------------------------- live log call ---------------------------------
+2026-10-04 20:47:59 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:47:59 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 33%]
+test/api/test_agent_supervisor_quack_owner_commands.py::test_bound_repository_command_is_atomic_and_restart_idempotent 
+-------------------------------- live log call ---------------------------------
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:01 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:48:01 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 50%]
+benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py::test_observation_only_launch_cannot_carry_implementation_budget FAILED [ 66%]
+test/api/test_admitted_observation_work_scope.py::test_full_observation_resumes_original_scope_in_new_thread FAILED [ 83%]
+test/api/test_local_completion_rpc_budget.py::test_receive_deadline_is_not_renewed_by_partial_frames FAILED [100%]
+
+=================================== FAILURES ===================================
+________ test_exact_path_survives_reopen_while_default_still_relocates _________
+
+placement = (PosixPath('/tmp/pytest-of-barberb/pytest-1051/test_exact_path_survives_reope0/checkout'), PosixPath('/tmp/pytest-of-b...'), PosixPath('/tmp/pytest-of-barberb/pytest-1051/test_exact_path_survives_reope0/classification-only-temporary-root'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf5824b53b5f0>
+
+    def test_exact_path_survives_reopen_while_default_still_relocates(placement, monkeypatch):
+        checkout, orchestration, _ = placement
+        target = checkout / "owned" / "proof.duckdb"
+>       exact = FormalVerificationCache(target, exact_path=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: FormalVerificationCache.__init__() got an unexpected keyword argument 'exact_path'
+
+test/api/test_formal_cache_exact_path.py:50: TypeError
+_ test_new_process_cannot_revive_positive_after_durable_refusal[quarantine-quarantined] _
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0')
+operation = 'quarantine', expected = 'quarantined'
+
+    @pytest.mark.parametrize("operation,expected", [("invalidate", "tombstoned"), ("quarantine", "quarantined")])
+    def test_new_process_cannot_revive_positive_after_durable_refusal(tmp_path, operation, expected):
+        gate = DoctorProofCacheGate(tmp_path / "cache")
+        key = _key()
+        assert gate.put(key, _receipt()).stored
+        if operation == "invalidate":
+            gate.invalidate_semantic_root(root_field="forest", root_cid=key.forest.cid)
+        else:
+            gate.quarantine(key)
+>       assert _restart(tmp_path, key) == {"status": expected, "hit": False}
+E       AssertionError: assert {'status': 'hit', 'hit': True} == {'status': 'q... 'hit': False}
+E         
+E         Differing items:
+E         {'status': 'hit'} != {'status': 'quarantined'}
+E         {'hit': True} != {'hit': False}
+E         
+E         Full diff:
+E           {...
+E         
+E         ...Full output truncated (9 lines hidden), use '-vv' to show
+
+test/api/test_doctor_cache_durable_state.py:50: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-04 20:47:59,283 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:47:59,365 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_new_process_cannot_revive0/cache/formal_verification_cache.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+________ test_bound_repository_command_is_atomic_and_restart_idempotent ________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0')
+
+    def test_bound_repository_command_is_atomic_and_restart_idempotent(
+        tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "control.duckdb"
+        _materialize_one_task(path)
+        owner_connection = open_duckdb_connection(path)
+        try:
+            first_repo = IntentRepository(
+                path,
+                bound_connection=owner_connection,
+                install_schema=False,
+                owner_id="owner:typed-test",
+                session_id="session:first",
+            )
+            kwargs = {
+                "request_id": "b" * 32,
+                "store_id": "data/control.duckdb",
+                "store_generation": "generation-1",
+            }
+            payload = {
+                "task_cid": "task:typed-owner-test",
+                "evidence_kind": "validation",
+                "digest": "sha256:" + ("3" * 64),
+            }
+>           first = execute_quack_owner_command(
+                first_repo,
+                QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+                payload,
+                **kwargs,
+            )
+
+test/api/test_agent_supervisor_quack_owner_commands.py:442: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+repository = <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5822bf4c290>
+command = 'record_evidence'
+payload = {'task_cid': 'task:typed-owner-test', 'evidence_kind': 'validation', 'digest': 'sha256:3333333333333333333333333333333333333333333333333333333333333333'}
+request_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+store_id = 'data/control.duckdb', store_generation = 'generation-1'
+typed_deferral_provider_evidence_factory = None
+
+    def execute_quack_owner_command(
+        repository: IntentRepository,
+        command: str,
+        payload: Mapping[str, Any],
+        *,
+        request_id: str = "",
+        store_id: str = "",
+        store_generation: str = "",
+        typed_deferral_provider_evidence_factory: Any = None,
+    ) -> Mapping[str, Any]:
+        """Execute one admitted command through canonical repository methods.
+    
+        The repository should be constructed with ``bound_connection=`` on the
+        state owner's already-open DuckDB connection.  No SQL arrives from the
+        requester and every mutation retains the repository's transaction gates.
+        """
+    
+        if not isinstance(repository, IntentRepository):
+            raise TaskSourceIntegrityError("typed owner command requires an IntentRepository")
+        if not repository.uses_bound_connection:
+            raise TaskSourceIntegrityError(
+                "typed owner command requires the exclusive owner's bound connection"
+            )
+        args = validate_quack_owner_command(command, payload)
+        source = DatabaseTaskSource(intent=repository)
+    
+        def execute_once() -> Mapping[str, Any]:
+            if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS:
+                result = source.compare_and_set_status(
+                    args["task_cid_or_alias"],
+                    args["expected_revision"],
+                    args["status"],
+                    args.get("receipt"),
+                    expected_control_receipt=args.get(
+                        "expected_control_receipt"
+                    ),
+                    evidence_digests=args.get("evidence_digests"),
+                )
+                return result.to_dict()
+            if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS:
+                receipt = source.compare_and_set_goal_status(
+                    args["goal_cid_or_alias"],
+                    args["expected_revision"],
+                    args["status"],
+                    args.get("receipt"),
+                )
+                return receipt.to_dict()
+            if command == QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK:
+                result = source.rearm_blocked_task(
+                    args["task_cid_or_alias"],
+                    receipt=args.get("receipt"),
+                )
+                return result.to_dict()
+            if command == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET:
+                task = source.get_task(args["task_cid_or_alias"])
+                if task is None:
+                    raise KeyError(args["task_cid_or_alias"])
+                status = str(task.status or "").strip().lower()
+                if status != "blocked":
+                    # A replay under a different request identity cannot rerun a
+                    # provider effect after the first recovery or a later
+                    # terminal CAS. Preserve the ordinary idempotent no-op rules.
+                    result = source.rearm_blocked_task(task.task_cid)
+                    return result.to_dict()
+                if not all((request_id, store_id, store_generation)):
+                    raise TaskSourceIntegrityError(
+                        "typed-deferral recovery requires exact owner-command bindings"
+                    )
+                if not callable(typed_deferral_provider_evidence_factory):
+                    raise TaskSourceIntegrityError(
+                        "typed-deferral recovery requires the owner provider boundary"
+                    )
+                # Reject ordinary/stale blocked tasks before crossing the paid
+                # provider boundary. The sealed request repeats this check after
+                # the canary so a concurrent generation change also fails closed.
+                _blocked_context(
+                    task_cid=task.task_cid,
+                    task_revision=int(task.revision),
+                    task_body=task.body,
+                )
+                evidence = typed_deferral_provider_evidence_factory(
+                    task_cid=task.task_cid,
+                    task_revision=int(task.revision),
+                    task_body=dict(task.body),
+                    repair_head=args["repair_head"],
+                    repair_tree=args["repair_tree"],
+                )
+                if not isinstance(evidence, Mapping) or set(evidence) != {
+                    "quota_probe_receipt",
+                    "route_outcome",
+                }:
+                    raise TaskSourceIntegrityError(
+                        "owner provider boundary returned malformed recovery evidence"
+                    )
+                request = _build_owner_typed_deferral_budget_supersession_request(
+                    task_cid=task.task_cid,
+                    task_revision=int(task.revision),
+                    task_body=task.body,
+                    repair_head=args["repair_head"],
+                    repair_tree=args["repair_tree"],
+                    quota_probe_receipt=_mapping(
+                        evidence.get("quota_probe_receipt"),
+                        noun="owner quota probe receipt",
+                    ),
+                    route_outcome=_mapping(
+                        evidence.get("route_outcome"),
+                        noun="owner provider route outcome",
+                    ),
+                    owner_command_request_id=request_id,
+                    owner_store_id=store_id,
+                    owner_store_generation=store_generation,
+                    _owner_admission_sentinel=(
+                        _TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+                    ),
+                )
+                result = source.rearm_blocked_task(task.task_cid, receipt=request)
+                return result.to_dict()
+            if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
+                result = source.record_queue_backoff_and_cas_status(
+                    task_cid=args["task_cid"],
+                    expected_revision=args["expected_revision"],
+                    expected_control_receipt=args["expected_control_receipt"],
+                    status=args["status"],
+                    receipt=args["receipt"],
+                    delay_ms=args["delay_ms"],
+                    reason=args["reason"],
+                    selection_penalty=args.get("selection_penalty", 0),
+                    exact_retry_not_before_ms=args.get(
+                        "exact_retry_not_before_ms"
+                    ),
+                )
+                return {
+                    **{
+                        key: value
+                        for key, value in result.items()
+                        if key != "cas_result"
+                    },
+                    "cas_result": result["cas_result"].to_dict(),
+                }
+            if command == QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET:
+                if (
+                    str(args["status"] or "").strip().lower() != "retrying"
+                    or args["receipt"].get("operation")
+                    != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+                ):
+                    raise TaskSourceConflictError(
+                        "leftover-wait recovery command requires leftover-wait "
+                        "retrying receipt"
+                    )
+                result = source.record_queue_backoff_and_cas_status(
+                    task_cid=args["task_cid"],
+                    expected_revision=args["expected_revision"],
+                    expected_control_receipt=args["expected_control_receipt"],
+                    status=args["status"],
+                    receipt=args["receipt"],
+                    delay_ms=args["delay_ms"],
+                    reason=args["reason"],
+                    selection_penalty=args.get("selection_penalty", 0),
+                    exact_retry_not_before_ms=args.get(
+                        "exact_retry_not_before_ms"
+                    ),
+                )
+                return {
+                    **{
+                        key: value
+                        for key, value in result.items()
+                        if key != "cas_result"
+                    },
+                    "cas_result": result["cas_result"].to_dict(),
+                }
+            if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
+                receipt = source.record_queue_backoff(
+                    task_cid=args["task_cid"],
+                    delay_ms=args["delay_ms"],
+                    reason=args.get("reason", "backoff"),
+                    selection_penalty=args.get("selection_penalty", 0),
+                )
+            elif command == QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY:
+                receipt = source.record_queue_retry(task_cid=args["task_cid"])
+            elif command == QUACK_OWNER_COMMAND_RECORD_EVIDENCE:
+                receipt = source.record_evidence(
+                    task_cid=args["task_cid"],
+                    evidence_kind=args["evidence_kind"],
+                    digest=args["digest"],
+                    body=args.get("body"),
+                )
+            elif command == QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT:
+                receipt = source.record_validation_result(
+                    task_cid=args["task_cid"],
+                    outcome=args["outcome"],
+                    evidence_digest=args["evidence_digest"],
+                    argv=args.get("argv"),
+                    attempt_id=args.get("attempt_id", ""),
+                    body=args.get("body"),
+                )
+            else:  # validate_quack_owner_command keeps this branch unreachable.
+                raise TaskSourceIntegrityError("typed owner command is not implemented")
+            return receipt.to_dict()
+    
+        bindings = (request_id, store_id, store_generation)
+        if any(bindings):
+            if not all(bindings):
+                raise TaskSourceIntegrityError(
+                    "durable owner command replay requires request, store, and generation bindings"
+                )
+>           return repository.run_idempotent_owner_command(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                request_id=request_id,
+                command=command,
+                command_payload=args,
+                store_id=store_id,
+                store_generation=store_generation,
+                operation=execute_once,
+            )
+E           AttributeError: 'IntentRepository' object has no attribute 'run_idempotent_owner_command'
+
+ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py:2425: AttributeError
+----------------------------- Captured stderr call -----------------------------
+2026-10-04 20:48:00,069 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,494 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,535 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,647 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,771 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,885 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:00,922 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:01,044 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 20:48:01,082 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1051/test_bound_repository_command_0/control.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_______ test_observation_only_launch_cannot_carry_implementation_budget ________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1051/test_observation_only_launch_c0')
+
+    def test_observation_only_launch_cannot_carry_implementation_budget(tmp_path):
+        with pytest.raises(ValueError, match="explicit implementation timeout"):
+>           AdmittedBenchmarkRuntime.create(tmp_path / "launch", admission=None, server=None, source=None,
+                implementation_timeout_seconds=90)
+E           TypeError: AdmittedBenchmarkRuntime.create() got an unexpected keyword argument 'implementation_timeout_seconds'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py:17: TypeError
+__________ test_full_observation_resumes_original_scope_in_new_thread __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf5822bf4e690>
+
+    def test_full_observation_resumes_original_scope_in_new_thread(monkeypatch):
+        monkeypatch.setenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE', 'local-benchmark@1')
+        clock = [100.]
+        monkeypatch.setattr(budget.time, 'monotonic', lambda: clock[0])
+        with budget.local_benchmark_applicability_budget(deadline_monotonic=200.):
+            scope = budget.capture_applicability_budget()
+        seen = []
+        def observer():
+            seen.append((budget.applicability_replay_timeout(),
+                         budget.capture_applicability_budget().deadline_monotonic))
+            return {'published_context': []}
+        runtime = _runtime(scope, 180., observer)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+>           assert pool.submit(runtime.observe).result() == {'published_context': []}
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_admitted_observation_work_scope.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+/usr/lib/python3.12/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:975: in observe
+    result = super().observe()
+             ^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py:361: in observe
+    self._verify()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime.AdmittedBenchmarkRuntime object at 0xf5822bf4e750>
+
+    def _verify(self):
+        from ..runtime.local_completion_bridge import verify_owner_local_benchmark_observation
+>       if self.manifest.get("candidate_runner") is not None:
+           ^^^^^^^^^^^^^
+E       AttributeError: 'AdmittedBenchmarkRuntime' object has no attribute 'manifest'
+
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:741: AttributeError
+____________ test_receive_deadline_is_not_renewed_by_partial_frames ____________
+
+    def test_receive_deadline_is_not_renewed_by_partial_frames():
+        client,server=socket.socketpair();finished=threading.Event()
+        def stream():
+            try:
+                server.sendall((20).to_bytes(4,'big'))
+                for _ in range(20):
+                    time.sleep(.025);server.sendall(b' ')
+            except OSError:pass
+            finally:server.close();finished.set()
+        thread=threading.Thread(target=stream);thread.start();started=time.monotonic()
+        try:
+>           with pytest.raises(TimeoutError):transport._receive_frame(client,deadline_monotonic=started+.08)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           TypeError: _receive_frame() got an unexpected keyword argument 'deadline_monotonic'
+
+test/api/test_local_completion_rpc_budget.py:160: TypeError
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/runtime/red-01.xml -
+=========================== short test summary info ============================
+FAILED test/api/test_formal_cache_exact_path.py::test_exact_path_survives_reopen_while_default_still_relocates
+FAILED test/api/test_doctor_cache_durable_state.py::test_new_process_cannot_revive_positive_after_durable_refusal[quarantine-quarantined]
+FAILED test/api/test_agent_supervisor_quack_owner_commands.py::test_bound_repository_command_is_atomic_and_restart_idempotent
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py::test_observation_only_launch_cannot_carry_implementation_budget
+FAILED test/api/test_admitted_observation_work_scope.py::test_full_observation_resumes_original_scope_in_new_thread
+FAILED test/api/test_local_completion_rpc_budget.py::test_receive_deadline_is_not_renewed_by_partial_frames
+========================= 6 failed in 71.87s (0:01:11) =========================

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="15.497" timestamp="2026-10-04T23:16:17.088969+00:00" hostname="spark-b271"><testcase classname="api.test_agent_supervisor_prior_attempt_seed" name="test_proposal_patch_roundtrips_new_and_existing_files[staged]" time="0.026"><failure message="AssertionError: assert 0 == 1&#10; +  where 0 = &lt;built-in method count of str object at 0xb204d0&gt;('diff --git ')&#10; +    where &lt;built-in method count of str object at 0xb204d0&gt; = ''.count&#10; +  and   1 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py')])">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1113/test_proposal_patch_roundtrips0')
+mode = 'staged'
+
+    @pytest.mark.parametrize("mode", ["staged", "untracked", "mixed"])
+    def test_proposal_patch_roundtrips_new_and_existing_files(tmp_path: Path, mode: str) -&gt; None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init")
+        _git(repo, "config", "user.name", "Test User")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        (repo / "existing.py").write_text("value = 1\n")
+        (repo / "unrelated.py").write_text("unrelated = 1\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "baseline")
+        baseline = _git(repo, "rev-parse", "HEAD")
+        replica = tmp_path / "replica"
+        _git(repo, "worktree", "add", "--detach", str(replica), baseline)
+        expected = {}
+        entries = []
+    
+        def add_entry(path: str, content: str, kind: str) -&gt; None:
+            (repo / path).write_text(content)
+            expected[path] = content
+            entries.append(SimpleNamespace(
+                change_kind=SimpleNamespace(value=kind),
+                old_path=path if kind == "modify" else "",
+                new_path=path,
+                path=path,
+            ))
+    
+        if mode in {"staged", "mixed"}:
+            add_entry("staged.py", "staged = 2\n", "add")
+            _git(repo, "add", "staged.py")
+        if mode in {"untracked", "mixed"}:
+            add_entry("untracked.py", "untracked = 3\n", "add")
+        if mode == "mixed":
+            add_entry("existing.py", "value = 4\n", "modify")
+        (repo / "unrelated.py").write_text("unrelated = 99\n")
+    
+        patch = PortalImplementationDaemon._proposal_repo_patch_text(
+            repo, baseline_ref=baseline, entries=entries,
+        )
+&gt;       assert patch.count("diff --git ") == len(entries)
+E       AssertionError: assert 0 == 1
+E        +  where 0 = &lt;built-in method count of str object at 0xb204d0&gt;('diff --git ')
+E        +    where &lt;built-in method count of str object at 0xb204d0&gt; = ''.count
+E        +  and   1 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py')])
+
+test/api/test_agent_supervisor_prior_attempt_seed.py:510: AssertionError</failure></testcase><testcase classname="api.test_agent_supervisor_prior_attempt_seed" name="test_proposal_patch_roundtrips_new_and_existing_files[untracked]" time="0.026" /><testcase classname="api.test_agent_supervisor_prior_attempt_seed" name="test_proposal_patch_roundtrips_new_and_existing_files[mixed]" time="0.024"><failure message="AssertionError: assert 2 == 3&#10; +  where 2 = &lt;built-in method count of str object at 0xe22b75344810&gt;('diff --git ')&#10; +    where &lt;built-in method count of str object at 0xe22b75344810&gt; = 'diff --git a/existing.py b/existing.py\nindex 0a979d4..74c4131 100644\n--- a/existing.py\n+++ b/existing.py\n@@ -1 +1 @@\n-value = 1\n+value = 4\ndiff --git a/untracked.py b/untracked.py\nnew file mode 100644\nindex 0000000..5cfc50b\n--- /dev/null\n+++ b/untracked.py\n@@ -0,0 +1 @@\n+untracked = 3\n'.count&#10; +  and   3 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py'), namespace(change_kind=namespace(value='add'), old_path='', new_path='untracked.py', path='untracked.py'), namespace(change_kind=namespace(value='modify'), old_path='existing.py', new_path='existing.py', path='existing.py')])">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1113/test_proposal_patch_roundtrips2')
+mode = 'mixed'
+
+    @pytest.mark.parametrize("mode", ["staged", "untracked", "mixed"])
+    def test_proposal_patch_roundtrips_new_and_existing_files(tmp_path: Path, mode: str) -&gt; None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init")
+        _git(repo, "config", "user.name", "Test User")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        (repo / "existing.py").write_text("value = 1\n")
+        (repo / "unrelated.py").write_text("unrelated = 1\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-m", "baseline")
+        baseline = _git(repo, "rev-parse", "HEAD")
+        replica = tmp_path / "replica"
+        _git(repo, "worktree", "add", "--detach", str(replica), baseline)
+        expected = {}
+        entries = []
+    
+        def add_entry(path: str, content: str, kind: str) -&gt; None:
+            (repo / path).write_text(content)
+            expected[path] = content
+            entries.append(SimpleNamespace(
+                change_kind=SimpleNamespace(value=kind),
+                old_path=path if kind == "modify" else "",
+                new_path=path,
+                path=path,
+            ))
+    
+        if mode in {"staged", "mixed"}:
+            add_entry("staged.py", "staged = 2\n", "add")
+            _git(repo, "add", "staged.py")
+        if mode in {"untracked", "mixed"}:
+            add_entry("untracked.py", "untracked = 3\n", "add")
+        if mode == "mixed":
+            add_entry("existing.py", "value = 4\n", "modify")
+        (repo / "unrelated.py").write_text("unrelated = 99\n")
+    
+        patch = PortalImplementationDaemon._proposal_repo_patch_text(
+            repo, baseline_ref=baseline, entries=entries,
+        )
+&gt;       assert patch.count("diff --git ") == len(entries)
+E       AssertionError: assert 2 == 3
+E        +  where 2 = &lt;built-in method count of str object at 0xe22b75344810&gt;('diff --git ')
+E        +    where &lt;built-in method count of str object at 0xe22b75344810&gt; = 'diff --git a/existing.py b/existing.py\nindex 0a979d4..74c4131 100644\n--- a/existing.py\n+++ b/existing.py\n@@ -1 +1 @@\n-value = 1\n+value = 4\ndiff --git a/untracked.py b/untracked.py\nnew file mode 100644\nindex 0000000..5cfc50b\n--- /dev/null\n+++ b/untracked.py\n@@ -0,0 +1 @@\n+untracked = 3\n'.count
+E        +  and   3 = len([namespace(change_kind=namespace(value='add'), old_path='', new_path='staged.py', path='staged.py'), namespace(change_kind=namespace(value='add'), old_path='', new_path='untracked.py', path='untracked.py'), namespace(change_kind=namespace(value='modify'), old_path='existing.py', new_path='existing.py', path='existing.py')])
+
+test/api/test_agent_supervisor_prior_attempt_seed.py:510: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,27 @@
+{
+  "after": {
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py": "195412ba6895af6770d0982be6fd26b8af2affe62a0c15010cd1306e12ea51ad",
+      "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "3eadc8f782e3b88f261c5e6c6366b4da482ea1664c31bdef69f1f2d5a2dc0ac0",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "f30b7bb77a142c69205ba403ba0c3357d37739fd62c7347978e3e9b00fa0696e",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "661f0b06b07aa45b96305eccfbf3c5216319b50174d0e4603bbdb2a161ccf4b5",
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_cache_state.py": "c06e3f1c6590d5fdb55f13b77412631600ae211e090581767c3e7d6b2dd8a732",
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py": "08fdf045f68160b127b0e3a94ce2cfa045461bc04cc6c07d8beb247ce0881047",
+      "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "e5564c668488b1d926e308fbdada93db1371dd4bba9c54e7c29a8627623ee2aa",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "3a14872b80c7889891626f9de00eeb672218b1bca45086c8af4f7059e164e9a7",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ec3989c4b1b9b7e1d86f50439f353107bb8305aae771f4ace3fb0c9924f6e6e8",
+      "test/api/test_admitted_observation_work_scope.py": "0a0a468b9a5deb02acd4e54da376450b3fd57e57f08b3a6cab0c12181f311772",
+      "test/api/test_agent_supervisor_quack_owner_commands.py": "40af94da61243855780078f286c45bfa69cf7fec3c76f7c545ee7ab0b3f88d1e",
+      "test/api/test_doctor_cache_durable_state.py": "40f9e6c1bbe4d7eb5709936834688bbeee797161054de7fea420c51e06034783",
+      "test/api/test_formal_cache_exact_path.py": "ea5b2be2d15006bd6689fe1b8412ffa09494d51257f260890a2fedb948cb2cf9",
+      "test/api/test_local_completion_rpc_budget.py": "e57a3cd5238f2986b7bb6441ab58a1f6ac944aee5f49a78bfc9ffa787afaacd1"
+    }
+  },
+  "exit_code": 1,
+  "log_sha256": "524c0c032b3da5a0f94d8c2fbb7ec4bceade6ede94a3dc87ee6076aec49a709c",
+  "seconds": 73.70497914799489,
+  "source_unchanged": true,
+  "xml_sha256": "14c0b40b1b62382303e739f46b74ab1c0ebbb9aa42fddef895d132df0088344d"
+}

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="16.141" timestamp="2026-10-04T20:54:21.220690+00:00" hostname="spark-b271"><testcase classname="api.test_agent_supervisor_supervisor_activity" name="test_late_periodic_heartbeat_cannot_replace_terminal_receipts" time="1.314"><failure message="assert [b'{\n  &quot;acti...+00:00&quot;\n}\n'] == [b'{\n  &quot;acti...+00:00&quot;\n}\n']&#10;  &#10;  At index 0 diff: b'{\n  &quot;active_agentic_maintenance_has_daemon&quot;: false,\n  &quot;active_agentic_maintenance_started_at&quot;: &quot;2026-09-14T05:00:00+00:00&quot;,\n  &quot;active_agentic_maintenance_timeout_seconds&quot;: 300.0,\n  &quot;agentic_stuck_maintenance_timeout_seconds&quot;: 300.0,\n  &quot;agentic_timeout_seconds&quot;: 300.0,\n  &quot;child_pid_path&quot;: &quot;/tmp/pytest-of-barberb/pytest-1066/test_late_periodic_heartbeat_c0/daemon.pid&quot;,\n  &quot;current_status_path&quot;: &quot;/tmp/pytest-of-barberb/pytest-1066/test_late_periodic_heartbeat_c0/daemon.json&quot;,\n  &quot;daemon_pid&quot;: null,\n  &quot;daemon_pid_alive&quot;: false,\n  &quot;daemon_process_b...&#10;  &#10;  ...Full output truncated (113 lines hidden), use '-vv' to show">writer = (&lt;ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0.../terminal-supervisor-contracts-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py'&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfe2413404950&gt;
+
+    def test_late_periodic_heartbeat_cannot_replace_terminal_receipts(writer, monkeypatch):
+        owner, module = writer
+        threads = []
+    
+        class DelayedEvent:
+            stopped = False
+            waits = 0
+    
+            def set(self):
+                self.stopped = True
+    
+            def is_set(self):
+                return self.stopped
+    
+            def wait(self, interval):
+                # The first timeout occurred before finish; the writer resumes
+                # only after finish exhausted its bounded join and published.
+                self.waits += 1
+                return self.waits &gt; 1
+    
+        class DelayedThread:
+            def __init__(self, **kwargs):
+                self.target = kwargs['target']
+                threads.append(self)
+    
+            def start(self):
+                pass
+    
+            def join(self, **kwargs):
+                pass
+    
+        monkeypatch.setattr(module.threading, 'Event', DelayedEvent)
+        monkeypatch.setattr(module.threading, 'Thread', DelayedThread)
+        update, finish = owner._begin_supervisor_maintenance_heartbeat('first')
+        finish()
+        paths = (owner._supervisor_status_path(), owner._supervisor_maintenance_receipt_path())
+        completed = [path.read_bytes() for path in paths]
+        assert json.loads(completed[0])['supervisor_maintenance']['phase'] == 'completed'
+        assert json.loads(completed[1])['status'] == 'completed'
+        threads[0].target()
+        update('late')
+&gt;       assert [path.read_bytes() for path in paths] == completed
+E       assert [b'{\n  "acti...+00:00"\n}\n'] == [b'{\n  "acti...+00:00"\n}\n']
+E         
+E         At index 0 diff: b'{\n  "active_agentic_maintenance_has_daemon": false,\n  "active_agentic_maintenance_started_at": "2026-09-14T05:00:00+00:00",\n  "active_agentic_maintenance_timeout_seconds": 300.0,\n  "agentic_stuck_maintenance_timeout_seconds": 300.0,\n  "agentic_timeout_seconds": 300.0,\n  "child_pid_path": "/tmp/pytest-of-barberb/pytest-1066/test_late_periodic_heartbeat_c0/daemon.pid",\n  "current_status_path": "/tmp/pytest-of-barberb/pytest-1066/test_late_periodic_heartbeat_c0/daemon.json",\n  "daemon_pid": null,\n  "daemon_pid_alive": false,\n  "daemon_process_b...
+E         
+E         ...Full output truncated (113 lines hidden), use '-vv' to show
+
+test/api/test_agent_supervisor_supervisor_activity.py:231: AssertionError</failure></testcase></testsuite></testsuites>

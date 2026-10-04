@@ -223,3 +223,41 @@ new program bytes; it does not pretend the original program hashes are still
 current. Newly created outputs remain outside that old scope pending independent
 successor admission. Empty or non-Python program populations explicitly abstain
 before checkpoint consumption. A general source-empty context remains unfinished.
+
+
+## Runtime contract repairs and current model defaults (2026-10-04)
+
+The [contract qualification](evidence/terminal-supervisor-contracts-20261004/qualification.json)
+records **276 distinct passing tests, zero skips**, on accelerate source commit
+`bc4e6fdf20462fc31e6b1ba19207b2dc3844cc20` and datasets
+`987cf856b2b902aa68c4587bb492b19b932b5d30`. The final selection contains
+179 model-route/benchmark controls, 87 Source384/currentness checks and ten native
+cache/lifecycle checks. Production source hashes stayed unchanged during these
+runs. The native replay starts and stops the real supervisor, executes an authored
+code repair with owner validation, and leaves no owned child processes behind.
+
+Earlier focused qualifications retain their own source hashes and revisions:
+534 datasets compatibility cases, 123 native lifecycle/deadline cases, 155
+preflight/persistence cases, and actual Lean/Z3 Doctor repair integrations. Counts
+across stages overlap and must not be added as distinct final-revision coverage.
+The repairs restore bounded checkpoint reads, verified embedding lifetime,
+resource budgets, typed completion/owner contracts, shared preflight storage,
+staged-new-file patch rendering, and custody after failed native START.
+
+Fresh general supervisor routes select `grok-4.7` with guarded `gpt-6.1-sol`
+fallback. Fresh signed authorization, runner commands, probes and recovery
+protection agree on that pair. Historical signatures retain their exact old
+model tuple; mixed signed profile/route pairs are rejected. Recovery continues
+to protect retained old-model attempts. Explicit container comparisons pin
+`codex_cli` / `gpt-6.1-sol` in both supervisor and native Codex arms; they do not
+exercise Grok dispatch or fallback.
+
+This qualification made no paid provider calls and supplies no new Terminal-Bench
+reward or token score. The installed Grok CLI listed 4.7 but reported unauthenticated;
+live model dispatch remains unverified. Real CPU Source384 checkpoint inference
+passes, while unsupported decoded source contracts still abstain. Seven existing
+[optional independent-review integration tests](evidence/terminal-supervisor-contracts-20261004/models-independent-review-gap.json)
+remain unresolved: the daemon lacks policy CLI/initialization and the joined
+reviewed-effect path. Retired SQL-inbox and HMAC-profile fixtures also remain
+outside this qualification. GitHub hosted datasets checks could not start because
+the account was locked for billing; local test results are independent of CI.

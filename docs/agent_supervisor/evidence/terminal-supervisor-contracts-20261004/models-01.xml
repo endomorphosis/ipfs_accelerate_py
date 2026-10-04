@@ -1,0 +1,691 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="15" skipped="0" tests="122" time="50.580" timestamp="2026-10-04T23:17:19.161981+00:00" hostname="spark-b271"><testcase classname="test.api.test_supervisor_current_model_route" name="test_current_route_roundtrips_without_authorizing_authentication_fallback" time="0.002" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[primary_model_id-grok-4.6]" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-sol]" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-terra]" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_daemon_emits_and_validates_exact_primary_and_backup[medium]" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_daemon_emits_and_validates_exact_primary_and_backup[high]" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_probe_receipt_is_bound_to_current_primary_without_reusing_old_evidence" time="0.001" /><testcase classname="test.api.test_supervisor_current_model_route" name="test_quota_policy_retains_gates_while_selecting_new_backup" time="0.002" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_is_fixed_to_grok_implementation_and_independent_codex_review" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_exact_landed_binding_stays_pending_without_blind_reimplementation" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_unlanded_task_routes_but_dirty_landed_task_stays_guarded" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_board_metadata_edit_keeps_task_cid_but_invalidates_source_digest" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides0]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides1]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides2]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides3]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides4]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides5]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides6]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides7]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_rejects_unbounded_or_non_independent_configuration[overrides8]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_adapter_binds_receipt_and_uses_empty_non_repository_cwd" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -&gt; None:
+        observed: dict[str, Any] = {}
+    
+        def invoke(prompt, config):
+            observed["prompt"] = prompt
+            observed["repo_root"] = config.repo_root
+            observed["children"] = tuple(config.repo_root.iterdir())
+            observed["provider"] = config.provider
+            observed["required"] = config.required_effective_providers
+            observed["cross_provider_fallback"] = (
+                config.allow_cross_provider_fallback
+            )
+            return (
+                json.dumps(
+                    {
+                        "proposal": {
+                            "declared_paths": ["module.py"],
+                            "files": [{"path": "module.py", "content": "ok\n"}],
+                        }
+                    }
+                ),
+                _child_receipt(config),
+            )
+    
+        policy = ProductionCLIProviderPolicy()
+        provider = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.GROK_IMPLEMENT,
+            provider_name=policy.grok_provider,
+            model_name=policy.grok_model,
+            invoker=invoke,
+        )
+&gt;       response = provider(_request(ProviderRole.GROK_IMPLEMENT))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:298: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.GROK_IMPLEMENT: 'grok-implement'&gt;, packet_id='packet:ase-005', snapshot_id='git-com...":{"bounded":true},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe514aa3572f0&gt;
+
+    def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -&gt; None:
+        observed: dict[str, dict[str, Any]] = {}
+        requests = {
+&gt;           role: _native_request(role)
+                  ^^^^^^^^^^^^^^^^^^^^^
+            for role in (ProviderRole.GROK_IMPLEMENT, ProviderRole.CODEX_REVIEW)
+        }
+
+test/api/test_agent_supervisor_production_provider_cli.py:320: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.GROK_IMPLEMENT: 'grok-implement'&gt;, packet_id='packet:ase-005', snapshot_id='git-com...":["module.py"]}}},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_pair_rejects_response_with_wrong_request_binding" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe514aa355820&gt;
+
+    def test_native_pair_rejects_response_with_wrong_request_binding(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -&gt; None:
+&gt;       request = _native_request(ProviderRole.CODEX_REVIEW)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:468: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.CODEX_REVIEW: 'codex-independent-review'&gt;, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_codex_rejects_approve_with_findings" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe514aa355ca0&gt;
+
+    def test_native_codex_rejects_approve_with_findings(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -&gt; None:
+&gt;       request = _native_request(ProviderRole.CODEX_REVIEW)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:509: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.CODEX_REVIEW: 'codex-independent-review'&gt;, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_custom_invoker_codex_rejects_approve_with_findings" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">def test_custom_invoker_codex_rejects_approve_with_findings() -&gt; None:
+        policy = ProductionCLIProviderPolicy()
+    
+        def contradictory_review(_prompt, config):
+            return (
+                json.dumps(
+                    {
+                        "decision": "approve",
+                        "findings": ["the proposal is unsafe"],
+                    }
+                ),
+                _child_receipt(config),
+            )
+    
+        reviewer = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.CODEX_REVIEW,
+            provider_name=policy.codex_provider,
+            model_name=policy.codex_model,
+            invoker=contradictory_review,
+        )
+    
+        with pytest.raises(RuntimeError, match="empty findings list"):
+&gt;           reviewer(_request(ProviderRole.CODEX_REVIEW))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:574: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.CODEX_REVIEW: 'codex-independent-review'&gt;, packet_id='packet:ase-005', snapshot_id=...d":true},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_codex_response_file_is_limited_before_read" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe514aa3cd2e0&gt;
+
+    def test_native_codex_response_file_is_limited_before_read(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -&gt; None:
+&gt;       original = _native_request(ProviderRole.CODEX_REVIEW)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:580: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.CODEX_REVIEW: 'codex-independent-review'&gt;, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_response_reader_rejects_fifo_without_blocking" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_process_capture_is_bounded_and_kills_descendants" time="0.092" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_native_process_timeout_kills_detached_descendant" time="1.029" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_readiness_requires_bounded_codex_auth_check[0-True]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_policy_readiness_requires_bounded_codex_auth_check[1-False]" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_adapter_rejects_role_or_effective_provider_mismatch" time="0.001"><failure message="ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope">def test_adapter_rejects_role_or_effective_provider_mismatch() -&gt; None:
+        policy = ProductionCLIProviderPolicy()
+    
+        def wrong_provider(_prompt, config):
+            receipt = _child_receipt(config)
+            return (
+                '{"decision":"approve"}',
+                LlmChildResultEnvelope(
+                    usage_mode=receipt.usage_mode,
+                    request_id=receipt.request_id,
+                    attempt=receipt.attempt,
+                    idempotency_key=receipt.idempotency_key,
+                    status="ok",
+                    effective_provider="grok_cli",
+                    text_chars=1,
+                    exit_code=0,
+                ),
+            )
+    
+        reviewer = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.CODEX_REVIEW,
+            provider_name=policy.codex_provider,
+            model_name=policy.codex_model,
+            invoker=wrong_provider,
+        )
+        with pytest.raises(RuntimeError, match="role mismatch"):
+&gt;           reviewer(_request(ProviderRole.GROK_IMPLEMENT))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:753: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+&lt;string&gt;:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=&lt;ProviderRole.GROK_IMPLEMENT: 'grok-implement'&gt;, packet_id='packet:ase-005', snapshot_id='git-com...":{"bounded":true},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -&gt; None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+&gt;           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_adapter_rejects_non_json_or_missing_child_receipt" time="0.001"><failure message="AssertionError: Regex pattern did not match.&#10;  Expected regex: 'Expecting value'&#10;  Actual message: 'provider request prompt differs from its frozen envelope'">def test_adapter_rejects_non_json_or_missing_child_receipt() -&gt; None:
+        policy = ProductionCLIProviderPolicy()
+    
+        for output, receipt in (("```json\n{}\n```", None), ("{}", None)):
+            provider = BoundProductionCLIProvider(
+                policy=policy,
+                role=ProviderRole.GROK_IMPLEMENT,
+                provider_name=policy.grok_provider,
+                model_name=policy.grok_model,
+                invoker=lambda _prompt, _config, value=output, bound=receipt: (
+                    value,
+                    bound,
+                ),
+            )
+            expected = "Expecting value" if output.startswith("```") else "execution receipt"
+&gt;           with pytest.raises((ValueError, RuntimeError), match=expected):
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'Expecting value'
+E             Actual message: 'provider request prompt differs from its frozen envelope'
+
+test/api/test_agent_supervisor_production_provider_cli.py:773: AssertionError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_pair_routes_grok_then_independent_codex_with_bound_evidence" time="0.004" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_ed25519_review_attestation_reconstructs_full_receipt_and_binding" time="0.014"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_ed25519_review_attestatio0')
+
+    def test_ed25519_review_attestation_reconstructs_full_receipt_and_binding(
+        tmp_path: Path,
+    ) -&gt; None:
+&gt;       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1054: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_ed25519_review_attestatio0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+&gt;       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_review_authority_key_rejects_links_types_and_permissive_mode" time="0.005" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_review_authority_creation_retries_partial_writes" time="0.004" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_forged_fully_current_attestation_from_metadata_signer_is_rejected" time="0.013"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_forged_fully_current_atte0')
+
+    def test_forged_fully_current_attestation_from_metadata_signer_is_rejected(
+        tmp_path: Path,
+    ) -&gt; None:
+        """A coherent attacker receipt/key cannot install its own trust root."""
+    
+&gt;       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_forged_fully_current_atte0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+&gt;       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_attestation_rejects_review_binding_without_implementation_commit" time="0.004" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate" time="0.013"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_shared_cross_lane_authori0')
+
+    def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
+        tmp_path: Path,
+    ) -&gt; None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Provider Review Test"),
+            ("config", "user.email", "provider-review@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        shared_key_path = repo / "bundle-state" / "shared-review.ed25519"
+        issuer_state_path = repo / "bundle-state" / "lane-a" / "task_state.json"
+&gt;       issuer = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=issuer_state_path,
+            strategy_path=issuer_state_path.parent / "strategy.json",
+            events_path=issuer_state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=shared_key_path,
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1250: TypeError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_signed_attestation_cannot_choose_its_own_expected_policy" time="0.013"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_signed_attestation_cannot0')
+
+    def test_signed_attestation_cannot_choose_its_own_expected_policy(
+        tmp_path: Path,
+    ) -&gt; None:
+        """A trusted signing key does not make an unconfigured policy admissible."""
+    
+&gt;       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1373: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_signed_attestation_cannot0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+&gt;       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_bundle_command_propagates_explicit_policy_without_task_metadata" time="0.001" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_bundle_lanes_default_to_one_bundle_root_review_authority" time="0.108" /><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_daemon_cli_accepts_operator_policy_without_task_metadata" time="0.002"><failure message="SystemExit: 2">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_daemon_cli_accepts_operat0')
+
+    def test_daemon_cli_accepts_operator_policy_without_task_metadata(
+        tmp_path: Path,
+    ) -&gt; None:
+        key_path = tmp_path / "bundle-state" / "shared-review.ed25519"
+&gt;       args = parse_daemon_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--implement",
+                "--production-provider-policy",
+                PRODUCTION_CLI_POLICY_NAME,
+                "--production-provider-context-budget-tokens",
+                "3072",
+                "--production-provider-timeout-seconds",
+                "240",
+                "--production-provider-review-authority-key-path",
+                str(key_path),
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1507: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:77086: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Run the portal implementation backlog daemon', formatter_class=&lt;class 'argparse.HelpFormatter'&gt;, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-...ority-key-path /tmp/pytest-of-barberb/pytest-1115/test_daemon_cli_accepts_operat0/bundle-state/shared-review.ed25519\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+&gt;       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption" time="0.003"><failure message="SystemExit: 2">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_supervisor_policy_cli_nor0')
+
+    def test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption(
+        tmp_path: Path,
+    ) -&gt; None:
+        key_path = tmp_path / "bundle-state" / "shared-review.ed25519"
+&gt;       args = parse_supervisor_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--implement",
+                "--production-provider-policy",
+                PRODUCTION_CLI_POLICY_NAME,
+                "--production-provider-timeout-seconds",
+                "240",
+                "--production-provider-review-authority-key-path",
+                str(key_path),
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1535: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Supervise the portal implementation backlog daemon', formatter_class=&lt;class 'argparse.HelpFormatter'&gt;, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-...ority-key-path /tmp/pytest-of-barberb/pytest-1115/test_supervisor_policy_cli_nor0/bundle-state/shared-review.ed25519\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+&gt;       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_cli" name="test_supervisor_rejects_budget_without_explicit_provider_policy" time="0.003"><failure message="SystemExit: 2">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_supervisor_rejects_budget0')
+
+    def test_supervisor_rejects_budget_without_explicit_provider_policy(
+        tmp_path: Path,
+    ) -&gt; None:
+&gt;       args = parse_supervisor_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--production-provider-context-budget-tokens",
+                "2048",
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1592: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Supervise the portal implementation backlog daemon', formatter_class=&lt;class 'argparse.HelpFormatter'&gt;, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-context-budget-tokens 2048\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+&gt;       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_existing_native_and_both_supervisor_configs_have_equal_common_controls" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_actual_harbor_normalized_configs_preserve_equal_controls" time="0.012" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[n_concurrent_trials-4-job_controls_sha256-n_concurrent_trials]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[n_attempts-2-job_controls_sha256-n_attempts]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[retry-value2-job_controls_sha256-retry]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[environment-value3-job_controls_sha256-environment]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[verifier-value4-job_controls_sha256-verifier]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[extra_instructions-value5-job_controls_sha256-extra_instructions]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[override_timeout_sec-600-agent_controls_sha256-override_timeout_sec]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[override_setup_timeout_sec-None-agent_controls_sha256-override_setup_timeout_sec]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_independent_control_mismatches_are_visible[mcp_servers-value8-agent_controls_sha256-mcp_servers]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_changed_oracle_hash_is_compared_without_exporting_oracle_content" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_post_preparation_change_cannot_reseal_the_declaration" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_invalid_changed_configuration_retains_failed_observation[model]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_invalid_changed_configuration_retains_failed_observation[agent_count]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_invalid_changed_configuration_retains_failed_observation[cli]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_invalid_changed_configuration_retains_failed_observation[inputs]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_arm_or_task_path_drift_is_refused_even_though_unequal_between_arms" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_legacy_preparation_and_missing_observation_remain_unknown" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_malformed_frozen_controls_never_match[digest]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_malformed_frozen_controls_never_match[missing]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_malformed_frozen_controls_never_match[extra]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_malformed_frozen_controls_never_match[wrong_type]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_no_config_secret_or_prompt_text_exported" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_unsealed_external_configuration_inputs_are_refused[user_agent]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_unsealed_external_configuration_inputs_are_refused[extra_instruction_paths]" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_unsealed_external_configuration_inputs_are_refused[mounts]" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_unsealed_external_configuration_inputs_are_refused[extra_docker_compose]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_unsealed_external_configuration_inputs_are_refused[env]" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_native_kwargs_cannot_contradict_declared_identity[version-other-cli]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_native_kwargs_cannot_contradict_declared_identity[reasoning_effort-low]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_supervisor_identity_must_match_source_bound_profile" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_report_keeps_legacy_trials_without_claiming_matched_controls" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_benchmark_controls" name="test_report_rejects_changed_baseline_even_when_candidate_declaration_matches" time="0.002" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_absent_or_partial_usage_stays_unknown" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_all_arms_keep_original_task_resources_verifier_and_agent_budget" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_conflicting_duplicate_rejected" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_failed_and_successful_calls_both_count_cached_input_once" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_nonportable_asset_binding_is_rejected_before_run" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_only_full_arm_receives_explicit_portable_training_assets" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests" name="test_only_full_arm_receives_frozen_model_and_pinned_hub_provenance" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests" name="test_asset_flags_reach_full_execution_and_are_absent_from_no_index" time="0.013" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests" name="test_driver_failure_still_exports_outputs_and_capture_failure_does_not_mask_it" time="0.002" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests" name="test_failed_run_preserves_admission_without_exporting_owner_state" time="0.002" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests" name="test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity" time="0.804" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_directory]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_task_inventory_cannot_silently_omit_nonregular_inputs[broken_link]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_task_inventory_cannot_silently_omit_nonregular_inputs[fifo]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_root]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_profile_uses_native_agent_and_exact_independent_bounds" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_no_native_transcript_means_unknown_tokens_not_zero" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_cumulative_updates_not_summed_and_explicit_zero_preserved" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_exact_native_completion_marks_last_counters_without_billing_claim" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_model_text_reward_and_exit_are_not_completion_events" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{&quot;type&quot;:]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-[]]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-null]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{&quot;type&quot;:&quot;event_msg&quot;,&quot;payload&quot;:null}]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{&quot;type&quot;:]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-[]]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-null]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{&quot;type&quot;:&quot;event_msg&quot;,&quot;payload&quot;:null}]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event0]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event1]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event2]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event3]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event4]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event5]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_work_after_complete_requires_a_new_completion_event[event6]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_every_identified_session_must_complete" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_synthesized_native_completion_flows_into_comparison" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_multi_session_partial_field_remains_unknown" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_identical_copied_session_is_counted_once" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_conflicting_session_identity_is_not_silently_double_counted" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_native_codex_baseline" name="test_known_nonsecret_flag_recovery_preserves_raw_files" time="0.002" /></testsuite></testsuites>

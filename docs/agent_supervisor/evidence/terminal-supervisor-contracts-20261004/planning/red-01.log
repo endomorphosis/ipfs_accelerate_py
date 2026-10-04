@@ -1,0 +1,44 @@
+
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_modify_only_profile_remains_exact FAILED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_needs_no_provider_callable FAILED [100%]
+
+=================================== FAILURES ===================================
+________________ test_native_modify_only_profile_remains_exact _________________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1044/test_native_modify_only_profil0')
+
+    def test_native_modify_only_profile_remains_exact(tmp_path):
+        args = original(tmp_path)
+        args[3]["outputs"] = [{"path": "source.py", "effect": "modify", "media_type": "text/x-python"}]
+>       result = prepare(args)
+                 ^^^^^^^^^^^^^
+
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py:272: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (PosixPath('/tmp/pytest-of-barberb/pytest-1044/test_native_modify_only_profil0/app'), PosixPath('/tmp/pytest-of-barber..., 'input_paths': ['source.py'], 'outputs': [{'path': 'source.py', 'effect': 'modify', 'media_type': 'text/x-python'}]})
+
+    def prepare(args):
+        root, instruction, state, declared = args
+>       return prep.prepare(repository=root, instruction=instruction, state=state,
+                            task_profile=declared, disable_intent_autoencoder=True)
+E       TypeError: prepare() got an unexpected keyword argument 'task_profile'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py:40: TypeError
+_____________ test_symbolic_entrypoint_needs_no_provider_callable ______________
+
+original = (PosixPath('/tmp/pytest-of-barberb/pytest-1044/test_symbolic_entrypoint_needs0/app'), PosixPath('/tmp/pytest-of-barber...rypoint_needs0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-1044/test_symbolic_entrypoint_needs0/state'))
+
+    def test_symbolic_entrypoint_needs_no_provider_callable(original):
+        _prepare(original, symbolic=True)
+        result = prep.plan(original[2])
+>       assert result["qualified"] is True, result
+E       AssertionError: {'schema': 'terminal-indexed-planner-result@1', 'qualified': False, 'provider': 'codex_cli', 'model': 'gpt-5.6-sol', ...}
+E       assert False is True
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py:219: AssertionError
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/planning/red-01.xml -
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_modify_only_profile_remains_exact
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_needs_no_provider_callable
+============================== 2 failed in 16.59s ==============================

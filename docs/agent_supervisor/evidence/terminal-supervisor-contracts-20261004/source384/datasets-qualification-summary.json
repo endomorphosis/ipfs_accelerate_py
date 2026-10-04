@@ -1,0 +1,174 @@
+{
+  "schema": "supervisor-datasets-contract-qualification@1",
+  "datasets_head": "76022bac2ddd52287280522d7ccf27978383a6ab",
+  "datasets_worktree": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+  "runs": [
+    {
+      "label": "published-resources-green-01",
+      "tests": 165,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "unchanged": true,
+      "artifacts": {
+        "-command.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-resources-green-01-command.json",
+          "sha256": "541def0cdd99a9fce122dd4aad7807985b5fb9868a564296d921710204736c80"
+        },
+        "-exit.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-resources-green-01-exit.json",
+          "sha256": "668fbddf2b833f6044fa2bea951bda6e3d7ada78ac28e9bfa7174b9ae20a1f3e"
+        },
+        ".log": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-resources-green-01.log",
+          "sha256": "1e0bdccde833d37edc1d65d4e8d12f6f4bf94509cb9692ab5b3564a3fe525ba6"
+        },
+        ".xml": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-resources-green-01.xml",
+          "sha256": "cc01ec4c2dfa59a01a67dfa3bc5bdc241598752c95c6527f65a3771255e09eba"
+        }
+      }
+    },
+    {
+      "label": "published-lifecycle-green-01",
+      "tests": 144,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "unchanged": true,
+      "artifacts": {
+        "-command.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-lifecycle-green-01-command.json",
+          "sha256": "305ee227f6bb4560af6afd50f9c140a18e7a0d25488354f4b52e5cb49df12f13"
+        },
+        "-exit.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-lifecycle-green-01-exit.json",
+          "sha256": "78a845f2cdc5235443bab664ed358eafab7de59379ecb5ec382500b112343adf"
+        },
+        ".log": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-lifecycle-green-01.log",
+          "sha256": "05425b585eee5f2205725a6fac61ba80636a6baf66e47619cedbe91e2de5f6de"
+        },
+        ".xml": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-lifecycle-green-01.xml",
+          "sha256": "0e36d7e5147eafe3362981695cfabedd0eaa3c5b6c2bd2a8cff92f6b2de60d84"
+        }
+      }
+    },
+    {
+      "label": "registry-green-01",
+      "tests": 151,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "unchanged": true,
+      "artifacts": {
+        "-command.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01-command.json",
+          "sha256": "2bdb0ac515b5170d246dc9e867ec3ade92d1226732b379ab712cbd85bb88b7be"
+        },
+        "-exit.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01-exit.json",
+          "sha256": "f5a68050cb128e557d3c372efdb489f0b3af3b90f8938861c4f368feb43f93eb"
+        },
+        ".log": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01.log",
+          "sha256": "65711ac839b5a4aeb55689c3c9b095c4dc19a5a4de4a4ccb8a29777975fc3fa8"
+        },
+        ".xml": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01.xml",
+          "sha256": "cc55372d2e3c004a610ea9071181f8e6faf619593326fd590f1d712584c62765"
+        }
+      }
+    },
+    {
+      "label": "embedding-green-02",
+      "tests": 47,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "unchanged": true,
+      "artifacts": {
+        "-command.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02-command.json",
+          "sha256": "c59d7b1e291a500072335890383411678d5b213b4ccf2b78918672b4b3dbf2a2"
+        },
+        "-exit.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02-exit.json",
+          "sha256": "1864b9bcb7044b64c41af21c50acca7072daa236fcaf6b3b34ab777c40941e9d"
+        },
+        ".log": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02.log",
+          "sha256": "85872496b082160ffa4111735b2572ab527a90d269056bcdeedbc24433496c4e"
+        },
+        ".xml": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02.xml",
+          "sha256": "0e757a28ca685b3bc5bef9645d580f9b9e8242af663c659e8cc48c7f769b5236"
+        }
+      }
+    },
+    {
+      "label": "published-dependency-green-03",
+      "tests": 27,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0,
+      "unchanged": true,
+      "artifacts": {
+        "-command.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03-command.json",
+          "sha256": "94beb7da5690cf846eda1075d8d7c7d784bce347c0676b49cca5e7f81af1f9ce"
+        },
+        "-exit.json": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03-exit.json",
+          "sha256": "90f6baf292c8f194a159ab5b54f1b3bf1f3da2852c7c8b75c8567bc3d7fc0fdb"
+        },
+        ".log": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03.log",
+          "sha256": "9e34e7321b38530a2cc58c96907f907723053229ddb6beda0065563ad4b40b33"
+        },
+        ".xml": {
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03.xml",
+          "sha256": "08f0428d9fa87b1f964b8f7b10e6aaf6f159b9bacc5b97e43380f498158ade56"
+        }
+      }
+    }
+  ],
+  "total_executions": 534,
+  "distinct_cases": 534,
+  "qualified_source_sha256": {
+    "ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2",
+    "tests/unit/logic/software_contracts/test_codebase_source_units_lifetime.py": "453448a9e6a6ad45e83bd49d07b6db4514df19b6ba80c14728ffb2fe70a7f509",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": "f8f79fdfa0724293e3de612c81992361cfbafd9e0e0662979db6c3b7095e9f1f",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": "20c5a9bc39a7f8896991524290818a95fda051369361682c48002cb240cbac70"
+  },
+  "restorations": [
+    "Exact source-local function line index",
+    "Bounded codebase admission profile and remaining deadline",
+    "Scoped host pressure attribution and paced recovery",
+    "Bounded no-follow registry reads and opt-in terminal lifecycle",
+    "Verified embedding snapshot descriptor lifetime and best-effort page release"
+  ],
+  "preserved_upstream": [
+    "resource-lease-timeout-decision@1 payload",
+    "one decision-cycle clock for two pressure gates",
+    "separate primary-gate, historical-refusal and final-timeout records"
+  ],
+  "limits": [
+    "Offline CPU checkpoint consumption and no-model replay qualified; no correctness credit inferred from neural candidates",
+    "No full supervisor START or TerminalBench score in these runs",
+    "Registry and embedding restored from d5aaf256618c53b009695e8d5618436fba1c0419 after confirmed pure upstream rollback; other D760 modules retained"
+  ],
+  "known_nonqualification_attempts": [
+    "registry-red-01 used nonexistent node and exited 4; no claim of red assertion coverage",
+    "registry-red-02 collection refused removed RUN_LIFECYCLE_SCHEMA",
+    "registry-read-red-03 reproduced missing read_artifact",
+    "published-dependency-green-01 and -02 intentionally retained sequential broken-contract evidence",
+    "embedding-green-01 revealed obsolete exact-wall-time assertion; corrected bounded check plus deterministic original-deadline regression test"
+  ]
+}

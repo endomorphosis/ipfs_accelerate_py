@@ -1,0 +1,360 @@
+{
+  "schema": "supervisor-contract-repair-qualification@1",
+  "accelerate_code_commit": "bc4e6fdf20462fc31e6b1ba19207b2dc3844cc20",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "runs": [
+    {
+      "label": "source384/published-resources-green-01",
+      "tests": 165,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/published-resources-green-01.xml": "cc01ec4c2dfa59a01a67dfa3bc5bdc241598752c95c6527f65a3771255e09eba",
+        "source384/published-resources-green-01.log": "1e0bdccde833d37edc1d65d4e8d12f6f4bf94509cb9692ab5b3564a3fe525ba6",
+        "source384/published-resources-green-01-command.json": "541def0cdd99a9fce122dd4aad7807985b5fb9868a564296d921710204736c80",
+        "source384/published-resources-green-01-exit.json": "668fbddf2b833f6044fa2bea951bda6e3d7ada78ac28e9bfa7174b9ae20a1f3e"
+      }
+    },
+    {
+      "label": "source384/published-lifecycle-green-01",
+      "tests": 144,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/published-lifecycle-green-01.xml": "0e36d7e5147eafe3362981695cfabedd0eaa3c5b6c2bd2a8cff92f6b2de60d84",
+        "source384/published-lifecycle-green-01.log": "05425b585eee5f2205725a6fac61ba80636a6baf66e47619cedbe91e2de5f6de",
+        "source384/published-lifecycle-green-01-command.json": "305ee227f6bb4560af6afd50f9c140a18e7a0d25488354f4b52e5cb49df12f13",
+        "source384/published-lifecycle-green-01-exit.json": "78a845f2cdc5235443bab664ed358eafab7de59379ecb5ec382500b112343adf"
+      }
+    },
+    {
+      "label": "source384/registry-green-01",
+      "tests": 151,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/registry-green-01.xml": "cc55372d2e3c004a610ea9071181f8e6faf619593326fd590f1d712584c62765",
+        "source384/registry-green-01.log": "65711ac839b5a4aeb55689c3c9b095c4dc19a5a4de4a4ccb8a29777975fc3fa8",
+        "source384/registry-green-01-command.json": "2bdb0ac515b5170d246dc9e867ec3ade92d1226732b379ab712cbd85bb88b7be",
+        "source384/registry-green-01-exit.json": "f5a68050cb128e557d3c372efdb489f0b3af3b90f8938861c4f368feb43f93eb"
+      }
+    },
+    {
+      "label": "source384/embedding-green-02",
+      "tests": 47,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/embedding-green-02.xml": "0e757a28ca685b3bc5bef9645d580f9b9e8242af663c659e8cc48c7f769b5236",
+        "source384/embedding-green-02.log": "85872496b082160ffa4111735b2572ab527a90d269056bcdeedbc24433496c4e",
+        "source384/embedding-green-02-command.json": "c59d7b1e291a500072335890383411678d5b213b4ccf2b78918672b4b3dbf2a2",
+        "source384/embedding-green-02-exit.json": "1864b9bcb7044b64c41af21c50acca7072daa236fcaf6b3b34ab777c40941e9d"
+      }
+    },
+    {
+      "label": "source384/published-dependency-green-03",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/published-dependency-green-03.xml": "08f0428d9fa87b1f964b8f7b10e6aaf6f159b9bacc5b97e43380f498158ade56",
+        "source384/published-dependency-green-03.log": "9e34e7321b38530a2cc58c96907f907723053229ddb6beda0065563ad4b40b33",
+        "source384/published-dependency-green-03-command.json": "94beb7da5690cf846eda1075d8d7c7d784bce347c0676b49cca5e7f81af1f9ce",
+        "source384/published-dependency-green-03-exit.json": "90f6baf292c8f194a159ab5b54f1b3bf1f3da2852c7c8b75c8567bc3d7fc0fdb"
+      }
+    },
+    {
+      "label": "planning/green-01",
+      "tests": 141,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "planning/green-01.xml": "337a2d2ac84b37fbd573eea99996ef7c29c5936a0f7295d393449c8d8197b234",
+        "planning/green-01.log": "13c46569802557ebc544d61cf6d6385cd90a38cb469f07f16c6b7c6fdb07f154",
+        "planning/green-01.json": "1bf92e118427ac693cba172022ce9844612bbf42aa7be17b6e3fab56673b71f5",
+        "planning/green-01.command.sh": "f70b2c2539b6d174544b3d8619a5cadfd60c228464bf618fefb862f2bb3e2874"
+      }
+    },
+    {
+      "label": "planning/dispatch-green-01",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "planning/dispatch-green-01.xml": "b731d6a23a829c79e28c0ec80046b937e62c90c66cd2a054982cc17cca122a21",
+        "planning/dispatch-green-01.log": "7b6e9a12938295e73196162650827bd0c24712415329c5cb9b1d623f8965acbf",
+        "planning/dispatch-green-01.json": "13e2d381df2db6b4e9970278d6731e3e60754cb1327bf20237dd6edb525bbe19",
+        "planning/dispatch-green-01.command.sh": "1f7173cfc1f00c43a1a8c4c831c8636a7165b9d7007a3a5e007bdb01d38313be"
+      }
+    },
+    {
+      "label": "authority-04",
+      "tests": 89,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "authority-04.xml": "bbc9621cd65c94dd49b2f4dcf93c8596c4de8970c057ebb370a0002cb65a0069",
+        "authority-04.log": "e522a39853f900046b577223765985babe2f5d6ea7316be733da3365ce7cd0e9",
+        "authority-04-command.json": "edbdaa63aaf178b98ad2b634f59ff4c4869131db8c1be0e8d4f02cc28bba11da",
+        "authority-04-exit.json": "b4ab500063b827e3d432a309d2e27b4d7be13bd0b65166fa4803d6fa9fc36700"
+      }
+    },
+    {
+      "label": "early-handoff-02",
+      "tests": 59,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "early-handoff-02.xml": "49b44da1ea1e893541cda746e2a0331515026d24343c41708784020bde14c7f3",
+        "early-handoff-02.log": "2c0994f3c8bf827ed583013f1036210dcea3eac2eb3589522438847495c72951",
+        "early-handoff-02-command.json": "a4db5fd4a77422d2db6ec2d0bde92556eb4833a717c1db979e2890484303c67f",
+        "early-handoff-02-exit.json": "265454492ab1974e6cb6b1e7fc8c605ce01f2a2802802931c9440f450ba5dbfc"
+      }
+    },
+    {
+      "label": "preflight/green-03",
+      "tests": 155,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "preflight/green-03.xml": "3b768035002d051152aa77f0fda3ee03f02521cc3d0e1684ed68ebd86cccb49b",
+        "preflight/green-03.log": "ba800de8b06d8d9ab447582e8e30eb39eb77989e3f773b7cbf7e64277218a2ea",
+        "preflight/green-03.json": "7cf48b3a4e7f074fdb198ff783930a7fcc0715f86e0ae963d45365f019503bcd",
+        "preflight/green-03.command.sh": "08d271ecb56a0f2745fddb04cdfa2980c28d1074e334e5d97b618897aeab6d08"
+      }
+    },
+    {
+      "label": "preflight/model-recovery-green-01",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "preflight/model-recovery-green-01.xml": "361ed1cd3eb8bf0235a088159ea9893c56ea0756277f045cde9ca7db178a5a52",
+        "preflight/model-recovery-green-01.log": "7ac7987af5276a7df78a73cb443fd34ce96118305a03d40edeefa6dfc11a0b35",
+        "preflight/model-recovery-green-01.json": "3daaee76d4c90fd00b40298683020b9226c05c122be37bc54b2b3a33f8f1ae7b",
+        "preflight/model-recovery-green-01.command.sh": "e8ae2063dd19c9838f7e7ebbb8bccd3066fd82d80fcf9d998030e3b6534fd9de"
+      }
+    },
+    {
+      "label": "runtime/native-full-01",
+      "tests": 123,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "runtime/native-full-01.xml": "e0a04f70fef736c41483d5c0577c493a8c037ba536ba283fe9a275075dc74c9d",
+        "runtime/native-full-01.log": "013b548f37824b0fcc6d243275a2482d95b090b0f77392c3bf42b491882d207a",
+        "runtime/native-full-01-command.json": "04e54fb89061b9d27e157c595d4d4480e98f827307e1936d3be07bba3a68b57f",
+        "runtime/native-full-01-exit.json": "672973dacf350e5ce16489c633c10a356e7c48cf448264f87f61b66e66880d31"
+      }
+    },
+    {
+      "label": "runtime/post-rebase-01",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "runtime/post-rebase-01.xml": "86891845b18b5fd86e2600865327e6d9887c3a2c42b1a0cc85ee28b23cd8b487",
+        "runtime/post-rebase-01.log": "45736cc3f44a59930f32916f00f7a523a87c405ff5ab0c12abad3221923a363f",
+        "runtime/post-rebase-01-command.json": "44d3c8d4b45b78adb697e7555dee01f07fd5fc10f486afacdd579c8e8e01ab82",
+        "runtime/post-rebase-01-exit.json": "a9e7d7f7ecd309b627dc47a279712e94d748eeb027f10a693bacd4a6be2aa819"
+      }
+    },
+    {
+      "label": "models-final-01",
+      "tests": 179,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "models-final-01.xml": "dd4d69c646c24517f76eab4c39978c28beb12490ff1e9138f358d022c0684d95",
+        "models-final-01.log": "422604fa6ed213bfa107d5c1cbad2035083c91a20d4e20145154049f6500890a",
+        "models-final-01-command.json": "24cb067981054ced3b8e0e55c07e8b8bdcf24d7bed1a119a7e75a3a33cafd6c0",
+        "models-final-01-exit.json": "3c3b5976a9edb7c714575a06ac440dd66132e7c01fe60998b2ce4e7e81e427cd"
+      }
+    },
+    {
+      "label": "source384-final-01",
+      "tests": 87,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384-final-01.xml": "5e560acd3032048eec50a7eaeb2651e43d4bd5da4b13a934a6afdaa732a42a6e",
+        "source384-final-01.log": "42287178e83f46f6e4c0240cf8b7c9f6f6462b55574a9256219f9771b9ced362",
+        "source384-final-01-command.json": "450746796dc7827b5695b8fc62fe2336c3fc2b8ee10b7f789f06b18ab3d4c48d",
+        "source384-final-01-exit.json": "b5e2cdb1f412767b9bf4debb2101dba382305b2c9e423a91ea6eee0dc3959c8f"
+      }
+    }
+  ],
+  "default_route": {
+    "primary": "grok-4.7",
+    "fallback": "gpt-6.1-sol",
+    "gates": "Existing route-specific quota/authentication, pre-effect, signed-authority and single-dispatch bounds retained"
+  },
+  "matched_container_profile": {
+    "provider": "codex_cli",
+    "model": "gpt-6.1-sol",
+    "arms": [
+      "supervisor",
+      "native_codex"
+    ],
+    "tests_grok_route": false
+  },
+  "limits": [
+    "Focused qualification, not a complete repository suite pass.",
+    "Seven pre-existing optional independent-review wiring tests still fail; see models-independent-review-gap.json.",
+    "Old signed model profiles require fresh authorization for the new pair; archived receipts were not rewritten.",
+    "Grok CLI listed grok-4.7 but reported unauthenticated locally; no paid provider call or live fallback was made.",
+    "Real CPU Source384 checkpoint consumption is tested; unsupported decoded contracts remain explicit abstentions.",
+    "No new Terminal-Bench reward, token comparison, training checkpoint or Hugging Face upload from these runs.",
+    "Earlier runs record their own source hashes and dependency revisions; final integration runs alone qualify the rebased source pair.",
+    "Separate legacy SQL-inbox and HMAC local-profile test fixtures target retired APIs and were not migrated wholesale; no full-suite green claim."
+  ],
+  "ci": {
+    "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "observed_status": "Hosted benchmark and CodeQL jobs could not start: account locked due to billing; other jobs queued.",
+    "local_tests_independent": true
+  },
+  "development_runs": [
+    {
+      "label": "planning/red-01",
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "planning/red-01.xml": "3229a0014f0b1460499d72edf9a6a5fbb97be075c29d9bd81f7b12abeb388303",
+        "planning/red-01.log": "02bebd6c4b0d942a503758c7f050f57d6773f6d98ca69e757e7513d755b5a516",
+        "planning/red-01.json": "d77702f55cc791da6f3bef5dd6460aacb933663f6717cd0fefbdb20662c6de3e",
+        "planning/red-01.command.sh": "dd757e773fd65903b545c5e0513a5fa22c2009a6ddebd7d17b554e6241cb658e"
+      }
+    },
+    {
+      "label": "source384/red-01",
+      "tests": 3,
+      "failures": 3,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "source384/red-01.xml": "c3bc55518bca37597f360eb55d36a52a989d28caee07b81e22e7093e8c12de2f",
+        "source384/red-01.log": "ef23faeabe6a54c7e2ae0d04412174666222335820df9eb7bb46a0569fb1e6ec",
+        "source384/red-01-command.json": "4e7dbff8d393321a257ff5c70b0eb65e87c252c16b334619a27dcb5cc139f25c",
+        "source384/red-01-exit.json": "460ede70f534b99eac3eeba994da23142087e5f1b676d35330199ca8334fb798"
+      }
+    },
+    {
+      "label": "runtime/red-01",
+      "tests": 6,
+      "failures": 6,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "runtime/red-01.xml": "14c0b40b1b62382303e739f46b74ab1c0ebbb9aa42fddef895d132df0088344d",
+        "runtime/red-01.log": "524c0c032b3da5a0f94d8c2fbb7ec4bceade6ede94a3dc87ee6076aec49a709c",
+        "runtime/red-01-command.json": "b646ee458309d36624cc74f46d726fd2256d33bfc263ed7b20aa774e6e774f76",
+        "runtime/red-01-exit.json": "bdb53d6e1184b4898deed41cf1cc20e84aad643a80ed32327695bce03ab0a156"
+      }
+    },
+    {
+      "label": "heartbeat-red-01",
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "heartbeat-red-01.xml": "c08448de1dff670e96730361627f1bdf8f495612ca84ca210a92343f1ed06bad",
+        "heartbeat-red-01.log": "80f79e9658ba2810b695c20cb5a39806252361ad87fe5ea9526c905eb54f2366",
+        "heartbeat-red-01-command.json": "ec465489c4a358ed751e81a513401acadbbab64d25203d7cad9b44b58f4cf385",
+        "heartbeat-red-01-exit.json": "cf10256e4c939567860b703f209ce494e762a00ba4e2c73c9220b4cf2830fa09"
+      }
+    },
+    {
+      "label": "preflight/shared-red-01",
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "preflight/shared-red-01.xml": "b5c352a4ebd104a737359f1e4bdcdc68dfcafeff2f954d6275af0fe22b54301c",
+        "preflight/shared-red-01.log": "b02dfd4c3da96aa87d2b3aa908e1f267c3c8472aa25f0bdc3a43b8c4ff5d4a7e",
+        "preflight/shared-red-01.json": "618ce563b73838228e293a30224c93b3a355628a1d686750160c13c81b290936",
+        "preflight/shared-red-01.command.sh": "b9cf46ca4181526722f69466d0eecca9c21dfb599e73b8022045aa0dbad930b8"
+      }
+    },
+    {
+      "label": "preflight/staged-add-red-01",
+      "tests": 3,
+      "failures": 2,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "preflight/staged-add-red-01.xml": "fd102fac7dc47e7a0915debea926189b0efc4457de0580dde38f744d9d0589f0",
+        "preflight/staged-add-red-01.log": "9c4f37e5bb8d082305950517ac9eda8086ce907f16367922839e073dcda4e104",
+        "preflight/staged-add-red-01.json": "af1f97f18f2e23147c99f471874d94f92f00b9af8b1c0316c1d47f2e440aa8e5",
+        "preflight/staged-add-red-01.command.sh": "3b6532e6cb39937263538f1ccad8d5a483c257f7642eac738d5f3200af601f04"
+      }
+    },
+    {
+      "label": "preflight/model-recovery-red-01",
+      "tests": 6,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "preflight/model-recovery-red-01.xml": "5ebe8054fff0fbb154f130c5657ed6748acf233fbaa1a84ce15c58325f6b2453",
+        "preflight/model-recovery-red-01.log": "aec91c1136d566ff454de3e1013fa7af724a032895ef876cbe2fe63b89099981",
+        "preflight/model-recovery-red-01.json": "187f460d49c40cdce4052b53a4299188575f7777cea41c4febeda75f77c91130",
+        "preflight/model-recovery-red-01.command.sh": "3eb1d6287ec26acbe7826f633b507f2025e2e2e6f0d8f546c0987a9dd6c1c128"
+      }
+    },
+    {
+      "label": "models-01",
+      "tests": 122,
+      "failures": 15,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "models-01.xml": "d0db87a9ddf3b58a80e07a1d800be0d04b3beeb896fcc714b564f157ad97f189",
+        "models-01.log": "50b24f02a821c870db76c46bf4f18978a922f472620eee61857a29af71e87739",
+        "models-01-command.json": "e7d32f9b26934fc5679248669572c4cab70af78d74667ee1aaad4dd206b5d319",
+        "models-01-exit.json": "6614c8da362f9aab94bf3ef8c4e2d2a7a507e0f205de60b45b74f6d23d2b2346"
+      }
+    },
+    {
+      "label": "runtime/core-final-02",
+      "tests": 108,
+      "failures": 4,
+      "errors": 0,
+      "skips": 0,
+      "artifacts": {
+        "runtime/core-final-02.xml": "8703842b76066565f12084bbf9613d314749d1bad18b961aebcb15997b2b67d7",
+        "runtime/core-final-02.log": "3015fb9575ebf778cd86e633f9f40774aafd6720f783c0c63097c71cb34fb216",
+        "runtime/core-final-02-command.json": "962e76bb22f1f6e03e22bfcbfd4d3a1860165fbd6f2374d745c8ed24f15eab0d",
+        "runtime/core-final-02-exit.json": "f2e64a810ea8657ea706f8a3c9d1707f473a8c6bf36c5afbb7e20f3a7b75c812"
+      }
+    }
+  ],
+  "final_pair_tests": {
+    "labels": [
+      "models-final-01",
+      "source384-final-01",
+      "runtime/post-rebase-01"
+    ],
+    "distinct_passed": 276,
+    "failed": 0,
+    "skipped": 0
+  }
+}

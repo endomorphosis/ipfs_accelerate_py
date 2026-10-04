@@ -1,0 +1,28 @@
+{
+  "qualified_accelerate_head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+  "current_accelerate_head": "bc4e6fdf20462fc31e6b1ba19207b2dc3844cc20",
+  "qualified_count": 1724,
+  "unchanged_count": 1720,
+  "changed": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+      "qualified_sha256": "7cbd3c9156fc8183bd37242ab6fa7df56a9cecbfd5f94c0e68d897fd2a8d67d5",
+      "current_sha256": "30075f344fdf162879abc30497a9ccd2647eeca1314dc925fcb8926c2f29b797"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py",
+      "qualified_sha256": "6482376fe353704397470d2495b745cdc086b40652b832f88f24e05e048d7f6f",
+      "current_sha256": "6aaa606f89debef0000247c45c610793ca5747adc0e96b63f24bfa48de905cec"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/security_source_program_advisor_384.py",
+      "qualified_sha256": "3fbca2588eff5f04f027df4ff4cc6dec3582725ab9e3527f3b9dc8663befdc0f",
+      "current_sha256": "9579ceb966a49c4052909ced8b6c935b30e7de27f3f8e81c4f864adda67a99ae"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "qualified_sha256": "8f673280a606c3577c505477cc6cc95ecbd2048b96f2639a9ab5d79b0f0c53b9",
+      "current_sha256": "b9d8d41d5c533e5e8a5585fa6fa1b9df3418a0485f37380d5bd2e442de236fb0"
+    }
+  ]
+}

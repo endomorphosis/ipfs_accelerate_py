@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="6" time="2.850" timestamp="2026-10-04T23:33:29.526609+00:00" hostname="spark-b271"><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[False-gpt-5.6-terra]" time="1.508"><failure message="AssertionError: assert False is ((not False and 'gpt-5.6-terra' in {'gpt-5.6-terra', 'gpt-6.1-sol'}))">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1128/test_damaged_retained_command_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xebce437e2930&gt;
+model = 'gpt-5.6-terra', legacy_preflight = False
+
+    @pytest.mark.parametrize("model", ["gpt-5.6-terra", "gpt-6.1-sol", "unrecognized-model"])
+    @pytest.mark.parametrize("legacy_preflight", [False, True])
+    def test_damaged_retained_command_preserves_model_recovery_fence(
+        tmp_path, monkeypatch, model, legacy_preflight,
+    ):
+        daemon = object.__new__(PortalImplementationDaemon)
+        daemon.state_path = tmp_path / "missing-state.json"
+        # Model migration must preserve recovery custody even if a route flag is
+        # missing from the retained event. Its orphaned JSON is diagnostic only.
+        command = [
+            "python", "-m", "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            "--grok-failure-receipt-nonce", "a" * 64,
+            "--codex-fallback-command-json",
+            json.dumps(["codex", "exec", "-m", model]),
+            json.dumps({"fallback_reasoning_effort": "high"}),
+        ]
+        if legacy_preflight:
+            command.append("--canonical-legacy-preflight-route")
+        monkeypatch.setattr(daemon, "_protected_attempt_event_latch", lambda **_: None)
+        monkeypatch.setattr(daemon, "_protected_attempt_latched", lambda *_args, **_kwargs: False)
+        monkeypatch.setattr(daemon, "_iter_events", lambda: [{
+            "type": "implementation_started", "task_id": "T-1", "attempt": 1,
+            "command": command,
+        }])
+    
+        protected, reservation = daemon._scoped_attempt_recovery_reservation(
+            task_id="T-1", attempt=1, task_revision_cid="task:fixture",
+        )
+    
+&gt;       assert protected is (not legacy_preflight and model in {"gpt-5.6-terra", "gpt-6.1-sol"})
+E       AssertionError: assert False is ((not False and 'gpt-5.6-terra' in {'gpt-5.6-terra', 'gpt-6.1-sol'}))
+
+../../artifacts/terminal-supervisor-contracts-20261004/test_model_recovery_provenance.py:41: AssertionError</failure></testcase><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[False-gpt-6.1-sol]" time="0.033" /><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[False-unrecognized-model]" time="0.031" /><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[True-gpt-5.6-terra]" time="0.031" /><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[True-gpt-6.1-sol]" time="0.030" /><testcase classname="artifacts.terminal-supervisor-contracts-20261004.test_model_recovery_provenance" name="test_damaged_retained_command_preserves_model_recovery_fence[True-unrecognized-model]" time="0.042" /></testsuite></testsuites>

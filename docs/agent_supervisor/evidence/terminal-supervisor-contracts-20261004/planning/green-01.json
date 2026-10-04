@@ -1,0 +1,50 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+  "head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+  "datasets_head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+  "env": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/planning/green-01.duckdb"
+  },
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/planning/green-01.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py",
+    "test/api/test_intent_requirement_adapter.py",
+    "test/api/test_intent_symbolic_planning.py::test_real_symbolic_selection_projects_exact_signed_effects_and_replays",
+    "test/api/test_header_intent_applicability.py::test_real_checker_is_a_typed_precondition_and_cold_native_admission_replays"
+  ],
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "0ed3f9873be293b29f3bdeaf763474c3b1846ff7daf1a93cb052d04d7d9df373",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2",
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py": "3a194e5534dc413b0dc7f419a17fb30055aec7500b80f444b4e9ea229ef054db"
+  },
+  "exit_code": 0,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "0ed3f9873be293b29f3bdeaf763474c3b1846ff7daf1a93cb052d04d7d9df373",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2",
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py": "3a194e5534dc413b0dc7f419a17fb30055aec7500b80f444b4e9ea229ef054db"
+  }
+}

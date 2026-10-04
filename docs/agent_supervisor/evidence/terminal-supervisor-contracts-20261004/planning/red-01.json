@@ -1,0 +1,42 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+  "head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+  "datasets_head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+  "env": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/planning/red-01.duckdb"
+  },
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/planning/red-01.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_modify_only_profile_remains_exact",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_needs_no_provider_callable"
+  ],
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "d4c4236726d6e6f7faf1307298c1e04006a3e6fac6fcdc2029a801e6388dafad",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "33ae420f26b6645da4e1328954ece93da22831ca538dc95cbb1c8350b57efc6b",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d",
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "da7b280e67971468c335d21d86a2fa862d14eeeb7fb5a6cd609afd0ff4b66e7c",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "023d8e7ab240e7d9f1d4ff8080322173fe3842dedf9471a690d791253e6234a8"
+  },
+  "exit_code": 1,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "d4c4236726d6e6f7faf1307298c1e04006a3e6fac6fcdc2029a801e6388dafad",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "33ae420f26b6645da4e1328954ece93da22831ca538dc95cbb1c8350b57efc6b",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d",
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "da7b280e67971468c335d21d86a2fa862d14eeeb7fb5a6cd609afd0ff4b66e7c",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "023d8e7ab240e7d9f1d4ff8080322173fe3842dedf9471a690d791253e6234a8"
+  }
+}

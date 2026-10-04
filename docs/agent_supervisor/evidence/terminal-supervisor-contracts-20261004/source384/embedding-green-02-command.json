@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02-pytest-cache",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_verified_embedding_advice.py",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_autoencoder_embedding_runtime.py",
+    "tests/unit/logic/software_contracts/test_codebase_source_units_lifetime.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02.xml"
+  ],
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/embedding-green-02-seal.duckdb",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1"
+  },
+  "source_sha256_before": {
+    "ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2",
+    "tests/unit/logic/software_contracts/test_codebase_source_units_lifetime.py": "453448a9e6a6ad45e83bd49d07b6db4514df19b6ba80c14728ffb2fe70a7f509",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_autoencoder_embedding_runtime.py": "88825805f91311917b6e21743108fc782eb22b22c07eac7f8b200d8aa4cc0598",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": "f8f79fdfa0724293e3de612c81992361cfbafd9e0e0662979db6c3b7095e9f1f",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": "20c5a9bc39a7f8896991524290818a95fda051369361682c48002cb240cbac70",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_verified_embedding_advice.py": "86888d8f3b339b7424c56e46311b1665d2206445f42366b125c8ccca3d3ec67d"
+  },
+  "datasets_head": "76022bac2ddd52287280522d7ccf27978383a6ab"
+}

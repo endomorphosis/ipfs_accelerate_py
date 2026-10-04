@@ -1,0 +1,18 @@
+
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[False-gpt-5.6-terra] PASSED [  7%]
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[False-gpt-6.1-sol] PASSED [ 14%]
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[False-unrecognized-model] PASSED [ 21%]
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[True-gpt-5.6-terra] PASSED [ 28%]
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[True-gpt-6.1-sol] PASSED [ 35%]
+test/api/test_current_model_recovery_provenance.py::test_damaged_retained_command_preserves_model_recovery_fence[True-unrecognized-model] PASSED [ 42%]
+test/api/test_supervisor_current_model_route.py::test_current_route_roundtrips_without_authorizing_authentication_fallback PASSED [ 50%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[primary_model_id-grok-4.6] PASSED [ 57%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-sol] PASSED [ 64%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-terra] PASSED [ 71%]
+test/api/test_supervisor_current_model_route.py::test_daemon_emits_and_validates_exact_primary_and_backup[medium] PASSED [ 78%]
+test/api/test_supervisor_current_model_route.py::test_daemon_emits_and_validates_exact_primary_and_backup[high] PASSED [ 85%]
+test/api/test_supervisor_current_model_route.py::test_probe_receipt_is_bound_to_current_primary_without_reusing_old_evidence PASSED [ 92%]
+test/api/test_supervisor_current_model_route.py::test_quota_policy_retains_gates_while_selecting_new_backup PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/preflight/model-recovery-green-01.xml -
+============================= 14 passed in 23.23s ==============================

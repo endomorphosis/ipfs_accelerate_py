@@ -1,0 +1,52 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-04 23:13:19 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-04 23:13:19 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-04 23:13:19 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-04 23:13:19 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-04 23:13:19 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-04 23:13:19 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-04 23:13:19 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_real_cpu_checkpoint_inference_selects_program_and_replays_without_model 
+-------------------------------- live log call ---------------------------------
+2026-10-04 23:13:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:13:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:13:51 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_real_cpu_checkpoint_infer0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  3%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission 
+-------------------------------- live log call ---------------------------------
+2026-10-04 23:14:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:14:00 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:14:01 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:14:01 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 23:14:02 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1109/test_checkpoint_change_during_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  7%]
+test/api/semantic_state/test_source384_successor_context.py::test_advisory_successor_preserves_assets_scope_and_historical_lineage PASSED [ 11%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[predecessor_bytes] PASSED [ 14%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[config_bytes] PASSED [ 18%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[source_during_inference] PASSED [ 22%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_refuses_changed_original_inputs_or_current_source[source_during_validation] PASSED [ 25%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[authority] PASSED [ 29%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[nomination] PASSED [ 33%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[lineage_digest] PASSED [ 37%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[extra_lineage] PASSED [ 40%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_pin] PASSED [ 44%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[worker_observation] PASSED [ 48%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_count_bool] PASSED [ 51%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[model_count_negative] PASSED [ 55%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[extra_receipt] PASSED [ 59%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_receipt_cannot_gain_authority_or_change_identity[direct_cycle] PASSED [ 62%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_excludes_declared_new_output_without_expanding_original_population PASSED [ 66%]
+test/api/semantic_state/test_source384_successor_context.py::test_successor_preflight_time_consumes_original_budget PASSED [ 70%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[authority] PASSED [ 74%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[extra_field] PASSED [ 77%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_successor_predecessor_must_remain_closed_advice[direct_cycle] PASSED [ 81%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[nan] PASSED [ 85%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[inf] PASSED [ 88%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[True] PASSED [ 92%]
+test/api/semantic_state/test_source384_successor_context.py::test_refresh_rejects_invalid_enclosing_deadline_before_owner[100] PASSED [ 96%]
+test/api/semantic_state/test_source384_successor_context.py::test_historical_prefix_consumes_whole_refresh_deadline PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03.xml -
+============================= 27 passed in 43.77s ==============================

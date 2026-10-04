@@ -1,0 +1,36 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py::test_staging_has_no_numerical_currentness_and_full_gate_remains",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/red-01.xml"
+  ],
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/red-01-seal.duckdb",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1"
+  },
+  "head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+  "source_sha256_before": {
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "d4c4236726d6e6f7faf1307298c1e04006a3e6fac6fcdc2029a801e6388dafad",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "90d4ce6866fb97b8c4430d365a8fc8f3c0fd59bdfa89ba3cbf7a4c02e337180d",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": "75b0ebcc67a7f09e186818d2026b2e0dc922e360cee3458ef7b397f33ca205fb",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": "9a448a4c40800dba69d72d44c9b67576e244e48bf2e3d277804ee105d69f7803",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py": "c58f622969df254f93b320bf210c5869a91aa9b4b089e561ba348984fdb44984"
+  }
+}

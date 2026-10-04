@@ -1,0 +1,55 @@
+{
+  "schema": "production-independent-review-integration-gap@1",
+  "classification": "pre-existing integration gap, absent in both prior qualified and upstream baseline source",
+  "evidence": [
+    {
+      "revision": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+      "file": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "45f64db38f63bd78b58a225f062dc00d446ec362f45316d7e4ce6b03119d4fcd",
+      "production_provider_policy_occurrences": 0,
+      "run_production_model_assisted_route_occurrences": 0
+    },
+    {
+      "revision": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+      "file": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "e0f1c3442c2d54d3fc5c2acd9af808ce4b1556d6e3c34d143fde566bf824fcb5",
+      "production_provider_policy_occurrences": 0,
+      "run_production_model_assisted_route_occurrences": 0
+    },
+    {
+      "revision": "c256f5350d6097642eb4d707b6ac6b4da1d578fe",
+      "file": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "2a72c45fdda52d3586510261a8d009fc80425bac7aacf237ea0bc6f7cb8c25d8",
+      "production_provider_policy_occurrences": 0,
+      "run_production_model_assisted_route_occurrences": 0
+    },
+    {
+      "revision": "c256f5350d6097642eb4d707b6ac6b4da1d578fe",
+      "file": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "8b1916c99b43480fa05701d93e004cb3dbe2425b59332d99c938d156d4e1e4ce",
+      "production_provider_policy_occurrences": 0,
+      "run_production_model_assisted_route_occurrences": 0
+    }
+  ],
+  "retained_capabilities": [
+    "bundle_supervisor emits explicit production-policy flags",
+    "authoritative_completion verifies operator-pinned review policy and Ed25519 receipt",
+    "production CLI adapters implement separate Grok implementation and Codex review",
+    "daemon route_model_assisted_contract_packet exists as a lower-level explicit route"
+  ],
+  "missing_integration": [
+    "daemon/supervisor CLI parsing, config validation, launch propagation and adoption fencing for production policy",
+    "daemon initialization of active policy and trusted signing authority",
+    "run_production_model_assisted_route connecting bounded packet, providers, effect transaction and commit-bound reviewed-effect attestation"
+  ],
+  "affected_tests": [
+    "test_ed25519_review_attestation_reconstructs_full_receipt_and_binding",
+    "test_forged_fully_current_attestation_from_metadata_signer_is_rejected",
+    "test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate",
+    "test_signed_attestation_cannot_choose_its_own_expected_policy",
+    "test_daemon_cli_accepts_operator_policy_without_task_metadata",
+    "test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption",
+    "test_supervisor_rejects_budget_without_explicit_provider_policy"
+  ],
+  "disposition": "Tests retained unchanged; seven failures in models-01 remain unresolved. No skip marks, superficial accepted policy flags, weakened signature checks, or production wiring added in this fixture repair."
+}

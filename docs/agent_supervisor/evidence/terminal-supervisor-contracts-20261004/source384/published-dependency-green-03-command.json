@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_real_cpu_checkpoint_inference_selects_program_and_replays_without_model",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission",
+    "test/api/semantic_state/test_source384_successor_context.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/published-dependency-green-03-seal.duckdb",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd"
+  },
+  "source_sha256_before": {
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": "f8f79fdfa0724293e3de612c81992361cfbafd9e0e0662979db6c3b7095e9f1f",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": "20c5a9bc39a7f8896991524290818a95fda051369361682c48002cb240cbac70",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "a88a3b0fcc3ed3225cc21a78e43b324c601416f6d710e58beb84d4211edcaca6",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": "b6a47a338081d4c45c3865da16288d9d908d33b04beb8fd54aaad796ec3b3984",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "0ed3f9873be293b29f3bdeaf763474c3b1846ff7daf1a93cb052d04d7d9df373",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "19a5c5850ead4cb0789ac61e21e3f024a5def45ff23e2dcf446ec395029d6a1d",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py": "d9775bc600f1dc5a4f22e14ad0216dd48bdadce2f51a834db86e862cd4c14dc0",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": "9a448a4c40800dba69d72d44c9b67576e244e48bf2e3d277804ee105d69f7803",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_program_scope.py": "eb515184daa66e20243f81f5ab198d36d432b9e6eab808f13ae31f265376acf5",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "a1cab84e1d1531817699af18e96df747425e272343255190e793fd4d8556a518",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py": "f2b57e250ae4767689707291e95b5976743747317ef5be03946c40e0e2608c17",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "60780040f53be1cb3013a96f3e61dfd8c31c76a83922b4b37fa65f53eec38673",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/test/api/semantic_state/test_source384_successor_context.py": "94c8c958c327b2e7c4db2374e48b179da3a74a2722ffcf9fc94a58a5cbaed962"
+  },
+  "datasets_head": "76022bac2ddd52287280522d7ccf27978383a6ab",
+  "accelerate_head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb"
+}

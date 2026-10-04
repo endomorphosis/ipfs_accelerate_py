@@ -1,0 +1,64 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/runtime/core-final-02.xml",
+    "test/api/test_formal_cache_exact_path.py",
+    "test/api/test_doctor_cache_durable_state.py",
+    "test/api/test_agent_supervisor_quack_owner_commands.py",
+    "test/api/test_agent_supervisor_quack_cache_isolation.py",
+    "test/api/test_agent_supervisor_intent_plan_projection.py",
+    "test/api/test_native_worker_grant_broker.py",
+    "test/api/test_local_completion_rpc_budget.py"
+  ],
+  "before": {
+    "accelerate_head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+    "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "datasets_source_sha256": {
+      "ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+      "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2"
+    },
+    "source_sha256": {
+      "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "464c2b316f62bf233589cb856e44511467a44d1e7d380dc2db43a2f95fef47ae",
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "75d36803c81b9397047aa34f8b5a7a9b04cedb0923a52c0affbb21b320bc391f",
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_cache_state.py": "c06e3f1c6590d5fdb55f13b77412631600ae211e090581767c3e7d6b2dd8a732",
+      "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py": "28a2f397855a97f2ab0ed0602a54fbe276c91f3635584f2f93a1d1af91fc0b9e",
+      "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py": "3b42f38d1c7b5c9841d4f0b845098f11a55858779e9b814d8ecd455904bfb321",
+      "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "44b804497a280f437270d0a5c2ac4e555a9d6b42a013c61c868c4bd72d938bcd",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py": "1bfd5b1233a00511afeecc358e3a76e62ca9f8e9dab5d6c7a3380844d048b0be",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "8454ba8930e327a0e63f8ead2f76c472f60df280427bceed4a868d856b5b0279",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "95ffbe87ccbb811f7cf9281940bf4b9b004e5457087a7878138abe40330465a7",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ac592f12821a88747ed0c90265b590136a1195acff50347a8455d0b839157ff5",
+      "test/api/test_agent_supervisor_intent_plan_projection.py": "173d57d2c5e9ce14e2050ca7b7128658f0b1a277afee99c2f11c34e10f1f4259",
+      "test/api/test_agent_supervisor_quack_cache_isolation.py": "c227adefdca135d5848fb1559f9645b18a276cbf73e3848fffb1376ef3471585",
+      "test/api/test_agent_supervisor_quack_owner_commands.py": "644a7494a64ffaf5c2d01df80cf64e3528c82030b89b01bb89e5e10e37849e6b",
+      "test/api/test_doctor_cache_durable_state.py": "40f9e6c1bbe4d7eb5709936834688bbeee797161054de7fea420c51e06034783",
+      "test/api/test_formal_cache_exact_path.py": "ea5b2be2d15006bd6689fe1b8412ffa09494d51257f260890a2fedb948cb2cf9",
+      "test/api/test_local_completion_rpc_budget.py": "e57a3cd5238f2986b7bb6441ab58a1f6ac944aee5f49a78bfc9ffa787afaacd1",
+      "test/api/test_native_worker_grant_broker.py": "13c022d951915d2a839beed17be6f0c711688f37c0322369d90124a699e52381",
+      "test/common/native_quack_fixtures.py": "aa0854caf8540c266054838102de6c36136afe37f6e428811c8582caf16afa9e"
+    }
+  },
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/runtime/core-final-02-seal.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "umask": "0022"
+}

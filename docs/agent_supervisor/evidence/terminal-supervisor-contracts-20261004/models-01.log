@@ -1,0 +1,1235 @@
+
+test/api/test_supervisor_current_model_route.py::test_current_route_roundtrips_without_authorizing_authentication_fallback PASSED [  0%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[primary_model_id-grok-4.6] PASSED [  1%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-sol] PASSED [  2%]
+test/api/test_supervisor_current_model_route.py::test_stale_model_tuple_cannot_be_reinterpreted_as_current_route[fallback_model_id-gpt-5.6-terra] PASSED [  3%]
+test/api/test_supervisor_current_model_route.py::test_daemon_emits_and_validates_exact_primary_and_backup[medium] PASSED [  4%]
+test/api/test_supervisor_current_model_route.py::test_daemon_emits_and_validates_exact_primary_and_backup[high] PASSED [  4%]
+test/api/test_supervisor_current_model_route.py::test_probe_receipt_is_bound_to_current_primary_without_reusing_old_evidence PASSED [  5%]
+test/api/test_supervisor_current_model_route.py::test_quota_policy_retains_gates_while_selecting_new_backup PASSED [  6%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_is_fixed_to_grok_implementation_and_independent_codex_review PASSED [  7%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_exact_landed_binding_stays_pending_without_blind_reimplementation PASSED [  8%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_unlanded_task_routes_but_dirty_landed_task_stays_guarded PASSED [  9%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_board_metadata_edit_keeps_task_cid_but_invalidates_source_digest PASSED [  9%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides0] PASSED [ 10%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides1] PASSED [ 11%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides2] PASSED [ 12%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides3] PASSED [ 13%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides4] PASSED [ 13%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides5] PASSED [ 14%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides6] PASSED [ 15%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides7] PASSED [ 16%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_rejects_unbounded_or_non_independent_configuration[overrides8] PASSED [ 17%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_binds_receipt_and_uses_empty_non_repository_cwd FAILED [ 18%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv FAILED [ 18%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_pair_rejects_response_with_wrong_request_binding FAILED [ 19%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_codex_rejects_approve_with_findings FAILED [ 20%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_custom_invoker_codex_rejects_approve_with_findings FAILED [ 21%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_codex_response_file_is_limited_before_read FAILED [ 22%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_response_reader_rejects_fifo_without_blocking PASSED [ 22%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_capture_is_bounded_and_kills_descendants PASSED [ 23%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant PASSED [ 24%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_readiness_requires_bounded_codex_auth_check[0-True] PASSED [ 25%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_policy_readiness_requires_bounded_codex_auth_check[1-False] PASSED [ 26%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_rejects_role_or_effective_provider_mismatch FAILED [ 27%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_rejects_non_json_or_missing_child_receipt FAILED [ 27%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_pair_routes_grok_then_independent_codex_with_bound_evidence PASSED [ 28%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding FAILED [ 29%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_review_authority_key_rejects_links_types_and_permissive_mode PASSED [ 30%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_review_authority_creation_retries_partial_writes PASSED [ 31%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_forged_fully_current_attestation_from_metadata_signer_is_rejected FAILED [ 31%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_attestation_rejects_review_binding_without_implementation_commit PASSED [ 32%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate FAILED [ 33%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_signed_attestation_cannot_choose_its_own_expected_policy FAILED [ 34%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_bundle_command_propagates_explicit_policy_without_task_metadata PASSED [ 35%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_bundle_lanes_default_to_one_bundle_root_review_authority PASSED [ 36%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_daemon_cli_accepts_operator_policy_without_task_metadata FAILED [ 36%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption FAILED [ 37%]
+test/api/test_agent_supervisor_production_provider_cli.py::test_supervisor_rejects_budget_without_explicit_provider_policy FAILED [ 38%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_existing_native_and_both_supervisor_configs_have_equal_common_controls PASSED [ 39%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_actual_harbor_normalized_configs_preserve_equal_controls PASSED [ 40%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[n_concurrent_trials-4-job_controls_sha256-n_concurrent_trials] PASSED [ 40%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[n_attempts-2-job_controls_sha256-n_attempts] PASSED [ 41%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[retry-value2-job_controls_sha256-retry] PASSED [ 42%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[environment-value3-job_controls_sha256-environment] PASSED [ 43%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[verifier-value4-job_controls_sha256-verifier] PASSED [ 44%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[extra_instructions-value5-job_controls_sha256-extra_instructions] PASSED [ 45%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[override_timeout_sec-600-agent_controls_sha256-override_timeout_sec] PASSED [ 45%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[override_setup_timeout_sec-None-agent_controls_sha256-override_setup_timeout_sec] PASSED [ 46%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_independent_control_mismatches_are_visible[mcp_servers-value8-agent_controls_sha256-mcp_servers] PASSED [ 47%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_changed_oracle_hash_is_compared_without_exporting_oracle_content PASSED [ 48%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_post_preparation_change_cannot_reseal_the_declaration PASSED [ 49%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[model] PASSED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[agent_count] PASSED [ 50%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[cli] PASSED [ 51%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_invalid_changed_configuration_retains_failed_observation[inputs] PASSED [ 52%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_arm_or_task_path_drift_is_refused_even_though_unequal_between_arms PASSED [ 53%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_legacy_preparation_and_missing_observation_remain_unknown PASSED [ 54%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[digest] PASSED [ 54%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[missing] PASSED [ 55%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[extra] PASSED [ 56%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_malformed_frozen_controls_never_match[wrong_type] PASSED [ 57%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_no_config_secret_or_prompt_text_exported PASSED [ 58%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[user_agent] PASSED [ 59%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[extra_instruction_paths] PASSED [ 59%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[mounts] PASSED [ 60%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[extra_docker_compose] PASSED [ 61%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_unsealed_external_configuration_inputs_are_refused[env] PASSED [ 62%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_native_kwargs_cannot_contradict_declared_identity[version-other-cli] PASSED [ 63%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_native_kwargs_cannot_contradict_declared_identity[reasoning_effort-low] PASSED [ 63%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_supervisor_identity_must_match_source_bound_profile PASSED [ 64%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_report_keeps_legacy_trials_without_claiming_matched_controls PASSED [ 65%]
+benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py::test_report_rejects_changed_baseline_even_when_candidate_declaration_matches PASSED [ 66%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_absent_or_partial_usage_stays_unknown PASSED [ 67%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_all_arms_keep_original_task_resources_verifier_and_agent_budget PASSED [ 68%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_conflicting_duplicate_rejected PASSED [ 68%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_failed_and_successful_calls_both_count_cached_input_once PASSED [ 69%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_nonportable_asset_binding_is_rejected_before_run PASSED [ 70%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_only_full_arm_receives_explicit_portable_training_assets PASSED [ 71%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ReceiptTests::test_only_full_arm_receives_frozen_model_and_pinned_hub_provenance PASSED [ 72%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_asset_flags_reach_full_execution_and_are_absent_from_no_index PASSED [ 72%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_driver_failure_still_exports_outputs_and_capture_failure_does_not_mask_it PASSED [ 73%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_failed_run_preserves_admission_without_exporting_owner_state PASSED [ 74%]
+benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py::ExportTests::test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity 
+-------------------------------- live log call ---------------------------------
+2026-10-04 23:18:09 [ WARNING] Executing <Task finished name='Task-17' coro=<ExportTests.test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity() done, defined at /home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py:113> result=None created at /usr/lib/python3.12/asyncio/runners.py:100> took 0.802 seconds (base_events.py:1982)
+PASSED                                                                   [ 75%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_directory] PASSED [ 76%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[broken_link] PASSED [ 77%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[fifo] PASSED [ 77%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_task_inventory_cannot_silently_omit_nonregular_inputs[linked_root] PASSED [ 78%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_profile_uses_native_agent_and_exact_independent_bounds PASSED [ 79%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_no_native_transcript_means_unknown_tokens_not_zero PASSED [ 80%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_cumulative_updates_not_summed_and_explicit_zero_preserved PASSED [ 81%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_exact_native_completion_marks_last_counters_without_billing_claim PASSED [ 81%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_model_text_reward_and_exit_are_not_completion_events PASSED [ 82%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{"type":] PASSED [ 83%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-[]] PASSED [ 84%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-null] PASSED [ 85%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[False-{"type":"event_msg","payload":null}] PASSED [ 86%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{"type":] PASSED [ 86%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-[]] PASSED [ 87%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-null] PASSED [ 88%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_malformed_records_preserve_lower_bound_but_invalidate_completion[True-{"type":"event_msg","payload":null}] PASSED [ 89%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event0] PASSED [ 90%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event1] PASSED [ 90%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event2] PASSED [ 91%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event3] PASSED [ 92%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event4] PASSED [ 93%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event5] PASSED [ 94%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_work_after_complete_requires_a_new_completion_event[event6] PASSED [ 95%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_every_identified_session_must_complete PASSED [ 95%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_synthesized_native_completion_flows_into_comparison PASSED [ 96%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_multi_session_partial_field_remains_unknown PASSED [ 97%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_identical_copied_session_is_counted_once PASSED [ 98%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_conflicting_session_identity_is_not_silently_double_counted PASSED [ 99%]
+benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py::test_known_nonsecret_flag_recovery_preserves_raw_files PASSED [100%]
+
+=================================== FAILURES ===================================
+_________ test_adapter_binds_receipt_and_uses_empty_non_repository_cwd _________
+
+    def test_adapter_binds_receipt_and_uses_empty_non_repository_cwd() -> None:
+        observed: dict[str, Any] = {}
+    
+        def invoke(prompt, config):
+            observed["prompt"] = prompt
+            observed["repo_root"] = config.repo_root
+            observed["children"] = tuple(config.repo_root.iterdir())
+            observed["provider"] = config.provider
+            observed["required"] = config.required_effective_providers
+            observed["cross_provider_fallback"] = (
+                config.allow_cross_provider_fallback
+            )
+            return (
+                json.dumps(
+                    {
+                        "proposal": {
+                            "declared_paths": ["module.py"],
+                            "files": [{"path": "module.py", "content": "ok\n"}],
+                        }
+                    }
+                ),
+                _child_receipt(config),
+            )
+    
+        policy = ProductionCLIProviderPolicy()
+        provider = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.GROK_IMPLEMENT,
+            provider_name=policy.grok_provider,
+            model_name=policy.grok_model,
+            invoker=invoke,
+        )
+>       response = provider(_request(ProviderRole.GROK_IMPLEMENT))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:298: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.GROK_IMPLEMENT: 'grok-implement'>, packet_id='packet:ase-005', snapshot_id='git-com...":{"bounded":true},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+____ test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe514aa3572f0>
+
+    def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        observed: dict[str, dict[str, Any]] = {}
+        requests = {
+>           role: _native_request(role)
+                  ^^^^^^^^^^^^^^^^^^^^^
+            for role in (ProviderRole.GROK_IMPLEMENT, ProviderRole.CODEX_REVIEW)
+        }
+
+test/api/test_agent_supervisor_production_provider_cli.py:320: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.GROK_IMPLEMENT: 'grok-implement'>, packet_id='packet:ase-005', snapshot_id='git-com...":["module.py"]}}},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+_________ test_native_pair_rejects_response_with_wrong_request_binding _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe514aa355820>
+
+    def test_native_pair_rejects_response_with_wrong_request_binding(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+>       request = _native_request(ProviderRole.CODEX_REVIEW)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:468: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.CODEX_REVIEW: 'codex-independent-review'>, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+_______________ test_native_codex_rejects_approve_with_findings ________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe514aa355ca0>
+
+    def test_native_codex_rejects_approve_with_findings(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+>       request = _native_request(ProviderRole.CODEX_REVIEW)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:509: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.CODEX_REVIEW: 'codex-independent-review'>, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+___________ test_custom_invoker_codex_rejects_approve_with_findings ____________
+
+    def test_custom_invoker_codex_rejects_approve_with_findings() -> None:
+        policy = ProductionCLIProviderPolicy()
+    
+        def contradictory_review(_prompt, config):
+            return (
+                json.dumps(
+                    {
+                        "decision": "approve",
+                        "findings": ["the proposal is unsafe"],
+                    }
+                ),
+                _child_receipt(config),
+            )
+    
+        reviewer = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.CODEX_REVIEW,
+            provider_name=policy.codex_provider,
+            model_name=policy.codex_model,
+            invoker=contradictory_review,
+        )
+    
+        with pytest.raises(RuntimeError, match="empty findings list"):
+>           reviewer(_request(ProviderRole.CODEX_REVIEW))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:574: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.CODEX_REVIEW: 'codex-independent-review'>, packet_id='packet:ase-005', snapshot_id=...d":true},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+____________ test_native_codex_response_file_is_limited_before_read ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe514aa3cd2e0>
+
+    def test_native_codex_response_file_is_limited_before_read(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+>       original = _native_request(ProviderRole.CODEX_REVIEW)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:580: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:126: in _native_request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.CODEX_REVIEW: 'codex-independent-review'>, packet_id='packet:ase-005', snapshot_id=...":true}},"role":"codex-independent-review","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+___________ test_adapter_rejects_role_or_effective_provider_mismatch ___________
+
+    def test_adapter_rejects_role_or_effective_provider_mismatch() -> None:
+        policy = ProductionCLIProviderPolicy()
+    
+        def wrong_provider(_prompt, config):
+            receipt = _child_receipt(config)
+            return (
+                '{"decision":"approve"}',
+                LlmChildResultEnvelope(
+                    usage_mode=receipt.usage_mode,
+                    request_id=receipt.request_id,
+                    attempt=receipt.attempt,
+                    idempotency_key=receipt.idempotency_key,
+                    status="ok",
+                    effective_provider="grok_cli",
+                    text_chars=1,
+                    exit_code=0,
+                ),
+            )
+    
+        reviewer = BoundProductionCLIProvider(
+            policy=policy,
+            role=ProviderRole.CODEX_REVIEW,
+            provider_name=policy.codex_provider,
+            model_name=policy.codex_model,
+            invoker=wrong_provider,
+        )
+        with pytest.raises(RuntimeError, match="role mismatch"):
+>           reviewer(_request(ProviderRole.GROK_IMPLEMENT))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:753: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_agent_supervisor_production_provider_cli.py:94: in _request
+    return ProviderRequest(
+<string>:12: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProviderRequest(role=<ProviderRole.GROK_IMPLEMENT: 'grok-implement'>, packet_id='packet:ase-005', snapshot_id='git-com...":{"bounded":true},"role":"grok-implement","task_id":"ASE-005"}', prompt_tokens=32, response_contract=mappingproxy({}))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", _canonical_frozen(self.payload))
+        object.__setattr__(
+            self,
+            "response_contract",
+            _canonical_frozen(self.response_contract),
+        )
+        if self.prompt != _canonical_bytes(self.to_dict()):
+>           raise ProviderRoutingError(
+                "provider request prompt differs from its frozen envelope",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+E           ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router.ProviderRoutingError: provider request prompt differs from its frozen envelope
+
+ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py:713: ProviderRoutingError
+____________ test_adapter_rejects_non_json_or_missing_child_receipt ____________
+
+    def test_adapter_rejects_non_json_or_missing_child_receipt() -> None:
+        policy = ProductionCLIProviderPolicy()
+    
+        for output, receipt in (("```json\n{}\n```", None), ("{}", None)):
+            provider = BoundProductionCLIProvider(
+                policy=policy,
+                role=ProviderRole.GROK_IMPLEMENT,
+                provider_name=policy.grok_provider,
+                model_name=policy.grok_model,
+                invoker=lambda _prompt, _config, value=output, bound=receipt: (
+                    value,
+                    bound,
+                ),
+            )
+            expected = "Expecting value" if output.startswith("```") else "execution receipt"
+>           with pytest.raises((ValueError, RuntimeError), match=expected):
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'Expecting value'
+E             Actual message: 'provider request prompt differs from its frozen envelope'
+
+test/api/test_agent_supervisor_production_provider_cli.py:773: AssertionError
+____ test_ed25519_review_attestation_reconstructs_full_receipt_and_binding _____
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_ed25519_review_attestatio0')
+
+    def test_ed25519_review_attestation_reconstructs_full_receipt_and_binding(
+        tmp_path: Path,
+    ) -> None:
+>       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1054: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_ed25519_review_attestatio0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+>       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError
+____ test_forged_fully_current_attestation_from_metadata_signer_is_rejected ____
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_forged_fully_current_atte0')
+
+    def test_forged_fully_current_attestation_from_metadata_signer_is_rejected(
+        tmp_path: Path,
+    ) -> None:
+        """A coherent attacker receipt/key cannot install its own trust root."""
+    
+>       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_forged_fully_current_atte0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+>       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError
+__ test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate ___
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_shared_cross_lane_authori0')
+
+    def test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate(
+        tmp_path: Path,
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Provider Review Test"),
+            ("config", "user.email", "provider-review@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        shared_key_path = repo / "bundle-state" / "shared-review.ed25519"
+        issuer_state_path = repo / "bundle-state" / "lane-a" / "task_state.json"
+>       issuer = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=issuer_state_path,
+            strategy_path=issuer_state_path.parent / "strategy.json",
+            events_path=issuer_state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=shared_key_path,
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1250: TypeError
+________ test_signed_attestation_cannot_choose_its_own_expected_policy _________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_signed_attestation_cannot0')
+
+    def test_signed_attestation_cannot_choose_its_own_expected_policy(
+        tmp_path: Path,
+    ) -> None:
+        """A trusted signing key does not make an unconfigured policy admissible."""
+    
+>       daemon, task, repo, evidence = _real_reviewed_fixture(tmp_path)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_agent_supervisor_production_provider_cli.py:1373: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_signed_attestation_cannot0')
+
+    def _real_reviewed_fixture(tmp_path: Path):
+        repo = tmp_path / "reviewed-repo"
+        repo.mkdir()
+        for arguments in (
+            ("init",),
+            ("config", "user.name", "Reviewed Provider Test"),
+            ("config", "user.email", "reviewed-provider@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=repo,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        todo_path = repo / "tasks.todo.md"
+        todo_path.write_text("# Tasks\n", encoding="utf-8")
+        (repo / ".gitignore").write_text(
+            "bundle-state/\nworktrees/\nstate/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        state_path = tmp_path / "reviewed-state" / "task_state.json"
+>       daemon = TodoImplementationDaemon(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_path.parent / "strategy.json",
+            events_path=state_path.parent / "events.jsonl",
+            repo_root=repo,
+            task_header_prefix="## ASE-",
+            implement=True,
+            production_provider_policy=PRODUCTION_CLI_POLICY_NAME,
+            production_provider_review_authority_key_path=(
+                tmp_path / "reviewed-state" / "review.ed25519"
+            ),
+        )
+E       TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+
+test/api/test_agent_supervisor_production_provider_cli.py:1022: TypeError
+________ test_daemon_cli_accepts_operator_policy_without_task_metadata _________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_daemon_cli_accepts_operat0')
+
+    def test_daemon_cli_accepts_operator_policy_without_task_metadata(
+        tmp_path: Path,
+    ) -> None:
+        key_path = tmp_path / "bundle-state" / "shared-review.ed25519"
+>       args = parse_daemon_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--implement",
+                "--production-provider-policy",
+                PRODUCTION_CLI_POLICY_NAME,
+                "--production-provider-context-budget-tokens",
+                "3072",
+                "--production-provider-timeout-seconds",
+                "240",
+                "--production-provider-review-authority-key-path",
+                str(key_path),
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1507: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:77086: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Run the portal implementation backlog daemon', formatter_class=<class 'argparse.HelpFormatter'>, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-...ority-key-path /tmp/pytest-of-barberb/pytest-1115/test_daemon_cli_accepts_operat0/bundle-state/shared-review.ed25519\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+>       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit
+----------------------------- Captured stderr call -----------------------------
+usage: -c [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+          [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+          [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+          [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256] [--once]
+          [--interval INTERVAL] [--todo-path TODO_PATH]
+          [--task-source-kind {legacy-markdown,markdown,duckdb}]
+          [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+          [--quack-endpoint QUACK_ENDPOINT]
+          [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+          [--state-store-id STATE_STORE_ID]
+          [--state-store-generation STATE_STORE_GENERATION]
+          [--state-schema-revision STATE_SCHEMA_REVISION]
+          [--state-failover-policy {fail_closed,require_explicit_operator}]
+          [--event-store-path EVENT_STORE_PATH]
+          [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+          [--export-profile EXPORT_PROFILE] [--explicit-legacy-task-source]
+          [--database-path DATABASE_PATH]
+          [--coordination-path COORDINATION_PATH]
+          [--owner-session-id OWNER_SESSION_ID]
+          [--expected-task-source-root EXPECTED_TASK_SOURCE_ROOT]
+          [--expected-task-source-repository-root EXPECTED_TASK_SOURCE_REPOSITORY_ROOT]
+          [--state-dir STATE_DIR] [--task-prefix TASK_PREFIX]
+          [--board-namespace BOARD_NAMESPACE] [--state-prefix STATE_PREFIX]
+          [--implement] [--implementation-command IMPLEMENTATION_COMMAND]
+          [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+          [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+          [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+          [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+          [--manual-completion-authority-revalidation-only]
+          [--reset-manual-completion-authority-renewal-task-id RESET_MANUAL_COMPLETION_AUTHORITY_RENEWAL_TASK_ID]
+          [--clear-protected-path-incident]
+          [--approve-protected-path-commit APPROVE_PROTECTED_PATH_COMMIT]
+          [--operator-clearance-note OPERATOR_CLEARANCE_NOTE]
+          [--approve-disposed-ephemeral-workspace]
+          [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+          [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+          [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+          [--merged-worktree-cleanup-max MERGED_WORKTREE_CLEANUP_MAX]
+          [--task-shard-count TASK_SHARD_COUNT]
+          [--task-shard-index TASK_SHARD_INDEX] [--strict-task-sharding]
+          [--idle-lane-work-stealing {virgin-transfer}]
+          [--daemon-hook-timeout-seconds DAEMON_HOOK_TIMEOUT_SECONDS]
+          [--maintenance-interval-seconds MAINTENANCE_INTERVAL_SECONDS]
+          [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+          [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+          [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+          [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+          [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+          [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+          [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+          [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+          [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+          [--max-task-attempts MAX_TASK_ATTEMPTS]
+          [--validation-max-workers VALIDATION_MAX_WORKERS]
+          [--validation-resource-budget VALIDATION_RESOURCE_BUDGET]
+          [--retain-worktree-artifacts]
+          [--operator-repair-note OPERATOR_REPAIR_NOTE]
+          [--operator-repair-note-sha256 OPERATOR_REPAIR_NOTE_SHA256]
+          [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+          [--merge-target-branch MERGE_TARGET_BRANCH]
+          [--merge-queue-dir MERGE_QUEUE_DIR]
+          [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+          [--objective-path OBJECTIVE_PATH]
+          [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+          [--generated-status-path GENERATED_STATUS_PATH]
+          [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+          [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+          [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+          [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+          [--log-level {DEBUG,INFO,WARNING,ERROR}]
+-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-provider-context-budget-tokens 3072 --production-provider-timeout-seconds 240 --production-provider-review-authority-key-path /tmp/pytest-of-barberb/pytest-1115/test_daemon_cli_accepts_operat0/bundle-state/shared-review.ed25519
+___ test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption ____
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_supervisor_policy_cli_nor0')
+
+    def test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption(
+        tmp_path: Path,
+    ) -> None:
+        key_path = tmp_path / "bundle-state" / "shared-review.ed25519"
+>       args = parse_supervisor_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--implement",
+                "--production-provider-policy",
+                PRODUCTION_CLI_POLICY_NAME,
+                "--production-provider-timeout-seconds",
+                "240",
+                "--production-provider-review-authority-key-path",
+                str(key_path),
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1535: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Supervise the portal implementation backlog daemon', formatter_class=<class 'argparse.HelpFormatter'>, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-...ority-key-path /tmp/pytest-of-barberb/pytest-1115/test_supervisor_policy_cli_nor0/bundle-state/shared-review.ed25519\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+>       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit
+----------------------------- Captured stderr call -----------------------------
+usage: -c [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+          [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+          [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+          [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256] [--once]
+          [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+          [--stale-seconds STALE_SECONDS] [--check-interval CHECK_INTERVAL]
+          [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+          [--max-restarts MAX_RESTARTS]
+          [--max-task-attempts MAX_TASK_ATTEMPTS]
+          [--daemon-interval DAEMON_INTERVAL] [--task-prefix TASK_PREFIX]
+          [--state-prefix STATE_PREFIX]
+          [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+          [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+          [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+          [--quack-endpoint QUACK_ENDPOINT] [--state-store-id STATE_STORE_ID]
+          [--state-store-generation STATE_STORE_GENERATION]
+          [--state-schema-revision STATE_SCHEMA_REVISION]
+          [--state-failover-policy {fail_closed,require_explicit_operator}]
+          [--event-store-path EVENT_STORE_PATH]
+          [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+          [--export-profile EXPORT_PROFILE] [--explicit-legacy-task-source]
+          [--implement | --no-implement]
+          [--implementation-command IMPLEMENTATION_COMMAND]
+          [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+          [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+          [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+          [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+          [--manual-completion-authority-revalidation-only]
+          [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+          [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+          [--allow-reconciliation-only-llm-resolver]
+          [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+          [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+          [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+          [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+          [--merge-target-branch MERGE_TARGET_BRANCH]
+          [--merge-queue-dir MERGE_QUEUE_DIR]
+          [--daemon-script-path DAEMON_SCRIPT_PATH]
+          [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+          [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+          [--reconciliation-only] [--fail-on-reconciliation-error]
+          [--no-worktree-reconciliation]
+          [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+          [--worktree-reconciliation-dry-run]
+          [--no-worktree-reconciliation-preflight] [--no-worktree-scan-cache]
+          [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+          [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+          [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+          [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+          [--task-shard-count TASK_SHARD_COUNT]
+          [--task-shard-index TASK_SHARD_INDEX] [--strict-task-sharding]
+          [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+          [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+          [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+          [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+          [--no-retry-budget-guardrail]
+          [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+          [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+          [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+          [--merge-retry-budget MERGE_RETRY_BUDGET]
+          [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+          [--retry-budget-commit-outputs]
+          [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+          [--no-dependency-guardrail]
+          [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+          [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+          [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+          [--dependency-guardrail-commit-outputs]
+          [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+          [--no-reconciliation-guardrail]
+          [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+          [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+          [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+          [--reconciliation-guardrail-commit-outputs]
+          [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+          [--auto-commit-generated-dirty]
+          [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+          [--no-generated-dirty-submodule-gitlinks]
+          [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+          [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+          [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+          [--codebase-refill-scan]
+          [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+          [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+          [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+          [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+          [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+          [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+          [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+          [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+          [--allow-unscoped-codebase-refill] [--codebase-scan-commit-outputs]
+          [--allow-codebase-refill-with-objective-work]
+          [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+          [--objective-refill-scan] [--no-objective-task-janitor]
+          [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+          [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+          [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+          [--objective-mission-term OBJECTIVE_MISSION_TERM]
+          [--objective-path OBJECTIVE_PATH]
+          [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+          [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+          [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+          [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+          [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+          [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+          [--no-objective-goal-refinement]
+          [--no-objective-goal-completion-reconcile]
+          [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+          [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+          [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+          [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+          [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+          [--no-objective-goal-migration] [--objective-goal-migration-preview]
+          [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+          [--objective-seed-interoperability-goals]
+          [--objective-seed-launch-readiness-goals]
+          [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+          [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+          [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+          [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+          [--objective-ensure-tracking-document]
+          [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+          [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+          [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+          [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+          [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+          [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+          [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+          [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+          [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+          [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+          [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+          [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+          [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+          [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+          [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+          [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+          [--no-objective-ast-dataset] [--no-objective-todo-vector-index]
+          [--log-level {DEBUG,INFO,WARNING,ERROR}]
+-c: error: unrecognized arguments: --production-provider-policy grok-implement-codex-independent-review --production-provider-timeout-seconds 240 --production-provider-review-authority-key-path /tmp/pytest-of-barberb/pytest-1115/test_supervisor_policy_cli_nor0/bundle-state/shared-review.ed25519
+_______ test_supervisor_rejects_budget_without_explicit_provider_policy ________
+
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1115/test_supervisor_rejects_budget0')
+
+    def test_supervisor_rejects_budget_without_explicit_provider_policy(
+        tmp_path: Path,
+    ) -> None:
+>       args = parse_supervisor_args(
+            [
+                "--todo-path",
+                str(tmp_path / "runtime.todo.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--production-provider-context-budget-tokens",
+                "2048",
+            ]
+        )
+
+test/api/test_agent_supervisor_production_provider_cli.py:1592: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ArgumentParser(prog='-c', usage=None, description='Supervise the portal implementation backlog daemon', formatter_class=<class 'argparse.HelpFormatter'>, conflict_handler='error', add_help=True)
+status = 2
+message = '-c: error: unrecognized arguments: --production-provider-context-budget-tokens 2048\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+>       _sys.exit(status)
+E       SystemExit: 2
+
+/usr/lib/python3.12/argparse.py:2664: SystemExit
+----------------------------- Captured stderr call -----------------------------
+usage: -c [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+          [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+          [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+          [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256] [--once]
+          [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+          [--stale-seconds STALE_SECONDS] [--check-interval CHECK_INTERVAL]
+          [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+          [--max-restarts MAX_RESTARTS]
+          [--max-task-attempts MAX_TASK_ATTEMPTS]
+          [--daemon-interval DAEMON_INTERVAL] [--task-prefix TASK_PREFIX]
+          [--state-prefix STATE_PREFIX]
+          [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+          [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+          [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+          [--quack-endpoint QUACK_ENDPOINT] [--state-store-id STATE_STORE_ID]
+          [--state-store-generation STATE_STORE_GENERATION]
+          [--state-schema-revision STATE_SCHEMA_REVISION]
+          [--state-failover-policy {fail_closed,require_explicit_operator}]
+          [--event-store-path EVENT_STORE_PATH]
+          [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+          [--export-profile EXPORT_PROFILE] [--explicit-legacy-task-source]
+          [--implement | --no-implement]
+          [--implementation-command IMPLEMENTATION_COMMAND]
+          [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+          [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+          [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+          [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+          [--manual-completion-authority-revalidation-only]
+          [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+          [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+          [--allow-reconciliation-only-llm-resolver]
+          [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+          [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+          [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+          [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+          [--merge-target-branch MERGE_TARGET_BRANCH]
+          [--merge-queue-dir MERGE_QUEUE_DIR]
+          [--daemon-script-path DAEMON_SCRIPT_PATH]
+          [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+          [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+          [--reconciliation-only] [--fail-on-reconciliation-error]
+          [--no-worktree-reconciliation]
+          [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+          [--worktree-reconciliation-dry-run]
+          [--no-worktree-reconciliation-preflight] [--no-worktree-scan-cache]
+          [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+          [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+          [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+          [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+          [--task-shard-count TASK_SHARD_COUNT]
+          [--task-shard-index TASK_SHARD_INDEX] [--strict-task-sharding]
+          [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+          [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+          [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+          [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+          [--no-retry-budget-guardrail]
+          [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+          [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+          [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+          [--merge-retry-budget MERGE_RETRY_BUDGET]
+          [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+          [--retry-budget-commit-outputs]
+          [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+          [--no-dependency-guardrail]
+          [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+          [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+          [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+          [--dependency-guardrail-commit-outputs]
+          [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+          [--no-reconciliation-guardrail]
+          [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+          [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+          [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+          [--reconciliation-guardrail-commit-outputs]
+          [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+          [--auto-commit-generated-dirty]
+          [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+          [--no-generated-dirty-submodule-gitlinks]
+          [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+          [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+          [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+          [--codebase-refill-scan]
+          [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+          [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+          [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+          [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+          [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+          [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+          [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+          [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+          [--allow-unscoped-codebase-refill] [--codebase-scan-commit-outputs]
+          [--allow-codebase-refill-with-objective-work]
+          [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+          [--objective-refill-scan] [--no-objective-task-janitor]
+          [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+          [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+          [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+          [--objective-mission-term OBJECTIVE_MISSION_TERM]
+          [--objective-path OBJECTIVE_PATH]
+          [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+          [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+          [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+          [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+          [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+          [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+          [--no-objective-goal-refinement]
+          [--no-objective-goal-completion-reconcile]
+          [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+          [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+          [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+          [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+          [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+          [--no-objective-goal-migration] [--objective-goal-migration-preview]
+          [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+          [--objective-seed-interoperability-goals]
+          [--objective-seed-launch-readiness-goals]
+          [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+          [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+          [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+          [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+          [--objective-ensure-tracking-document]
+          [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+          [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+          [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+          [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+          [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+          [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+          [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+          [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+          [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+          [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+          [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+          [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+          [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+          [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+          [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+          [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+          [--no-objective-ast-dataset] [--no-objective-todo-vector-index]
+          [--log-level {DEBUG,INFO,WARNING,ERROR}]
+-c: error: unrecognized arguments: --production-provider-context-budget-tokens 2048
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/models-01.xml -
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_binds_receipt_and_uses_empty_non_repository_cwd
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_native_pair_rejects_response_with_wrong_request_binding
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_native_codex_rejects_approve_with_findings
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_custom_invoker_codex_rejects_approve_with_findings
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_native_codex_response_file_is_limited_before_read
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_rejects_role_or_effective_provider_mismatch
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_adapter_rejects_non_json_or_missing_child_receipt
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_forged_fully_current_attestation_from_metadata_signer_is_rejected
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_signed_attestation_cannot_choose_its_own_expected_policy
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_daemon_cli_accepts_operator_policy_without_task_metadata
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_supervisor_rejects_budget_without_explicit_provider_policy
+======================= 15 failed, 107 passed in 50.63s ========================

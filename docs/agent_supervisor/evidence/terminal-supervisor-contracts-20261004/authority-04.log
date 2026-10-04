@@ -1,0 +1,134 @@
+
+test/api/test_board_proof_cache_pagination.py::test_compatibility_scan_collects_more_than_512_without_promoting_status 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_compatibility_scan_collec0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:25 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_compatibility_scan_collec0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:28 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_compatibility_scan_collec0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  1%]
+test/api/test_board_proof_cache_pagination.py::test_bounded_scan_retains_cursor_and_resume_is_idempotent 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:31 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_bounded_scan_retains_curs0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:33 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_bounded_scan_retains_curs0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:33 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_bounded_scan_retains_curs0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:36 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_bounded_scan_retains_curs0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  2%]
+test/api/test_board_proof_cache_pagination.py::test_equal_filenames_and_key_prefixes_do_not_overwrite_other_cache 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:36 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_equal_filenames_and_key_p0/one/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:36 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_equal_filenames_and_key_p0/two/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 21:00:36 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_equal_filenames_and_key_p0/one/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  3%]
+test/api/test_board_proof_cache_pagination.py::test_unavailable_and_corrupt_rows_are_explicit_and_report_is_durable 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:37 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_unavailable_and_corrupt_r0/proof.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  4%]
+test/api/test_board_proof_cache_pagination.py::test_missing_table_is_unavailable_not_an_empty_complete_cache 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:37 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1074/test_missing_table_is_unavaila0/empty.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  5%]
+test/api/test_board_proof_cache_pagination.py::test_invalid_page_bounds_are_refused_before_read[True] PASSED [  6%]
+test/api/test_board_proof_cache_pagination.py::test_invalid_page_bounds_are_refused_before_read[0] PASSED [  7%]
+test/api/test_board_proof_cache_pagination.py::test_invalid_page_bounds_are_refused_before_read[513] PASSED [  8%]
+test/api/test_board_proof_cache_pagination.py::test_invalid_page_bounds_are_refused_before_read[1.5] PASSED [ 10%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_running_remains_dispatchable_despite_previous_maintenance_projection PASSED [ 11%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_bounded_maintenance_is_supervised_but_not_dispatchable[running] PASSED [ 12%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_bounded_maintenance_is_supervised_but_not_dispatchable[completed] PASSED [ 13%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_completed_pass_requires_timely_finish_not_observation_before_deadline PASSED [ 14%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_fresh_heartbeat_cannot_renew_a_completed_maintenance_window PASSED [ 15%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[inf] PASSED [ 16%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[-inf] PASSED [ 17%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[nan] PASSED [ 19%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[0] PASSED [ 20%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[-1] PASSED [ 21%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[True] PASSED [ 22%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[300] PASSED [ 23%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_producer_refuses_nonfinite_or_nonpositive_timeout[10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000] PASSED [ 24%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[expired] PASSED [ 25%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[nonfinite] PASSED [ 26%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[nan] PASSED [ 28%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[bool-timeout] PASSED [ 29%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[future-start] PASSED [ 30%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[future-heartbeat] PASSED [ 31%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[stale-heartbeat] PASSED [ 32%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[naive-start] PASSED [ 33%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[naive-deadline] PASSED [ 34%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[inconsistent-deadline] PASSED [ 35%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[unbounded-deadline] PASSED [ 37%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[missing-window] PASSED [ 38%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[unknown-field] PASSED [ 39%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[different-schema] PASSED [ 40%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[different-phase] PASSED [ 41%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[timeout-disagrees] PASSED [ 42%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[active-start-disagrees] PASSED [ 43%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[active-finished] PASSED [ 44%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[without-daemon] PASSED [ 46%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[legacy-failure] PASSED [ 47%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[legacy-error] PASSED [ 48%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[failed] PASSED [ 49%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[completed-no-finish] PASSED [ 50%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[completed-future-finish] PASSED [ 51%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_invalid_maintenance_facts_never_admit_health_or_dispatch[completed-active-start] PASSED [ 52%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_unknown_observation_clock_refuses[clock0] PASSED [ 53%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_unknown_observation_clock_refuses[None] PASSED [ 55%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_unknown_observation_clock_refuses[2026-09-14T05:00:00Z] PASSED [ 56%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_real_status_writer_binds_private_daemon_and_supervisor_birth PASSED [ 57%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_real_heartbeat_captures_window_once_before_config_or_phase_changes PASSED [ 58%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_late_periodic_heartbeat_cannot_replace_terminal_receipts PASSED [ 59%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_status_writer_refuses_untyped_or_different_original_window_without_overwrite[False] PASSED [ 60%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_status_writer_refuses_untyped_or_different_original_window_without_overwrite[window1] PASSED [ 61%]
+test/api/test_agent_supervisor_supervisor_activity.py::test_status_writer_refuses_untyped_or_different_original_window_without_overwrite[window2] PASSED [ 62%]
+test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_handoff_redeems_sealed_fd_after_actual_exec PASSED [ 64%]
+test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails PASSED [ 65%]
+test/api/test_agent_supervisor_database_dispatch_watchdog.py::test_supervisor_maintenance_receipt_survives_ordinary_status_overwrite PASSED [ 66%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_all_three_arms_share_harbor_limits_and_different_profiles_do_not_match[source384-5cpu-12gib@1] PASSED [ 67%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_all_three_arms_share_harbor_limits_and_different_profiles_do_not_match[source384-5cpu-16gib-extended@1] PASSED [ 68%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_budget_leaves_cleanup_and_transport_inside_harbor_deadline PASSED [ 69%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_allowance_is_bounded_by_remaining_work[840-120000] PASSED [ 70%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_allowance_is_bounded_by_remaining_work[120-120000] PASSED [ 71%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_allowance_is_bounded_by_remaining_work[5-5000] PASSED [ 73%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_allowance_is_bounded_by_remaining_work[2.5-2500] PASSED [ 74%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_allowance_is_bounded_by_remaining_work[2-2000] PASSED [ 75%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_refuses_insufficient_time_instead_of_spending_cleanup[0] PASSED [ 76%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_refuses_insufficient_time_instead_of_spending_cleanup[1] PASSED [ 77%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_extended_start_refuses_insufficient_time_instead_of_spending_cleanup[1.999] PASSED [ 78%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_legacy_profiles_do_not_override_native_start[None] PASSED [ 79%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_legacy_profiles_do_not_override_native_start[source384-5cpu-12gib@1] PASSED [ 80%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_start_budget_requires_finite_exact_numeric_work_time[True] PASSED [ 82%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_start_budget_requires_finite_exact_numeric_work_time[-1] PASSED [ 83%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_start_budget_requires_finite_exact_numeric_work_time[inf] PASSED [ 84%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_start_budget_requires_finite_exact_numeric_work_time[nan] PASSED [ 85%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_start_budget_requires_finite_exact_numeric_work_time[120] PASSED [ 86%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_unknown_start_profile_is_rejected PASSED [ 87%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_profile_rejects_old_outer_timeout_after_extended_selection[override_timeout_sec] PASSED [ 88%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_profile_rejects_old_outer_timeout_after_extended_selection[max_timeout_sec] PASSED [ 89%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_actual_container_memory_must_match_selected_profile PASSED [ 91%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_unknown_profile_is_never_silently_accepted[execution_budget] PASSED [ 92%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_unknown_profile_is_never_silently_accepted[admission_environment] PASSED [ 93%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_unknown_profile_is_never_silently_accepted[resource_environment] PASSED [ 94%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_baseline_collector_uses_selected_extended_deadline[960-True] PASSED [ 95%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_baseline_collector_uses_selected_extended_deadline[300-False] PASSED [ 96%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_source_currentness_wait_uses_profile_without_extending_operation[False-120-30] 
+-------------------------------- live log call ---------------------------------
+2026-10-04 21:00:38 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-04 21:00:38 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-04 21:00:38 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-04 21:00:38 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-04 21:00:38 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-04 21:00:38 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-04 21:00:38 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+PASSED                                                                   [ 97%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_source_currentness_wait_uses_profile_without_extending_operation[True-120-90] PASSED [ 98%]
+benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py::test_source_currentness_wait_uses_profile_without_extending_operation[True-12-12] PASSED [100%]
+
+=============================== warnings summary ===============================
+test/api/test_agent_supervisor_configured_typed_grant_handoff.py:26943
+  /home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/test/api/test_agent_supervisor_configured_typed_grant_handoff.py:26943: PytestUnknownMarkWarning: Unknown pytest.mark.timeout - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.timeout(2)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py:154
+  /home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py:154: PytestUnknownMarkWarning: Unknown pytest.mark.timeout - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.timeout(10)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/authority-04.xml -
+================== 89 passed, 2 warnings in 72.98s (0:01:12) ===================

@@ -1,0 +1,80 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-04 20:45:48 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-04 20:45:48 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-04 20:45:48 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-04 20:45:48 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-04 20:45:48 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-04 20:45:48 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-04 20:45:48 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile 
+-------------------------------- live log call ---------------------------------
+2026-10-04 20:46:13 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:46:14 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:46:14 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:46:14 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 33%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes FAILED [ 66%]
+benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py::test_staging_has_no_numerical_currentness_and_full_gate_remains 
+-------------------------------- live log setup --------------------------------
+2026-10-04 20:46:16 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:46:16 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 20:46:16 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [100%]
+
+=================================== FAILURES ===================================
+_____ test_source384_missing_selection_cannot_silently_use_legacy_profile ______
+
+original = (PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/app'), PosixPath('/tmp/pytest-of-barber...ssing_selecti0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfdf84422f0b0>
+
+    def test_source384_missing_selection_cannot_silently_use_legacy_profile(original, monkeypatch):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        prep.initial_context(state=state)
+        (state / "source384-selection.json").write_text("{}")
+>       with pytest.raises(ValueError, match="selected Source384 context is missing"):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:112: Failed
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_____________ test_source384_rejects_legacy_training_before_writes _____________
+
+original = (PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_rejects_legacy_0/app'), PosixPath('/tmp/pytest-of-barber...jects_legacy_0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_source384_rejects_legacy_0/state'))
+
+    def test_source384_rejects_legacy_training_before_writes(original):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+>           initial.prepare_initial_context(state=state, prepared=prepared, model_snapshot=None,
+                model_revision="", required_raw_paths=[prep.INSTRUCTION, prep.SMOKE],
+                source384_config=state / "absent.json", train_autoencoder=True)
+E           TypeError: prepare_initial_context() got an unexpected keyword argument 'source384_config'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:138: TypeError
+_______ test_staging_has_no_numerical_currentness_and_full_gate_remains ________
+
+selected = namespace(root=PosixPath('/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/app'), state=PosixPath('/...g_has_no_numerical_0/state/source384-context'), calls=[], checker=<function selected.<locals>.check at 0xfdf7fd7ce480>)
+
+    def test_staging_has_no_numerical_currentness_and_full_gate_remains(selected):
+        c=selected
+>       staged=initial.stage_initial_context_nomination(state=c.state,prepared=c.prepared,require_empty_owner=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'benchmarks.agent_supervisor.container_coding.terminal_initial_context' has no attribute 'stage_initial_context_nomination'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py:71: AttributeError
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1045/test_staging_has_no_numerical_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/red-01.xml -
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py::test_staging_has_no_numerical_currentness_and_full_gate_remains
+============================== 3 failed in 28.97s ==============================

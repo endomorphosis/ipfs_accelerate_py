@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/preflight/staged-add-red-01.xml",
+    "test/api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files"
+  ],
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "HF_HUB_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/preflight/staged-add-red-01.duckdb"
+  },
+  "source_before": {
+    "test/api/test_agent_supervisor_prior_attempt_seed.py": "8ccda75a4d5e9fd8b7c092ba6b7afcfced61db643da5c7b8643b56f26f36f9ef",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "5b46fd3e8c2daef1be62f14f221790adf71e90f45329b67b588837ce695544b4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": "526c452ffbbd9165d168e78bdff25707ad01ceb19e4a855a5a3b614bd5706537",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4a2daa231dc9e1cb9fdfe2232be84782b16bdc6eb1cc6a14abd4d2c5f97fae9e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": "c6d88151a72013dd2c6e4297275f7025c4c110f456f66f50adfe6ed4026779c9",
+    "test/api/test_agent_supervisor_dependency_preflight_event_projection.py": "49734224c88e1b20275363d735e7e945ae8425c070f3d2a6f84a2fd2bff832d2",
+    "test/api/test_agent_supervisor_project_dependency_preflight.py": "cb5bc3f22f870cb45f6ffb2b64e81e702e0bc00897d9991462f3eb8ec291e9e5",
+    "test/api/test_agent_supervisor_database_portal_bridge.py": "89b741bd9cd1c16dcd38bab6138aa66c27f8f0cd4adebd2308808513098d8b54",
+    "test/api/test_agent_supervisor_bounded_persistence.py": "1bdd8f66e8d44bd3b5053a2489c1f06baf37ab5a1dacda3aa58686052fb5f6fc"
+  },
+  "accelerate_head": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb",
+  "datasets_head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+  "exit_code": 1,
+  "seconds": 17.00839063501917,
+  "source_after": {
+    "test/api/test_agent_supervisor_prior_attempt_seed.py": "8ccda75a4d5e9fd8b7c092ba6b7afcfced61db643da5c7b8643b56f26f36f9ef",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "5b46fd3e8c2daef1be62f14f221790adf71e90f45329b67b588837ce695544b4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": "526c452ffbbd9165d168e78bdff25707ad01ceb19e4a855a5a3b614bd5706537",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4a2daa231dc9e1cb9fdfe2232be84782b16bdc6eb1cc6a14abd4d2c5f97fae9e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": "c6d88151a72013dd2c6e4297275f7025c4c110f456f66f50adfe6ed4026779c9",
+    "test/api/test_agent_supervisor_dependency_preflight_event_projection.py": "49734224c88e1b20275363d735e7e945ae8425c070f3d2a6f84a2fd2bff832d2",
+    "test/api/test_agent_supervisor_project_dependency_preflight.py": "cb5bc3f22f870cb45f6ffb2b64e81e702e0bc00897d9991462f3eb8ec291e9e5",
+    "test/api/test_agent_supervisor_database_portal_bridge.py": "89b741bd9cd1c16dcd38bab6138aa66c27f8f0cd4adebd2308808513098d8b54",
+    "test/api/test_agent_supervisor_bounded_persistence.py": "1bdd8f66e8d44bd3b5053a2489c1f06baf37ab5a1dacda3aa58686052fb5f6fc"
+  }
+}

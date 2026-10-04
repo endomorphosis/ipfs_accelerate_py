@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01-pytest-cache",
+    "tests/unit/duckdb_control/test_autoencoder_artifact_reads.py",
+    "tests/unit/duckdb_control/test_autoencoder_registry_lifecycle.py",
+    "tests/unit/duckdb_control/test_autoencoder_registry.py",
+    "tests/unit/duckdb_control/test_autoencoder_input_snapshot_registry.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01.xml"
+  ],
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-supervisor-contracts-20261004/source384/registry-green-01-seal.duckdb",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.worktrees/terminal-supervisor-contracts-20261004",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1"
+  },
+  "source_sha256_before": {
+    "ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2",
+    "tests/unit/duckdb_control/test_autoencoder_artifact_reads.py": "1817fb13d533423b88fe07edce4790fb003208b3440b59797d15a0dff07a4f91",
+    "tests/unit/duckdb_control/test_autoencoder_input_snapshot_registry.py": "ebe7b3dfefd8e2e4d0bedb78c4c3ac1e963ba911541e194c4a176bec5e473a46",
+    "tests/unit/duckdb_control/test_autoencoder_registry.py": "d6b354dfe8a15f77e77e79c29eca8ebb0dd236a444715bc688d629366271f866",
+    "tests/unit/duckdb_control/test_autoencoder_registry_lifecycle.py": "d7d5a8c7f375b2804ed12f6c97a0a28dd0f0ba77c1c8ad43336ae0a254b513cd",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_refusal_telemetry.py": "f8f79fdfa0724293e3de612c81992361cfbafd9e0e0662979db6c3b7095e9f1f",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_resource_scheduler_timeout_decision.py": "20c5a9bc39a7f8896991524290818a95fda051369361682c48002cb240cbac70"
+  },
+  "datasets_head": "76022bac2ddd52287280522d7ccf27978383a6ab"
+}
