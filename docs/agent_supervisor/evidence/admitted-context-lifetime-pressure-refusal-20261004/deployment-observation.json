@@ -1,0 +1,93 @@
+{
+  "archive_sha256": "958dc4b0ea53c548f1e4e808a61db33d81b6cbf408fe36c698f7f03a3bce82b4",
+  "benchmark_result": false,
+  "credential_contents_recorded": false,
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "qualified": true,
+  "schema": "terminal-native-supervisor-deployment@1",
+  "seconds": 215.20879782900738,
+  "steps": [
+    {
+      "return_code": 0,
+      "step": "original-inputs"
+    },
+    {
+      "return_code": 0,
+      "step": "root-create"
+    },
+    {
+      "return_code": 0,
+      "step": "archive-extract"
+    },
+    {
+      "return_code": 0,
+      "step": "source-generation"
+    },
+    {
+      "return_code": 0,
+      "step": "system-install"
+    },
+    {
+      "return_code": 0,
+      "step": "python-runtime-install"
+    },
+    {
+      "return_code": 0,
+      "step": "python-create"
+    },
+    {
+      "return_code": 0,
+      "step": "torch-cpu-wheel-verify"
+    },
+    {
+      "return_code": 0,
+      "step": "torch-cpu-install"
+    },
+    {
+      "return_code": 0,
+      "step": "python-install"
+    },
+    {
+      "return_code": 0,
+      "step": "source384-header-checker"
+    },
+    {
+      "return_code": 0,
+      "step": "account-create"
+    },
+    {
+      "return_code": 0,
+      "step": "native-extensions"
+    },
+    {
+      "return_code": 0,
+      "step": "codex-native-expose"
+    },
+    {
+      "return_code": 0,
+      "step": "codex-version"
+    },
+    {
+      "return_code": 0,
+      "step": "auth-permissions"
+    },
+    {
+      "return_code": 0,
+      "step": "auth-status"
+    },
+    {
+      "return_code": 0,
+      "step": "native-imports"
+    },
+    {
+      "return_code": 0,
+      "step": "empty-native-start"
+    },
+    {
+      "return_code": 0,
+      "step": "retained-inputs"
+    }
+  ],
+  "task_source_preserved": true
+}

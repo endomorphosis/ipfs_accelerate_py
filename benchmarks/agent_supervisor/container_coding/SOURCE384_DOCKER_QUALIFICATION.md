@@ -812,3 +812,22 @@ production GC or measured RSS reduction. Original-owner regressions, earlier
 witness failures and a seal-skipped run remain separate evidence. This fix was
 not present in the preceding trial; recovery of its admission boundary still
 requires a fresh Docker generation under the same limits.
+
+
+The [fresh lifetime-fix archive](../../../docs/agent_supervisor/evidence/admitted-context-lifetime-pressure-refusal-20261004/README.md)
+passes deployment in 215.209s but refuses an initial-context child lease before
+numerical inference. The primary gate records **14.71 percent memory stall
+against a 2 percent limit**, with sufficient headroom (8746 MiB available versus
+8602 MiB required). Initial context fails after 82.569s; the probe takes 94.685s
+and the controller 378.763s. Exact source/task pins and cleanup pass.
+
+The changed admitted-context release boundary is not reached. Its memory effect
+and recovery of the preceding full trial remain unmeasured. This failed archive
+is not qualified by the earlier archive's success: no new full task is launched,
+no official verifier runs, and no new reward or completed token score is available.
+The sampler conservatively uses the maximum host and visible cgroup/ancestor
+memory `full avg10` percentage. Its aggregate receipt identifies the refusal but
+cannot attribute it to either scope. A source review found no units or stale-sample
+defect. Future diagnosis needs separate pressure scope and memory-composition
+observations under the same gates; the failure alone does not justify reducing
+reservations or raising pressure thresholds. The backlog stays **18/32 closed**.
