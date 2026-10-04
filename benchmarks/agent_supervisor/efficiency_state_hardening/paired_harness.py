@@ -57,6 +57,29 @@ CAMPAIGN_MANIFEST_SCHEMA: Final[str] = (
 )
 SENSOR_ID: Final[str] = "aseh-013-paired-harness"
 TASK_ID: Final[str] = "ASEH-013"
+QUALIFICATION_TASK_ID: Final[str] = "ASEH-070"
+QUALIFICATION_OBJECTIVE_ID: Final[str] = "ASEH-G080"
+QUALIFICATION_OBJECTIVE_REVISION: Final[str] = (
+    "baguqeera6ss2nrqlc5xtnivseglhfoa6mdtdtkxkop3f7rjnaxtmkurrbv7q"
+)
+QUALIFICATION_SENSOR_ID: Final[str] = "aseh-070-hermetic-qualification"
+QUALIFICATION_INTERFACE: Final[str] = "AsehHermeticQualification@1"
+HERMETIC_RESULTS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-campaign-results@1"
+)
+HERMETIC_QUALIFICATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-qualification@1"
+)
+HARNESS_RELATIVE_PATH: Final[str] = (
+    "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py"
+)
+DEFAULT_HERMETIC_RESULTS_PATH: Final[str] = (
+    "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json"
+)
+DEFAULT_HERMETIC_QUALIFICATION_PATH: Final[str] = (
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+    "hermetic_qualification.json"
+)
 POLICY_IDENTITY: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
 )
@@ -94,6 +117,34 @@ TASK_CLASSES: Final[tuple[str, ...]] = (
     "merge_conflict",
     "human_escalation",
     "retry_rescue",
+)
+BEHAVIOR_CLASSES: Final[dict[str, tuple[str, ...]]] = {
+    "rapid_iteration": ("schema_change", "bug_repair", "feature_addition"),
+    "selected_test_false_negatives": ("test_selection",),
+    "safety_seeds": ("human_escalation", "merge_conflict", "recovery_replay"),
+    "routing": ("routing_policy",),
+    "context_pack": ("context_pack_build",),
+    "state": ("state_migration", "recovery_replay"),
+    "planning": ("proof_obligation",),
+    "synthesis": ("feature_addition", "proof_obligation", "schema_change"),
+}
+CRITICAL_SEED_CLASSES: Final[frozenset[str]] = frozenset(
+    {"human_escalation", "merge_conflict", "recovery_replay"}
+)
+DEFECT_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"failed", "conflicted", "human_escalated"}
+)
+QUALIFICATION_COHORTS: Final[tuple[str, ...]] = (
+    "hermetic",
+    "historical",
+    "live-shadow",
+    "canary",
+)
+QUALIFICATION_DISPOSITIONS: Final[tuple[str, ...]] = (
+    "evidence_qualified",
+    "insufficient_evidence",
+    "safety_or_quality_failed",
+    "not_admitted",
 )
 OUTCOMES: Final[tuple[str, ...]] = (
     "succeeded",
@@ -1086,10 +1137,591 @@ def verify_sealed_artifacts(directory: Path | None = None) -> dict[str, Any]:
     }
 
 
+def _parse_count_arg(value: str) -> int:
+    raw = _text(value, name="minimum-tasks", maximum=32)
+    if not raw.isdigit():
+        raise argparse.ArgumentTypeError("minimum-tasks must be a non-negative integer")
+    return _int(int(raw), name="minimum-tasks", maximum=MAX_FIXTURES)
+
+
+def _resolve_output_path(raw: str) -> Path:
+    path = Path(_text(raw, name="output_path", maximum=512))
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path
+
+
+def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = pretty_json(canonical_object(payload))
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)
+
+
+def _validator_command(argv: Sequence[str] | None) -> list[str]:
+    command = ["python3", HARNESS_RELATIVE_PATH]
+    flags = list(argv) if argv is not None else list(sys.argv[1:])
+    command.extend(str(item) for item in flags)
+    return command
+
+
+def load_hermetic_recipes() -> tuple[dict[str, Any], ...]:
+    if HERMETIC_VECTORS_PATH.is_file():
+        return load_vectors(HERMETIC_VECTORS_PATH)
+    return generate_fixture_recipes()
+
+
+def load_sealed_hermetic_metadata() -> dict[str, str]:
+    if not HERMETIC_MANIFEST_PATH.is_file():
+        return {}
+    payload = load_json_object(HERMETIC_MANIFEST_PATH)
+    metadata = {}
+    for key in ("identity", "vectors_identity", "vectors_sha256", "vectors_path"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            metadata[key] = value
+    return metadata
+
+
+def _behavior_coverage(recipes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for recipe in recipes:
+        task_class = _text(recipe["task_class"], name="task_class", maximum=64)
+        counts[task_class] = counts.get(task_class, 0) + 1
+    coverage: dict[str, Any] = {}
+    for name, required in BEHAVIOR_CLASSES.items():
+        present = {item: counts.get(item, 0) for item in required}
+        coverage[name] = {
+            "complete": all(present[item] > 0 for item in required),
+            "present_counts": present,
+            "required_classes": list(required),
+        }
+    return coverage
+
+
+def _qualify_sensor(value: int, *, unit: str) -> dict[str, Any]:
+    return measured_quantity(value, unit=unit, sensor_id=QUALIFICATION_SENSOR_ID)
+
+
+def _campaign_sensor(value: int, *, unit: str) -> dict[str, Any]:
+    return measured_quantity(value, unit=unit, sensor_id=SENSOR_ID)
+
+
+def _interval_document(interval: Mapping[str, Any], *, fixture_id: str) -> dict[str, Any]:
+    return {
+        "fixture_id": fixture_id,
+        "lower": _int(interval["lower"], name="bootstrap_lower"),
+        "reason_code": "fixture_only",
+        "resamples": _int(interval["resamples"], name="bootstrap_resamples", minimum=1),
+        "seed": _int(interval["seed"], name="bootstrap_seed", minimum=0),
+        "truth_state": "simulated",
+        "unit": "microusd",
+        "upper": _int(interval["upper"], name="bootstrap_upper"),
+        "width": _int(interval["width"], name="bootstrap_width"),
+    }
+
+
+def _public_statistics(stats: Mapping[str, Any]) -> dict[str, Any]:
+    interval = _mapping(stats["bootstrap_confidence_intervals"], name="bootstrap")
+    return {
+        "accepted_patch_rate": {
+            "accepted": _int(stats["accepted_patch_rate"]["accepted"], name="accepted"),
+            "total": _int(stats["accepted_patch_rate"]["total"], name="total", minimum=1),
+            "unit": "ratio_millionths",
+            "value": _int(stats["accepted_patch_rate"]["value"], name="accepted_patch_rate"),
+        },
+        "bootstrap_confidence_intervals": {
+            "lower": _int(interval["lower"], name="bootstrap_lower"),
+            "resamples": _int(interval["resamples"], name="bootstrap_resamples", minimum=1),
+            "seed": _int(interval["seed"], name="bootstrap_seed", minimum=0),
+            "unit": "microusd",
+            "upper": _int(interval["upper"], name="bootstrap_upper"),
+            "width": _int(interval["width"], name="bootstrap_width"),
+        },
+        "distribution_by_task_class": {
+            name: _int(count, name=f"{name}_count", minimum=0)
+            for name, count in _mapping(
+                stats["distribution_by_task_class"], name="distribution"
+            ).items()
+        },
+        "mean_difference": {
+            "unsigned_cost_microusd": _int(
+                stats["mean_difference"]["unsigned_cost_microusd"],
+                name="mean_unsigned_cost",
+            )
+        },
+        "median_difference": {
+            "unsigned_cost_microusd": _int(
+                stats["median_difference"]["unsigned_cost_microusd"],
+                name="median_unsigned_cost",
+            )
+        },
+        "outlier_analysis": {
+            "count": _int(stats["outlier_analysis"]["count"], name="outlier_count"),
+            "fixture_ids": [
+                _text(item, name="outlier_id", maximum=64)
+                for item in stats["outlier_analysis"]["fixture_ids"]
+            ],
+            "method": _text(
+                stats["outlier_analysis"]["method"], name="outlier_method", maximum=64
+            ),
+        },
+        "per_task_ratios": {
+            "median_ratio_millionths": _int(
+                stats["per_task_ratios"]["median_ratio_millionths"],
+                name="median_ratio",
+            )
+        },
+        "quality_adjusted_cost": {
+            "includes_audit_overhead": True,
+            "median_candidate_microusd": _int(
+                stats["quality_adjusted_cost"]["median_candidate_microusd"],
+                name="quality_adjusted_cost",
+                minimum=1,
+            ),
+        },
+        "time_to_terminal_outcome": {
+            "median_us": _int(
+                stats["time_to_terminal_outcome"]["median_us"],
+                name="terminal_time",
+                minimum=1,
+            ),
+            "unit": "seconds_millionths",
+        },
+    }
+
+
+def inspect_quality_and_safety(
+    campaign: Mapping[str, Any],
+) -> dict[str, Any]:
+    recipes = {
+        _text(item["fixture_id"], name="fixture_id", maximum=64): item
+        for item in campaign["recipes"]
+    }
+    observed_false_negatives: list[str] = []
+    escaped_false_negatives: list[str] = []
+    escaped_seeds: list[str] = []
+    simulated_as_live = 0
+    self_authorized = 0
+    for pair in campaign["paired_fixtures"]:
+        mapping = _mapping(pair, name="paired_fixture")
+        fixture_id = _text(mapping["fixture_id"], name="fixture_id", maximum=64)
+        recipe = _mapping(recipes[fixture_id], name="recipe")
+        observations = _mapping(mapping["observations"], name="observations")
+        candidate = _mapping(
+            observations["candidate_optimized_supervisor"], name="candidate"
+        )
+        if any(item.get("live") is True for item in observations.values()):
+            simulated_as_live += 1
+        if mapping.get("live") is True:
+            simulated_as_live += 1
+        if recipe["task_class"] == "test_selection" and recipe["outcome"] == "failed":
+            observed_false_negatives.append(fixture_id)
+            if candidate.get("accepted") is True:
+                escaped_false_negatives.append(fixture_id)
+        if (
+            recipe["task_class"] in CRITICAL_SEED_CLASSES
+            and recipe["outcome"] in DEFECT_OUTCOMES
+            and candidate.get("accepted") is True
+        ):
+            escaped_seeds.append(fixture_id)
+    return {
+        "escaped_false_negatives": escaped_false_negatives,
+        "escaped_seeds": escaped_seeds,
+        "observed_false_negatives": observed_false_negatives,
+        "self_authorized_policy_promotions": self_authorized,
+        "simulated_as_live": simulated_as_live,
+    }
+
+
+def decide_hermetic_disposition(
+    *,
+    pair_count: int,
+    minimum_tasks: int,
+    escaped_seeds: Sequence[str],
+    escaped_false_negatives: Sequence[str],
+    simulated_as_live: int,
+    behavior_coverage: Mapping[str, Any],
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    if pair_count < minimum_tasks:
+        reasons.append("insufficient_pair_count")
+    incomplete = [
+        name
+        for name, row in behavior_coverage.items()
+        if _mapping(row, name="behavior").get("complete") is not True
+    ]
+    if incomplete:
+        reasons.append("incomplete_behavior_coverage")
+    if escaped_seeds:
+        reasons.append("escaped_critical_seed")
+    if escaped_false_negatives:
+        reasons.append("escaped_selected_test_false_negative")
+    if simulated_as_live:
+        reasons.append("simulated_as_live")
+    if escaped_seeds or escaped_false_negatives or simulated_as_live:
+        return "safety_or_quality_failed", reasons
+    if pair_count < minimum_tasks or incomplete:
+        return "insufficient_evidence", reasons
+    return "evidence_qualified", reasons
+
+
+def build_hermetic_results(
+    campaign: Mapping[str, Any],
+    *,
+    minimum_tasks: int,
+    allow_honest_nonpromotion: bool,
+    escaped_seeds: Sequence[str],
+) -> dict[str, Any]:
+    metadata = load_sealed_hermetic_metadata()
+    stats = _public_statistics(_mapping(campaign["statistics"], name="statistics"))
+    fixture_ids = [
+        _text(item["fixture_id"], name="fixture_id", maximum=64)
+        for item in campaign["recipes"]
+    ]
+    vectors_identity = _text(
+        metadata.get("vectors_identity") or str(campaign["vectors_identity"]),
+        name="vectors_identity",
+        maximum=128,
+    )
+    payload = {
+        "allow_honest_nonpromotion": allow_honest_nonpromotion,
+        "arms": list(PAIRED_ARMS),
+        "audit_overhead": canonical_object(
+            _mapping(campaign["audit_overhead"], name="audit_overhead")
+        ),
+        "authority": False,
+        "bootstrap_seed": _int(campaign["bootstrap_seed"], name="bootstrap_seed", minimum=0),
+        "cohort": "hermetic",
+        "controls": {
+            field: campaign["controls"][field] for field in EQUAL_CONTROL_FIELDS
+        },
+        "equal_control_fields": list(EQUAL_CONTROL_FIELDS),
+        "escaped_seeds": list(escaped_seeds),
+        "fixture_count": _int(campaign["fixture_count"], name="fixture_count"),
+        "fixture_ids": fixture_ids,
+        "hermetic_manifest_identity": metadata.get("identity", vectors_identity),
+        "hermetic_sufficient_for_production_promotion": False,
+        "interface": HARNESS_INTERFACE,
+        "live": False,
+        "minimum_tasks": minimum_tasks,
+        "pair_count": _int(campaign["fixture_count"], name="pair_count"),
+        "population_kind": "hermetic_development",
+        "primary_comparison": campaign["primary_comparison"],
+        "promotion_without_paired_campaign": False,
+        "required_statistics": list(STATISTIC_FIELDS),
+        "schema": HERMETIC_RESULTS_SCHEMA,
+        "schema_version": 1,
+        "statistics": stats,
+        "task_id": QUALIFICATION_TASK_ID,
+        "vectors_identity": vectors_identity,
+        "vectors_path": metadata.get(
+            "vectors_path",
+            "benchmarks/agent_supervisor/efficiency_state_hardening/hermetic_vectors.jsonl",
+        ),
+        "vectors_sha256": metadata.get(
+            "vectors_sha256",
+            sha256_bytes(render_vectors(campaign["recipes"]).encode("utf-8")),
+        ),
+    }
+    return canonical_object(payload)
+
+
+def build_hermetic_qualification(
+    campaign: Mapping[str, Any],
+    *,
+    results: Mapping[str, Any],
+    minimum_tasks: int,
+    allow_honest_nonpromotion: bool,
+    argv: Sequence[str] | None,
+    inspection: Mapping[str, Any],
+    disposition: str,
+    reasons: Sequence[str],
+) -> dict[str, Any]:
+    if disposition not in QUALIFICATION_DISPOSITIONS:
+        raise PairedHarnessError("qualification disposition is not a closed value")
+    coverage = _behavior_coverage(campaign["recipes"])
+    stats = _public_statistics(_mapping(campaign["statistics"], name="statistics"))
+    comparisons = _mapping(campaign["comparisons"], name="comparisons")
+    pair_count = _int(campaign["fixture_count"], name="pair_count")
+    escaped_seeds = [
+        _text(item, name="escaped_seed", maximum=64)
+        for item in inspection["escaped_seeds"]
+    ]
+    observed_false_negatives = [
+        _text(item, name="observed_false_negative", maximum=64)
+        for item in inspection["observed_false_negatives"]
+    ]
+    escaped_false_negatives = [
+        _text(item, name="escaped_false_negative", maximum=64)
+        for item in inspection["escaped_false_negatives"]
+    ]
+    metadata = load_sealed_hermetic_metadata()
+    interval = _interval_document(
+        comparisons["candidate_vs_sealed_current"]["bootstrap_confidence_intervals"],
+        fixture_id="aseh-hermetic-corpus",
+    )
+    payload = {
+        "admitted": True,
+        "allow_honest_nonpromotion": allow_honest_nonpromotion,
+        "arms": list(PAIRED_ARMS),
+        "audit_overhead": canonical_object(
+            _mapping(campaign["audit_overhead"], name="audit_overhead")
+        ),
+        "authority": False,
+        "behavior_coverage": coverage,
+        "bootstrap_confidence_intervals": {
+            "candidate_vs_direct": _interval_document(
+                comparisons["candidate_vs_direct"]["bootstrap_confidence_intervals"],
+                fixture_id="aseh-hermetic-corpus",
+            ),
+            "candidate_vs_sealed_current": interval,
+            "sealed_current_vs_direct": _interval_document(
+                comparisons["sealed_current_vs_direct"]["bootstrap_confidence_intervals"],
+                fixture_id="aseh-hermetic-corpus",
+            ),
+        },
+        "canary_admitted": False,
+        "cohort": "hermetic",
+        "controls": {
+            field: campaign["controls"][field] for field in EQUAL_CONTROL_FIELDS
+        },
+        "disposition": disposition,
+        "equal_control_fields": list(EQUAL_CONTROL_FIELDS),
+        "escaped_seeds": escaped_seeds,
+        "explicit_unavailable_fields": [
+            "safety.live_cohort",
+            "safety.promotion_corpus_selected_test_false_negatives",
+        ],
+        "hermetic_sufficient_for_production_promotion": False,
+        "interface": QUALIFICATION_INTERFACE,
+        "live": False,
+        "minimum_tasks": minimum_tasks,
+        "objective_id": QUALIFICATION_OBJECTIVE_ID,
+        "objective_revision": QUALIFICATION_OBJECTIVE_REVISION,
+        "pair_count": _qualify_sensor(pair_count, unit="count"),
+        "policy_identity": POLICY_IDENTITY,
+        "population_kind": "hermetic_development",
+        "production_qualified": False,
+        "program_id": PROGRAM_ID,
+        "promotion_authorized": False,
+        "qualification": True,
+        "quality": {
+            "accepted_patch_rate": _campaign_sensor(
+                stats["accepted_patch_rate"]["value"],
+                unit="ratio_millionths",
+            ),
+            "false_negatives": _qualify_sensor(
+                len(observed_false_negatives),
+                unit="count",
+            ),
+            "quality_adjusted_cost": _campaign_sensor(
+                stats["quality_adjusted_cost"]["median_candidate_microusd"],
+                unit="microusd",
+            ),
+            "selected_test_false_negatives": {
+                "escaped_count": _qualify_sensor(
+                    len(escaped_false_negatives), unit="count"
+                ),
+                "escaped_fixture_ids": escaped_false_negatives,
+                "observed_count": _qualify_sensor(
+                    len(observed_false_negatives), unit="count"
+                ),
+                "observed_fixture_ids": observed_false_negatives,
+            },
+        },
+        "reasons": list(reasons),
+        "repository_commit": REPOSITORY_COMMIT,
+        "repository_tree": REPOSITORY_TREE,
+        "results_identity": metadata.get(
+            "identity",
+            content_identity({key: value for key, value in results.items() if key != "identity"}),
+        ),
+        "safety": {
+            "escaped_critical_seeded_defects": _qualify_sensor(
+                len(escaped_seeds), unit="count"
+            ),
+            "live_cohort": unavailable("fixture_only"),
+            "promotion_corpus_selected_test_false_negatives": unavailable(
+                "not_applicable"
+            ),
+            "self_authorized_policy_promotions": _qualify_sensor(
+                _int(
+                    inspection["self_authorized_policy_promotions"],
+                    name="self_authorized",
+                ),
+                unit="count",
+            ),
+            "simulated_as_live_outcomes": _qualify_sensor(
+                _int(inspection["simulated_as_live"], name="simulated_as_live"),
+                unit="count",
+            ),
+        },
+        "schema": HERMETIC_QUALIFICATION_SCHEMA,
+        "schema_version": 1,
+        "statistics": {
+            "accepted_patch_rate": _campaign_sensor(
+                stats["accepted_patch_rate"]["value"],
+                unit="ratio_millionths",
+            ),
+            "bootstrap_confidence_intervals": _campaign_sensor(
+                stats["bootstrap_confidence_intervals"]["width"],
+                unit="microusd",
+            ),
+            "distribution_by_task_class": stats["distribution_by_task_class"],
+            "mean_difference": stats["mean_difference"],
+            "median_difference": stats["median_difference"],
+            "outlier_analysis": stats["outlier_analysis"],
+            "per_task_ratios": stats["per_task_ratios"],
+            "quality_adjusted_cost": {
+                "includes_audit_overhead": True,
+                "median_candidate_microusd": stats["quality_adjusted_cost"][
+                    "median_candidate_microusd"
+                ],
+            },
+            "time_to_terminal_outcome": stats["time_to_terminal_outcome"],
+        },
+        "task_id": QUALIFICATION_TASK_ID,
+        "validator_command": _validator_command(argv),
+        "vectors_identity": results["vectors_identity"],
+    }
+    if payload["live"] is True or payload["promotion_authorized"] is True:
+        raise PairedHarnessError("hermetic qualification cannot grant live or promotion")
+    if payload["hermetic_sufficient_for_production_promotion"] is not False:
+        raise PairedHarnessError("hermetic evidence cannot satisfy production promotion")
+    return canonical_object(payload)
+
+
+def run_hermetic_qualification(
+    *,
+    minimum_tasks: int,
+    output_path: Path,
+    qualification_path: Path,
+    allow_honest_nonpromotion: bool,
+    argv: Sequence[str] | None,
+) -> dict[str, Any]:
+    recipes = load_hermetic_recipes()
+    campaign = run_paired_campaign(recipes)
+    inspection = inspect_quality_and_safety(campaign)
+    coverage = _behavior_coverage(campaign["recipes"])
+    pair_count = _int(campaign["fixture_count"], name="pair_count")
+    disposition, reasons = decide_hermetic_disposition(
+        pair_count=pair_count,
+        minimum_tasks=minimum_tasks,
+        escaped_seeds=inspection["escaped_seeds"],
+        escaped_false_negatives=inspection["escaped_false_negatives"],
+        simulated_as_live=inspection["simulated_as_live"],
+        behavior_coverage=coverage,
+    )
+    results = build_hermetic_results(
+        campaign,
+        minimum_tasks=minimum_tasks,
+        allow_honest_nonpromotion=allow_honest_nonpromotion,
+        escaped_seeds=inspection["escaped_seeds"],
+    )
+    qualification = build_hermetic_qualification(
+        campaign,
+        results=results,
+        minimum_tasks=minimum_tasks,
+        allow_honest_nonpromotion=allow_honest_nonpromotion,
+        argv=argv,
+        inspection=inspection,
+        disposition=disposition,
+        reasons=reasons,
+    )
+    _write_json(output_path, results)
+    _write_json(qualification_path, qualification)
+    return {
+        "disposition": disposition,
+        "pair_count": pair_count,
+        "qualification": qualification,
+        "results": results,
+    }
+
+
+def run_qualification_cli(
+    args: argparse.Namespace,
+    argv: Sequence[str] | None,
+) -> int:
+    cohort = args.cohort
+    if cohort is None:
+        raise PairedHarnessError("qualification output requires --cohort")
+    if cohort not in QUALIFICATION_COHORTS:
+        raise PairedHarnessError("cohort is not a closed qualification population")
+    if cohort != "hermetic":
+        raise PairedHarnessError(
+            f"cohort {cohort} is not implemented; hermetic qualification cannot fabricate {cohort} evidence"
+        )
+    minimum_tasks = (
+        HERMETIC_MINIMUM if args.minimum_tasks is None else args.minimum_tasks
+    )
+    minimum_tasks = _int(minimum_tasks, name="minimum_tasks", minimum=1, maximum=MAX_FIXTURES)
+    output_raw = args.output or DEFAULT_HERMETIC_RESULTS_PATH
+    qualification_raw = args.qualification_output or DEFAULT_HERMETIC_QUALIFICATION_PATH
+    output_path = _resolve_output_path(output_raw)
+    qualification_path = _resolve_output_path(qualification_raw)
+    sealed = run_hermetic_qualification(
+        minimum_tasks=minimum_tasks,
+        output_path=output_path,
+        qualification_path=qualification_path,
+        allow_honest_nonpromotion=bool(args.allow_honest_nonpromotion),
+        argv=argv,
+    )
+    disposition = sealed["disposition"]
+    sys.stdout.write(
+        pretty_json(
+            {
+                "admitted": True,
+                "cohort": "hermetic",
+                "disposition": disposition,
+                "live": False,
+                "pair_count": sealed["pair_count"],
+                "promotion_authorized": False,
+            }
+        )
+    )
+    if disposition != "evidence_qualified" and not args.allow_honest_nonpromotion:
+        return 1
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="ASEH-013 paired hermetic harness")
+    parser = argparse.ArgumentParser(description="ASEH paired hermetic harness")
     parser.add_argument("--write", action="store_true", help="seal corpus files in place")
     parser.add_argument("--check", action="store_true", help="verify sealed corpus files")
+    parser.add_argument(
+        "--cohort",
+        choices=QUALIFICATION_COHORTS,
+        help="qualification cohort to run",
+    )
+    parser.add_argument(
+        "--minimum-tasks",
+        type=_parse_count_arg,
+        help="minimum unique paired fixtures required for evidence_qualified",
+    )
+    parser.add_argument(
+        "--output",
+        help="path for the paired campaign results document",
+    )
+    parser.add_argument(
+        "--qualification-output",
+        help="path for the hermetic qualification receipt",
+    )
+    parser.add_argument(
+        "--allow-honest-nonpromotion",
+        action="store_true",
+        help="admit insufficient_evidence or safety_or_quality_failed without failing the process",
+    )
+    parser.add_argument(
+        "--allow-not-admitted",
+        action="store_true",
+        help="admit not_admitted canary receipts without failing the process",
+    )
+    parser.add_argument(
+        "--require-shadow-receipt",
+        help="path to a live-shadow receipt required before canary mutation",
+    )
     return parser
 
 
@@ -1127,13 +1759,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         return qualification_main(args_list)
     args = _build_parser().parse_args(argv)
+    qualification_requested = any(
+        (
+            args.cohort is not None,
+            args.output is not None,
+            args.qualification_output is not None,
+            args.allow_honest_nonpromotion,
+            args.allow_not_admitted,
+            args.require_shadow_receipt is not None,
+        )
+    )
     if args.write:
         write_sealed_artifacts()
-        if not args.check:
+        if not args.check and not qualification_requested:
             return 0
-    if args.check:
+    if args.check and not qualification_requested:
         verify_sealed_artifacts()
         return 0
+    if qualification_requested:
+        return run_qualification_cli(args, argv)
     campaign = run_paired_campaign()
     sys.stdout.write(
         pretty_json(
