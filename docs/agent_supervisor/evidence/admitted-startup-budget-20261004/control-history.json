@@ -1,0 +1,937 @@
+{
+  "baseline-01": {
+    "cases": [
+      {
+        "id": "integration.test_admitted_startup_budget::test_default_start_deadline_includes_fresh_prelaunch_work",
+        "status": "passed"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 0,
+      "passed": 1,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 0,
+      "seconds": 43.09802683599992,
+      "source_pins_unchanged": true
+    },
+    "raw_xml_sha256": "a6c5c31728ff4cdbde05cddc34957bfb7257e3ac45885ef19afaa40533c23210"
+  },
+  "baseline-api-01": {
+    "cases": [
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_backs_off_when_quack_owner_is_down",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 5,
+      "passed": 0,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 1,
+      "seconds": 16.8412948710029,
+      "source_pins_unchanged": true
+    },
+    "raw_xml_sha256": "68337cf441c2dbe806759f5551435e6a93d8dfe28f0880805eac96ca82bcd9dc"
+  },
+  "bounds-01": {
+    "cases": [
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_start_override_preserves_catalog_other_bounds_and_signed_custody[extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_unsigned_start_override_and_ambient_bootstrap_wait_are_rejected",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[True]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[1999]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120000.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[None]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[ 30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[-1]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_explicit_start_override_requires_local_benchmark_profile",
+        "status": "passed"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 0,
+      "passed": 16,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 0,
+      "seconds": 20.86205991099996,
+      "source_pins_unchanged": true
+    },
+    "raw_xml_sha256": "c8349dab3808240544f2d1825bb6b6d90c91f62f8cd12c68118de9b5960e3d03"
+  },
+  "native-01": {
+    "cases": [
+      {
+        "id": "integration.test_admitted_startup_budget::test_default_start_deadline_includes_fresh_prelaunch_work",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_signed_extended_start_allows_fresh_checks_without_borrowing_stop_budget[extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_start_override_preserves_catalog_other_bounds_and_signed_custody[extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_unsigned_start_override_and_ambient_bootstrap_wait_are_rejected",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[True]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[1999]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120000.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[None]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[ 30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[-1]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_explicit_start_override_requires_local_benchmark_profile",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair[implementation]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[before-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[after-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[duplicate-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_legacy_gateway_ordinary_binding_and_retirement_refusal",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_actual_native_owner_child_start_heartbeat_and_stop",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_signed_run_owns_orchestration_path_without_legacy_account_scan[ambient-override]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_signed_run_owns_orchestration_path_without_legacy_account_scan[account-default]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_foreign_request_cannot_borrow_admitted_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_stale_native_lease_does_not_launch_or_issue_child_grant",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_changed_context_digest_is_rejected_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[True]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[119]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[901]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[300.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_extended_launch_binds_exact_shared_scheduler_and_nine_hundred_second_lease[extended-proof]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_default_proof_profile_does_not_forward_an_ambient_scheduler",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[unknown-profile]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[missing-path]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[relative-path]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[directory]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[symlink]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[newline]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_candidate_git_environment_retains_closed_configuration",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_real_signed_native_start_observe_stop",
+        "reason": "startup_health_deadline",
+        "status": "failure"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_foreign_run_request_cannot_borrow_local_permit",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_stale_native_token_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_changed_empty_queue_does_not_gain_task_authority",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_revoked_local_profile_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_health_rejects_stale_or_foreign_native_status",
+        "reason": "startup_health_deadline",
+        "status": "failure"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_launch_uses_parser_supported_exact_nonimplementing_flags",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_existing_directory_is_never_adopted",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_connect_inherited_listener_retries_blockingioerror_until_timeout",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_backs_off_when_quack_owner_is_down",
+        "reason": "unix_socket_path_too_long",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g070_parent_completion_requires_closed_current_tree_proof_packet",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g070_parent_completion_rejects_each_narrowed_or_unhealthy_input",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_capabilities_are_complete_typed_and_side_effect_free",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_python_discovery_is_cached_deterministic_and_never_dispatches",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_discovery_safety_evidence_is_complete_content_addressed_and_strict",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g105_completion_requires_bound_current_tree_validation_health_and_quorum",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_read_client_uses_direct_repository_apis_and_bounded_results",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_mutation_is_authorized_fenced_audited_and_idempotent",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_same_idempotency_key_with_different_payload_conflicts",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_default_store_replays_exact_mutation_result_after_restart",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_dry_run_never_calls_mutation_or_requires_a_live_lease",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_allowlists_bounds_and_paths_fail_with_stable_errors",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_stale_fence_and_expired_authorization_fail_before_backend",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception0-not_found-not_found]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception1-timed_out-timed_out]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception2-invalid_request-failed]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception3-internal_error-failed]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_receipt_query_is_bounded_and_does_not_require_raw_state_access",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_service_calls_registered_python_handler_without_shell_translation",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_shared_wire_schemas_cover_every_operation_and_mutation_guard",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_python_surface_executes_every_closed_operation_with_canonical_results",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_typed_surface_parity_evidence_proves_exact_requirement",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g103_completion_requires_bound_current_tree_validation_health_and_quorum",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_surface_parity_evidence_rejects_behavior_or_schema_drift",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_operations_reuse_closed_control_catalog_without_expansion",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_control_discovery_stays_side_effect_free",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_cannot_raise_authority_or_select_hidden_labels",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_start_and_resume_reuse_lifecycle_operations",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_resume_is_exact_and_rejects_forks",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_python_cli_mcp_parity_and_authorization",
+        "status": "passed"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 8,
+      "passed": 78,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 1,
+      "seconds": 230.29027441699873,
+      "source_pins_unchanged": false
+    },
+    "raw_xml_sha256": "372df93a64cdf72387f42857e4b49d3132e9c6f6179099bc6c17ae43c20d297b"
+  },
+  "native-02": {
+    "cases": [
+      {
+        "id": "integration.test_admitted_startup_budget::test_default_start_deadline_includes_fresh_prelaunch_work",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_signed_extended_start_allows_fresh_checks_without_borrowing_stop_budget[extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_start_override_preserves_catalog_other_bounds_and_signed_custody[extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_unsigned_start_override_and_ambient_bootstrap_wait_are_rejected",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_signed_startup_budget_rejects_independent_mutations[service-extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_signed_startup_budget_rejects_independent_mutations[bootstrap_environment-extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_signed_startup_budget_rejects_independent_mutations[manifest_and_property-extended-startup]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[True]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[1999]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_local_service_start_override_is_bounded[120000.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[None]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[120001]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[2.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[ 30000]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_bootstrap_wait_defaults_and_strict_bound[-1]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_startup_budget::test_explicit_start_override_requires_local_benchmark_profile",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair[implementation]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[before-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[after-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_failed_implementation_constructor_closes_unlaunched_native_resources[duplicate-binding]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_legacy_gateway_ordinary_binding_and_retirement_refusal",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_actual_native_owner_child_start_heartbeat_and_stop",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_signed_run_owns_orchestration_path_without_legacy_account_scan[ambient-override]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_signed_run_owns_orchestration_path_without_legacy_account_scan[account-default]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_foreign_request_cannot_borrow_admitted_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_stale_native_lease_does_not_launch_or_issue_child_grant",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_changed_context_digest_is_rejected_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[True]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[119]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[901]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_launch_lifetime_is_an_explicit_bounded_integer[300.0]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_extended_launch_binds_exact_shared_scheduler_and_nine_hundred_second_lease[extended-proof]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_default_proof_profile_does_not_forward_an_ambient_scheduler",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[unknown-profile]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[missing-path]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[relative-path]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[directory]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[symlink]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_selected_proof_profile_requires_exact_canonical_shared_ledger[newline]",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_admitted_benchmark_runtime::test_candidate_git_environment_retains_closed_configuration",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_real_signed_native_start_observe_stop",
+        "reason": "startup_health_deadline",
+        "status": "failure"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_foreign_run_request_cannot_borrow_local_permit",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_stale_native_token_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_changed_empty_queue_does_not_gain_task_authority",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_revoked_local_profile_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_health_rejects_stale_or_foreign_native_status",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_launch_uses_parser_supported_exact_nonimplementing_flags",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_existing_directory_is_never_adopted",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_connect_inherited_listener_retries_blockingioerror_until_timeout",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_backs_off_when_quack_owner_is_down",
+        "reason": "missing_supervisor_api",
+        "status": "failure"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g070_parent_completion_requires_closed_current_tree_proof_packet",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g070_parent_completion_rejects_each_narrowed_or_unhealthy_input",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_capabilities_are_complete_typed_and_side_effect_free",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_python_discovery_is_cached_deterministic_and_never_dispatches",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_discovery_safety_evidence_is_complete_content_addressed_and_strict",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g105_completion_requires_bound_current_tree_validation_health_and_quorum",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_read_client_uses_direct_repository_apis_and_bounded_results",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_mutation_is_authorized_fenced_audited_and_idempotent",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_same_idempotency_key_with_different_payload_conflicts",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_default_store_replays_exact_mutation_result_after_restart",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_dry_run_never_calls_mutation_or_requires_a_live_lease",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_allowlists_bounds_and_paths_fail_with_stable_errors",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_stale_fence_and_expired_authorization_fail_before_backend",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception0-not_found-not_found]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception1-timed_out-timed_out]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception2-invalid_request-failed]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_backend_failures_are_translated_to_stable_typed_errors[exception3-internal_error-failed]",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_receipt_query_is_bounded_and_does_not_require_raw_state_access",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_service_calls_registered_python_handler_without_shell_translation",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_shared_wire_schemas_cover_every_operation_and_mutation_guard",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_python_surface_executes_every_closed_operation_with_canonical_results",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_typed_surface_parity_evidence_proves_exact_requirement",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_g103_completion_requires_bound_current_tree_validation_health_and_quorum",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_surface_parity_evidence_rejects_behavior_or_schema_drift",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_operations_reuse_closed_control_catalog_without_expansion",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_control_discovery_stays_side_effect_free",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_campaign_cannot_raise_authority_or_select_hidden_labels",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_start_and_resume_reuse_lifecycle_operations",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_resume_is_exact_and_rejects_forks",
+        "status": "passed"
+      },
+      {
+        "id": "api.test_agent_supervisor_control_plane::test_operational_campaign_python_cli_mcp_parity_and_authorization",
+        "status": "passed"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 6,
+      "passed": 83,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 1,
+      "seconds": 231.3750913499971,
+      "source_pins_unchanged": true
+    },
+    "raw_xml_sha256": "97072d4855f6f691e9915e262f72857b1c37294d9b16f97dc4949ab3a62941a9"
+  },
+  "native-03": {
+    "cases": [
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_real_signed_native_start_observe_stop",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_foreign_run_request_cannot_borrow_local_permit",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_stale_native_token_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_changed_empty_queue_does_not_gain_task_authority",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_revoked_local_profile_is_refused_before_launch",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_health_rejects_stale_or_foreign_native_status",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_launch_uses_parser_supported_exact_nonimplementing_flags",
+        "status": "passed"
+      },
+      {
+        "id": "integration.test_isolated_benchmark_runtime::test_existing_directory_is_never_adopted",
+        "status": "passed"
+      }
+    ],
+    "counts": {
+      "error": 0,
+      "failure": 0,
+      "passed": 8,
+      "skipped": 0
+    },
+    "exit": {
+      "returncode": 0,
+      "seconds": 25.632129302990506,
+      "source_pins_unchanged": true
+    },
+    "raw_xml_sha256": "bd103cc51f964b24f74e7909f87a6ad5c682b41a5390c7792625edb7b91048df"
+  }
+}

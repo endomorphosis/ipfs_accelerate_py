@@ -1,0 +1,53 @@
+{
+  "cause": "The existing Harbor site-packages directory was omitted from PYTHONPATH.",
+  "command": {
+    "argv": [
+      "<PYTHON_EXECUTABLE>",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+      "--junitxml=<EVIDENCE_ROOT>/budget-01.xml"
+    ],
+    "cwd": "<ACCELERATE_CHECKOUT>",
+    "environment_overrides": {
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_MAX_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>"
+    },
+    "source_revision": "aa2694d0c99f6ca5ea11294704ed91cf7b6d9928",
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a",
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "5d86bada46c3cfbeac60897e443ee5bc4dd457024891c4efd45b24b1db82b6cf",
+      "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "512db62f2d4a9ac485501129d8c3b5039f816b9d1ff5725e806e3cc4068d85df",
+      "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py": "a79d46eaeb2ea8c30431cc8a051f62e0003d75f6887c44146fc0b9df5da17680"
+    }
+  },
+  "correction": "The next invocation included the existing Harbor site-packages directory; no dependency was installed and no product fix was claimed for this collection error.",
+  "error_type": "ModuleNotFoundError",
+  "exit": {
+    "returncode": 2,
+    "seconds": 1.99940941100067,
+    "source_pins_unchanged": true
+  },
+  "missing_module": "harbor",
+  "raw_stdout_exported": false,
+  "raw_xml_exported": false,
+  "raw_xml_sha256": "6288ef743578b6700f70291517d4b6e6add67fc6bb3986883a9027764fe18c0c",
+  "schema": "retained-test-collection-failure@1",
+  "xml": [
+    {
+      "errors": 1,
+      "failures": 0,
+      "seconds": 1.23,
+      "skipped": 0,
+      "tests": 1
+    }
+  ]
+}

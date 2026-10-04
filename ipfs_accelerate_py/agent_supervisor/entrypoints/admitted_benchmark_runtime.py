@@ -230,7 +230,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
     @classmethod
     def create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
-               timeout_ms: int = 30_000, max_task_attempts: int = 1, context_bundle: dict | None = None,
+               timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
+               max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
@@ -240,6 +241,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("finite and inventory execution scopes are mutually exclusive")
         arguments = dict(admission=admission, server=server, source=source, implement=implement,
             implementation_command=implementation_command, timeout_ms=timeout_ms,
+            start_timeout_ms=start_timeout_ms,
             max_task_attempts=max_task_attempts, context_bundle=context_bundle,
             lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
             candidate_runner_argv=candidate_runner_argv,
@@ -294,7 +296,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
     @classmethod
     def _create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
-               timeout_ms: int = 30_000, max_task_attempts: int = 1, context_bundle: dict | None = None,
+               timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
+               max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
@@ -323,6 +326,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 900:
             raise ValueError("signed launch lifetime_seconds must be in 120..900")
         proof_resource_environment = _bounded_proof_resource_environment()
+        if start_timeout_ms is not None and (
+                type(start_timeout_ms) is not int or not 2_000 <= start_timeout_ms <= 120_000
+                or proof_resource_environment.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") != "local-benchmark@1"
+                or start_timeout_ms > lifetime_seconds * 1000):
+            raise ValueError("explicit START budget requires the local benchmark profile and 2000..120000 milliseconds within its lifetime")
         from ..runtime.candidate_execution import (
             CANDIDATE_RUNNER_ENV,
             bind_candidate_runner,
@@ -398,6 +406,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.repository_id = declared["repository_cid"]
             runtime.profile_dir, runtime.lifecycle_dir = Path(declared["profile_dir"]), Path(declared["lifecycle_dir"])
             runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
+            runtime.start_timeout_ms = start_timeout_ms
+            runtime._startup_trace_lock = threading.Lock()
+            runtime._startup_trace = []
+            runtime._startup_trace_truncated = False
             runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
             runtime._verify_context(verified)
             retrieval_binding = None
@@ -471,6 +483,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
                            (ORCHESTRATION_DIR_ENV, str(orchestration)))
             environment += tuple(proof_resource_environment.items())
+            from ..todo_daemon.native_owner_bootstrap import STARTUP_WAIT_ENV
+            # Bind the default too: ambient state must not enlarge this wait.
+            environment += ((STARTUP_WAIT_ENV, str(start_timeout_ms or 30_000)),)
             environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
             if candidate_runner is not None:
                 environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)
@@ -500,6 +515,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 } if refresh_context_on_completion else None),
                 "production_activation": False, "completion_authority": False,
             }
+            if start_timeout_ms is not None:
+                runtime.manifest["start_timeout_ms"] = start_timeout_ms
             if finite_execution_scope is not None:
                 runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
                 runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
@@ -545,7 +562,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
 
             def popen(*args, **kwargs):
                 from ..task_sources.duckdb_state import QUACK_TOKEN_ENV
-                runtime._verify()
+                runtime._startup_validate("launch_validation")
                 # Resolve through this live native owner, never ambient credentials
                 # or a possibly stale filesystem handoff for another generation.
                 token = server._vault.resolve(runtime.owner_identity.secret_handle)
@@ -609,6 +626,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                           Operation.STOP: runtime._bounded_lifecycle_response},
                 authorization_validator=ControlMutationAuthorizer(runtime._policy),
                 identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
+                local_start_timeout_ms=start_timeout_ms,
             )
             runtime._bootstrap_thread = threading.Thread(target=runtime._serve_bootstrap, daemon=True,
                                                          name="admitted-supervisor-bootstrap")
@@ -837,6 +855,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
 
     def _verify(self, *, completed_observation=False):
         from ..runtime.local_completion_bridge import verify_owner_local_benchmark_observation
+        if self.manifest.get("start_timeout_ms") != self.start_timeout_ms:
+            raise ValueError("admitted START budget differs from its signed launch")
+        if self.service._local_start_timeout_ms != self.start_timeout_ms:
+            raise ValueError("local START service budget differs from its signed launch")
         if self.manifest.get("candidate_runner") is not None:
             from ..runtime.candidate_execution import verify_candidate_runner
             verify_candidate_runner(self.manifest["candidate_runner"])
@@ -870,9 +892,53 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         observations = self._verify(completed_observation=True)
         return {"source384": observations} if observations else None
 
+    def _operation_timeout_ms(self, operation):
+        if operation is Operation.START and self.start_timeout_ms is not None:
+            if (type(self.start_timeout_ms) is not int
+                    or not 2_000 <= self.start_timeout_ms <= 120_000
+                    or self.manifest.get("start_timeout_ms") != self.start_timeout_ms):
+                raise ValueError("admitted START budget differs from its signed launch")
+            return self.start_timeout_ms
+        return super()._operation_timeout_ms(operation)
+
+    def _startup_validate(self, phase):
+        """Time each fresh check without reusing any validation result."""
+        if phase not in {"control_validation", "launch_validation", "bootstrap_validation"}:
+            raise ValueError("unknown native startup observation phase")
+        observation = {"phase": phase, "status": "running", "started": time.monotonic(), "finished": None}
+        with self._startup_trace_lock:
+            if len(self._startup_trace) < 16:
+                self._startup_trace.append(observation)
+            else:
+                self._startup_trace_truncated = True
+        status = "failed"
+        try:
+            result = self._verify()
+            status = "completed"
+            return result
+        finally:
+            with self._startup_trace_lock:
+                observation.update(status=status, finished=time.monotonic())
+
+    def startup_diagnostics(self):
+        """Closed observations only: no credentials, errors, or source bodies."""
+        now = time.monotonic()
+        with self._startup_trace_lock:
+            observations = [{"phase": item["phase"], "status": item["status"],
+                "seconds": min(900.0, max(0.0, (item["finished"] or now) - item["started"]))}
+                for item in self._startup_trace]
+            truncated = self._startup_trace_truncated
+        return {"schema": "admitted-native-startup-observation@1",
+            "start_timeout_ms": self.start_timeout_ms or self.timeout_ms,
+            "stop_timeout_ms": self.timeout_ms,
+            "bootstrap_wait_seconds": (self.start_timeout_ms or 30_000) / 1000,
+            "observations": observations, "observations_truncated": truncated,
+            "bootstrap_receipt_count": min(65_535, len(self.bootstrap_receipts)),
+            "bootstrap_error_count": min(65_535, len(self.bootstrap_errors))}
+
     def _verify_operation(self, operation):
         if operation is not Operation.STOP:
-            return super()._verify_operation(operation)
+            return self._startup_validate("control_validation")
         # Stopping this already admitted process tree must remain possible
         # between publication and its owner validation. Source acceptance and
         # task completion grant no shutdown authority; the original immutable
@@ -940,7 +1006,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             with channel:
                 channel.settimeout(5)
                 try:
-                    self._verify()
+                    self._startup_validate("bootstrap_validation")
                     pid, uid, _gid = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                     if uid != os.geteuid():
                         raise ValueError("bootstrap peer belongs to another owner")

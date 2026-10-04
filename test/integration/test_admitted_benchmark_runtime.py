@@ -63,7 +63,7 @@ def admitted(tmp_path, monkeypatch, request):
         from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
         if getattr(request, 'param', 'configured') == 'unset':
             monkeypatch.delenv(board.ORCHESTRATION_DIR_ENV, raising=False)
-        if getattr(request, 'param', 'configured') == 'extended-proof':
+        if getattr(request, 'param', 'configured') in {'extended-proof', 'extended-startup'}:
             monkeypatch.setenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE', 'local-benchmark@1')
             monkeypatch.setenv('IPFS_DATASETS_RESOURCE_SCHEDULER_PATH', str(tmp_path / 'shared-scheduler.json'))
         parent_orchestration = os.environ.get(board.ORCHESTRATION_DIR_ENV)
@@ -81,7 +81,8 @@ def admitted(tmp_path, monkeypatch, request):
             source=owner.source, context_bundle=bundle, timeout_ms=20_000,
             worker_worktree_root=worktrees,
             **implementation,
-            **({'lifetime_seconds':900} if getattr(request, 'param', 'configured') == 'extended-proof' else {}),
+            **({'lifetime_seconds':900} if getattr(request, 'param', 'configured') in {'extended-proof', 'extended-startup'} else {}),
+            **({'start_timeout_ms':120_000} if getattr(request, 'param', 'configured') == 'extended-startup' else {}),
         )
         try:
             assert os.environ.get(board.ORCHESTRATION_DIR_ENV) == parent_orchestration

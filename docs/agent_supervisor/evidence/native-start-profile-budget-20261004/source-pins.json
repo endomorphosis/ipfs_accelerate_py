@@ -1,0 +1,14 @@
+{
+  "checkout_base_revision_at_export": "65070b69ad4c8aabfd268a054456b67e7cc79d11",
+  "checkout_base_revision_at_test": "aa2694d0c99f6ca5ea11294704ed91cf7b6d9928",
+  "complete_transitive_source_map": false,
+  "current_four_file_pins_match_tested_pins": true,
+  "schema": "tested-native-start-profile-source-pins@1",
+  "sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "355804daabb910faec4d2f392c0859008a7cd6907909e5602aa0edbcf607138c",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "a25ed95d61202196169f6729afecd590e1ea089506f2fb5241bd892d71345271",
+    "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py": "a79d46eaeb2ea8c30431cc8a051f62e0003d75f6887c44146fc0b9df5da17680"
+  },
+  "working_tree_changes_present": true
+}

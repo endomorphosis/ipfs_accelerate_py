@@ -1,0 +1,46 @@
+{
+  "schema": "authored-native-startup-delay-control@1",
+  "authored_launch_delay_seconds": 20.1,
+  "authored_bootstrap_delay_seconds": 31.0,
+  "startup": {
+    "schema": "admitted-native-startup-observation@1",
+    "start_timeout_ms": 120000,
+    "stop_timeout_ms": 20000,
+    "bootstrap_wait_seconds": 120.0,
+    "observations": [
+      {
+        "phase": "control_validation",
+        "status": "completed",
+        "seconds": 0.049743421011953615
+      },
+      {
+        "phase": "control_validation",
+        "status": "completed",
+        "seconds": 0.05314834100136068
+      },
+      {
+        "phase": "control_validation",
+        "status": "completed",
+        "seconds": 0.0528741800080752
+      },
+      {
+        "phase": "launch_validation",
+        "status": "completed",
+        "seconds": 20.14712603400403
+      },
+      {
+        "phase": "bootstrap_validation",
+        "status": "completed",
+        "seconds": 31.084505149003235
+      }
+    ],
+    "observations_truncated": false,
+    "bootstrap_receipt_count": 1,
+    "bootstrap_error_count": 0
+  },
+  "start_status": "succeeded",
+  "stop_status": "succeeded",
+  "remaining_processes": 0,
+  "all_child_processes_reaped": true,
+  "original_benchmark_subcause_proved": false
+}

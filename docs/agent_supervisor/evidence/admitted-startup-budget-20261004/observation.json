@@ -1,0 +1,35 @@
+{
+  "accounted_prior_isolated_failure": [
+    "integration.test_isolated_benchmark_runtime::test_real_signed_native_start_observe_stop"
+  ],
+  "benchmark_result_claimed": false,
+  "current_controls": [
+    "native-02",
+    "native-03"
+  ],
+  "distinct_current_passing_controls": 84,
+  "failed_xml_note": "Bounded XML keeps every case and status/count while omitting failure bodies, arbitrary messages and captured streams; original raw XML digests are retained.",
+  "full_suite_green_claimed": false,
+  "global_catalog_changed": false,
+  "known_unresolved_legacy_controls": [
+    "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+    "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+    "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_backs_off_when_quack_owner_is_down",
+    "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+    "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token"
+  ],
+  "native_01_limitation": "Production/test pins changed during this superseded run; long fixture Unix paths and two startup deadlines also failed.",
+  "original_owner_reproduction": "baseline-api-01",
+  "original_trial_startup_subcause_proved": false,
+  "prior_generation_not_qualifying": [
+    "baseline-01",
+    "bounds-01",
+    "native-01"
+  ],
+  "private_stores_exported": false,
+  "production_checks_removed": false,
+  "raw_production_source_bodies_exported": false,
+  "schema": "admitted-startup-budget-component@1",
+  "skips": 0,
+  "source_pins_stable": true
+}

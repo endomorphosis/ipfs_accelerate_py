@@ -1,0 +1,7 @@
+import importlib.abc,importlib.util,sys
+MAPPING={'ipfs_accelerate_py.agent_supervisor.control.control_plane': '/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original/ipfs_accelerate_py/agent_supervisor/control/control_plane.py', 'ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime': '/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py', 'ipfs_accelerate_py.agent_supervisor.entrypoints.isolated_benchmark_runtime': '/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap': '/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor': '/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py'}
+class OriginalOwnerFinder(importlib.abc.MetaPathFinder):
+ def find_spec(self,fullname,path=None,target=None):
+  source=MAPPING.get(fullname)
+  return importlib.util.spec_from_file_location(fullname,source) if source else None
+sys.meta_path.insert(0,OriginalOwnerFinder())

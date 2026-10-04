@@ -4543,6 +4543,7 @@ class SupervisorControlService:
         ] = None,
         state_store: Union[ControlStateStore, None] = None,
         catalog: OperationCatalog = DEFAULT_CONTROL_CATALOG,
+        local_start_timeout_ms: Union[int, None] = None,
         service_id: str = "ipfs-accelerate-agent-supervisor",
         service_version: str = CONTROL_SERVICE_VERSION,
         max_query_items: int = DEFAULT_MAX_QUERY_ITEMS,
@@ -4593,6 +4594,14 @@ class SupervisorControlService:
         self._identity_validator = identity_validator
         self._state_store = state_store or JsonlControlStateStore()
         self._catalog = _validate_canonical_catalog(catalog)
+        # An explicitly admitted local runtime may budget its fresh launch
+        # checks separately. Discovery and every other bound stay canonical.
+        if local_start_timeout_ms is not None and (
+            type(local_start_timeout_ms) is not int
+            or not 2_000 <= local_start_timeout_ms <= 120_000
+        ):
+            raise ValueError("local START timeout must be in 2000..120000 milliseconds")
+        self._local_start_timeout_ms = local_start_timeout_ms
         self._service_id = str(service_id).strip()
         self._service_version = str(service_version).strip()
         if not self._service_id or not self._service_version:
@@ -5135,6 +5144,9 @@ class SupervisorControlService:
 
     def _check_bounds(self, request: OperationRequest) -> None:
         descriptor = self._catalog.operation(request.operation)
+        if request.operation is Operation.START and self._local_start_timeout_ms is not None:
+            descriptor = replace(descriptor, bounds=replace(
+                descriptor.bounds, timeout_ms=self._local_start_timeout_ms))
         explicit_limit = request.parameters.get("limit")
         descriptor.validate_bounds(
             request.bounds,

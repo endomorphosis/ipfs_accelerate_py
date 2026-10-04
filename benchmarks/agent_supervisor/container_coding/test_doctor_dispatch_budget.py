@@ -15,16 +15,17 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 
 
 @pytest.mark.parametrize('route', ['doctor_candidate','doctor_contract_candidate','model_router'])
-@pytest.mark.parametrize('remaining_work_seconds', [None,5,0])
+@pytest.mark.parametrize('remaining_work_seconds', [None,5,1,0])
 @pytest.mark.parametrize(('budget_kwargs','total','cleanup_seconds','source_seconds'), [
     ({},285,40,90),
     ({'resource_profile':EXTENDED_SOURCE384_PROFILE},900,60,180),
 ])
 def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
-        tmp_path, monkeypatch, route, remaining_work_seconds, budget_kwargs,total,cleanup_seconds,source_seconds):
+        tmp_path, monkeypatch, route, remaining_work_seconds, budget_kwargs,total,cleanup_seconds,source_seconds,
+        native_failure=False):
     cutoff=total-cleanup_seconds
     used_work_seconds=0 if remaining_work_seconds is None else cutoff-remaining_work_seconds
-    now=[1000.];alarms=[];entered=[];cleanup=[];native_options=[];context_options=[]
+    now=[1000.];alarms=[];entered=[];cleanup=[];native_options=[];context_options=[];native_cleanup=[]
     monkeypatch.delenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE',raising=False)
     for key,value in admission_environment(budget_kwargs.get('resource_profile')).items():
         monkeypatch.setenv(key,value)
@@ -59,6 +60,15 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         return nullcontext(SimpleNamespace(server=object(),source=object()))
     def create(*args,**kwargs):
         native_options.append(kwargs)
+        if native_failure:
+            def start():
+                raise NativeBoundaryReached('controlled native boundary')
+            def diagnostics():
+                raise RuntimeError('PRIVATE_STARTUP_DIAGNOSTIC_FAILURE')
+            return SimpleNamespace(start=start, startup_diagnostics=diagnostics,
+                stop=lambda:native_cleanup.append('stop') or SimpleNamespace(to_dict=lambda:{'status':'succeeded'}),
+                close=lambda:native_cleanup.append('close'), state=state, profile=object(),
+                process=SimpleNamespace(snapshot=lambda profile:SimpleNamespace(members=[])))
         raise NativeBoundaryReached('controlled native boundary')
     for name,attrs in [
         ('benchmarks.agent_supervisor.container_coding.native_quack_qualification',{'open_existing_native_owner':native}),
@@ -70,17 +80,26 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         module=ModuleType(name);vars(module).update(attrs);monkeypatch.setitem(sys.modules,name,module)
     state=tmp_path/'state/run';state.mkdir(parents=True);(state/'admission.json').write_text('{}')
     report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json',**budget_kwargs)
-    admitted=(route!='model_router' or remaining_work_seconds is None) and used_work_seconds<cutoff
+    reached_native=(route!='model_router' or remaining_work_seconds is None) and used_work_seconds<cutoff
+    extended = budget_kwargs.get('resource_profile') == EXTENDED_SOURCE384_PROFILE
+    admitted=reached_native and not (extended and remaining_work_seconds == 1)
     assert bool(entered)==admitted
     assert report['error']['type']==('NativeBoundaryReached' if admitted else 'TimeoutError')
-    assert report['error_phase']==('native_execution' if admitted else 'implementation_setup')
+    assert report['error_phase']==('native_execution' if reached_native else 'implementation_setup')
     assert report['work_cutoff_seconds']==cutoff and report['reserved_cleanup_seconds']==cleanup_seconds
     assert report['max_total_agent_seconds']==total
     assert report['source384_timeout_seconds']==source_seconds
+    assert report['native_start_timeout_seconds'] == (120 if extended else 20)
     assert context_options[0]['source384_timeout_seconds']==source_seconds
     if admitted:
         assert native_options[0]['lifetime_seconds']==min(900,max(120,cutoff-used_work_seconds+60))
         assert native_options[0]['timeout_ms']==20_000
+        if extended:
+            assert native_options[0]['start_timeout_ms'] == min(120,cutoff-used_work_seconds)*1000
+        else:
+            assert 'start_timeout_ms' not in native_options[0]
+        assert report['native_start_timeout_ms'] == native_options[0].get('start_timeout_ms',20_000)
+        assert report['native_stop_timeout_ms'] == 20_000
         if route=='model_router':
             import shlex
             command=shlex.split(native_options[0]['implementation_command'])
@@ -89,6 +108,48 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     assert report['worker_cleanup_returncode']==0 and len(cleanup)==1
     assert (driver.signal.ITIMER_REAL,cutoff) in alarms and alarms[-1]==(driver.signal.ITIMER_REAL,0)
     assert json.loads((state.parent/'run-result.json').read_text())==report
+    if native_failure:
+        assert native_cleanup == ['stop','close']
+        assert report['native_startup_error'] == 'collection_unavailable'
+        assert report['stop']['status'] == 'succeeded' and report['remaining_processes'] == 0
+        assert 'PRIVATE' not in json.dumps(report)
+
+
+def test_startup_diagnostic_failure_does_not_mask_start_failure_or_skip_stop(tmp_path,monkeypatch):
+    test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+        tmp_path,monkeypatch,'doctor_contract_candidate',None,
+        {'resource_profile':EXTENDED_SOURCE384_PROFILE},900,60,180,native_failure=True)
+
+
+def _startup_observation():
+    return dict(schema='admitted-native-startup-observation@1',start_timeout_ms=120000,
+        stop_timeout_ms=20000,bootstrap_wait_seconds=120,
+        observations=[dict(phase='control_validation',status='completed',seconds=2.5)],
+        observations_truncated=False,bootstrap_receipt_count=1,bootstrap_error_count=0)
+
+
+def test_startup_metadata_projection_detaches_bounded_observations():
+    raw=_startup_observation()
+    result=driver._project_native_startup(raw)
+    assert result==raw
+    result['observations'][0]['seconds']=99
+    assert raw['observations'][0]['seconds']==2.5
+
+
+@pytest.mark.parametrize('change',['source_body','row_body','phase','status','seconds','too_many','count','start_budget'])
+def test_startup_projection_refuses_raw_or_unbounded_metadata(change):
+    value=_startup_observation()
+    if change=='source_body':value['source']='PRIVATE_SOURCE'
+    elif change=='row_body':value['observations'][0]['error']='PRIVATE_EXCEPTION'
+    elif change=='phase':value['observations'][0]['phase']='PRIVATE_PATH'
+    elif change=='status':value['observations'][0]['status']='PRIVATE_MODEL'
+    elif change=='seconds':value['observations'][0]['seconds']=float('inf')
+    elif change=='too_many':value['observations']*=17
+    elif change=='count':value['bootstrap_error_count']=True
+    else:value['start_timeout_ms']=120001
+    with pytest.raises(ValueError) as error:
+        driver._project_native_startup(value)
+    assert 'PRIVATE' not in str(error.value)
 
 
 @pytest.mark.parametrize(('profile','timeout'), [

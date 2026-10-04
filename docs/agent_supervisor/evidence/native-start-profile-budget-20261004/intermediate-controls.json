@@ -1,0 +1,49 @@
+{
+  "command": {
+    "argv": [
+      "<PYTHON_EXECUTABLE>",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+      "--junitxml=<EVIDENCE_ROOT>/budget-02.xml"
+    ],
+    "cwd": "<ACCELERATE_CHECKOUT>",
+    "environment_overrides": {
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_MAX_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>:<HARBOR_SITE_PACKAGES>"
+    },
+    "source_revision": "aa2694d0c99f6ca5ea11294704ed91cf7b6d9928",
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a",
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "5d86bada46c3cfbeac60897e443ee5bc4dd457024891c4efd45b24b1db82b6cf",
+      "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "512db62f2d4a9ac485501129d8c3b5039f816b9d1ff5725e806e3cc4068d85df",
+      "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py": "a79d46eaeb2ea8c30431cc8a051f62e0003d75f6887c44146fc0b9df5da17680"
+    }
+  },
+  "exit": {
+    "returncode": 0,
+    "seconds": 14.007951718987897,
+    "source_pins_unchanged": true
+  },
+  "raw_xml_exported": false,
+  "raw_xml_sha256": "a4a352c47c377ba26209f30748063820a35ee872c9ea7a615de4ca4557bb6f7f",
+  "schema": "retained-intermediate-test-controls@1",
+  "scope": "70 passing profile/driver controls before the startup diagnostic additions; overlapping with the final 80, not additional independent cases.",
+  "xml": [
+    {
+      "errors": 0,
+      "failures": 0,
+      "seconds": 12.614,
+      "skipped": 0,
+      "tests": 70
+    }
+  ]
+}

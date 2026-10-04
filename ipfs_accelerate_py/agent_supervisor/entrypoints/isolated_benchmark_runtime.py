@@ -316,10 +316,14 @@ class IsolatedBenchmarkRuntime:
             active_lease_fences={self.lease.lease_id: self.lease.fence_epoch},
         )
 
+    def _operation_timeout_ms(self, operation: Operation) -> int:
+        return self.timeout_ms
+
     def request(self, operation: Operation) -> OperationRequest:
         if operation not in (Operation.START, Operation.STOP):
             raise ValueError("isolated local grant permits only START and STOP")
         self._verify_operation(operation)
+        timeout_ms = self._operation_timeout_ms(operation)
         latest = self.orchestrator.store.latest().get(self.profile.target_id)
         revision = latest.receipt.revision if latest and latest.receipt else 0
         binding = dict(
@@ -336,15 +340,15 @@ class IsolatedBenchmarkRuntime:
         permit = AuthorizationDecision(
             **binding, verdict=AuthorizationVerdict.PERMIT, granted_authority=OperationAuthority.MUTATION,
             authorized_effect_ids=(effect.effect_id,), grant_ids=(self.manifest_id,),
-            evaluated_at_ms=now, expires_at_ms=min(now + self.timeout_ms + 5_000, self.lease.expires_at_ms),
+            evaluated_at_ms=now, expires_at_ms=min(now + timeout_ms + 5_000, self.lease.expires_at_ms),
         )
         self._permits[permit.decision_id] = permit
         request = OperationRequest(
-            **binding, bounds=ControlBounds(timeout_ms=self.timeout_ms), authorization=permit,
+            **binding, bounds=ControlBounds(timeout_ms=timeout_ms), authorization=permit,
             expected_effects=(effect,), parameters={
                 "target_id": self.profile.target_id, "run_id": self.run_id,
                 "configuration_root": self.manifest_id, "expected_revision": revision,
-                "deadline_ms": self.timeout_ms, "health_window_ms": 500,
+                "deadline_ms": timeout_ms, "health_window_ms": 500,
                 "reason": "isolated signed supervisor process qualification",
             }, idempotency=IdempotencyKey(
                 key=f"{self.run_id}:{operation.value}:{revision}", operation=operation,

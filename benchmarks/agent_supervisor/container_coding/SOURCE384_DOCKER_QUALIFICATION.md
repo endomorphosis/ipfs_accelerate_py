@@ -1093,3 +1093,24 @@ heartbeat, zero remaining native processes and worker cleanup return code zero.
 Repeated verification within the 20 s START window is a structural risk; exact
 per-boundary startup timing was not captured. The paused service was restored.
 See [checker retry evidence](../../../docs/agent_supervisor/evidence/extended-supervisor-checker-20261004/README.md).
+
+The extended profile now gives native START an explicit maximum of 120 seconds,
+clamped to remaining work. The same signed allowance bounds child owner
+bootstrap. START includes fresh launch validation; increasing only the outer
+900-second driver budget does not extend this inner deadline. The work cutoff
+remains 840 seconds, STOP remains 20 seconds, and cleanup retains 60 seconds.
+The default control catalog is unchanged; only the explicitly admitted local
+benchmark runtime accepts the larger START bound. Closed startup observations
+record validation phase durations and receipt counts without source or log bodies.
+Component controls and a fresh Docker trial are recorded separately; the earlier
+failed trial does not establish which startup validation phase consumed its time.
+
+[Driver startup-budget controls](../../../docs/agent_supervisor/evidence/native-start-profile-budget-20261004/README.md)
+passed 80 cases, covering remaining-work limits, unchanged STOP/cleanup budgets,
+and bounded diagnostic collection that preserves cleanup on failure.
+
+[Native startup controls](../../../docs/agent_supervisor/evidence/admitted-startup-budget-20261004/README.md)
+add 84 distinct passing cases. The delayed native control verified real START,
+bootstrap, STOP and child reaping. Five older missing-method API tests reproduce
+against the original owner modules and remain failing; they are not counted as
+passing. One legacy startup fixture required its own orchestration directory.

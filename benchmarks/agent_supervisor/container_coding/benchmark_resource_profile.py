@@ -4,6 +4,7 @@ The extended development profile is a distinct experiment. Select it for every
 comparison arm; existing task defaults and the original profile stay unchanged.
 """
 from copy import deepcopy
+import math
 
 SOURCE384_PROFILE = "source384-5cpu-12gib@1"
 EXTENDED_SOURCE384_PROFILE = "source384-5cpu-16gib-extended@1"
@@ -27,10 +28,30 @@ def execution_budget(profile=None):
     if profile == EXTENDED_SOURCE384_PROFILE:
         return dict(driver_seconds=900, cleanup_seconds=60, source384_seconds=180,
                     harbor_seconds=960, exec_seconds=910, qualification_seconds=600,
-                    qualification_exec_seconds=630)
+                    qualification_exec_seconds=630, native_start_seconds=120)
     return dict(driver_seconds=285, cleanup_seconds=40, source384_seconds=90,
                 harbor_seconds=300, exec_seconds=295, qualification_seconds=270,
-                qualification_exec_seconds=300)
+                qualification_exec_seconds=300, native_start_seconds=20)
+
+
+def native_start_timeout_ms(profile=None, *, remaining_work_seconds):
+    """Select an explicit START allowance without extending the work deadline.
+
+    Legacy profiles omit the override and retain the driver's shared 20-second
+    START/STOP timeout. The extended profile separates START's admission and
+    bootstrap work from STOP's existing cleanup allowance. The work alarm still
+    covers runtime construction and every subsequent operation.
+    """
+    budget = execution_budget(profile)
+    if (type(remaining_work_seconds) not in (int, float)
+            or not math.isfinite(remaining_work_seconds) or remaining_work_seconds < 0):
+        raise ValueError("remaining work must be finite non-negative seconds")
+    if profile != EXTENDED_SOURCE384_PROFILE:
+        return None
+    timeout = int(min(budget["native_start_seconds"], remaining_work_seconds) * 1000)
+    if timeout < 2000:
+        raise TimeoutError("insufficient work budget for bounded native START")
+    return timeout
 
 
 def admission_environment(profile=None):

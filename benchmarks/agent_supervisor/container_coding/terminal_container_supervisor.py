@@ -10,6 +10,7 @@ import argparse
 from collections import deque
 import hashlib
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -21,7 +22,7 @@ import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    PROFILES, admission_environment, execution_budget,
+    PROFILES, admission_environment, execution_budget, native_start_timeout_ms,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
 
@@ -44,6 +45,35 @@ def _arm_cleanup_deadline(deadline: float) -> None:
     result before the caller's total deadline.
     """
     signal.setitimer(signal.ITIMER_REAL, max(.001, deadline - time.monotonic() - 2))
+
+
+def _project_native_startup(value):
+    """Keep startup timing diagnostic-only and exclude runtime/source bodies."""
+    fields = {"schema", "start_timeout_ms", "stop_timeout_ms", "bootstrap_wait_seconds",
+        "observations", "observations_truncated", "bootstrap_receipt_count", "bootstrap_error_count"}
+    if (type(value) is not dict or set(value) != fields
+            or type(value["schema"]) is not str or value["schema"] != "admitted-native-startup-observation@1"):
+        raise ValueError("closed native startup observation required")
+    if (type(value["start_timeout_ms"]) is not int or not 2000 <= value["start_timeout_ms"] <= 120000
+            or type(value["stop_timeout_ms"]) is not int or not 2000 <= value["stop_timeout_ms"] <= 30000
+            or type(value["bootstrap_wait_seconds"]) not in (int, float)
+            or not math.isfinite(value["bootstrap_wait_seconds"]) or not 2 <= value["bootstrap_wait_seconds"] <= 120
+            or type(value["observations_truncated"]) is not bool
+            or any(type(value[key]) is not int or not 0 <= value[key] <= 65535
+                for key in ("bootstrap_receipt_count", "bootstrap_error_count"))
+            or type(value["observations"]) is not list or len(value["observations"]) > 16):
+        raise ValueError("bounded native startup observation required")
+    observations = []
+    for row in value["observations"]:
+        if (type(row) is not dict or set(row) != {"phase", "status", "seconds"}
+                or type(row["phase"]) is not str or row["phase"] not in {
+                    "control_validation", "launch_validation", "bootstrap_validation"}
+                or type(row["status"]) is not str or row["status"] not in {"running", "completed", "failed"}
+                or type(row["seconds"]) not in (int, float) or not math.isfinite(row["seconds"])
+                or not 0 <= row["seconds"] <= 900):
+            raise ValueError("bounded startup phase observation required")
+        observations.append(dict(row))
+    return {**value, "observations": observations}
 
 
 def _router_reply(stdout: str) -> tuple[str, dict]:
@@ -396,6 +426,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "resource_profile": resource_profile,
               "proof_resource_profile": selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE"),
               "source384_timeout_seconds": budget["source384_seconds"],
+              "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -554,6 +585,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
         from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
         from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
+        start_timeout = native_start_timeout_ms(resource_profile, remaining_work_seconds=remaining())
+        report["native_start_timeout_ms"] = 20_000 if start_timeout is None else start_timeout
+        report["native_stop_timeout_ms"] = 20_000
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
@@ -563,6 +597,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 state / "launch", admission=admission, server=owner.server, source=owner.source,
                 implement=True, implementation_command=command, context_bundle=bundle,
                 max_task_attempts=1, timeout_ms=20_000,
+                **({"start_timeout_ms": start_timeout} if start_timeout is not None else {}),
                 lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
@@ -597,6 +632,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 report["observation"] = runtime.observe()
             finally:
                 _arm_cleanup_deadline(deadline)
+                try:
+                    report["native_startup"] = _project_native_startup(runtime.startup_diagnostics())
+                except Exception:
+                    report["native_startup_error"] = "collection_unavailable"
                 try:
                     report["stop"] = runtime.stop().to_dict()
                     report["remaining_processes"] = len(runtime.process.snapshot(runtime.profile).members)

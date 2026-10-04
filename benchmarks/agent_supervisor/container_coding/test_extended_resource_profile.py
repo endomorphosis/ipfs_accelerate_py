@@ -33,14 +33,45 @@ def test_extended_budget_leaves_cleanup_and_transport_inside_harbor_deadline():
     budget = profile.execution_budget(profile.EXTENDED_SOURCE384_PROFILE)
     assert budget['driver_seconds'] - budget['cleanup_seconds'] == 840
     assert budget['source384_seconds'] == 180
+    assert budget['native_start_seconds'] == 120
     assert budget['cleanup_seconds'] >= 2 * 20  # native STOP and accounting reserve
     assert budget['driver_seconds'] < budget['exec_seconds'] < budget['harbor_seconds']
     assert budget['qualification_seconds'] < budget['qualification_exec_seconds']
     assert profile.execution_budget()['driver_seconds'] == 285
+    assert profile.execution_budget()['native_start_seconds'] == 20
+    assert profile.execution_budget(profile.SOURCE384_PROFILE)['native_start_seconds'] == 20
     assert profile.admission_environment() == profile.admission_environment(profile.SOURCE384_PROFILE) == {}
     admission = profile.admission_environment(profile.EXTENDED_SOURCE384_PROFILE)
     assert admission['IPFS_DATASETS_PROOF_RESOURCE_PROFILE'] == 'local-benchmark@1'
     assert admission['IPFS_DATASETS_RESOURCE_SCHEDULER_PATH'].startswith('/opt/ipfs-supervisor/state/')
+
+
+@pytest.mark.parametrize('seconds,expected', [(840, 120000), (120, 120000), (5, 5000), (2.5, 2500), (2, 2000)])
+def test_extended_start_allowance_is_bounded_by_remaining_work(seconds, expected):
+    assert profile.native_start_timeout_ms(profile.EXTENDED_SOURCE384_PROFILE,
+        remaining_work_seconds=seconds) == expected
+
+
+@pytest.mark.parametrize('seconds', [0, 1, 1.999])
+def test_extended_start_refuses_insufficient_time_instead_of_spending_cleanup(seconds):
+    with pytest.raises(TimeoutError, match='insufficient work budget'):
+        profile.native_start_timeout_ms(profile.EXTENDED_SOURCE384_PROFILE, remaining_work_seconds=seconds)
+
+
+@pytest.mark.parametrize('selected', [None, profile.SOURCE384_PROFILE])
+def test_legacy_profiles_do_not_override_native_start(selected):
+    assert profile.native_start_timeout_ms(selected, remaining_work_seconds=120) is None
+
+
+@pytest.mark.parametrize('seconds', [True, -1, float('inf'), float('nan'), '120'])
+def test_start_budget_requires_finite_exact_numeric_work_time(seconds):
+    with pytest.raises(ValueError, match='remaining work'):
+        profile.native_start_timeout_ms(profile.EXTENDED_SOURCE384_PROFILE, remaining_work_seconds=seconds)
+
+
+def test_unknown_start_profile_is_rejected():
+    with pytest.raises(ValueError, match='unknown'):
+        profile.native_start_timeout_ms('unknown-profile', remaining_work_seconds=120)
 
 
 @pytest.mark.parametrize('field', ['override_timeout_sec', 'max_timeout_sec'])

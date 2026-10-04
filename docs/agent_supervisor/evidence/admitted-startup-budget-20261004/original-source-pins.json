@@ -1,0 +1,9 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+  "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "3eadc8f782e3b88f261c5e6c6366b4da482ea1664c31bdef69f1f2d5a2dc0ac0",
+  "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "963880629bb185c092453d159a985e5127e1197cbeea8656332860bdd80fbb08",
+  "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "cfb3690b3ac1beecd10d111d10bd701aa433c1ae75c1d6869037f3d371d8a784",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ec3989c4b1b9b7e1d86f50439f353107bb8305aae771f4ace3fb0c9924f6e6e8",
+  "test/integration/test_admitted_benchmark_runtime.py": "d8954b1a9c42c37033218a531c8f9a8f186292448f913795ce51bb4d832db8a9"
+}

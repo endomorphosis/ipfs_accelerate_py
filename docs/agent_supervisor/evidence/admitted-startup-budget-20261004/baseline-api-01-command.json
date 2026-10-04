@@ -1,0 +1,62 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-baseline-api-01/pytest-cache",
+    "--basetemp=/tmp/ipfs-asb-baseline-api-01",
+    "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py",
+    "-k",
+    "not connect_inherited_listener",
+    "--junitxml=/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/baseline-api-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-baseline-api-01/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-baseline-api-01/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-baseline-api-01/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/original-overlay:/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/ipfs-asb-orchestration-baseline-api-01"
+  },
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "d59dd50aa30cccaa9e90874742b3fc540b7d7b7789946a6816517ddff33bbfd1",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "470f041ea3f0047972e2d551499f04d6ef07bcb0339d8f492012d08048437390",
+    "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ac592f12821a88747ed0c90265b590136a1195acff50347a8455d0b839157ff5",
+    "test/integration/test_admitted_benchmark_runtime.py": "005b8777df78d9bc0286371975be2f0788734e2b8b9fd37d20b4edb583b113fd",
+    "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e",
+    "test/integration/test_admitted_startup_budget.py": "0f84edc2e00125c44ebe4c33d0f809f393b2255bb93fb82b6f268c11608feccc",
+    "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py": "d94641793c4e2e62591b4edeaedaf8f7d8413c195882b173c932c4594ba6a7e5"
+  },
+  "repository_heads": {
+    "source": "65070b69ad4c8aabfd268a054456b67e7cc79d11",
+    "datasets": "d1c6e830a02b74934079fec533d9b6607c39e968"
+  },
+  "runner_sha256": "41c775b8f73caab2c9a0ad4071264136a2d7d820dec95157ff4eab36c96da2ec",
+  "providers_called": false,
+  "production_scheduler_used": false,
+  "hidden_verifier_used": false,
+  "source_overlay": {
+    "test/integration/test_admitted_benchmark_runtime.py": "d8954b1a9c42c37033218a531c8f9a8f186292448f913795ce51bb4d832db8a9",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "963880629bb185c092453d159a985e5127e1197cbeea8656332860bdd80fbb08",
+    "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+    "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "3eadc8f782e3b88f261c5e6c6366b4da482ea1664c31bdef69f1f2d5a2dc0ac0",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "cfb3690b3ac1beecd10d111d10bd701aa433c1ae75c1d6869037f3d371d8a784",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ec3989c4b1b9b7e1d86f50439f353107bb8305aae771f4ace3fb0c9924f6e6e8"
+  },
+  "overlay_finder_sha256": "bb01e3d0e2e81e2b4ac99054d09b44218d24ea73f0a7be9bcf577c2d0e3931a7"
+}

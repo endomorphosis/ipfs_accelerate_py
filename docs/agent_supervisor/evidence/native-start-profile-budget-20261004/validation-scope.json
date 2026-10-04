@@ -1,0 +1,36 @@
+{
+  "actual_driver_mocked_boundaries": true,
+  "actual_native_supervisor_started": false,
+  "elapsed_seconds": 13.582526519006933,
+  "extended_cleanup_reserve_seconds": 60,
+  "extended_profile_start_cap_seconds": 120,
+  "failed": 0,
+  "legacy_start_override_omitted": true,
+  "limitations": [
+    "These mocked boundary and configuration controls do not measure a successful native START, sustained health, checkpoint inference, or a benchmark reward.",
+    "The Doctor agent owns separate runtime/control/bootstrap verification and native integration tests.",
+    "No production acceptance/health/proof condition is waived by these profile or reporting changes.",
+    "The recorded hashes cover four scoped source/test files, not every transitive import.",
+    "The 70-case intermediate group overlaps the 80-case final group.",
+    "The retained initial invocation stopped during collection; it is not a scored product-test failure."
+  ],
+  "minimum_extended_start_milliseconds": 2000,
+  "passed": 80,
+  "raw_solver_source_model_bodies_exported": false,
+  "raw_stdout_exported": false,
+  "real_health_acceptance_measured": false,
+  "schema": "native-start-profile-controls@1",
+  "scope": [
+    "Shared Harbor outer limits remain matched across native Codex, indexed supervisor and no-index supervisor configurations.",
+    "The extended START override is 120 s maximum, reduced to remaining work; insufficient remaining time refuses before runtime creation.",
+    "STOP remains 20s and the existing 60 s cleanup reserve/work alarm are preserved.",
+    "Closed startup observations reject raw fields, unknown phases/statuses and unbounded counts/times.",
+    "A driver control preserves an authored START error when startup diagnostics fail and confirms STOP and close still run."
+  ],
+  "simulated_clock_for_dispatch_budget": true,
+  "skipped": 0,
+  "source_pins_unchanged": true,
+  "start_clamped_to_remaining_work": true,
+  "stop_timeout_seconds": 20,
+  "tests": 80
+}

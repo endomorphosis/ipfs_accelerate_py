@@ -1,0 +1,53 @@
+{
+  "files": [
+    {
+      "bytes": 1470,
+      "path": "README.md",
+      "sha256": "3e3c7dc2fc08c5af1d8dbf42c910154ccbeeeea2941e96ac9bf55e7a483d738d"
+    },
+    {
+      "bytes": 2164,
+      "path": "collection-failure.json",
+      "sha256": "0d2095dc10fde53339f1a626e4f1476f4aa2a2c5eaf6c7441e17fef6f8948c8f"
+    },
+    {
+      "bytes": 1534,
+      "path": "command.json",
+      "sha256": "1fd6a33a3a3e24617976ca8d300e9f25197d9228a897b35148b545c20f4d3fb6"
+    },
+    {
+      "bytes": 88,
+      "path": "exit.json",
+      "sha256": "fd973b359f184b6a80d5202db31e3492c252683308c0a98a547a8b1c30fe8a2d"
+    },
+    {
+      "bytes": 1983,
+      "path": "intermediate-controls.json",
+      "sha256": "8aed13e7dcbd74d636f7c91f08656ec898ac75c06b3ced1127dd2d2bbfd6ee78"
+    },
+    {
+      "bytes": 16916,
+      "path": "pytest.xml",
+      "sha256": "968d8851fb26676e2090800a2866f05d30a982a7f49550326fa12f7733813f15"
+    },
+    {
+      "bytes": 1639,
+      "path": "retained-original-record-digests.json",
+      "sha256": "b338587775b2127a1d971f4a90efc264bc635350946f34785dbb17c766849a67"
+    },
+    {
+      "bytes": 983,
+      "path": "source-pins.json",
+      "sha256": "307ad725c022ebedc924a74ebf8ff1831fde49bb30cb6ccf52e853ccfb8c487b"
+    },
+    {
+      "bytes": 1972,
+      "path": "validation-scope.json",
+      "sha256": "cd8124b62a3f0e54d1a345ca96c5856734abf65f704dcd64a391a62836e90b04"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 28749,
+  "member_count": 9,
+  "schema": "bounded-test-evidence-manifest@1"
+}

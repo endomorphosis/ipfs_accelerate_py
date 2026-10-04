@@ -1,0 +1,45 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-bounds-01/pytest-cache",
+    "--basetemp=/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-bounds-01/tmp",
+    "test/integration/test_admitted_startup_budget.py",
+    "-k",
+    "not default_start_deadline and not signed_extended_start",
+    "--junitxml=/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/bounds-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-bounds-01/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-bounds-01/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/admitted-startup-budget-20261004/private-bounds-01/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "2048d6124a3f92d736fb00976a4d09d96ec4282c539c98f4195476835f110bd7",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "470f041ea3f0047972e2d551499f04d6ef07bcb0339d8f492012d08048437390",
+    "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py": "ac592f12821a88747ed0c90265b590136a1195acff50347a8455d0b839157ff5",
+    "test/integration/test_admitted_benchmark_runtime.py": "005b8777df78d9bc0286371975be2f0788734e2b8b9fd37d20b4edb583b113fd",
+    "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e",
+    "test/integration/test_admitted_startup_budget.py": "e9c1992ff38424b69f6daeb99479dbdd1a2f2c1c8c1e6f343673c616bbbe164e"
+  },
+  "providers_called": false,
+  "production_scheduler_used": false,
+  "hidden_verifier_used": false
+}

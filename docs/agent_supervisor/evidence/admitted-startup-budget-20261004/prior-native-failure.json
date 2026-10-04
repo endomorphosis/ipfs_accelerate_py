@@ -1,0 +1,49 @@
+{
+  "schema": "bounded-native-lifecycle-failure-detail@1",
+  "source_report_sha256": "2e27e4a53cb9a1cbe05faddd05a06e4ae3448fd6c92dfc6cf53b76142206d0a2",
+  "raw_bodies_exported": false,
+  "per_boundary_timing_retained": false,
+  "exact_startup_subcause": "unavailable",
+  "phases": {
+    "start": {
+      "status": "conflict",
+      "error_code": "conflict",
+      "reason": "sustained_health_not_proved",
+      "exception_type": "PartialMutationError",
+      "transaction_phase": "repair_required",
+      "recovery_action": "repair",
+      "applied_effect_count": 0,
+      "timeout_ms": 20000
+    },
+    "stop": {
+      "status": "conflict",
+      "error_code": "conflict",
+      "reason": "active_lifecycle_transition",
+      "exception_type": "TransactionConflictError",
+      "transaction_phase": "repair_required",
+      "recovery_action": "repair",
+      "applied_effect_count": 0,
+      "timeout_ms": 20000
+    }
+  },
+  "native_process_observation": {
+    "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
+    "status": "running",
+    "supervisor_pid": 22963,
+    "daemon_pid": 23023
+  },
+  "native_logs": [
+    {
+      "log_bytes": 0,
+      "exception_type_count": 0,
+      "traceback_frame_count": 0
+    },
+    {
+      "log_bytes": 288,
+      "exception_type_count": 0,
+      "traceback_frame_count": 0
+    }
+  ],
+  "remaining_processes": 0,
+  "worker_cleanup_returncode": 0
+}
