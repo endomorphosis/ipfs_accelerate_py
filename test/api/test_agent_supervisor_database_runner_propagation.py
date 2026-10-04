@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -319,6 +320,141 @@ def test_supervisor_propagates_program_to_daemon_command_and_child_env(
     assert STATE_AUTHORITY_MODE_ENV not in provider_env
     assert RUNTIME_REGISTRY_PATH_ENV not in provider_env
     assert STATE_QUACK_MUTATION_DIR_ENV not in provider_env
+
+
+def test_quack_supervisor_does_not_ingest_markdown_as_task_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    todo = tmp_path / "tasks.md"
+    todo.write_text(
+        "# Tasks\n\n## DOEP-001 Projection only\n\n- Status: completed\n",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    isolated_calls: list[dict[str, object]] = []
+
+    def isolate(**kwargs: object) -> dict[str, object]:
+        isolated_calls.append(dict(kwargs))
+        return {"implementation_branch": "", "branch_result": {}}
+
+    monkeypatch.setattr(supervisor_module, "isolate_board_runtime", isolate)
+    PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            database_program=_quack_program(worktree_root=""),
+            repo_root=tmp_path,
+        )
+    )
+
+    assert len(isolated_calls) == 1
+    assert isolated_calls[0]["source_kind"] == "duckdb"
+    assert isolated_calls[0]["ingest_todo"] is False
+
+
+def test_quack_leftover_recovery_defers_without_typed_database_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    todo = tmp_path / "tasks.md"
+    todo.write_text(
+        "# Tasks\n\n## DOEP-002 Projection only\n\n- Status: completed\n",
+        encoding="utf-8",
+    )
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        database_program=_quack_program(worktree_root=""),
+        plan_bound_dispatch=True,
+        state_owner_bootstrap_fd=-1,
+        todo_path=todo,
+        task_prefix="## DOEP-",
+        state_path=tmp_path / "task-state.json",
+    )
+    state = SimpleNamespace(
+        active_task_id="DOEP-002",
+        implementation_in_progress=True,
+    )
+    monkeypatch.setattr(
+        supervisor_module.PortalTaskState,
+        "load",
+        lambda _path: state,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "parse_task_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("database mode must not parse Markdown")
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unknown database state must not stop live work")
+        ),
+    )
+
+    result = supervisor.release_completed_leftover_execution()
+
+    assert result == {
+        "attempted": False,
+        "released": False,
+        "reason": "database_task_completion_recovery_unavailable",
+        "active_task_id": "DOEP-002",
+        "authority": "duckdb",
+    }
+    assert state.implementation_in_progress is True
+
+
+def test_quack_completion_uses_typed_state_not_markdown_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    todo = tmp_path / "tasks.md"
+    todo.write_text(
+        "# Tasks\n\n## DOEP-003 Projection only\n\n- Status: completed\n",
+        encoding="utf-8",
+    )
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        database_program=_quack_program(worktree_root=""),
+        plan_bound_dispatch=False,
+        state_owner_bootstrap_fd=3,
+        todo_path=todo,
+        task_prefix="## DOEP-",
+    )
+    canonical_task = SimpleNamespace(status="todo")
+    typed_source = SimpleNamespace(get_task=lambda _task_id: canonical_task)
+    monkeypatch.setattr(
+        supervisor,
+        "_uses_supervisor_state_owner_bootstrap",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_typed_supervisor_task_source",
+        lambda: typed_source,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "parse_task_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("database mode must not parse Markdown")
+        ),
+    )
+
+    assert supervisor._board_task_is_completed("DOEP-003") is False
+    canonical_task.status = "completed"
+    todo.write_text(
+        "# Tasks\n\n## DOEP-003 Projection only\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    assert supervisor._board_task_is_completed("DOEP-003") is True
 
 
 def test_supervisor_loop_binds_trusted_source_root_for_safe_path_child(
