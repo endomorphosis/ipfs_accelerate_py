@@ -7,7 +7,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-001 Define bounded goal-development contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
@@ -21,7 +21,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-002 Make subgoal satisfaction first-class in the reviewed type system
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
@@ -35,7 +35,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-003 Compile and validate canonical subgoal hierarchies
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
@@ -49,7 +49,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-004 Add a capability-isolated Leanstral goal-development provider
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
@@ -63,7 +63,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-005 Generate and independently verify refinement obligations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: leanstral-goal-development
@@ -77,7 +77,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-006 Materialize admitted goal and subgoal proposals transactionally
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
@@ -91,7 +91,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-007 Bind implementation results to fresh code-conformance obligations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
@@ -105,7 +105,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-008 Add route-aware capability, scheduling, cache, and metrics support
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
@@ -119,7 +119,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-009 Add end-to-end shadow-mode integration
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: leanstral-goal-development
@@ -133,7 +133,7 @@ completion remain owned by deterministic supervisor components.
 
 ## LEAN-GOAL-010 Build paired benchmarks and rollout gates
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: leanstral-goal-development
