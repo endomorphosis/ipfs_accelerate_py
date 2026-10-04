@@ -1,0 +1,312 @@
+{
+  "PlanCreate_calls": 0,
+  "authority": {
+    "all32_macrocriteria": "OPEN",
+    "completion_authority": false,
+    "default_activation": false,
+    "execution_authority": false,
+    "mutation_authority": false,
+    "official_benchmark_score": null,
+    "planning_handoff": "abstained",
+    "proof_authority": false
+  },
+  "evidence_pins": [
+    {
+      "bytes": 6238,
+      "path": "qualification/codebase_ir/selector-semantics-20261004-01/source-manifest-04.json",
+      "sha256": "93e3c12215b70c86d4a02bf28aedb4e89a9efff1a7e70a182c155dc6ab2582c0"
+    },
+    {
+      "bytes": 149476,
+      "path": "qualification/codebase_ir/selector-semantics-20261004-01/evidence/tests-03/closed.json",
+      "sha256": "3d05304753a882ca44c6c6c753ed63b41da13a2ec3f9c1f43e5a15e82932d583"
+    },
+    {
+      "bytes": 155853,
+      "path": "qualification/codebase_ir/selector-semantics-20261004-01/evidence/actual-08/closed.json",
+      "sha256": "836402f06567fb1259187214a7d0e540e89e35cc8dc3ffe6fa7de3d3f16644af"
+    },
+    {
+      "bytes": 4614,
+      "path": "qualification/codebase_ir/full-task-source-20261004-01/closed.json",
+      "sha256": "62086e633c3bf12e57e8e37c2ced28a1ecbb3d06c9a8aad807f30ffb981190b8"
+    },
+    {
+      "bytes": 4621,
+      "path": "qualification/codebase_ir/full-task-source-20261004-02/closed.json",
+      "sha256": "918261e3b0d6eedb652bed53c15ecfb061123a49218cf8df4a620409dc81f251"
+    },
+    {
+      "bytes": 10942,
+      "path": "qualification/codebase_ir/full-task-source-20261004-03/closed.json",
+      "sha256": "f1ed434c5a38215b5f3e4dbedf65dcc09279673797592b6cd50c0e3eae09ff43"
+    },
+    {
+      "bytes": 2338,
+      "path": "qualification/codebase_ir/full-task-source-20261004-03/file-seal.json",
+      "sha256": "69728c0fbc406f478c9abc10396231839a63a866ccc96ba0eca1ffaa54a72704"
+    },
+    {
+      "bytes": 20393,
+      "path": "qualification/codebase_ir/global-shape-reference-20261004-01/closed.json",
+      "sha256": "a771330549f2d0c86aca7aa9458f70132121b03efcd5ac8ff2dfa40005e210c5"
+    },
+    {
+      "bytes": 1820,
+      "path": "qualification/codebase_ir/global-shape-reference-20261004-01/file-seal.json",
+      "sha256": "d7d041a5c129e07c04916b86322f9179792dc9e982ba6d68d3845a7e5359d90a"
+    },
+    {
+      "bytes": 5337,
+      "path": "qualification/codebase_ir/source-model-next-stage-20261004-01/plan.json",
+      "sha256": "e0558c500d2e766ac4869a51111b4ca328fdc2558e45f5b3bb41949049b799f5"
+    },
+    {
+      "bytes": 2069,
+      "path": "qualification/codebase_ir/source-model-next-stage-20261004-01/public-baseline-preparation.json",
+      "sha256": "fcddc083dba4b630143883697865660d6010e9d60d07e90c004e343d83efa01f"
+    },
+    {
+      "bytes": 2014,
+      "path": "qualification/codebase_ir/source-model-next-stage-20261004-01/certified-adaptation-design.json",
+      "sha256": "1317749c0eb3e29b0ac97ca62a3b0e6fefcda75dcad006678b06cce6d6d4bc46"
+    }
+  ],
+  "historical_preparation_source_pins_rewritten": false,
+  "limitations": {
+    "asymptotic_optimizer_convergence_proved": false,
+    "binary64_update_error_bound_proved": false,
+    "caller_and_imported_bindings_proved": false,
+    "full_original_instruction_satisfaction": false,
+    "heldout_generalized_gain_proved": false,
+    "logistic_Hessian_bound_proved": false,
+    "nonlinear_autoencoder_convergence_proved": false,
+    "performance_thresholds_proved": false,
+    "whole_CPython_source_equivalence": false,
+    "whole_live_source_import_or_OS_census": false
+  },
+  "metadata_readback": {
+    "bytes": 25015,
+    "path": "qualification/codebase_ir/selector-semantics-20261004-01/evidence/actual-08/metadata-readback.json",
+    "sha256": "a9f47e2cd87377d0150fb967210285d9a6a4f3b65651e1029c02e7f1eac44aaa"
+  },
+  "metadata_scope": {
+    "families": 26,
+    "family_count_is_metadata_not_logic": true,
+    "fresh_process_native_readback": true,
+    "lake_packets": 82,
+    "old_producer_payloads_exact": 4209,
+    "rows": 4216
+  },
+  "native_check_statuses": [
+    {
+      "artifact_retention_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+      "key": "selector",
+      "matches_expectation": true,
+      "output_truncated": false,
+      "status": "passed"
+    },
+    {
+      "artifact_retention_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+      "key": "false_selector_lower_bound",
+      "matches_expectation": true,
+      "output_truncated": false,
+      "status": "rejected"
+    },
+    {
+      "artifact_retention_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+      "key": "step_parameters",
+      "matches_expectation": true,
+      "output_truncated": false,
+      "status": "passed"
+    },
+    {
+      "artifact_retention_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+      "key": "false_reversed_step_bound",
+      "matches_expectation": true,
+      "output_truncated": false,
+      "status": "rejected"
+    }
+  ],
+  "native_checks_receipt": {
+    "bytes": 7602,
+    "path": "qualification/codebase_ir/selector-semantics-20261004-01/evidence/actual-08/lean-checks.json",
+    "sha256": "d2b91cccf051405b4d328d0eb869dc16f7e096ff010aff3cd097e32cf0cf56c8"
+  },
+  "new_named_artifact_retention_limit_bytes": 262144,
+  "new_public_fits": 0,
+  "old_core_checker_limit_bytes": 65536,
+  "optimizer_updates": 0,
+  "positive_compiled_artifact_bytes": {
+    "selector": 102536,
+    "step_certificate": 15480
+  },
+  "proof_artifact_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+  "qualified_result": {
+    "bytes": 2885,
+    "path": "qualification/codebase_ir/source-model-next-stage-20261004-01/qualified-result.json",
+    "sha256": "ec9dcc2b81bc5aaeb4b6f2ee8ecf20b5e41a26c4100f12cb12e31abddcfa697f"
+  },
+  "qualified_result_body": {
+    "all32_governing_RPI_exits": "OPEN",
+    "asymptotic_optimizer_convergence_proved": false,
+    "captured_helper_differential_inputs": 1705,
+    "evidence": {
+      "global_reference": {
+        "bytes": 1820,
+        "path": "/home/barberb/lift_coding/qualification/codebase_ir/global-shape-reference-20261004-01/file-seal.json",
+        "sha256": "d7d041a5c129e07c04916b86322f9179792dc9e982ba6d68d3845a7e5359d90a"
+      },
+      "observed_baseline": {
+        "bytes": 2338,
+        "path": "/home/barberb/lift_coding/qualification/codebase_ir/full-task-source-20261004-03/file-seal.json",
+        "sha256": "69728c0fbc406f478c9abc10396231839a63a866ccc96ba0eca1ffaa54a72704"
+      },
+      "selector_step": {
+        "bytes": 39074,
+        "path": "/home/barberb/lift_coding/qualification/codebase_ir/selector-semantics-20261004-01/closed-file-review-01/review.json",
+        "sha256": "424175d6bf468948992c501db1005954cae7ad7b60d9afb33ac145adc28dd550"
+      }
+    },
+    "final_test_cases": {
+      "global_shape_reference": 18,
+      "selector_and_step": 30
+    },
+    "full_original_task_satisfaction_proved": false,
+    "global_autoencoder_convergence_proved": false,
+    "native_metadata": {
+      "families": 26,
+      "lake_packets": 82,
+      "old_payloads_preserved": 4209,
+      "rows": 4216
+    },
+    "new_fits": 0,
+    "next": [
+      "Prove caller/representative-bank construction and public dependency semantics; retain explicit assumptions for Python primitives",
+      "Evaluate all original task performance/immutability/output constraints against declared publicinputs without training on heldoutoracle",
+      "Prove objective smoothness/strong-convexity, updateerror bounds and applicable convergence theorem; certify convexrepositoryadapter separately from nonlinearAE",
+      "Join only matching current-source/scopedproof dependencies into symbolic planning, retaining abstention for unmetobligations"
+    ],
+    "observed_unmodified_baseline": {
+      "actual_benchmark_input_data_used": false,
+      "authored_input_requests": 16,
+      "global_cap": 8,
+      "global_shapes": 16,
+      "input_fixture_bytes_unchanged": true
+    },
+    "official_benchmark_score": null,
+    "optimizer_updates": 0,
+    "planner_activation": false,
+    "proof_artifact_retention_profile": "terminal-closed-source-model-proof-artifacts-256k@1",
+    "qualified_native_lean_checks": {
+      "false_controls_rejected": 2,
+      "positive": 2
+    },
+    "reference_candidate": {
+      "global_cap_checked": 8,
+      "performance_thresholds_checked": false,
+      "shared_global_representatives": true,
+      "structural_postconditions_checked": true
+    },
+    "resource_admission_and_old_core_checker_unchanged": true,
+    "schema": "source-model-task-convergence-increment-result@1",
+    "selector_compiled_bytes": 102536,
+    "status": "bounded_source_model_step_prerequisites_and_structural_reference_qualified",
+    "step_compiled_bytes": 15480,
+    "whole_source_runtime_equivalence_proved": false
+  },
+  "resource_policy": {
+    "admission_policy_unchanged": true,
+    "all_selected_leases_drained": true,
+    "backoff_seconds": 2.0,
+    "cpu_stall_percent": 50.0,
+    "io_stall_percent": 10.0,
+    "memory_stall_percent": 2.0,
+    "proof_safety_enabled": true
+  },
+  "retained_cost_scope": {
+    "earlier_failures_preserved": true,
+    "full_session_total_seconds": null,
+    "public_baseline_01_seconds": 30.013034775009146,
+    "public_baseline_02_seconds": 30.012438092991943,
+    "public_baseline_03_seconds": 0.0550207769847475,
+    "reference_seconds": 0.1986056139867287,
+    "selector_step_native_checks": 16,
+    "selector_step_outer_attempts": 12,
+    "selector_step_outer_seconds": 110.69196686893702
+  },
+  "schema": "repository-proof-index-codebase-ir-selector-step-review@1",
+  "selector_step_closed_file_review": {
+    "bytes": 39074,
+    "path": "qualification/codebase_ir/selector-semantics-20261004-01/closed-file-review-01/review.json",
+    "sha256": "424175d6bf468948992c501db1005954cae7ad7b60d9afb33ac145adc28dd550"
+  },
+  "source_snapshot": {
+    "producer_files": [
+      {
+        "bytes": 8912,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_selector_semantics.py",
+        "sha256": "243f72c127e4086c44ea788c974b4b9565581a685f5b185505e1eb3dba420b70"
+      },
+      {
+        "bytes": 5752,
+        "path": "test/api/test_terminal_codebase_selector_semantics.py",
+        "sha256": "b98c3561a3d9d4f9ef9440589916b62cf1e4dd10cbe4f2951b8abe7bb439459a"
+      },
+      {
+        "bytes": 6749,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_ranker_step_certificate.py",
+        "sha256": "a38cdbbd2b5a9b10c260be5034bf2a37cf83941690e0804dd1dfef0532a002e4"
+      },
+      {
+        "bytes": 4027,
+        "path": "test/api/test_terminal_codebase_ranker_step_certificate.py",
+        "sha256": "3a9cf3640549abeb736ffec0dff307ce5b193ec98b23b97ce3a9319693918961"
+      },
+      {
+        "bytes": 5501,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_batching_contract_reference.py",
+        "sha256": "afcfe16033f1c7faa0bc255cf62d98fd667ee28a1514b2a329a69aac29a0e441"
+      },
+      {
+        "bytes": 2924,
+        "path": "test/api/test_terminal_codebase_batching_contract_reference.py",
+        "sha256": "bd1bbd50dc20e0a6b511063794e2e8c9b5634794c9b3d17e270ac01ebc163963"
+      }
+    ],
+    "protected4": [
+      {
+        "bytes": 33934,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/finite_proof_query_join.py",
+        "sha256": "d6e4a6187036f5942f4637dd24bec65c1a90ed32c24e3b39e3759e653be03b79"
+      },
+      {
+        "bytes": 18129,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_admission.py",
+        "sha256": "2e5b0add5f19c1c31ad76dae67354d5bfadbfe59303a06590db14507c3abe7e4"
+      },
+      {
+        "bytes": 22624,
+        "path": "test/api/test_finite_proof_query_join.py",
+        "sha256": "d34cd489d69446bb4c88e6f8881fff44689cbf6c6944c1976fb411f77a06f890"
+      },
+      {
+        "bytes": 27488,
+        "path": "test/api/test_finite_proof_query_admission.py",
+        "sha256": "6867188f535b6e24cf2a217b5d601a9d92446bff3ba382800e8664c6a0650de0"
+      }
+    ],
+    "remote_base": "69d3b0d75b375bf15245277e9fe8e62acdee0fdb"
+  },
+  "status": "BOUNDED_CONDITIONAL_MODEL_AND_PARAMETER_PREREQUISITES_QUALIFIED",
+  "testing": {
+    "helper_differential_inputs": 1705,
+    "publisher_test_reruns": 0,
+    "selector_step_final_cases": 30,
+    "selector_step_final_phases": 90,
+    "separate_invocations": true,
+    "structural_reference_cases": 18,
+    "structural_reference_phases": 54,
+    "total_distinct_scoped_cases": 48
+  }
+}
