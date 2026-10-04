@@ -1,0 +1,8 @@
+{
+  "bytes": 26940968,
+  "package": "4.13.3-1",
+  "public_bottle_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "schema": "container-header-solver-discovery@1",
+  "sha256": "93d21370b00778f72cc5713065fca89c5ee2641e62a4d026a83ab2843bc0e9fe",
+  "version": "Z3 version 4.13.3 - 64 bit"
+}
