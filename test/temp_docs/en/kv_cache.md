@@ -45,7 +45,9 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16).to("cuda:0")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16
+).to("cuda:0")
 inputs = tokenizer("I like rock music because", return_tensors="pt").to(model.device)
 
 model.generate(**inputs, do_sample=False, max_new_tokens=20, use_cache=False)
@@ -60,7 +62,9 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, DynamicCache
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16).to("cuda:0")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16
+).to("cuda:0")
 inputs = tokenizer("I like rock music because", return_tensors="pt").to(model.device)
 
 past_key_values = DynamicCache()
@@ -102,6 +106,7 @@ The example below shows how you can fallback on [`OffloadedCache`] if you run ou
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+
 def resilient_generate(model, *args, **kwargs):
     oom = False
     try:
@@ -115,14 +120,22 @@ def resilient_generate(model, *args, **kwargs):
         kwargs["cache_implementation"] = "offloaded"
         return model.generate(*args, **kwargs)
 
+
 ckpt = "microsoft/Phi-3-mini-4k-instruct"
 tokenizer = AutoTokenizer.from_pretrained(ckpt)
 model = AutoModelForCausalLM.from_pretrained(ckpt, torch_dtype=torch.float16).to("cuda:0")
-prompt = ["okay "*1000 + "Fun fact: The most"]
+prompt = ["okay " * 1000 + "Fun fact: The most"]
 inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-beams = { "num_beams": 40, "num_beam_groups": 40, "num_return_sequences": 40, "diversity_penalty": 1.0, "max_new_tokens": 23, "early_stopping": True, }
+beams = {
+    "num_beams": 40,
+    "num_beam_groups": 40,
+    "num_return_sequences": 40,
+    "diversity_penalty": 1.0,
+    "max_new_tokens": 23,
+    "early_stopping": True,
+}
 out = resilient_generate(model, **inputs, **beams)
-responses = tokenizer.batch_decode(out[:,-28:], skip_special_tokens=True)
+responses = tokenizer.batch_decode(out[:, -28:], skip_special_tokens=True)
 ```
 
 ### Quantized cache
@@ -187,8 +200,12 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, SinkCache
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16).to("cuda:0")
-inputs = tokenizer("This is a long story about unicorns, fairies and magic.", return_tensors="pt").to(model.device)
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16
+).to("cuda:0")
+inputs = tokenizer(
+    "This is a long story about unicorns, fairies and magic.", return_tensors="pt"
+).to(model.device)
 
 past_key_values = SinkCache(window_length=256, num_sink_tokens=4)
 out = model.generate(**inputs, do_sample=False, max_new_tokens=30, past_key_values=past_key_values)
@@ -211,7 +228,9 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16, device_map="auto"
+)
 inputs = tokenizer("Hello, my name is", return_tensors="pt").to(model.device)
 
 out = model.generate(**inputs, do_sample=False, max_new_tokens=20, cache_implementation="static")
@@ -230,10 +249,14 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-chat-hf", torch_dtype=torch.float16, device_map="auto"
+)
 inputs = tokenizer("Hello, my name is", return_tensors="pt").to(model.device)
 
-out = model.generate(**inputs, do_sample=False, max_new_tokens=20, cache_implementation="offloaded_static")
+out = model.generate(
+    **inputs, do_sample=False, max_new_tokens=20, cache_implementation="offloaded_static"
+)
 tokenizer.batch_decode(out, skip_special_tokens=True)[0]
 "Hello, my name is [Your Name], and I am a [Your Profession] with [Number of Years] of"
 ```
@@ -250,10 +273,14 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, SinkCache
 
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
-model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1", torch_dtype=torch.float16).to("cuda:0")
+model = AutoModelForCausalLM.from_pretrained(
+    "mistralai/Mistral-7B-v0.1", torch_dtype=torch.float16
+).to("cuda:0")
 inputs = tokenizer("Yesterday I was on a rock concert and.", return_tensors="pt").to(model.device)
 
-out = model.generate(**inputs, do_sample=False, max_new_tokens=30, cache_implementation="sliding_window")
+out = model.generate(
+    **inputs, do_sample=False, max_new_tokens=30, cache_implementation="sliding_window"
+)
 tokenizer.batch_decode(out, skip_special_tokens=True)[0]
 ```
 
@@ -290,7 +317,7 @@ The example below demonstrates how to use a cache for iterative generation.
 
 ```py
 import torch
-from transformers import AutoTokenizer,AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.cache_utils import (
     DynamicCache,
     SinkCache,
@@ -301,7 +328,9 @@ from transformers.cache_utils import (
 )
 
 model_id = "meta-llama/Llama-2-7b-chat-hf"
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, device_map='auto')
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, torch_dtype=torch.bfloat16, device_map="auto"
+)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 user_prompts = ["Hello, what's your name?", "Btw, yesterday I was on a rock concert."]
@@ -312,12 +341,16 @@ max_cache_length = past_key_values.get_max_length()
 messages = []
 for prompt in user_prompts:
     messages.append({"role": "user", "content": prompt})
-    inputs = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", return_dict=True).to(model.device)
+    inputs = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+    ).to(model.device)
     if isinstance(past_key_values, SinkCache):
         inputs = {k: v[:, -max_cache_length:] for k, v in inputs.items()}
     input_length = inputs["input_ids"].shape[1]
-    outputs = model.generate(**inputs, do_sample=False, max_new_tokens=256, past_key_values=past_key_values)
-    completion = tokenizer.decode(outputs[0, input_length: ], skip_special_tokens=True)
+    outputs = model.generate(
+        **inputs, do_sample=False, max_new_tokens=256, past_key_values=past_key_values
+    )
+    completion = tokenizer.decode(outputs[0, input_length:], skip_special_tokens=True)
     messages.append({"role": "assistant", "content": completion})
 ```
 
@@ -333,25 +366,29 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache, StaticCache
 
 model_id = "meta-llama/Llama-2-7b-chat-hf"
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, device_map="cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, torch_dtype=torch.bfloat16, device_map="cuda"
+)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-# Init StaticCache with big enough max-length (1024 tokens for the below example) 
+# Init StaticCache with big enough max-length (1024 tokens for the below example)
 # You can also init a DynamicCache, if that suits you better
-prompt_cache = StaticCache(config=model.config, max_batch_size=1, max_cache_len=1024, device="cuda", dtype=torch.bfloat16)
+prompt_cache = StaticCache(
+    config=model.config, max_batch_size=1, max_cache_len=1024, device="cuda", dtype=torch.bfloat16
+)
 
 INITIAL_PROMPT = "You are a helpful assistant. "
 inputs_initial_prompt = tokenizer(INITIAL_PROMPT, return_tensors="pt").to("cuda")
 # This is the common prompt cached, we need to run forward without grad to be able to copy
 with torch.no_grad():
-     prompt_cache = model(**inputs_initial_prompt, past_key_values = prompt_cache).past_key_values
+    prompt_cache = model(**inputs_initial_prompt, past_key_values=prompt_cache).past_key_values
 
 prompts = ["Help me to write a blogpost about travelling.", "What is the capital of France?"]
 responses = []
 for prompt in prompts:
     new_inputs = tokenizer(INITIAL_PROMPT + prompt, return_tensors="pt").to("cuda")
     past_key_values = copy.deepcopy(prompt_cache)
-    outputs = model.generate(**new_inputs, past_key_values=past_key_values,max_new_tokens=20) 
+    outputs = model.generate(**new_inputs, past_key_values=past_key_values, max_new_tokens=20)
     response = tokenizer.batch_decode(outputs)[0]
     responses.append(response)
 

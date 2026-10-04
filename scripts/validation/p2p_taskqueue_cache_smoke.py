@@ -47,18 +47,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: failed to import p2p_tasks client: {exc}", file=sys.stderr)
         return 2
 
-    remote = RemoteQueue(peer_id=str(args.peer_id or "").strip(), multiaddr=str(args.multiaddr or "").strip())
+    remote = RemoteQueue(
+        peer_id=str(args.peer_id or "").strip(), multiaddr=str(args.multiaddr or "").strip()
+    )
 
     started = time.time()
     try:
-        set_resp = cache_set_sync(remote=remote, key=key, value=value, ttl_s=float(args.ttl_s), timeout_s=10.0)
+        set_resp = cache_set_sync(
+            remote=remote, key=key, value=value, ttl_s=float(args.ttl_s), timeout_s=10.0
+        )
         get_resp = cache_get_sync(remote=remote, key=key, timeout_s=10.0)
     except Exception as exc:
         print(f"ERROR: cache RPC failed: {exc}", file=sys.stderr)
         return 1
 
     elapsed_ms = int((time.time() - started) * 1000)
-    ok = bool(set_resp.get("ok")) and bool(get_resp.get("ok")) and bool(get_resp.get("hit")) and get_resp.get("value") == value
+    ok = (
+        bool(set_resp.get("ok"))
+        and bool(get_resp.get("ok"))
+        and bool(get_resp.get("hit"))
+        and get_resp.get("value") == value
+    )
 
     print(f"Elapsed: {elapsed_ms}ms")
     print(json.dumps({"set": set_resp, "get": get_resp, "ok": ok}, indent=2, sort_keys=True))

@@ -150,6 +150,7 @@ tf32 is enabled by default on NVIDIA Ampere GPUs, but you can also add the code 
 
 ```py
 import torch
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 ```
@@ -185,7 +186,7 @@ args = TrainingArguments(
     gradient_accumulation_steps=16,
     gradient_checkpointing=True,
     bf16=True,
-    optim="adamw_bnb_8bit"
+    optim="adamw_bnb_8bit",
 )
 ```
 
@@ -260,7 +261,7 @@ args = TrainingArguments(
     dataloader_num_workers=4,
     torch_empty_cache_steps=4,
     torch_compile=True,
-    torch_compile_backend="inductor"
+    torch_compile_backend="inductor",
 )
 ```
 
@@ -292,5 +293,7 @@ SDPA is enabled by default for PyTorch 2.1.1+, but it can be explicitly enabled 
 ```py
 from transformers import AutoModelForCausalLM
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", device_map="auto", attn_implementation="sdpa")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.1-8B", device_map="auto", attn_implementation="sdpa"
+)
 ```

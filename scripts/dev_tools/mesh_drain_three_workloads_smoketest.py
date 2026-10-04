@@ -113,10 +113,14 @@ def _remote_from_announce(ann: dict):
     return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
 
 
-async def _submit_and_wait(remote, *, task_type: str, model_name: str, payload: Dict[str, Any], timeout_s: float) -> Dict[str, Any]:
+async def _submit_and_wait(
+    remote, *, task_type: str, model_name: str, payload: Dict[str, Any], timeout_s: float
+) -> Dict[str, Any]:
     from ipfs_accelerate_py.p2p_tasks.client import submit_task, wait_task
 
-    tid = await submit_task(remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload)
+    tid = await submit_task(
+        remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload
+    )
     task = await wait_task(remote=remote, task_id=str(tid), timeout_s=float(timeout_s))
     if task is None:
         return {"task_id": tid, "status": "timeout"}
@@ -151,13 +155,24 @@ def _extract_error(task: Dict[str, Any]) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Mesh drain smoketest for docker.execute + gpt2 + copilot_cli")
+    ap = argparse.ArgumentParser(
+        description="Mesh drain smoketest for docker.execute + gpt2 + copilot_cli"
+    )
     ap.add_argument("--workers", type=int, default=2, help="Number of mesh workers to run")
     ap.add_argument("--timeout-s", type=float, default=180.0, help="Per-task wait timeout")
     ap.add_argument("--skip-docker", action="store_true", help="Skip docker.execute task")
-    ap.add_argument("--docker-image", type=str, default="alpine:3.20", help="Docker image for docker.execute")
-    ap.add_argument("--docker-cmd", type=str, default="echo OK", help="Docker command (space-separated) for docker.execute")
-    ap.add_argument("--prompt", type=str, default="Return exactly: OK", help="Prompt for generation tasks")
+    ap.add_argument(
+        "--docker-image", type=str, default="alpine:3.20", help="Docker image for docker.execute"
+    )
+    ap.add_argument(
+        "--docker-cmd",
+        type=str,
+        default="echo OK",
+        help="Docker command (space-separated) for docker.execute",
+    )
+    ap.add_argument(
+        "--prompt", type=str, default="Return exactly: OK", help="Prompt for generation tasks"
+    )
 
     args = ap.parse_args()
 
@@ -233,7 +248,9 @@ def main() -> int:
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH"] = "4"
 
             # Explicit allowlist so we only claim what we're testing.
-            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES"] = "docker.execute,text-generation,llm.generate"
+            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES"] = (
+                "docker.execute,text-generation,llm.generate"
+            )
 
             for i in range(n_workers):
                 wid = f"drainer-w{i}-{uuid.uuid4().hex[:6]}"

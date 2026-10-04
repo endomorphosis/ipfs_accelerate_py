@@ -90,10 +90,12 @@ Both routers share common infrastructure:
 ```python
 # LLM Router
 from ipfs_accelerate_py import generate_text
+
 response = generate_text("Your prompt")
 
 # Embeddings Router
 from ipfs_accelerate_py import embed_texts
+
 embeddings = embed_texts(["Text 1", "Text 2"])
 ```
 
@@ -130,18 +132,22 @@ os.environ["IPFS_ACCELERATE_PY_ROUTER_CACHE_KEY"] = "sha256"
 # LLM
 from ipfs_accelerate_py import register_llm_provider
 
+
 class MyLLM:
     def generate(self, prompt, **kwargs):
         return "response"
+
 
 register_llm_provider("my_llm", lambda: MyLLM())
 
 # Embeddings
 from ipfs_accelerate_py import register_embeddings_provider
 
+
 class MyEmbeddings:
     def embed_texts(self, texts, **kwargs):
         return [[1.0, 2.0, 3.0] for _ in texts]
+
 
 register_embeddings_provider("my_emb", lambda: MyEmbeddings())
 ```

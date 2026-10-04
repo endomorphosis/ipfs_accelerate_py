@@ -46,7 +46,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
-    platform="webgpu"  # or "auto" for automatic selection
+    platform="webgpu",  # or "auto" for automatic selection
 )
 
 # Run inference with unified API
@@ -63,7 +63,7 @@ from fixed_web_platform.webgpu_compute_shaders import ComputeShaderManager
 # Initialize shader manager
 shader_manager = ComputeShaderManager(
     model_type="vision",
-    optimization_level=2  # 0-3, higher means more aggressive optimization
+    optimization_level=2,  # 0-3, higher means more aggressive optimization
 )
 
 # Get optimized shader for matrix multiplication
@@ -81,11 +81,7 @@ Enables generation of results while computation is in progress:
 from fixed_web_platform.webgpu_streaming_inference import StreamingInferencePipeline
 
 # Create streaming pipeline
-pipeline = StreamingInferencePipeline(
-    model_name="t5-small",
-    max_length=100,
-    stream_buffer_size=8
-)
+pipeline = StreamingInferencePipeline(model_name="t5-small", max_length=100, stream_buffer_size=8)
 
 # Start streaming inference
 async for token in pipeline.generate_streaming("Translate English to French: Hello world"):
@@ -100,10 +96,7 @@ Improves startup time by precompiling commonly used shaders:
 from fixed_web_platform.webgpu_shader_precompilation import ShaderPrecompiler
 
 # Initialize precompiler
-precompiler = ShaderPrecompiler(
-    model_type="vision",
-    cache_to_indexeddb=True
-)
+precompiler = ShaderPrecompiler(model_type="vision", cache_to_indexeddb=True)
 
 # Precompile essential shaders
 precompiler.precompile_essential_shaders()
@@ -122,9 +115,7 @@ from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
 
 # Create loader for multimodal model with parallel loading
 loader = ProgressiveModelLoader(
-    model_path="clip-vit-base-patch32",
-    parallel_components=True,
-    chunk_size_mb=10
+    model_path="clip-vit-base-patch32", parallel_components=True, chunk_size_mb=10
 )
 
 # Register progress callback
@@ -170,14 +161,13 @@ model = await loader.load_model()
        enable_shader_precompilation=True,
        enable_compute_shader_optimizations=True,
        enable_parallel_loading=True,
-       precision="fp16"
+       precision="fp16",
    )
    ```
 
 2. **Set Up Progress Tracking**:
    ```python
-   platform.on_progress(lambda stage, progress: 
-       print(f"Stage: {stage}, Progress: {progress}%"))
+   platform.on_progress(lambda stage, progress: print(f"Stage: {stage}, Progress: {progress}%"))
    ```
 
 3. **Configure Memory Optimization**:
@@ -188,9 +178,7 @@ model = await loader.load_model()
 4. **Run Optimized Inference**:
    ```python
    result = await platform.run_inference_optimized(
-       {"input_text": "Sample text"},
-       enable_batching=True,
-       batch_size=4
+       {"input_text": "Sample text"}, enable_batching=True, batch_size=4
    )
    ```
 
@@ -206,7 +194,7 @@ from fixed_web_platform.webgpu_audio_compute_shaders import AudioComputeOptimize
 # Create optimizer for audio model
 optimizer = AudioComputeOptimizer(
     model_type="whisper",
-    browser_specific=True  # Enables Firefox-specific optimizations
+    browser_specific=True,  # Enables Firefox-specific optimizations
 )
 
 # Apply optimizations
@@ -231,8 +219,7 @@ from fixed_web_platform.progressive_model_loader import ParallelMultimodalLoader
 
 # Create parallel loader for CLIP model
 loader = ParallelMultimodalLoader(
-    model_path="clip-vit-base-patch32",
-    components=["vision_encoder", "text_encoder"]
+    model_path="clip-vit-base-patch32", components=["vision_encoder", "text_encoder"]
 )
 
 # Load components in parallel
@@ -254,9 +241,7 @@ from fixed_web_platform.webgpu_shader_precompilation import ModelSpecificPrecomp
 
 # Create model-specific precompiler
 precompiler = ModelSpecificPrecompiler(
-    model_name="bert-base-uncased",
-    model_type="text",
-    cache_results=True
+    model_name="bert-base-uncased", model_type="text", cache_results=True
 )
 
 # Precompile all shaders for model
@@ -351,18 +336,14 @@ Our implementation includes robust fallback mechanisms when WebGPU is not availa
 1. **WebGPU to WebNN Fallback**:
    ```python
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       platform="webgpu",
-       fallback_to_webnn=True
+       model_name="bert-base-uncased", platform="webgpu", fallback_to_webnn=True
    )
    ```
 
 2. **WebGPU to WASM Fallback**:
    ```python
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       platform="webgpu",
-       fallback_to_wasm=True
+       model_name="bert-base-uncased", platform="webgpu", fallback_to_wasm=True
    )
    ```
 

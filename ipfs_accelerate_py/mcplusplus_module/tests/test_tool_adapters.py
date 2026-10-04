@@ -168,7 +168,10 @@ def test_tools_resolver_prefers_canonical_modules(monkeypatch):
         calls.append(name)
         if name == "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools":
             return SimpleNamespace(register_native_p2p_tools=_taskqueue)
-        if name == "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools":
+        if (
+            name
+            == "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools"
+        ):
             return SimpleNamespace(register_native_p2p_workflow_tools=_workflow)
         raise AssertionError(f"Unexpected import: {name}")
 
@@ -239,6 +242,7 @@ def test_tools_resolver_falls_back_to_package_symbols(monkeypatch):
         "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools",
         "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
     ]
+
 
 def test_register_all_p2p_tools_uses_resolver(monkeypatch):
     """Aggregate registration should call registrar callables from resolver."""
@@ -347,7 +351,10 @@ def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
             return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
         raise AssertionError(f"Unexpected import: {name}")
 
-    assert mcplusplus_module._resolve_storage_wrapper_factory is canonical_compat._resolve_storage_wrapper_factory
+    assert (
+        mcplusplus_module._resolve_storage_wrapper_factory
+        is canonical_compat._resolve_storage_wrapper_factory
+    )
     monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
 
     factory = mcplusplus_module._resolve_storage_wrapper_factory()
@@ -481,7 +488,10 @@ def test_shared_peer_registration_record_alias_and_shape():
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
-    assert mcplusplus_module._build_peer_registration_record is canonical_compat._build_peer_registration_record
+    assert (
+        mcplusplus_module._build_peer_registration_record
+        is canonical_compat._build_peer_registration_record
+    )
 
     record = mcplusplus_module._build_peer_registration_record(
         peer_id="peer-1",
@@ -519,7 +529,10 @@ def test_bootstrap_register_peer_uses_shared_record_builder(tmp_path, monkeypatc
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcplusplus_module.p2p import bootstrap
 
-    assert bootstrap._build_peer_registration_record is mcplusplus_module._build_peer_registration_record
+    assert (
+        bootstrap._build_peer_registration_record
+        is mcplusplus_module._build_peer_registration_record
+    )
     monkeypatch.setattr(bootstrap, "_shared_detect_runner_name", lambda: "shared-runner")
     monkeypatch.setattr(bootstrap, "_shared_detect_public_ip", lambda: "198.51.100.5")
 
@@ -559,7 +572,10 @@ def test_peer_registry_register_peer_uses_shared_record_builder(monkeypatch):
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcplusplus_module.p2p import peer_registry
 
-    assert peer_registry._build_peer_registration_record is mcplusplus_module._build_peer_registration_record
+    assert (
+        peer_registry._build_peer_registration_record
+        is mcplusplus_module._build_peer_registration_record
+    )
     monkeypatch.setattr(peer_registry, "_shared_detect_runner_name", lambda: "shared-runner")
     monkeypatch.setattr(peer_registry, "_shared_detect_public_ip", lambda: "198.51.100.6")
 

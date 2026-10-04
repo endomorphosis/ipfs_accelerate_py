@@ -15,21 +15,18 @@ from threading import Thread
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
 def start_dashboard():
     """Start the MCP dashboard server."""
     try:
         from ipfs_accelerate_py.mcp_dashboard import MCPDashboard
-        
+
         print("🚀 Starting MCP Dashboard with SDK Integration...")
         print("=" * 60)
-        
+
         # Create dashboard instance with unified registry
-        dashboard = MCPDashboard(
-            port=8899,
-            host='127.0.0.1',
-            use_unified_registry=True
-        )
-        
+        dashboard = MCPDashboard(port=8899, host="127.0.0.1", use_unified_registry=True)
+
         print("✅ Dashboard initialized")
         print("📍 URL: http://127.0.0.1:8899")
         print("🎮 SDK Playground: http://127.0.0.1:8899 (click 'SDK Playground' tab)")
@@ -43,17 +40,17 @@ def start_dashboard():
         print()
         print("Press Ctrl+C to stop the server")
         print("=" * 60)
-        
+
         # Open browser after a delay
         def open_browser():
             time.sleep(2)
-            webbrowser.open('http://127.0.0.1:8899')
-        
+            webbrowser.open("http://127.0.0.1:8899")
+
         Thread(target=open_browser, daemon=True).start()
-        
+
         # Start the dashboard
         dashboard.run()
-        
+
     except ImportError as e:
         print(f"❌ Error: Failed to import dashboard: {e}")
         print("Make sure Flask and Flask-CORS are installed:")
@@ -63,7 +60,8 @@ def start_dashboard():
         print(f"❌ Error starting dashboard: {e}")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         start_dashboard()
     except KeyboardInterrupt:

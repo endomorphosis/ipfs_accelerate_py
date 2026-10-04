@@ -59,16 +59,16 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # Load the tokenizer and model
-model_path = 'nvidia/Minitron-4B-Base'
-tokenizer  = AutoTokenizer.from_pretrained(model_path)
+model_path = "nvidia/Minitron-4B-Base"
+tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-device = 'cuda'
-dtype  = torch.bfloat16
-model  = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=dtype, device_map=device)
+device = "cuda"
+dtype = torch.bfloat16
+model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=dtype, device_map=device)
 
 # Prepare the input text
-prompt = 'Complete the paragraph: our solar system is'
-inputs = tokenizer.encode(prompt, return_tensors='pt').to(model.device)
+prompt = "Complete the paragraph: our solar system is"
+inputs = tokenizer.encode(prompt, return_tensors="pt").to(model.device)
 
 # Generate the output
 outputs = model.generate(inputs, max_length=20)

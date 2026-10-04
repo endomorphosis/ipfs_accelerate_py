@@ -8,4 +8,4 @@ from .dashboard_generator import DashboardGenerator
 from .visualization import VisualizationEngine
 from .dashboard_server import DashboardServer
 
-__all__ = ['DashboardGenerator', 'VisualizationEngine', 'DashboardServer']
+__all__ = ["DashboardGenerator", "VisualizationEngine", "DashboardServer"]

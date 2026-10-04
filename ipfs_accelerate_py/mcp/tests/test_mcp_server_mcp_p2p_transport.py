@@ -13,7 +13,10 @@ class TestMCPP2PTransportFacade(unittest.TestCase):
     def test_protocol_constant_contract(self) -> None:
         self.assertEqual(mcp_p2p_transport.PROTOCOL_MCP_P2P_V1, "/mcp+p2p/1.0.0")
 
-    @patch("ipfs_accelerate_py.p2p_tasks.mcp_p2p.get_mcp_p2p_stats", return_value={"sessions_started": 3})
+    @patch(
+        "ipfs_accelerate_py.p2p_tasks.mcp_p2p.get_mcp_p2p_stats",
+        return_value={"sessions_started": 3},
+    )
     def test_stats_delegate(self, mock_get) -> None:
         stats = mcp_p2p_transport.get_mcp_p2p_stats()
         self.assertEqual(stats, {"sessions_started": 3})
@@ -31,7 +34,9 @@ class TestMCPP2PTransportFacade(unittest.TestCase):
                 "ipfs_accelerate_py.p2p_tasks.mcp_p2p.read_u32_framed_json",
                 new=AsyncMock(return_value=({"jsonrpc": "2.0"}, None)),
             ) as mock_read:
-                result = await mcp_p2p_transport.read_u32_framed_json(stream, max_frame_bytes=128, chunk_size=32)
+                result = await mcp_p2p_transport.read_u32_framed_json(
+                    stream, max_frame_bytes=128, chunk_size=32
+                )
                 self.assertEqual(result, ({"jsonrpc": "2.0"}, None))
                 mock_read.assert_awaited_once_with(stream, max_frame_bytes=128, chunk_size=32)
 
@@ -39,7 +44,9 @@ class TestMCPP2PTransportFacade(unittest.TestCase):
                 "ipfs_accelerate_py.p2p_tasks.mcp_p2p.write_u32_framed_json",
                 new=AsyncMock(return_value=True),
             ) as mock_write:
-                ok = await mcp_p2p_transport.write_u32_framed_json(stream, {"ok": True}, max_frame_bytes=256)
+                ok = await mcp_p2p_transport.write_u32_framed_json(
+                    stream, {"ok": True}, max_frame_bytes=256
+                )
                 self.assertTrue(ok)
                 mock_write.assert_awaited_once_with(stream, {"ok": True}, max_frame_bytes=256)
 

@@ -94,7 +94,7 @@ if storage and storage.is_distributed:
         pass  # Falls through to local filesystem
 
 # Always maintain local filesystem path
-with open(filepath, 'w') as f:
+with open(filepath, "w") as f:
     f.write(data)
 ```
 
@@ -177,6 +177,7 @@ python3 -m py_compile ipfs_accelerate_py/common/storage_wrapper.py
 **Verification**:
 ```python
 from ipfs_accelerate_py.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+
 print(f"HAVE_STORAGE_WRAPPER={HAVE_STORAGE_WRAPPER}")
 # Result: HAVE_STORAGE_WRAPPER=True
 ```

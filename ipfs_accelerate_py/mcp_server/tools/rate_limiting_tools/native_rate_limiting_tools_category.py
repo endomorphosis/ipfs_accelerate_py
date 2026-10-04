@@ -19,9 +19,7 @@ def _normalize_delegate_payload(result: Any, *, default_status: str) -> Dict[str
     """Normalize delegate payloads into deterministic status envelopes."""
     payload = dict(result or {})
     failed = (
-        payload.get("success") is False
-        or bool(payload.get("error"))
-        or bool(payload.get("errors"))
+        payload.get("success") is False or bool(payload.get("error")) or bool(payload.get("errors"))
     )
     if failed:
         payload["status"] = "error"
@@ -247,11 +245,19 @@ async def manage_rate_limits(
     if normalized_action in {"enable", "disable", "delete"} and not normalized_limit_name:
         return _error_result(f"limit_name required for {normalized_action} action")
 
-    if normalized_action == "update" and (not normalized_limit_name or not isinstance(new_config, dict)):
+    if normalized_action == "update" and (
+        not normalized_limit_name or not isinstance(new_config, dict)
+    ):
         return _error_result("limit_name and new_config required for update action")
 
-    if normalized_action in {"stats", "reset"} and limit_name is not None and not normalized_limit_name:
-        return _error_result(f"limit_name must be a non-empty string when provided for {normalized_action}")
+    if (
+        normalized_action in {"stats", "reset"}
+        and limit_name is not None
+        and not normalized_limit_name
+    ):
+        return _error_result(
+            f"limit_name must be a non-empty string when provided for {normalized_action}"
+        )
 
     try:
         result = _API["manage_rate_limits"](

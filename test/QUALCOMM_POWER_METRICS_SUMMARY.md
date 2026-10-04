@@ -76,8 +76,7 @@ qquant = QualcommQuantization(db_path="./benchmark_db.duckdb")
 
 # Benchmark model with power monitoring
 result = qquant.benchmark_quantized_model(
-    model_path="models/bert-base-uncased.qnn",
-    model_type="text"
+    model_path="models/bert-base-uncased.qnn", model_type="text"
 )
 
 # Access power metrics
@@ -93,16 +92,11 @@ print(f"Thermal throttling detected: {metrics['thermal_throttling_detected']}")
 ```python
 # Compare quantization methods with focus on power metrics
 result = qquant.compare_quantization_methods(
-    model_path="models/bert-base-uncased.onnx",
-    output_dir="./quantized_models",
-    model_type="text"
+    model_path="models/bert-base-uncased.onnx", output_dir="./quantized_models", model_type="text"
 )
 
 # Generate comprehensive report with power analysis
-report = qquant.generate_report(
-    result, 
-    output_path="./reports/power_efficiency_report.md"
-)
+report = qquant.generate_report(result, output_path="./reports/power_efficiency_report.md")
 ```
 
 ## Database Schema for Power Metrics
@@ -204,19 +198,19 @@ data = conn.execute("""
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
 # Energy efficiency by quantization method
-ax1.bar(data['quantization_method'], data['energy_efficiency_items_per_joule'])
-ax1.set_title('Energy Efficiency by Quantization Method')
-ax1.set_ylabel('Items per Joule')
-ax1.set_xlabel('Quantization Method')
+ax1.bar(data["quantization_method"], data["energy_efficiency_items_per_joule"])
+ax1.set_title("Energy Efficiency by Quantization Method")
+ax1.set_ylabel("Items per Joule")
+ax1.set_xlabel("Quantization Method")
 
 # Battery impact by quantization method
-ax2.bar(data['quantization_method'], data['battery_impact_percent_per_hour'])
-ax2.set_title('Battery Impact by Quantization Method')
-ax2.set_ylabel('Battery % per hour')
-ax2.set_xlabel('Quantization Method')
+ax2.bar(data["quantization_method"], data["battery_impact_percent_per_hour"])
+ax2.set_title("Battery Impact by Quantization Method")
+ax2.set_ylabel("Battery % per hour")
+ax2.set_xlabel("Quantization Method")
 
 plt.tight_layout()
-plt.savefig('power_efficiency_comparison.png')
+plt.savefig("power_efficiency_comparison.png")
 ```
 
 ## Key Benefits
@@ -243,16 +237,11 @@ qquant = QualcommQuantization(db_path="./benchmark_db.duckdb")
 
 # Compare quantization methods with power metrics analysis
 result = qquant.compare_quantization_methods(
-    model_path="models/bert-base-uncased.onnx",
-    output_dir="./quantized_models",
-    model_type="text"
+    model_path="models/bert-base-uncased.onnx", output_dir="./quantized_models", model_type="text"
 )
 
 # Generate comprehensive report with power analysis
-report = qquant.generate_report(
-    result, 
-    output_path="./reports/power_efficiency_report.md"
-)
+report = qquant.generate_report(result, output_path="./reports/power_efficiency_report.md")
 ```
 
 This integration provides a complete pipeline for optimizing models for mobile and edge deployment with both size/performance improvements and power efficiency enhancements.

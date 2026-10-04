@@ -123,32 +123,26 @@ Comprehensive visualization system for fault tolerance analysis:
 
 ```python
 from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
-    create_recovery_manager, apply_recovery_action
+    create_recovery_manager,
+    apply_recovery_action,
 )
 
 # Create a recovery manager with ML pattern detection
 recovery_manager = create_recovery_manager(
-    coordinator=coordinator,
-    db_manager=db_manager,
-    scheduler=scheduler,
-    enable_ml=True
+    coordinator=coordinator, db_manager=db_manager, scheduler=scheduler, enable_ml=True
 )
+
 
 # Handle a failure
 def on_task_failure(task_id, worker_id, error_info):
     # Determine recovery action
     recovery_action = recovery_manager.handle_failure(
-        task_id=task_id,
-        worker_id=worker_id,
-        error_info=error_info
+        task_id=task_id, worker_id=worker_id, error_info=error_info
     )
-    
+
     # Apply the recovery action
     apply_recovery_action(
-        task_id=task_id,
-        action=recovery_action,
-        coordinator=coordinator,
-        scheduler=scheduler
+        task_id=task_id, action=recovery_action, coordinator=coordinator, scheduler=scheduler
     )
 ```
 
@@ -161,7 +155,7 @@ checkpoint_data = {
     "optimizer_state": optimizer.state_dict(),
     "epoch": current_epoch,
     "batch_idx": batch_idx,
-    "results": intermediate_results
+    "results": intermediate_results,
 }
 
 checkpoint_id = recovery_manager.create_checkpoint(task_id, checkpoint_data)
@@ -184,7 +178,7 @@ patterns = recovery_manager.get_failure_patterns()
 # Analyze ML-detected patterns
 if recovery_manager.enable_ml and recovery_manager.ml_detector:
     ml_patterns = recovery_manager.ml_detector.detect_patterns()
-    
+
     for pattern in ml_patterns:
         print(f"ML Pattern ({pattern['confidence']:.2f}): {pattern['description']}")
 
@@ -193,6 +187,7 @@ report_path = recovery_manager.create_visualization(output_dir="./visualizations
 
 # Open the report in a browser
 import webbrowser
+
 webbrowser.open(f"file://{os.path.abspath(report_path)}")
 ```
 

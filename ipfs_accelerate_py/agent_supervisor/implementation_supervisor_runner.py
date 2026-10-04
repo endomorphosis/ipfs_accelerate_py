@@ -48,7 +48,9 @@ SupervisorBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapFactory = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[SupervisorRunHook]]
 SupervisorBootstrapOutputPathFactory = Callable[[Mapping[str, Path | str]], str | None]
-SupervisorBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+SupervisorBootstrapExtraKwargsFactory = Callable[
+    [Mapping[str, Path | str]], Mapping[str, Any] | None
+]
 SupervisorMergeResolverCommand = str | Callable[[], str]
 
 
@@ -98,7 +100,9 @@ class ConfiguredSupervisorRuntime:
 
         return self.operations.is_running(state_dir, state_prefix)
 
-    def ensure_running(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+    def ensure_running(
+        self, argv: Sequence[str], *, state_dir: Path, state_prefix: str
+    ) -> dict[str, Any]:
         """Ensure this supervisor wrapper is running in the background."""
 
         return self.operations.ensure_running(argv, state_dir=state_dir, state_prefix=state_prefix)
@@ -796,7 +800,9 @@ def build_objective_refill_defaults_from_paths(
     """Build reusable objective-refill defaults from resolved wrapper paths."""
 
     return ObjectiveRefillDefaults(
-        objective_path=_optional_path_from_mapping(paths, key=objective_path_key, value=objective_path),
+        objective_path=_optional_path_from_mapping(
+            paths, key=objective_path_key, value=objective_path
+        ),
         objective_graph_path=_optional_path_from_mapping(
             paths,
             key=objective_graph_path_key,
@@ -1121,9 +1127,13 @@ def apply_portal_implementation_supervisor_defaults(
     args = with_default(args, "--supervisor-script-path", str(defaults.supervisor_script_path))
     args = with_default(args, "--max-restarts", str(defaults.max_restarts))
     if defaults.llm_merge_resolver_command:
-        args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
+        args = with_default(
+            args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command
+        )
     if defaults.worktree_submodule_paths:
-        args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+        args = with_repeated_default(
+            args, "--worktree-submodule-path", defaults.worktree_submodule_paths
+        )
     if defaults.generated_dirty_repair_enabled:
         args = with_flag_default(args, "--auto-commit-generated-dirty")
     if defaults.generated_dirty_repair_commit_subject:
@@ -1175,10 +1185,18 @@ def apply_portal_implementation_supervisor_defaults(
             objective.objective_max_launch_readiness_goals,
         )
         args = _with_optional_default(args, "--objective-path", objective.objective_path)
-        args = _with_optional_default(args, "--objective-graph-path", objective.objective_graph_path)
-        args = _with_optional_default(args, "--objective-bundle-dir", objective.objective_bundle_dir)
-        args = _with_optional_default(args, "--objective-dataset-dir", objective.objective_dataset_dir)
-        args = _with_optional_default(args, "--objective-discovery-dir", objective.objective_discovery_dir)
+        args = _with_optional_default(
+            args, "--objective-graph-path", objective.objective_graph_path
+        )
+        args = _with_optional_default(
+            args, "--objective-bundle-dir", objective.objective_bundle_dir
+        )
+        args = _with_optional_default(
+            args, "--objective-dataset-dir", objective.objective_dataset_dir
+        )
+        args = _with_optional_default(
+            args, "--objective-discovery-dir", objective.objective_discovery_dir
+        )
         args = _with_optional_default(
             args,
             "--objective-discovery-output-path",
@@ -1328,11 +1346,7 @@ def _ordered_refill_entries(
     if order is None:
         return list(entries)
     by_name = {name: callback for name, callback in entries}
-    ordered: list[RefillHookEntry] = [
-        (name, by_name[name])
-        for name in order
-        if name in by_name
-    ]
+    ordered: list[RefillHookEntry] = [(name, by_name[name]) for name in order if name in by_name]
     ordered_names = {name for name, _callback in ordered}
     ordered.extend((name, callback) for name, callback in entries if name not in ordered_names)
     return ordered
@@ -1422,8 +1436,12 @@ def build_supervisor_objective_refill_callback(
             min_open_tasks=getattr(ctx.parsed, "objective_scan_min_open_tasks", None),
             max_findings=getattr(ctx.parsed, "objective_scan_max_findings", None),
             cooldown_seconds=getattr(ctx.parsed, "objective_scan_cooldown_seconds", None),
-            surplus_findings_per_goal=getattr(ctx.parsed, "objective_surplus_findings_per_goal", None),
-            surplus_min_terms_per_todo=getattr(ctx.parsed, "objective_surplus_min_terms_per_todo", None),
+            surplus_findings_per_goal=getattr(
+                ctx.parsed, "objective_surplus_findings_per_goal", None
+            ),
+            surplus_min_terms_per_todo=getattr(
+                ctx.parsed, "objective_surplus_min_terms_per_todo", None
+            ),
         )
         return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
 
@@ -1794,7 +1812,8 @@ def run_configured_portal_implementation_supervisor(
         parsed,
         repo_root=repo_root,
         daemon_script_path=getattr(parsed, "daemon_script_path", None) or daemon_script_path,
-        worktree_submodule_paths=getattr(parsed, "worktree_submodule_path", None) or worktree_submodule_paths,
+        worktree_submodule_paths=getattr(parsed, "worktree_submodule_path", None)
+        or worktree_submodule_paths,
     )
     return run_portal_implementation_supervisor(
         supervisor,

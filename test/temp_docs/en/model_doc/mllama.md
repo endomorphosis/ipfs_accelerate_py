@@ -47,7 +47,9 @@ Otherwise if you see CUDA-side index erros when generating, use the below code t
 old_embeddings = model.get_output_embeddings()
 
 num_tokens = model.vocab_size + 1
-resized_embeddings = model._get_resized_lm_head(old_embeddings, new_num_tokens=num_tokens, mean_resizing=True)
+resized_embeddings = model._get_resized_lm_head(
+    old_embeddings, new_num_tokens=num_tokens, mean_resizing=True
+)
 resized_embeddings.requires_grad_(old_embeddings.weight.requires_grad)
 model.set_output_embeddings(resized_embeddings)
 ```
@@ -62,21 +64,25 @@ import torch
 from transformers import MllamaForConditionalGeneration, AutoProcessor
 
 model_id = "meta-llama/Llama-3.2-11B-Vision-Instruct"
-model = MllamaForConditionalGeneration.from_pretrained(model_id, device_map="auto", torch_dtype=torch.bfloat16)
+model = MllamaForConditionalGeneration.from_pretrained(
+    model_id, device_map="auto", torch_dtype=torch.bfloat16
+)
 processor = AutoProcessor.from_pretrained(model_id)
 
 messages = [
     [
         {
-            "role": "user", 
+            "role": "user",
             "content": [
                 {"type": "image", "url": "https://llava-vl.github.io/static/images/view.jpg"},
-                {"type": "text", "text": "What does the image show?"}
-            ]
+                {"type": "text", "text": "What does the image show?"},
+            ],
         }
     ],
 ]
-inputs = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to(model.device)
+inputs = processor.apply_chat_template(
+    messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
+).to(model.device)
 output = model.generate(**inputs, max_new_tokens=25)
 print(processor.decode(output[0]))
 ```
@@ -89,7 +95,9 @@ from PIL import Image
 from transformers import MllamaForConditionalGeneration, AutoProcessor
 
 model_id = "meta-llama/Llama-3.2-11B-Vision"
-model = MllamaForConditionalGeneration.from_pretrained(model_id, device_map="auto", torch_dtype=torch.bfloat16)
+model = MllamaForConditionalGeneration.from_pretrained(
+    model_id, device_map="auto", torch_dtype=torch.bfloat16
+)
 processor = AutoProcessor.from_pretrained(model_id)
 
 prompt = "<|image|>If I had to write a haiku for this one"

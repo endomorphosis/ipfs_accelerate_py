@@ -155,7 +155,9 @@ async def analyze_data_distribution(
                 "vectors": vectors,
             }
         for row in vectors:
-            if not isinstance(row, list) or not all(isinstance(value, (int, float)) for value in row):
+            if not isinstance(row, list) or not all(
+                isinstance(value, (int, float)) for value in row
+            ):
                 return {
                     "status": "error",
                     "message": "vectors must be an array of numeric arrays when provided",
@@ -272,7 +274,11 @@ async def detect_outliers(
             "data": data,
         }
     for row in data:
-        if not isinstance(row, list) or not row or not all(isinstance(value, (int, float)) for value in row):
+        if (
+            not isinstance(row, list)
+            or not row
+            or not all(isinstance(value, (int, float)) for value in row)
+        ):
             return {
                 "status": "error",
                 "message": "data must be a non-empty array of numeric arrays",
@@ -375,7 +381,10 @@ def register_native_analysis_tools(manager: Any) -> None:
             "properties": {
                 "data_source": {"type": "string"},
                 "analysis_type": {"type": "string"},
-                "vectors": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
+                "vectors": {
+                    "type": ["array", "null"],
+                    "items": {"type": "array", "items": {"type": "number"}},
+                },
                 "data_params": {"type": ["object", "null"]},
                 "visualization_config": {"type": ["object", "null"]},
             },
@@ -400,7 +409,10 @@ def register_native_analysis_tools(manager: Any) -> None:
                     "default": "kmeans",
                 },
                 "n_clusters": {"type": ["integer", "null"]},
-                "vectors": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
+                "vectors": {
+                    "type": ["array", "null"],
+                    "items": {"type": "array", "items": {"type": "number"}},
+                },
                 "data_params": {"type": ["object", "null"]},
                 "clustering_params": {"type": ["object", "null"]},
             },
@@ -422,7 +434,10 @@ def register_native_analysis_tools(manager: Any) -> None:
                 "assessment_type": {"type": "string"},
                 "metrics": {"type": ["array", "null"], "items": {"type": "string"}},
                 "data": {"type": ["object", "null"]},
-                "embeddings": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
+                "embeddings": {
+                    "type": ["array", "null"],
+                    "items": {"type": "array", "items": {"type": "number"}},
+                },
                 "data_params": {"type": ["object", "null"]},
                 "outlier_detection": {"type": "boolean"},
             },
@@ -468,7 +483,10 @@ def register_native_analysis_tools(manager: Any) -> None:
                     "default": "pca",
                 },
                 "n_components": {"type": "integer"},
-                "vectors": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
+                "vectors": {
+                    "type": ["array", "null"],
+                    "items": {"type": "array", "items": {"type": "number"}},
+                },
                 "data_params": {"type": ["object", "null"]},
                 "method_params": {"type": ["object", "null"]},
             },

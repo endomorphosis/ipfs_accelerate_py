@@ -13,7 +13,10 @@ import anyio
 from ipfs_accelerate_py.mcp.server import create_mcp_server
 from ipfs_accelerate_py.mcp_server.exceptions import ValidationError
 from ipfs_accelerate_py.mcp_server.logger import configure_root_logging, get_logger
-from ipfs_accelerate_py.mcp_server.validators import EnhancedParameterValidator, validate_dispatch_inputs
+from ipfs_accelerate_py.mcp_server.validators import (
+    EnhancedParameterValidator,
+    validate_dispatch_inputs,
+)
 
 
 class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
@@ -42,7 +45,9 @@ class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
         self.assertIsInstance(logger, logging.Logger)
 
     @patch("ipfs_accelerate_py.mcp_server.logger.logging.basicConfig")
-    @patch("ipfs_accelerate_py.mcp_server.logger.logging.FileHandler", side_effect=OSError("no file"))
+    @patch(
+        "ipfs_accelerate_py.mcp_server.logger.logging.FileHandler", side_effect=OSError("no file")
+    )
     @patch("ipfs_accelerate_py.mcp_server.logger.logging.getLogger")
     def test_configure_root_logging_falls_back_to_stream_handler(
         self,
@@ -61,7 +66,9 @@ class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp_server.logger.logging.basicConfig")
     @patch("ipfs_accelerate_py.mcp_server.logger.logging.getLogger")
-    def test_configure_root_logging_skips_when_handlers_present(self, mock_get_logger, mock_basic_config) -> None:
+    def test_configure_root_logging_skips_when_handlers_present(
+        self, mock_get_logger, mock_basic_config
+    ) -> None:
         mock_get_logger.return_value = type("Root", (), {"handlers": [object()]})()
 
         configure_root_logging()
@@ -75,7 +82,9 @@ class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -100,7 +109,9 @@ class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
             async def echo(value: str):
                 return {"echo": value}
 
-            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            server._unified_tool_manager.register_tool(
+                "smoke", "echo", echo, description="echo smoke"
+            )
             dispatch = server.tools["tools_dispatch"]["function"]
 
             response = await dispatch(123, "echo", {"value": "ok"})

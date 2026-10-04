@@ -52,15 +52,13 @@ Instead of redefining the model entirely, consider the `modular_roberta.py` file
 ```py
 from torch import nn
 from ..bert.configuration_bert import BertConfig
-from ..bert.modeling_bert import (
-    BertModel,
-    BertEmbeddings,
-    BertForMaskedLM
-)
+from ..bert.modeling_bert import BertModel, BertEmbeddings, BertForMaskedLM
+
 
 # RoBERTa and BERT config is identical
 class RobertaConfig(BertConfig):
-  model_type = 'roberta'
+    model_type = "roberta"
+
 
 # Redefine the embeddings to highlight the padding id difference, and redefine the position embeddings
 class RobertaEmbeddings(BertEmbeddings):
@@ -72,18 +70,19 @@ class RobertaEmbeddings(BertEmbeddings):
             config.max_position_embeddings, config.hidden_size, padding_idx=self.padding_idx
         )
 
+
 # RoBERTa and BERT model is identical except for the embedding layer, which is defined above, so no need for additional changes here
 class RobertaModel(BertModel):
-  def __init__(self, config):
-    super().__init__(config)
-    self.embeddings = RobertaEmbeddings(config)
+    def __init__(self, config):
+        super().__init__(config)
+        self.embeddings = RobertaEmbeddings(config)
 
-      
+
 # The model heads now only need to redefine the model inside to `RobertaModel`
 class RobertaForMaskedLM(BertForMaskedLM):
-  def __init__(self, config):
-    super().__init__(config)
-    self.model = RobertaModel(config)
+    def __init__(self, config):
+        super().__init__(config)
+        self.model = RobertaModel(config)
 ```
 
 If you don't use the defined dependency, you'll receive the following error.
@@ -115,6 +114,7 @@ The modular `Olmo2Config` is shown below.
 
 ```py
 from ..olmo.configuration_olmo import OlmoConfig
+
 
 class Olmo2Config(OlmoConfig):
     r"""
@@ -189,6 +189,7 @@ But in modular Transformers, if there is a call like `super().my_function(...)`,
 ```py
 from ..llama.modeling_llama import LlamaRMSNorm
 
+
 class Olmo2RMSNorm(LlamaRMSNorm):
     pass
 ```
@@ -239,11 +240,15 @@ class Olmo2Attention(OlmoAttention):
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            key_states, value_states = past_key_value.update(
+                key_states, value_states, self.layer_idx, cache_kwargs
+            )
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
-            if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):
+            if self.config._attn_implementation == "sdpa" and kwargs.get(
+                "output_attentions", False
+            ):
                 logger.warning_once(
                     "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
                     'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
@@ -280,6 +285,7 @@ The modular `DecoderLayer` is shown below.
 ```py
 from ..olmo.modeling_olmo import OlmoDecoderLayer
 
+
 # The OLMo2 layers are identical to those of the OLMo model except:
 # - RMSNorm is used instead of standard layer norm.
 # - Norm is applied after attention/feedforward rather than before.
@@ -300,7 +306,9 @@ class Olmo2DecoderLayer(OlmoDecoderLayer):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        position_embeddings: Optional[
+            Tuple[torch.Tensor, torch.Tensor]
+        ] = None,  # necessary, but kept here for BC
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
@@ -344,6 +352,7 @@ The modular `Olmo2Model` class is shown below.
 ```py
 from ..olmo.modeling_olmo import OlmoModel
 
+
 # The OLMo2 model is identical to the OLMo model, except RMSNorm is used instead of
 # standard layer norm for the output norm.
 class Olmo2Model(OlmoModel):
@@ -364,6 +373,7 @@ The modular causal modeling head is shown below.
 ```py
 from ..olmo.modeling_olmo import OlmoForCausalLM
 
+
 class Olmo2ForCausalLM(OlmoForCausalLM):
     pass
 ```
@@ -381,6 +391,7 @@ For example, `OlmoDecoderLayer` has an attribute defined as `self.mlp = OlmoMLP(
 ```py
 from ..olmo.modeling_olmo import OlmoMLP
 
+
 class Olmo2MLP(OlmoMLP):
     pass
 ```
@@ -393,6 +404,7 @@ Classes that aren't rewritten are copied from the file where the inherited modul
 # switch to mistral definition
 from ..mistral.modeling_mistral import MistralMLP
 
+
 class Olmo2MLP(MistralMLP):
     pass
 ```
@@ -403,19 +415,18 @@ You can `del` to remove attributes defined in the parent after using `super().__
 
 ```py
 class DummyModel(nn.Module):
+    def __init__(self, config: DummyConfig):
+        super().__init__()
+        self.attribute = config.attribute
+        if self.attribute:
+            # do more stuff with `self.attribute` here
+            ...
 
-  def __init__(self, config: DummyConfig):
-    super().__init__()
-    self.attribute = config.attribute
-    if self.attribute:
-      # do more stuff with `self.attribute` here
-      ...
 
 class MyNewDummyModel(DummyModel):
-
-  def __init__(self, config: MyNewDummyConfig):
-    super().__init__(config)
-    del self.attribute
+    def __init__(self, config: MyNewDummyConfig):
+        super().__init__(config)
+        del self.attribute
 ```
 
 ## Explicit super() calls
@@ -491,27 +502,26 @@ This syntax indicates to the linter to unravel all the parent signature argument
 
 ```py
 class LlamaForCausalLM(nn.Module):
-  ...
-
-  @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
-  @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
-  def forward(
-      self,
-      input_ids: torch.LongTensor = None,
-      attention_mask: Optional[torch.Tensor] = None,
-      position_ids: Optional[torch.LongTensor] = None,
-      past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-      inputs_embeds: Optional[torch.FloatTensor] = None,
-      labels: Optional[torch.LongTensor] = None,
-      use_cache: Optional[bool] = None,
-      output_attentions: Optional[bool] = None,
-      output_hidden_states: Optional[bool] = None,
-      return_dict: Optional[bool] = None,
-      cache_position: Optional[torch.LongTensor] = None,
-      num_logits_to_keep: int = 0,
-      **kwargs: Unpack[KwargsForCausalLM],
-  ) -> Union[Tuple, CausalLMOutputWithPast]:
     ...
+
+    @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
+    @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        num_logits_to_keep: int = 0,
+        **kwargs: Unpack[KwargsForCausalLM],
+    ) -> Union[Tuple, CausalLMOutputWithPast]: ...
 ```
 
 Instead of rewriting and copying/pasting all of those arguments, use the `super().forward(**super_kwargs)` statement (modular code shown on the left, unraveled code on the right).
@@ -568,11 +578,10 @@ The linter automatically renames everything when inheriting from a class. For co
 The example below is not recommended. It breaks standards in the library, `MyModelIncredibleMLP` instead of `LlamaMLP`, and because the linter doesn't know how to rename potential higher-order dependencies (`MyModelIncredible` or just `MyModel`).
 
 ```py
-class MyModelIncredibleMLP(LlamaMLP):
-    ...
+class MyModelIncredibleMLP(LlamaMLP): ...
 
-class MyModelDecoderLayer(LlamaDecoderLayer):
-    ...
+
+class MyModelDecoderLayer(LlamaDecoderLayer): ...
 ```
 
 However, if there aren't any [implicit dependencies](#other-classes), then you can locally rename a single class. Make sure you still explicitly redefine every other mention of the class with the new name pattern though. For example, all mentions of `LlamaMLP` should be renamed to `MyModelIncredibleMLP` otherwise the linter may add a new and unwanted `MyModelMLP` class.
@@ -586,7 +595,7 @@ We detected multiple prefix names when inheriting from transformers.models.llama
 If there are automatic dependencies with a prefix, but you want another one, explicitly rename the classes locally with a `pass` class as shown in the following.
 
 ```py
-class Emu3TextMLP(LlamaMLP):                                 
+class Emu3TextMLP(LlamaMLP):
     pass
 ```
 

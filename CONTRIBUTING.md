@@ -290,19 +290,20 @@ Use cases, examples, mockups
 import pytest
 from ipfs_accelerate_py import IPFSAccelerator
 
+
 class TestFeature:
     """Test suite for new feature."""
-    
+
     @pytest.fixture
     def accelerator(self):
         """Create accelerator instance for tests."""
         return IPFSAccelerator()
-    
+
     def test_basic_functionality(self, accelerator):
         """Test basic feature functionality."""
         result = accelerator.new_feature()
         assert result == expected_value
-    
+
     def test_edge_case(self, accelerator):
         """Test edge case handling."""
         with pytest.raises(ValueError):

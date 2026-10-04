@@ -58,11 +58,7 @@ These test files use the Transformers Pipeline API, which internally calls `from
 ```python
 def test_pipeline(self):
     # Pipeline uses from_pretrained internally
-    pipe = transformers.pipeline(
-        "text-generation", 
-        model=self.model_id,
-        device=self.device
-    )
+    pipe = transformers.pipeline("text-generation", model=self.model_id, device=self.device)
     # Pipeline test code...
 ```
 

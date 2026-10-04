@@ -42,7 +42,7 @@ result = selector.select_hardware_for_task(
     task_type="training",
     batch_size=8,
     distributed=True,
-    gpu_count=4
+    gpu_count=4,
 )
 
 # Access results
@@ -65,7 +65,7 @@ config = selector.get_distributed_training_config(
     model_name="facebook/opt-1.3b",
     gpu_count=8,
     batch_size=4,
-    max_memory_gb=24  # Optional GPU memory constraint
+    max_memory_gb=24,  # Optional GPU memory constraint
 )
 
 # Access configuration
@@ -75,7 +75,7 @@ print(f"Global batch size: {config['global_batch_size']}")
 print(f"Mixed precision: {config['mixed_precision']}")
 
 # Check memory estimates
-memory_info = config['estimated_memory']
+memory_info = config["estimated_memory"]
 print(f"Parameters: {memory_info['parameters_gb']:.2f} GB")
 print(f"Activations: {memory_info['activations_gb']:.2f} GB")
 print(f"Optimizer states: {memory_info['optimizer_gb']:.2f} GB")
@@ -114,12 +114,14 @@ config = selector.get_distributed_training_config(
     model_name="facebook/opt-6.7b",
     gpu_count=4,
     batch_size=8,
-    max_memory_gb=16
+    max_memory_gb=16,
 )
 
 grad_accum_steps = config.get("gradient_accumulation_steps", 1)
 print(f"Gradient accumulation steps: {grad_accum_steps}")
-print(f"Effective batch size: {config['per_gpu_batch_size'] * config['gpu_count'] * grad_accum_steps}")
+print(
+    f"Effective batch size: {config['per_gpu_batch_size'] * config['gpu_count'] * grad_accum_steps}"
+)
 ```
 
 ### Gradient Checkpointing
@@ -132,7 +134,7 @@ config = selector.get_distributed_training_config(
     model_name="facebook/opt-6.7b",
     gpu_count=4,
     batch_size=8,
-    max_memory_gb=16
+    max_memory_gb=16,
 )
 
 if "gradient_checkpointing" in config and config["gradient_checkpointing"]:
@@ -150,17 +152,19 @@ config = selector.get_distributed_training_config(
     model_name="facebook/opt-30b",
     gpu_count=8,
     batch_size=1,
-    max_memory_gb=40
+    max_memory_gb=40,
 )
 
 if "deepspeed_config" in config:
     zero_stage = config["deepspeed_config"].get("zero_stage", 1)
     print(f"DeepSpeed ZeRO Stage: {zero_stage}")
-    
+
     if zero_stage == 2:
         print("Memory optimization: Optimizer states sharded across GPUs")
     elif zero_stage == 3:
-        print("Memory optimization: Parameters, gradients, and optimizer states sharded across GPUs")
+        print(
+            "Memory optimization: Parameters, gradients, and optimizer states sharded across GPUs"
+        )
 ```
 
 ### FSDP Configuration
@@ -173,16 +177,16 @@ config = selector.get_distributed_training_config(
     model_name="facebook/opt-13b",
     gpu_count=4,
     batch_size=1,
-    max_memory_gb=16
+    max_memory_gb=16,
 )
 
 if "fsdp_config" in config:
     print(f"FSDP sharding strategy: {config['fsdp_config'].get('sharding_strategy', 'FULL_SHARD')}")
-    
-    if config['fsdp_config'].get('cpu_offload', False):
+
+    if config["fsdp_config"].get("cpu_offload", False):
         print("CPU offloading enabled: Optimizer states stored in CPU memory")
-    
-    if config['fsdp_config'].get('activation_checkpointing', False):
+
+    if config["fsdp_config"].get("activation_checkpointing", False):
         print("Activation checkpointing enabled with FSDP")
 ```
 
@@ -240,7 +244,7 @@ config = selector.get_distributed_training_config(
     model_name=model_name,
     gpu_count=gpu_count,
     batch_size=batch_size,
-    max_memory_gb=max_memory_gb
+    max_memory_gb=max_memory_gb,
 )
 
 # Initialize distributed environment
@@ -250,84 +254,66 @@ torch.cuda.set_device(local_rank)
 
 # Create model
 from transformers import AutoModelForCausalLM
+
 model = AutoModelForCausalLM.from_pretrained(model_name)
 
 # Apply configuration
 if config["distributed_strategy"] == "DDP":
     model = model.to(local_rank)
-    model = torch.nn.parallel.DistributedDataParallel(
-        model, 
-        device_ids=[local_rank]
-    )
-    
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+
 elif config["distributed_strategy"] == "FSDP":
-    from torch.distributed.fsdp import (
-        FullyShardedDataParallel as FSDP,
-        CPUOffload,
-        MixedPrecision
-    )
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, CPUOffload, MixedPrecision
     from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
-    
+
     # Apply FSDP configuration
     fsdp_config = config.get("fsdp_config", {})
-    
+
     # Configure CPU offloading if needed
     cpu_offload = None
     if fsdp_config.get("cpu_offload", False):
         cpu_offload = CPUOffload(offload_params=True)
-    
+
     # Configure mixed precision
     mixed_precision = None
     if config.get("mixed_precision", False):
         mixed_precision = MixedPrecision(
-            param_dtype=torch.float16,
-            reduce_dtype=torch.float16,
-            buffer_dtype=torch.float16
+            param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
         )
-    
+
     # Enable gradient checkpointing if configured
     if config.get("gradient_checkpointing", False):
         model.gradient_checkpointing_enable()
-    
+
     # Apply FSDP
     from transformers.models.opt.modeling_opt import OPTDecoderLayer
+
     model = FSDP(
         model,
         auto_wrap_policy=transformer_auto_wrap_policy(transformer_layer_cls={OPTDecoderLayer}),
         cpu_offload=cpu_offload,
-        mixed_precision=mixed_precision
+        mixed_precision=mixed_precision,
     )
 
 elif config["distributed_strategy"] == "DeepSpeed":
     import deepspeed
-    
+
     # Create DeepSpeed config
     ds_config = {
         "train_batch_size": config["global_batch_size"],
         "gradient_accumulation_steps": config.get("gradient_accumulation_steps", 1),
-        "optimizer": {
-            "type": "AdamW",
-            "params": {
-                "lr": 5e-5,
-                "betas": [0.9, 0.999],
-                "eps": 1e-8
-            }
-        },
-        "fp16": {
-            "enabled": config.get("mixed_precision", False)
-        },
+        "optimizer": {"type": "AdamW", "params": {"lr": 5e-5, "betas": [0.9, 0.999], "eps": 1e-8}},
+        "fp16": {"enabled": config.get("mixed_precision", False)},
         "zero_optimization": {
             "stage": config.get("deepspeed_config", {}).get("zero_stage", 2),
             "offload_optimizer": config.get("deepspeed_config", {}).get("offload_optimizer", False),
-            "offload_param": config.get("deepspeed_config", {}).get("offload_param", False)
-        }
+            "offload_param": config.get("deepspeed_config", {}).get("offload_param", False),
+        },
     }
-    
+
     # Initialize DeepSpeed
     model_engine, optimizer, _, _ = deepspeed.initialize(
-        model=model,
-        model_parameters=model.parameters(),
-        config=ds_config
+        model=model, model_parameters=model.parameters(), config=ds_config
     )
     model = model_engine
 
@@ -349,7 +335,7 @@ config = selector.get_distributed_training_config(
     model_family="text_generation",
     model_name="facebook/opt-1.3b",
     gpu_count=torch.cuda.device_count(),
-    batch_size=8
+    batch_size=8,
 )
 
 # Create training arguments
@@ -359,19 +345,24 @@ training_args = TrainingArguments(
     gradient_accumulation_steps=config.get("gradient_accumulation_steps", 1),
     gradient_checkpointing=config.get("gradient_checkpointing", False),
     fp16=config.get("mixed_precision", False),
-    local_rank=int(os.environ.get("LOCAL_RANK", -1))
+    local_rank=int(os.environ.get("LOCAL_RANK", -1)),
 )
 
 # Add DeepSpeed configuration if needed
 if config["distributed_strategy"] == "DeepSpeed":
     training_args.deepspeed = {
         "zero_stage": config.get("deepspeed_config", {}).get("zero_stage", 2),
-        "offload_optimizer_device": "cpu" if config.get("deepspeed_config", {}).get("offload_optimizer", False) else "none",
-        "offload_param_device": "cpu" if config.get("deepspeed_config", {}).get("offload_param", False) else "none"
+        "offload_optimizer_device": "cpu"
+        if config.get("deepspeed_config", {}).get("offload_optimizer", False)
+        else "none",
+        "offload_param_device": "cpu"
+        if config.get("deepspeed_config", {}).get("offload_param", False)
+        else "none",
     }
 
 # Create model and trainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
 model = AutoModelForCausalLM.from_pretrained("facebook/opt-1.3b")
 tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b")
 
@@ -381,7 +372,7 @@ trainer = Trainer(
     args=training_args,
     train_dataset=train_dataset,
     data_collator=data_collator,
-    tokenizer=tokenizer
+    tokenizer=tokenizer,
 )
 
 # Start training

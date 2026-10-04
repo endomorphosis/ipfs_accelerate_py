@@ -216,10 +216,7 @@ python scripts/mobile_edge_expansion_plan.py implementation-plan --output implem
 The implementation can also be used programmatically:
 
 ```python
-from scripts.mobile_edge_expansion_plan import (
-    QualcommCoverageAssessment,
-    BatteryImpactAnalysis
-)
+from scripts.mobile_edge_expansion_plan import QualcommCoverageAssessment, BatteryImpactAnalysis
 
 # Assess Qualcomm coverage
 assessment = QualcommCoverageAssessment()

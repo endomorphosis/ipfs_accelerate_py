@@ -44,8 +44,12 @@ class BertTokenizationTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 
-        self.tokenizers = [BertTokenizer.from_pretrained(checkpoint) for checkpoint in TOKENIZER_CHECKPOINTS]
-        self.tf_tokenizers = [TFBertTokenizer.from_pretrained(checkpoint) for checkpoint in TOKENIZER_CHECKPOINTS]
+        self.tokenizers = [
+            BertTokenizer.from_pretrained(checkpoint) for checkpoint in TOKENIZER_CHECKPOINTS
+        ]
+        self.tf_tokenizers = [
+            TFBertTokenizer.from_pretrained(checkpoint) for checkpoint in TOKENIZER_CHECKPOINTS
+        ]
         assert len(self.tokenizers) == len(self.tf_tokenizers)
 
         self.test_sentences = [
@@ -65,8 +69,12 @@ class BertTokenizationTest(unittest.TestCase):
                 tf_outputs = tf_tokenizer(test_inputs)
 
                 for key in python_outputs.keys():
-                    self.assertTrue(tf.reduce_all(python_outputs[key].shape == tf_outputs[key].shape))
-                    self.assertTrue(tf.reduce_all(tf.cast(python_outputs[key], tf.int64) == tf_outputs[key]))
+                    self.assertTrue(
+                        tf.reduce_all(python_outputs[key].shape == tf_outputs[key].shape)
+                    )
+                    self.assertTrue(
+                        tf.reduce_all(tf.cast(python_outputs[key], tf.int64) == tf_outputs[key])
+                    )
 
     @slow
     def test_different_pairing_styles(self):
@@ -77,7 +85,9 @@ class BertTokenizationTest(unittest.TestCase):
                 text_pair=[sentence[1] for sentence in self.paired_sentences],
             )
             for key in merged_outputs.keys():
-                self.assertTrue(tf.reduce_all(tf.cast(merged_outputs[key], tf.int64) == separated_outputs[key]))
+                self.assertTrue(
+                    tf.reduce_all(tf.cast(merged_outputs[key], tf.int64) == separated_outputs[key])
+                )
 
     @slow
     def test_graph_mode(self):

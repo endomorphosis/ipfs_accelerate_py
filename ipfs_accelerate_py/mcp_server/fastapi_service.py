@@ -93,12 +93,16 @@ def create_fastapi_app(config: UnifiedFastAPIConfig | None = None) -> Any:
     )
 
     mountable = getattr(mcp_server, "app", None)
-    app.mount(resolved.mount_path, mountable if mountable is not None else mcp_server, name="mcp_server")
+    app.mount(
+        resolved.mount_path, mountable if mountable is not None else mcp_server, name="mcp_server"
+    )
     setattr(app, "_mcp_server", mcp_server)
     return app
 
 
-def run_standalone_app(app: Any, host: str = "localhost", port: int = 8000, verbose: bool = False) -> None:
+def run_standalone_app(
+    app: Any, host: str = "localhost", port: int = 8000, verbose: bool = False
+) -> None:
     """Run a standalone FastAPI app using uvicorn."""
     try:
         import uvicorn

@@ -20,7 +20,12 @@ from typing import Any
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    PublicFormat,
+)
 
 from mcplusplus_profile_h import (
     CallbackFacilitator,
@@ -81,7 +86,11 @@ class ComputeTier:
             raise ValueError("tier operations must be valid names")
         models = tuple(dict.fromkeys(str(item) for item in self.models))
         hardware = tuple(dict.fromkeys(str(item) for item in self.hardware))
-        if not models or not hardware or any(not _IDENTIFIER.fullmatch(item) for item in (*models, *hardware)):
+        if (
+            not models
+            or not hardware
+            or any(not _IDENTIFIER.fullmatch(item) for item in (*models, *hardware))
+        ):
             raise ValueError("tier must declare valid model and hardware scopes")
         if self.unused_amount_rule not in {"non-refundable", "refund-unused", "credit-unused"}:
             raise ValueError("unsupported unused amount rule")
@@ -140,7 +149,9 @@ class CatalogSigner:
         try:
             raw = key_path.read_bytes()
         except FileNotFoundError:
-            raw = Ed25519PrivateKey.generate().private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+            raw = Ed25519PrivateKey.generate().private_bytes(
+                Encoding.Raw, PrivateFormat.Raw, NoEncryption()
+            )
             try:
                 descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(descriptor, "wb") as stream:
@@ -155,11 +166,18 @@ class CatalogSigner:
     def sign(self, document: Mapping[str, Any]) -> dict[str, Any]:
         unsigned = dict(document)
         unsigned.pop("signature", None)
-        unsigned.update({
-            "signatureAlg": "Ed25519",
-            "publicKey": base64.b64encode(self._key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode("ascii"),
-        })
-        return {**unsigned, "signature": base64.b64encode(self._key.sign(canonical_json(unsigned))).decode("ascii")}
+        unsigned.update(
+            {
+                "signatureAlg": "Ed25519",
+                "publicKey": base64.b64encode(
+                    self._key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+                ).decode("ascii"),
+            }
+        )
+        return {
+            **unsigned,
+            "signature": base64.b64encode(self._key.sign(canonical_json(unsigned))).decode("ascii"),
+        }
 
     @staticmethod
     def verify(document: Mapping[str, Any]) -> bool:
@@ -202,31 +220,59 @@ class PaidAcceleratorService:
         capabilities: list[PaidCapability] = []
         for tier_name, tier in config.tiers.items():
             requirement = PaymentRequirement(
-                config.scheme, config.network, config.asset, tier.amount, config.pay_to,
-                extra={"tier": tier_name, "unit": tier.unit, "units": tier.units,
-                       "maxDurationSeconds": tier.max_duration_seconds},
+                config.scheme,
+                config.network,
+                config.asset,
+                tier.amount,
+                config.pay_to,
+                extra={
+                    "tier": tier_name,
+                    "unit": tier.unit,
+                    "units": tier.units,
+                    "maxDurationSeconds": tier.max_duration_seconds,
+                },
             )
             for operation in tier.operations:
-                capabilities.append(PaidCapability(
-                    f"tool:{operation}:{tier_name}", (requirement,), metadata={
-                        "ability": f"tool:{operation}", "tier": tier_name, "unit": tier.unit,
-                        "units": tier.units, "models": list(tier.models), "hardware": list(tier.hardware),
-                        "maxDurationSeconds": tier.max_duration_seconds,
-                        "allowPartialResults": tier.allow_partial_results,
-                        "unusedAmountRule": tier.unused_amount_rule,
-                    },
-                ))
+                capabilities.append(
+                    PaidCapability(
+                        f"tool:{operation}:{tier_name}",
+                        (requirement,),
+                        metadata={
+                            "ability": f"tool:{operation}",
+                            "tier": tier_name,
+                            "unit": tier.unit,
+                            "units": tier.units,
+                            "models": list(tier.models),
+                            "hardware": list(tier.hardware),
+                            "maxDurationSeconds": tier.max_duration_seconds,
+                            "allowPartialResults": tier.allow_partial_results,
+                            "unusedAmountRule": tier.unused_amount_rule,
+                        },
+                    )
+                )
         catalog = CapabilityCatalog(capabilities, version=config.catalog_version)
         self.runtime = SellerRuntime(
-            PaymentPolicyEngine(catalog, unlisted=Decision.FREE if config.unlisted_free else Decision.DENIED),
-            DuckDBPaymentLedger(self.state_dir / "payments.duckdb"), facilitator, self.artifacts,
-            seller_did=config.seller_did, descriptor_cid=config.descriptor_cid, clock_ms=self.clock_ms,
+            PaymentPolicyEngine(
+                catalog, unlisted=Decision.FREE if config.unlisted_free else Decision.DENIED
+            ),
+            DuckDBPaymentLedger(self.state_dir / "payments.duckdb"),
+            facilitator,
+            self.artifacts,
+            seller_did=config.seller_did,
+            descriptor_cid=config.descriptor_cid,
+            clock_ms=self.clock_ms,
         )
         self._catalog = self._build_catalog()
-        mode = control_mode or ("local-test" if isinstance(facilitator, CallbackFacilitator) else "facilitator")
+        mode = control_mode or (
+            "local-test" if isinstance(facilitator, CallbackFacilitator) else "facilitator"
+        )
         self.control_plane = ProfileHControlPlane(
-            runtime=self.runtime, catalog=self.catalog, bind=self._commercial_binding,
-            reconcile=self.reconcile, evidence=self._control_evidence, mode=mode,
+            runtime=self.runtime,
+            catalog=self.catalog,
+            bind=self._commercial_binding,
+            reconcile=self.reconcile,
+            evidence=self._control_evidence,
+            mode=mode,
             upstream_x402_http_conformance=mode != "local-test",
         )
 
@@ -234,21 +280,29 @@ class PaidAcceleratorService:
         path = self.state_dir / "signed-accelerator-catalog.json"
         try:
             saved = json.loads(path.read_text(encoding="utf-8"))
-            if (isinstance(saved, dict) and CatalogSigner.verify(saved)
-                    and saved.get("catalogCid") == self.runtime.policy.catalog.cid
-                    and saved.get("sellerDid") == self.config.seller_did
-                    and saved.get("descriptorCid") == self.config.descriptor_cid):
+            if (
+                isinstance(saved, dict)
+                and CatalogSigner.verify(saved)
+                and saved.get("catalogCid") == self.runtime.policy.catalog.cid
+                and saved.get("sellerDid") == self.config.seller_did
+                and saved.get("descriptorCid") == self.config.descriptor_cid
+            ):
                 return saved
         except (FileNotFoundError, OSError, json.JSONDecodeError):
             pass
         document = {
-            "schema": "mcp++/profile-h/accelerator-catalog@1.0", "createdAt": self.clock_ms(),
-            "sellerDid": self.config.seller_did, "descriptorCid": self.config.descriptor_cid,
-            "pricingModel": "fixed-compute-tier", **self.runtime.policy.catalog.public_document(),
+            "schema": "mcp++/profile-h/accelerator-catalog@1.0",
+            "createdAt": self.clock_ms(),
+            "sellerDid": self.config.seller_did,
+            "descriptorCid": self.config.descriptor_cid,
+            "pricingModel": "fixed-compute-tier",
+            **self.runtime.policy.catalog.public_document(),
         }
         signed = self.signer.sign(document)
         signed["signedCatalogCid"] = cid_for(signed)
-        self.artifacts.put({key: value for key, value in signed.items() if key != "signedCatalogCid"})
+        self.artifacts.put(
+            {key: value for key, value in signed.items() if key != "signedCatalogCid"}
+        )
         temporary = path.with_suffix(".tmp")
         temporary.write_bytes(canonical_json(signed))
         os.chmod(temporary, 0o600)
@@ -258,11 +312,15 @@ class PaidAcceleratorService:
     def catalog(self) -> dict[str, Any]:
         return json.loads(json.dumps(self._catalog))
 
-    def _scope(self, operation: str, context: RequestContext, params: Mapping[str, Any]) -> tuple[str, ComputeTier]:
+    def _scope(
+        self, operation: str, context: RequestContext, params: Mapping[str, Any]
+    ) -> tuple[str, ComputeTier]:
         tier_name = str(params.get("tier", ""))
         tier = self.config.tiers.get(tier_name)
         if tier is None or operation not in tier.operations:
-            raise AcceleratorPaymentError("H_PAYMENT_POLICY_DENIED", "compute tier does not allow this operation")
+            raise AcceleratorPaymentError(
+                "H_PAYMENT_POLICY_DENIED", "compute tier does not allow this operation"
+            )
         model = str(params.get("model", ""))
         hardware = str(params.get("hardware", ""))
         allowed_models = {str(item) for item in context.attributes.get("models", tier.models)}
@@ -273,25 +331,47 @@ class PaidAcceleratorService:
             raise AcceleratorPaymentError("H_PAYMENT_POLICY_DENIED", "hardware scope denied")
         units = params.get("units", tier.units)
         if isinstance(units, bool) or not isinstance(units, int) or units != tier.units:
-            raise AcceleratorPaymentError("H_ENTITLEMENT_EXHAUSTED", "compute units must match the fixed tier")
-        duration = params.get("durationSeconds", params.get("duration_seconds", tier.max_duration_seconds))
-        if isinstance(duration, bool) or not isinstance(duration, int) or not 1 <= duration <= tier.max_duration_seconds:
-            raise AcceleratorPaymentError("H_ENTITLEMENT_EXHAUSTED", "compute duration exceeds tier bound")
+            raise AcceleratorPaymentError(
+                "H_ENTITLEMENT_EXHAUSTED", "compute units must match the fixed tier"
+            )
+        duration = params.get(
+            "durationSeconds", params.get("duration_seconds", tier.max_duration_seconds)
+        )
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, int)
+            or not 1 <= duration <= tier.max_duration_seconds
+        ):
+            raise AcceleratorPaymentError(
+                "H_ENTITLEMENT_EXHAUSTED", "compute duration exceeds tier bound"
+            )
         return tier_name, tier
 
-    def _commercial_binding(self, operation: str, context: RequestContext, params: Mapping[str, Any]) -> CommercialBinding:
+    def _commercial_binding(
+        self, operation: str, context: RequestContext, params: Mapping[str, Any]
+    ) -> CommercialBinding:
         tier_name, _tier = self._scope(operation, context, params)
-        clean = RequestContext(context.request_cid, context.idempotency_key, context.authorized,
-                               context.policy_allowed, None, context.attributes)
+        clean = RequestContext(
+            context.request_cid,
+            context.idempotency_key,
+            context.authorized,
+            context.policy_allowed,
+            None,
+            context.attributes,
+        )
         return CommercialBinding(f"tool:{operation}:{tier_name}", clean)
 
-    def _control_evidence(self, _kind: str, cid: str, context: RequestContext) -> Mapping[str, Any] | None:
+    def _control_evidence(
+        self, _kind: str, cid: str, context: RequestContext
+    ) -> Mapping[str, Any] | None:
         entry = self.runtime.ledger.get_by_artifact(cid)
         if entry is None or entry.request_cid != context.request_cid:
             return None
         return self.artifacts.get(cid)
 
-    async def profile_h(self, method: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    async def profile_h(
+        self, method: str, params: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         return await self.control_plane.dispatch(method, params)
 
     async def dispatch(
@@ -308,16 +388,23 @@ class PaidAcceleratorService:
         async def guarded_effect() -> Any:
             try:
                 accepts_argument = any(
-                    item.kind in (item.VAR_POSITIONAL, item.POSITIONAL_ONLY, item.POSITIONAL_OR_KEYWORD)
+                    item.kind
+                    in (item.VAR_POSITIONAL, item.POSITIONAL_ONLY, item.POSITIONAL_OR_KEYWORD)
                     for item in inspect.signature(effect).parameters.values()
                 )
             except (TypeError, ValueError):
                 accepts_argument = False
-            handoff = {"operation": operation, "tier": str(params.get("tier")), "requestCid": context.request_cid}
+            handoff = {
+                "operation": operation,
+                "tier": str(params.get("tier")),
+                "requestCid": context.request_cid,
+            }
             value = effect(handoff) if accepts_argument else effect()
             return await value if hasattr(value, "__await__") else value
 
-        return await self.runtime.dispatch(binding.operation, binding.context, guarded_effect, payment=payment)
+        return await self.runtime.dispatch(
+            binding.operation, binding.context, guarded_effect, payment=payment
+        )
 
     async def handle_http(
         self,
@@ -338,7 +425,9 @@ class PaidAcceleratorService:
         if effect is None:
             raise ValueError("a protected accelerator operation requires an effect callback")
         payment = self._decode_payment(payment_header) if payment_header else None
-        return http_response(await self.dispatch(operation, context, params, effect, payment=payment))
+        return http_response(
+            await self.dispatch(operation, context, params, effect, payment=payment)
+        )
 
     async def handle_libp2p(
         self,
@@ -357,26 +446,42 @@ class PaidAcceleratorService:
         raw = request.get("payment_context")
         payment = None
         if isinstance(raw, Mapping):
-            payment = PaymentContext(raw.get("payload", {}), str(raw.get("quoteCid", "")),
-                                     str(raw.get("requestCid", "")), int(raw.get("requirementIndex", 0)))
-        return libp2p_response(await self.dispatch(operation, context, params, effect, payment=payment))
+            payment = PaymentContext(
+                raw.get("payload", {}),
+                str(raw.get("quoteCid", "")),
+                str(raw.get("requestCid", "")),
+                int(raw.get("requirementIndex", 0)),
+            )
+        return libp2p_response(
+            await self.dispatch(operation, context, params, effect, payment=payment)
+        )
 
     @staticmethod
     def _decode_payment(value: str) -> PaymentContext:
         try:
             data = json.loads(base64.b64decode(value, validate=True))
-            return PaymentContext(data["payload"], data["quoteCid"], data["requestCid"], int(data.get("requirementIndex", 0)))
+            return PaymentContext(
+                data["payload"],
+                data["quoteCid"],
+                data["requestCid"],
+                int(data.get("requirementIndex", 0)),
+            )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise AcceleratorPaymentError("H_INVALID_PAYMENT_MESSAGE", "invalid PAYMENT-SIGNATURE header") from error
+            raise AcceleratorPaymentError(
+                "H_INVALID_PAYMENT_MESSAGE", "invalid PAYMENT-SIGNATURE header"
+            ) from error
 
     async def reconcile(self) -> list[dict[str, Any]]:
         return await self.runtime.reconcile()
 
     async def diagnostics(self) -> dict[str, Any]:
         base = await self.runtime.diagnostics()
-        return {**base, "signedCatalogCid": self._catalog["signedCatalogCid"],
-                "catalogSignatureValid": CatalogSigner.verify(self._catalog),
-                "computeTiers": sorted(self.config.tiers)}
+        return {
+            **base,
+            "signedCatalogCid": self._catalog["signedCatalogCid"],
+            "catalogSignatureValid": CatalogSigner.verify(self._catalog),
+            "computeTiers": sorted(self.config.tiers),
+        }
 
 
 PaidAccelerateService = PaidAcceleratorService
@@ -384,7 +489,12 @@ AcceleratorService = PaidAcceleratorService
 AcceleratePaymentError = AcceleratorPaymentError
 
 __all__ = [
-    "AcceleratePaymentError", "AcceleratorPaymentConfig", "AcceleratorPaymentError",
-    "AcceleratorService", "CatalogSigner", "ComputeTier", "PaidAccelerateService",
+    "AcceleratePaymentError",
+    "AcceleratorPaymentConfig",
+    "AcceleratorPaymentError",
+    "AcceleratorService",
+    "CatalogSigner",
+    "ComputeTier",
+    "PaidAccelerateService",
     "PaidAcceleratorService",
 ]

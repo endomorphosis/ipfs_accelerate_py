@@ -107,7 +107,9 @@ def test_p2p_call_tool_dispatches_to_mcp_registry() -> None:
             # invoke_mcp_tool wraps result under `result`.
             assert isinstance(resp.get("result"), dict)
 
-            resp2 = call_tool_sync(remote=remote, tool_name="list_peers", args={"include_capabilities": False})
+            resp2 = call_tool_sync(
+                remote=remote, tool_name="list_peers", args={"include_capabilities": False}
+            )
             assert isinstance(resp2, dict)
             assert resp2.get("ok") is True
             assert isinstance(resp2.get("result"), dict)

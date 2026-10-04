@@ -38,6 +38,7 @@ Successfully migrated all async code in the hf_model_server from asyncio to anyi
 ```python
 import asyncio
 
+
 async def timeout(coro, seconds: float):
     try:
         return await asyncio.wait_for(coro, timeout=seconds)
@@ -48,6 +49,7 @@ async def timeout(coro, seconds: float):
 **After:**
 ```python
 import anyio
+
 
 async def timeout(coro, seconds: float):
     try:
@@ -194,6 +196,7 @@ async with anyio.create_task_group() as tg:
     tg.start_soon(_gather_helper, coro2(), results)
     tg.start_soon(_gather_helper, coro3(), results)
 
+
 async def _gather_helper(coro, results_list):
     result = await coro
     results_list.append(result)
@@ -208,19 +211,21 @@ future.set_result(value)
 # ... elsewhere
 result = await future
 
+
 # After
 class Result:
     def __init__(self):
         self.value = None
         self.event = anyio.Event()
-    
+
     def set_result(self, value):
         self.value = value
         self.event.set()
-    
+
     async def get(self):
         await self.event.wait()
         return self.value
+
 
 result = Result()
 # ... later
@@ -233,11 +238,13 @@ value = await result.get()
 ```python
 # Before
 import asyncio
+
 if asyncio.iscoroutinefunction(fn):
     await fn()
 
 # After
 import inspect
+
 if inspect.iscoroutinefunction(fn):
     await fn()
 ```
@@ -246,10 +253,12 @@ if inspect.iscoroutinefunction(fn):
 ```python
 # Before
 import asyncio
+
 asyncio.run(main())
 
 # After
 import anyio
+
 anyio.run(main)
 ```
 
@@ -281,9 +290,9 @@ async with lock:
 **Event:**
 ```python
 event = anyio.Event()
-event.set()        # Signal event
+event.set()  # Signal event
 await event.wait()  # Wait for event
-event.is_set()     # Check if set
+event.is_set()  # Check if set
 ```
 
 **Semaphore:**
@@ -298,7 +307,7 @@ async with sem:
 cond = anyio.Condition()
 async with cond:
     await cond.wait()  # Wait for condition
-    cond.notify()      # Notify one waiter
+    cond.notify()  # Notify one waiter
     cond.notify_all()  # Notify all waiters
 ```
 
@@ -472,11 +481,13 @@ event: anyio.Event = anyio.Event()
 import anyio
 import time
 
+
 async def benchmark():
     start = time.time()
     for _ in range(10000):
         await anyio.sleep(0)
     print(f"Time: {time.time() - start:.3f}s")
+
 
 anyio.run(benchmark)
 ```

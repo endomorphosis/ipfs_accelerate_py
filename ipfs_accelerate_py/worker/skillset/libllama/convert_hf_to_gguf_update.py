@@ -78,7 +78,7 @@ class TOKENIZER_TYPE(IntEnum):
 
 # TODO: this string has to exercise as much pre-tokenizer functionality as possible
 #       will be updated with time - contributions welcome
-CHK_TXT = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶‍🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````\"\"\"\"......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
+CHK_TXT = "\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶‍🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български ''''''```````\"\"\"\"......!!!!!!?????? I've been 'told he's there, 'RE you sure? 'M not sure I'll make it, 'D you like some tea? We'Ve a'lL"
 
 if len(sys.argv) == 2:
     token = sys.argv[1]
@@ -92,43 +92,191 @@ else:
 
 # TODO: add models here, base models preferred
 models = [
-    {"name": "llama-spm",      "tokt": TOKENIZER_TYPE.SPM, "repo": "https://huggingface.co/meta-llama/Llama-2-7b-hf", },
-    {"name": "llama-bpe",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/meta-llama/Meta-Llama-3-8B", },
-    {"name": "phi-3",          "tokt": TOKENIZER_TYPE.SPM, "repo": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct", },
-    {"name": "deepseek-llm",   "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/deepseek-ai/deepseek-llm-7b-base", },
-    {"name": "deepseek-coder", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/deepseek-ai/deepseek-coder-6.7b-base", },
-    {"name": "falcon",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/tiiuae/falcon-7b", },
-    {"name": "bert-bge",       "tokt": TOKENIZER_TYPE.WPM, "repo": "https://huggingface.co/BAAI/bge-small-en-v1.5", },
-    {"name": "bert-bge-large", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/BAAI/bge-large-zh-v1.5", },
-    {"name": "mpt",            "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/mosaicml/mpt-7b", },
-    {"name": "starcoder",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/bigcode/starcoder2-3b", },
-    {"name": "gpt-2",          "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/openai-community/gpt2", },
-    {"name": "stablelm2",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b", },
-    {"name": "refact",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/smallcloudai/Refact-1_6-base", },
-    {"name": "command-r",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/CohereForAI/c4ai-command-r-v01", },
-    {"name": "qwen2",          "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/Qwen/Qwen1.5-7B", },
-    {"name": "olmo",           "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/allenai/OLMo-1.7-7B-hf", },
-    {"name": "dbrx",           "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/databricks/dbrx-base", },
-    {"name": "jina-v1-en",     "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/jinaai/jina-reranker-v1-tiny-en", },
-    {"name": "jina-v2-en",     "tokt": TOKENIZER_TYPE.WPM, "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-en", }, # WPM!
-    {"name": "jina-v2-es",     "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-es", },
-    {"name": "jina-v2-de",     "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-de", },
-    {"name": "smaug-bpe",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/abacusai/Smaug-Llama-3-70B-Instruct", },
-    {"name": "poro-chat",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/LumiOpen/Poro-34B-chat", },
-    {"name": "jina-v2-code",   "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-code", },
-    {"name": "viking",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/LumiOpen/Viking-7B", }, # Also used for Viking 13B and 33B
-    {"name": "gemma",          "tokt": TOKENIZER_TYPE.SPM, "repo": "https://huggingface.co/google/gemma-2b", },
-    {"name": "gemma-2",        "tokt": TOKENIZER_TYPE.SPM, "repo": "https://huggingface.co/google/gemma-2-9b", },
-    {"name": "jais",           "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/core42/jais-13b", },
-    {"name": "t5",             "tokt": TOKENIZER_TYPE.UGM, "repo": "https://huggingface.co/google-t5/t5-small", },
-    {"name": "codeshell",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/WisdomShell/CodeShell-7B", },
-    {"name": "tekken",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/mistralai/Mistral-Nemo-Base-2407", },
-    {"name": "smollm",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/HuggingFaceTB/SmolLM-135M", },
-    {'name': "bloom",          "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/bigscience/bloom", },
-    {'name': "gpt3-finnish",   "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/TurkuNLP/gpt3-finnish-small", },
-    {"name": "exaone",         "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct", },
-    {"name": "phi-2",          "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/microsoft/phi-2", },
-    {"name": "chameleon",      "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/facebook/chameleon-7b", },
+    {
+        "name": "llama-spm",
+        "tokt": TOKENIZER_TYPE.SPM,
+        "repo": "https://huggingface.co/meta-llama/Llama-2-7b-hf",
+    },
+    {
+        "name": "llama-bpe",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/meta-llama/Meta-Llama-3-8B",
+    },
+    {
+        "name": "phi-3",
+        "tokt": TOKENIZER_TYPE.SPM,
+        "repo": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct",
+    },
+    {
+        "name": "deepseek-llm",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/deepseek-ai/deepseek-llm-7b-base",
+    },
+    {
+        "name": "deepseek-coder",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/deepseek-ai/deepseek-coder-6.7b-base",
+    },
+    {
+        "name": "falcon",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/tiiuae/falcon-7b",
+    },
+    {
+        "name": "bert-bge",
+        "tokt": TOKENIZER_TYPE.WPM,
+        "repo": "https://huggingface.co/BAAI/bge-small-en-v1.5",
+    },
+    {
+        "name": "bert-bge-large",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/BAAI/bge-large-zh-v1.5",
+    },
+    {
+        "name": "mpt",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/mosaicml/mpt-7b",
+    },
+    {
+        "name": "starcoder",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/bigcode/starcoder2-3b",
+    },
+    {
+        "name": "gpt-2",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/openai-community/gpt2",
+    },
+    {
+        "name": "stablelm2",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/stabilityai/stablelm-2-zephyr-1_6b",
+    },
+    {
+        "name": "refact",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/smallcloudai/Refact-1_6-base",
+    },
+    {
+        "name": "command-r",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/CohereForAI/c4ai-command-r-v01",
+    },
+    {
+        "name": "qwen2",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/Qwen/Qwen1.5-7B",
+    },
+    {
+        "name": "olmo",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/allenai/OLMo-1.7-7B-hf",
+    },
+    {
+        "name": "dbrx",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/databricks/dbrx-base",
+    },
+    {
+        "name": "jina-v1-en",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/jinaai/jina-reranker-v1-tiny-en",
+    },
+    {
+        "name": "jina-v2-en",
+        "tokt": TOKENIZER_TYPE.WPM,
+        "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-en",
+    },  # WPM!
+    {
+        "name": "jina-v2-es",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-es",
+    },
+    {
+        "name": "jina-v2-de",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-de",
+    },
+    {
+        "name": "smaug-bpe",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/abacusai/Smaug-Llama-3-70B-Instruct",
+    },
+    {
+        "name": "poro-chat",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/LumiOpen/Poro-34B-chat",
+    },
+    {
+        "name": "jina-v2-code",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/jinaai/jina-embeddings-v2-base-code",
+    },
+    {
+        "name": "viking",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/LumiOpen/Viking-7B",
+    },  # Also used for Viking 13B and 33B
+    {
+        "name": "gemma",
+        "tokt": TOKENIZER_TYPE.SPM,
+        "repo": "https://huggingface.co/google/gemma-2b",
+    },
+    {
+        "name": "gemma-2",
+        "tokt": TOKENIZER_TYPE.SPM,
+        "repo": "https://huggingface.co/google/gemma-2-9b",
+    },
+    {
+        "name": "jais",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/core42/jais-13b",
+    },
+    {
+        "name": "t5",
+        "tokt": TOKENIZER_TYPE.UGM,
+        "repo": "https://huggingface.co/google-t5/t5-small",
+    },
+    {
+        "name": "codeshell",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/WisdomShell/CodeShell-7B",
+    },
+    {
+        "name": "tekken",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/mistralai/Mistral-Nemo-Base-2407",
+    },
+    {
+        "name": "smollm",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/HuggingFaceTB/SmolLM-135M",
+    },
+    {
+        "name": "bloom",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/bigscience/bloom",
+    },
+    {
+        "name": "gpt3-finnish",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/TurkuNLP/gpt3-finnish-small",
+    },
+    {
+        "name": "exaone",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct",
+    },
+    {
+        "name": "phi-2",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/microsoft/phi-2",
+    },
+    {
+        "name": "chameleon",
+        "tokt": TOKENIZER_TYPE.BPE,
+        "repo": "https://huggingface.co/facebook/chameleon-7b",
+    },
 ]
 
 
@@ -137,7 +285,7 @@ def download_file_with_auth(url, token, save_path):
     response = sess.get(url, headers=headers)
     response.raise_for_status()
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    with open(save_path, 'wb') as downloaded_file:
+    with open(save_path, "wb") as downloaded_file:
         downloaded_file.write(response.content)
     logger.info(f"File {save_path} downloaded successfully")
 
@@ -209,7 +357,9 @@ for model in models:
         else:
             tokenizer = AutoTokenizer.from_pretrained(f"models/tokenizers/{name}")
     except OSError as e:
-        logger.error(f"Error loading tokenizer for model {name}. The model may not exist or is not accessible with the provided token. Error: {e}")
+        logger.error(
+            f"Error loading tokenizer for model {name}. The model may not exist or is not accessible with the provided token. Error: {e}"
+        )
         continue  # Skip to the next model if the tokenizer can't be loaded
 
     chktok = tokenizer.encode(CHK_TXT)
@@ -233,9 +383,9 @@ for model in models:
 
     logger.info("")
 
-    src_ifs += f"        if chkhsh == \"{chkhsh}\":\n"
+    src_ifs += f'        if chkhsh == "{chkhsh}":\n'
     src_ifs += f"            # ref: {model['repo']}\n"
-    src_ifs += f"            res = \"{name}\"\n"
+    src_ifs += f'            res = "{name}"\n'
 
 src_func = f"""
     def get_vocab_base_pre(self, tokenizer) -> str:
@@ -338,7 +488,7 @@ tests = [
     "3333333",
     "33333333",
     "333333333",
-    "Cửa Việt", # llama-bpe fails on this
+    "Cửa Việt",  # llama-bpe fails on this
     " discards",
     CHK_TXT,
 ]
@@ -396,6 +546,8 @@ logger.info("\nRun the following commands to generate the vocab files for testin
 for model in models:
     name = model["name"]
 
-    print(f"python3 convert_hf_to_gguf.py models/tokenizers/{name}/ --outfile models/ggml-vocab-{name}.gguf --vocab-only") # noqa: NP100
+    print(
+        f"python3 convert_hf_to_gguf.py models/tokenizers/{name}/ --outfile models/ggml-vocab-{name}.gguf --vocab-only"
+    )  # noqa: NP100
 
 logger.info("\n")

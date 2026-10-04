@@ -48,7 +48,7 @@ result = accelerate_with_browser(
     inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
     platform="webgpu",
     browser="chrome",
-    precision=16
+    precision=16,
 )
 
 print(f"Inference time: {result['inference_time']:.3f}s")
@@ -68,7 +68,7 @@ This is useful for testing and development.
 result = accelerate_with_browser(
     model_name="bert-base-uncased",
     inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-    use_real_browser=False  # Use simulation mode
+    use_real_browser=False,  # Use simulation mode
 )
 ```
 
@@ -81,7 +81,7 @@ APIs for hardware acceleration. This requires additional dependencies (playwrigh
 result = accelerate_with_browser(
     model_name="bert-base-uncased",
     inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-    use_real_browser=True  # Use a real browser
+    use_real_browser=True,  # Use a real browser
 )
 ```
 
@@ -94,16 +94,12 @@ Choose between WebNN and WebGPU based on your model's needs:
 ```python
 # Use WebGPU for graphics-intensive models
 result = accelerate_with_browser(
-    model_name="vit-base-patch16-224",
-    inputs=pixel_values,
-    platform="webgpu"
+    model_name="vit-base-patch16-224", inputs=pixel_values, platform="webgpu"
 )
 
 # Use WebNN for neural network models
 result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs,
-    platform="webnn"
+    model_name="bert-base-uncased", inputs=text_inputs, platform="webnn"
 )
 ```
 
@@ -113,16 +109,13 @@ Automatically select the optimal browser or specify one:
 
 ```python
 # Let the system choose the best browser for the model type
-result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs
-)
+result = accelerate_with_browser(model_name="bert-base-uncased", inputs=text_inputs)
 
 # Specify a browser
 result = accelerate_with_browser(
     model_name="whisper-small",
     inputs=audio_inputs,
-    browser="firefox"  # Firefox has better audio performance
+    browser="firefox",  # Firefox has better audio performance
 )
 ```
 
@@ -132,25 +125,14 @@ Control the precision of computations:
 
 ```python
 # Use 16-bit precision (default)
-result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs,
-    precision=16
-)
+result = accelerate_with_browser(model_name="bert-base-uncased", inputs=text_inputs, precision=16)
 
 # Use 4-bit precision for higher performance
-result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs,
-    precision=4
-)
+result = accelerate_with_browser(model_name="bert-base-uncased", inputs=text_inputs, precision=4)
 
 # Use mixed precision for better accuracy/performance tradeoff
 result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs,
-    precision=16,
-    mixed_precision=True
+    model_name="bert-base-uncased", inputs=text_inputs, precision=16, mixed_precision=True
 )
 ```
 
@@ -161,23 +143,17 @@ Various optimizations can be enabled:
 ```python
 # Use compute shader optimizations (good for audio models)
 result = accelerate_with_browser(
-    model_name="whisper-small",
-    inputs=audio_inputs,
-    compute_shaders=True
+    model_name="whisper-small", inputs=audio_inputs, compute_shaders=True
 )
 
 # Use shader precompilation (reduces startup time)
 result = accelerate_with_browser(
-    model_name="vit-base-patch16-224",
-    inputs=pixel_values,
-    precompile_shaders=True
+    model_name="vit-base-patch16-224", inputs=pixel_values, precompile_shaders=True
 )
 
 # Enable parallel loading (good for multimodal models)
 result = accelerate_with_browser(
-    model_name="clip-vit-base-patch32",
-    inputs=multimodal_inputs,
-    parallel_loading=True
+    model_name="clip-vit-base-patch32", inputs=multimodal_inputs, parallel_loading=True
 )
 ```
 
@@ -200,7 +176,7 @@ print(f"WebNN support: {capabilities.get('webnn')}")
 result = await bridge.request_inference(
     model="bert-base-uncased",
     inputs={"input_ids": [101, 2023, 2003, 1037, 3231, 102]},
-    model_type="text_embedding"
+    model_type="text_embedding",
 )
 
 # Stop browser
@@ -214,9 +190,7 @@ The system integrates with IPFS for content-addressed model storage and retrieva
 ```python
 # Enable IPFS acceleration
 result = accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs,
-    enable_ipfs=True
+    model_name="bert-base-uncased", inputs=text_inputs, enable_ipfs=True
 )
 
 # Check if IPFS was used
@@ -235,8 +209,7 @@ accelerator = get_accelerator(db_path="benchmark_results.duckdb")
 
 # Run inference with DB storage
 result = await accelerator.accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs
+    model_name="bert-base-uncased", inputs=text_inputs
 )
 
 # Query results (example)
@@ -253,16 +226,12 @@ from ipfs_accelerate_py.webnn_webgpu_integration import get_accelerator
 
 # Create custom accelerator
 accelerator = get_accelerator(
-    db_path="results.duckdb",
-    max_connections=8,
-    headless=True,
-    enable_ipfs=True
+    db_path="results.duckdb", max_connections=8, headless=True, enable_ipfs=True
 )
 
 # Use the accelerator
 result = await accelerator.accelerate_with_browser(
-    model_name="bert-base-uncased",
-    inputs=text_inputs
+    model_name="bert-base-uncased", inputs=text_inputs
 )
 
 # Close resources when done
@@ -273,21 +242,15 @@ accelerator.close()
 
 ```python
 async def benchmark_models():
-    models = [
-        "bert-base-uncased",
-        "vit-base-patch16-224",
-        "whisper-small"
-    ]
-    
+    models = ["bert-base-uncased", "vit-base-patch16-224", "whisper-small"]
+
     results = {}
     for model in models:
         result = await accelerate_with_browser(
-            model_name=model,
-            inputs=create_inputs_for_model(model),
-            platform="webgpu"
+            model_name=model, inputs=create_inputs_for_model(model), platform="webgpu"
         )
         results[model] = result
-    
+
     return results
 ```
 
@@ -297,6 +260,7 @@ Enable logging for more detailed information:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 ```
 

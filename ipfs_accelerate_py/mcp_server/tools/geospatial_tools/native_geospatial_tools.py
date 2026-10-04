@@ -34,7 +34,9 @@ def _load_geospatial_api() -> Dict[str, Any]:
             "query_geographic_context": _query,
         }
     except Exception:
-        logger.warning("Source geospatial_tools import unavailable, using fallback geospatial functions")
+        logger.warning(
+            "Source geospatial_tools import unavailable, using fallback geospatial functions"
+        )
 
         def _extract_fallback(
             corpus_data: str,
@@ -315,7 +317,9 @@ async def analyze_geospatial_corpus(
             "details": map_result,
         }
 
-    entity_count = int(extract_result.get("entity_count", len(extract_result.get("entities", [])) or 0))
+    entity_count = int(
+        extract_result.get("entity_count", len(extract_result.get("entities", [])) or 0)
+    )
     cluster_count = int(map_result.get("cluster_count", len(map_result.get("clusters", [])) or 0))
     return {
         "status": "success",
@@ -344,7 +348,12 @@ def register_native_geospatial_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "corpus_data": {"type": "string"},
-                "confidence_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.7},
+                "confidence_threshold": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.7,
+                },
                 "include_coordinates": {"type": "boolean", "default": True},
             },
             "required": ["corpus_data"],
@@ -406,7 +415,12 @@ def register_native_geospatial_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "corpus_data": {"type": "string"},
-                "confidence_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.7},
+                "confidence_threshold": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.7,
+                },
                 "temporal_resolution": {
                     "type": "string",
                     "enum": ["hour", "day", "week", "month", "year"],

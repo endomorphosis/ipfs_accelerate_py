@@ -143,7 +143,9 @@ def rotate_event_log_if_needed(path: Path) -> dict[str, Any]:
     over days of continuous operation.
     """
     max_bytes = int(os.environ.get(_EVENT_LOG_MAX_BYTES_ENV, str(_DEFAULT_EVENT_LOG_MAX_BYTES)))
-    retain_recent = int(os.environ.get(_EVENT_LOG_RETAIN_RECENT_ENV, str(_DEFAULT_EVENT_LOG_RETAIN_RECENT)))
+    retain_recent = int(
+        os.environ.get(_EVENT_LOG_RETAIN_RECENT_ENV, str(_DEFAULT_EVENT_LOG_RETAIN_RECENT))
+    )
 
     if max_bytes <= 0:
         return {"rotated": False, "reason": "rotation_disabled"}

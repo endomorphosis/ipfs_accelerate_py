@@ -113,7 +113,7 @@ from duckdb_api.benchmark_validation import (
     ValidationLevel,
     BenchmarkType,
     BenchmarkResult,
-    BenchmarkValidationFramework
+    BenchmarkValidationFramework,
 )
 from duckdb_api.benchmark_validation.validation_protocol import StandardBenchmarkValidator
 
@@ -130,20 +130,16 @@ benchmark_result = BenchmarkResult(
         "average_latency_ms": 15.3,
         "throughput_items_per_second": 156.7,
         "memory_peak_mb": 3450.2,
-        "total_time_seconds": 120.5
+        "total_time_seconds": 120.5,
     },
     run_id=42,
     timestamp=datetime.datetime.now(),
-    metadata={
-        "test_environment": "cloud",
-        "software_versions": {"framework": "1.2.3"}
-    }
+    metadata={"test_environment": "cloud", "software_versions": {"framework": "1.2.3"}},
 )
 
 # Validate the benchmark result
 validation_result = validator.validate(
-    benchmark_result=benchmark_result,
-    validation_level=ValidationLevel.STANDARD
+    benchmark_result=benchmark_result, validation_level=ValidationLevel.STANDARD
 )
 
 # Check validation status
@@ -178,7 +174,7 @@ benchmark_results = [...]  # List of BenchmarkResult objects
 outliers = detector.detect_outliers(
     benchmark_results=benchmark_results,
     metrics=["average_latency_ms", "throughput_items_per_second"],
-    threshold=2.5  # Z-score threshold
+    threshold=2.5,  # Z-score threshold
 )
 
 # Check outliers
@@ -204,8 +200,7 @@ benchmark_runs = [...]  # List of BenchmarkResult objects for the same model/har
 
 # Validate reproducibility
 reproducibility_result = reproducibility_validator.validate_reproducibility(
-    benchmark_results=benchmark_runs,
-    validation_level=ValidationLevel.STANDARD
+    benchmark_results=benchmark_runs, validation_level=ValidationLevel.STANDARD
 )
 
 # Check reproducibility
@@ -237,7 +232,7 @@ certifier = BenchmarkCertificationSystem()
 certification = certifier.certify(
     benchmark_result=benchmark_result,
     validation_results=[validation_result, reproducibility_result],
-    certification_level="auto"  # or "basic", "standard", "advanced", "gold"
+    certification_level="auto",  # or "basic", "standard", "advanced", "gold"
 )
 
 # Check certification
@@ -248,8 +243,7 @@ print(f"Certification timestamp: {certification['certification_timestamp']}")
 
 # Verify a certification
 verification = certifier.verify_certification(
-    certification=certification,
-    benchmark_result=benchmark_result
+    certification=certification, benchmark_result=benchmark_result
 )
 print(f"Verification result: {verification}")
 ```
@@ -268,20 +262,19 @@ framework = ComprehensiveBenchmarkValidation()
 validation_results = framework.validate_batch(
     benchmark_results=benchmark_results,
     validation_level=ValidationLevel.STANDARD,
-    detect_outliers=True
+    detect_outliers=True,
 )
 
 # Validate reproducibility
 reproducibility_result = framework.validate_reproducibility(
-    benchmark_results=benchmark_runs,
-    validation_level=ValidationLevel.STANDARD
+    benchmark_results=benchmark_runs, validation_level=ValidationLevel.STANDARD
 )
 
 # Certify a benchmark result
 certification = framework.certify_benchmark(
     benchmark_result=benchmark_result,
     validation_results=[...],  # Optional validation results
-    certification_level="auto"
+    certification_level="auto",
 )
 
 # Generate a report
@@ -289,7 +282,7 @@ report = framework.generate_report(
     validation_results=validation_results + [reproducibility_result],
     report_format="html",
     include_visualizations=True,
-    output_path="validation_report.html"
+    output_path="validation_report.html",
 )
 
 # Create visualizations
@@ -299,18 +292,18 @@ if framework.reporter:
         validation_results=validation_results,
         visualization_type="confidence_distribution",
         output_path="confidence_distribution.html",
-        title="Confidence Score Distribution"
+        title="Confidence Score Distribution",
     )
-    
+
     # Create validation heatmap
     framework.reporter.create_visualization(
         validation_results=validation_results,
         visualization_type="validation_heatmap",
         output_path="validation_heatmap.html",
         title="Validation Results by Model and Hardware",
-        metric="confidence_score"
+        metric="confidence_score",
     )
-    
+
     # Create batch visualizations and export to multiple formats
     batch_output_paths = {}
     for vis_type in ["confidence_distribution", "validation_metrics"]:
@@ -320,10 +313,10 @@ if framework.reporter:
                 validation_results=validation_results,
                 visualization_type=vis_type,
                 output_path=output_path,
-                title=f"{vis_type.replace('_', ' ').title()}"
+                title=f"{vis_type.replace('_', ' ').title()}",
             )
             batch_output_paths[f"{vis_type}_{format}"] = result_path
-    
+
     # Generate a dashboard with multiple visualizations
     dashboard_path = "validation_dashboard.html"
     # Note: Dashboard generation requires the Advanced Visualization System
@@ -340,9 +333,7 @@ The framework can detect various data quality issues in benchmark results:
 framework = ComprehensiveBenchmarkValidation()
 
 # Analyze data quality
-quality_issues = framework.detect_data_quality_issues(
-    benchmark_results=benchmark_results
-)
+quality_issues = framework.detect_data_quality_issues(benchmark_results=benchmark_results)
 
 # Check quality issues
 for issue_type, issues in quality_issues.items():
@@ -358,9 +349,7 @@ Track the stability of benchmark results over time:
 ```python
 # Track stability
 stability_analysis = framework.track_benchmark_stability(
-    benchmark_results=historical_results,
-    metric="average_latency_ms",
-    time_window_days=30
+    benchmark_results=historical_results, metric="average_latency_ms", time_window_days=30
 )
 
 # Check stability
@@ -380,8 +369,7 @@ from duckdb_api.benchmark_validation.repository import DuckDBValidationRepositor
 
 # Create repository
 repository = DuckDBValidationRepository(
-    db_path="benchmark_validation.duckdb",
-    create_if_missing=True
+    db_path="benchmark_validation.duckdb", create_if_missing=True
 )
 
 # Initialize tables
@@ -395,9 +383,9 @@ results = repository.query_validation_results(
     filters={
         "benchmark_result.model_id": 1,
         "benchmark_result.hardware_id": 2,
-        "min_confidence_score": 0.8
+        "min_confidence_score": 0.8,
     },
-    limit=10
+    limit=10,
 )
 
 # Save a certification
@@ -420,18 +408,18 @@ from duckdb_api.benchmark_validation.visualization.reporter import ValidationRep
 from duckdb_api.benchmark_validation.core.base import ValidationResult
 
 # Create a reporter instance
-reporter = ValidationReporterImpl({
-    "output_directory": "./reports",
-    "report_title_template": "Benchmark Validation Report - {timestamp}",
-    "max_results_per_page": 20,
-    "theme": "light"  # or "dark"
-})
+reporter = ValidationReporterImpl(
+    {
+        "output_directory": "./reports",
+        "report_title_template": "Benchmark Validation Report - {timestamp}",
+        "max_results_per_page": 20,
+        "theme": "light",  # or "dark"
+    }
+)
 
 # Generate HTML report with visualizations
 html_report = reporter.generate_report(
-    validation_results=validation_results,
-    report_format="html",
-    include_visualizations=True
+    validation_results=validation_results, report_format="html", include_visualizations=True
 )
 
 # Export report to file
@@ -439,7 +427,7 @@ reporter.export_report(
     validation_results=validation_results,
     output_path="./reports/validation_report.html",
     report_format="html",
-    include_visualizations=True
+    include_visualizations=True,
 )
 
 # Create specific visualizations
@@ -447,7 +435,7 @@ reporter.create_visualization(
     validation_results=validation_results,
     visualization_type="confidence_distribution",
     output_path="./reports/confidence_distribution.html",
-    title="Confidence Score Distribution"
+    title="Confidence Score Distribution",
 )
 
 # Create validation heatmap (if advanced visualization system is available)
@@ -456,7 +444,7 @@ reporter.create_visualization(
     visualization_type="validation_heatmap",
     output_path="./reports/validation_heatmap.html",
     title="Validation Results Heatmap",
-    metric="confidence_score"
+    metric="confidence_score",
 )
 ```
 
@@ -470,16 +458,14 @@ config = {
     "report_formats": ["html", "markdown", "json"],
     "report_title_template": "Benchmark Validation Report - {timestamp}",
     "max_results_per_page": 20,
-    
     # Output configuration
     "output_directory": "./reports",
     "css_style_path": None,  # Custom CSS path
     "html_template_path": None,  # Custom HTML template
-    
     # Visualization configuration
     "include_visualizations": True,
     "visualization_types": ["confidence_distribution", "metric_comparison", "validation_heatmap"],
-    "theme": "light"  # or "dark"
+    "theme": "light",  # or "dark"
 }
 
 reporter = ValidationReporterImpl(config)
@@ -494,30 +480,31 @@ from duckdb_api.benchmark_validation.visualization.dashboard import ValidationDa
 from duckdb_api.benchmark_validation.core.base import ValidationResult
 
 # Create a dashboard instance
-dashboard = ValidationDashboard({
-    "output_directory": "./output",
-    "dashboard_directory": "dashboards",
-    "dashboard_name": "benchmark_validation_dashboard",
-    "dashboard_title": "Benchmark Validation Dashboard",
-    "dashboard_description": "Comprehensive visualization of benchmark validation results",
-    "monitoring_integration": True,  # Enable integration with Monitoring Dashboard
-    "theme": "light"  # or "dark"
-})
+dashboard = ValidationDashboard(
+    {
+        "output_directory": "./output",
+        "dashboard_directory": "dashboards",
+        "dashboard_name": "benchmark_validation_dashboard",
+        "dashboard_title": "Benchmark Validation Dashboard",
+        "dashboard_description": "Comprehensive visualization of benchmark validation results",
+        "monitoring_integration": True,  # Enable integration with Monitoring Dashboard
+        "theme": "light",  # or "dark"
+    }
+)
 
 # Create a dashboard with validation results
 dashboard_path = dashboard.create_dashboard(
     validation_results=validation_results,
     dashboard_name="my_validation_dashboard",
     dashboard_title="My Validation Dashboard",
-    dashboard_description="A dashboard with validation results"
+    dashboard_description="A dashboard with validation results",
 )
 
 print(f"Dashboard created at: {dashboard_path}")
 
 # Get dashboard URL
 dashboard_url = dashboard.get_dashboard_url(
-    dashboard_name="my_validation_dashboard", 
-    base_url="http://localhost:8080"
+    dashboard_name="my_validation_dashboard", base_url="http://localhost:8080"
 )
 
 print(f"Dashboard URL: {dashboard_url}")
@@ -526,27 +513,24 @@ print(f"Dashboard URL: {dashboard_url}")
 comparison_dashboard_path = dashboard.create_comparison_dashboard(
     validation_results_sets={
         "baseline": baseline_validation_results,
-        "experiment": experiment_validation_results
+        "experiment": experiment_validation_results,
     },
     dashboard_name="validation_comparison_dashboard",
     dashboard_title="Validation Comparison Dashboard",
-    dashboard_description="Comparison of validation results across different experiments"
+    dashboard_description="Comparison of validation results across different experiments",
 )
 
 # Export dashboard to different formats
 html_path = dashboard.export_dashboard(
-    dashboard_name="my_validation_dashboard",
-    export_format="html"
+    dashboard_name="my_validation_dashboard", export_format="html"
 )
 
 markdown_path = dashboard.export_dashboard(
-    dashboard_name="my_validation_dashboard", 
-    export_format="markdown"
+    dashboard_name="my_validation_dashboard", export_format="markdown"
 )
 
 json_path = dashboard.export_dashboard(
-    dashboard_name="my_validation_dashboard",
-    export_format="json"
+    dashboard_name="my_validation_dashboard", export_format="json"
 )
 
 # List all available dashboards
@@ -558,9 +542,7 @@ for dash in dashboards:
 
 # Register dashboard with monitoring system
 success = dashboard.register_with_monitoring_dashboard(
-    dashboard_name="my_validation_dashboard",
-    page="validation",
-    position="below"
+    dashboard_name="my_validation_dashboard", page="validation", position="below"
 )
 
 if success:
@@ -568,9 +550,7 @@ if success:
 
 # Get HTML for embedding dashboard in another page
 iframe_html = dashboard.get_dashboard_iframe_html(
-    dashboard_name="my_validation_dashboard",
-    width="100%",
-    height="800px"
+    dashboard_name="my_validation_dashboard", width="100%", height="800px"
 )
 
 # Update an existing dashboard
@@ -578,7 +558,7 @@ updated_path = dashboard.update_dashboard(
     dashboard_name="my_validation_dashboard",
     validation_results=new_validation_results,
     dashboard_title="Updated Validation Dashboard",
-    dashboard_description="An updated dashboard with new validation results"
+    dashboard_description="An updated dashboard with new validation results",
 )
 
 # Delete a dashboard
@@ -595,22 +575,18 @@ config = {
     "dashboard_name": "benchmark_validation_dashboard",
     "dashboard_title": "Benchmark Validation Dashboard",
     "dashboard_description": "Comprehensive visualization of benchmark validation results",
-    
     # Output configuration
     "output_directory": "output",
     "dashboard_directory": "dashboards",
-    
     # Integration configuration
     "monitoring_integration": True,  # Enable integration with Monitoring Dashboard
-    
     # Display configuration
     "theme": "light",  # or "dark"
     "auto_refresh": True,
     "refresh_interval": 300,  # 5 minutes
-    
     # Content configuration
     "max_results": 1000,
-    "default_view": "summary"  # or "detailed", "comparison"
+    "default_view": "summary",  # or "detailed", "comparison"
 }
 
 dashboard = ValidationDashboard(config)
@@ -731,7 +707,7 @@ performance_results = db_api.query(
     WHERE 
         pr.model_id = ? AND pr.hardware_id = ?
     """,
-    [1, 2]  # BERT model on NVIDIA GPU
+    [1, 2],  # BERT model on NVIDIA GPU
 )
 
 # Convert to BenchmarkResult objects
@@ -746,15 +722,15 @@ for row in performance_results:
             "average_latency_ms": row["average_latency_ms"],
             "throughput_items_per_second": row["throughput_items_per_second"],
             "memory_peak_mb": row["memory_peak_mb"],
-            "total_time_seconds": row["total_time_seconds"]
+            "total_time_seconds": row["total_time_seconds"],
         },
         run_id=row["run_id"],
         timestamp=row["timestamp"],
         metadata={
             "model_name": row["model_name"],
             "hardware_type": row["hardware_type"],
-            "device_name": row["device_name"]
-        }
+            "device_name": row["device_name"],
+        },
     )
     benchmark_results.append(benchmark_result)
 
@@ -762,7 +738,7 @@ for row in performance_results:
 validation_results = validation_framework.validate_batch(
     benchmark_results=benchmark_results,
     validation_level=ValidationLevel.STANDARD,
-    detect_outliers=True
+    detect_outliers=True,
 )
 
 # Store validation results
@@ -796,24 +772,23 @@ validation_benchmark = BenchmarkResult(
         "average_latency_ms": benchmark_result.average_latency,
         "throughput_items_per_second": benchmark_result.throughput,
         "memory_peak_mb": benchmark_result.memory_peak,
-        "total_time_seconds": benchmark_result.total_time
+        "total_time_seconds": benchmark_result.total_time,
     },
     run_id=run_id,
     timestamp=datetime.datetime.now(),
-    metadata=benchmark_result.metadata
+    metadata=benchmark_result.metadata,
 )
 
 # Validate benchmark
 validation_result = validation_framework.validate(
-    benchmark_result=validation_benchmark,
-    validation_level=ValidationLevel.STANDARD
+    benchmark_result=validation_benchmark, validation_level=ValidationLevel.STANDARD
 )
 
 # Handle validation result
 if validation_result.status == ValidationStatus.VALID:
     # Store benchmark result in database
     store_benchmark_result(benchmark_result)
-    
+
     # Store validation result
     if validation_framework.repository:
         validation_framework.repository.save_validation_result(validation_result)
@@ -821,7 +796,7 @@ else:
     # Log validation issues
     for issue in validation_result.issues:
         logger.warning(f"Validation issue: {issue['type']} - {issue['message']}")
-    
+
     # Implement recommendations
     for recommendation in validation_result.recommendations:
         logger.info(f"Recommendation: {recommendation}")
@@ -856,22 +831,18 @@ for i in range(10):  # Run 10 iterations
 validation_results = framework.validate_batch(
     benchmark_results=benchmark_results,
     validation_level=ValidationLevel.CERTIFICATION,
-    detect_outliers=True
+    detect_outliers=True,
 )
 
 # Check for validation issues
-valid_results = [
-    result for result in validation_results
-    if result.status.name == "VALID"
-]
+valid_results = [result for result in validation_results if result.status.name == "VALID"]
 
 if len(valid_results) < len(validation_results):
     print(f"Warning: {len(validation_results) - len(valid_results)} validation issues found")
 
 # Validate reproducibility
 reproducibility_result = framework.validate_reproducibility(
-    benchmark_results=benchmark_results,
-    validation_level=ValidationLevel.CERTIFICATION
+    benchmark_results=benchmark_results, validation_level=ValidationLevel.CERTIFICATION
 )
 
 if reproducibility_result.status.name != "VALID":
@@ -884,7 +855,7 @@ if reproducibility_result.status.name != "VALID":
 certification = framework.certify_benchmark(
     benchmark_result=benchmark_results[0],  # Use first result as reference
     validation_results=validation_results + [reproducibility_result],
-    certification_level="auto"  # Determine highest possible level
+    certification_level="auto",  # Determine highest possible level
 )
 
 print(f"Certification level: {certification['certification_level']}")
@@ -894,7 +865,7 @@ report = framework.generate_report(
     validation_results=validation_results + [reproducibility_result],
     report_format="html",
     include_visualizations=True,
-    output_path="certification_report.html"
+    output_path="certification_report.html",
 )
 
 print(f"Certification report generated at: {report}")

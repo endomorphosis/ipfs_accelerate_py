@@ -166,7 +166,9 @@ async def run_probe_server(
             await _serve_loop(host, advertise_ip, port, local_peer_id, done, exit_after_one)
 
 
-async def _serve_loop(host, advertise_ip: str, port: int, local_peer_id: str, done, exit_after_one: bool) -> None:
+async def _serve_loop(
+    host, advertise_ip: str, port: int, local_peer_id: str, done, exit_after_one: bool
+) -> None:
     import trio
 
     # Compute the actual bound port from the host (in case of remapping).
@@ -197,7 +199,9 @@ async def _serve_loop(host, advertise_ip: str, port: int, local_peer_id: str, do
         pass
 
 
-async def probe_remote(remote_multiaddr: str, timeout_s: float = 10.0) -> Tuple[str, str, ProbeResponse]:
+async def probe_remote(
+    remote_multiaddr: str, timeout_s: float = 10.0
+) -> Tuple[str, str, ProbeResponse]:
     import trio
 
     try:
@@ -327,7 +331,9 @@ def test_remote_host_probe():
     assert resp.peer_id == expected_remote_peer_id, (
         f"Remote peer_id mismatch: expected {expected_remote_peer_id}, got {resp.peer_id}"
     )
-    assert resp.peer_id != local_peer_id, "Remote peer_id equals local peer_id (not a distinct host)"
+    assert resp.peer_id != local_peer_id, (
+        "Remote peer_id equals local peer_id (not a distinct host)"
+    )
 
 
 if __name__ == "__main__":

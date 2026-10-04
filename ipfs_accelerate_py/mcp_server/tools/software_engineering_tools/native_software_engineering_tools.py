@@ -69,8 +69,20 @@ def _load_software_engineering_tools_api() -> Dict[str, Any]:
             max_items: int = 100,
             github_token: Optional[str] = None,
         ) -> Dict[str, Any]:
-            _ = (include_prs, include_issues, include_workflows, include_commits, max_items, github_token)
-            return {"status": "success", "repository_url": repository_url, "data": {}, "fallback": True}
+            _ = (
+                include_prs,
+                include_issues,
+                include_workflows,
+                include_commits,
+                max_items,
+                github_token,
+            )
+            return {
+                "status": "success",
+                "repository_url": repository_url,
+                "data": {},
+                "fallback": True,
+            }
 
         async def _search_repositories_fallback(
             query: str,
@@ -132,14 +144,21 @@ def _load_software_engineering_tools_api() -> Dict[str, Any]:
             return {
                 "success": True,
                 "entries": [],
-                "statistics": {"total_entries": 0, "by_priority": {}, "by_service": {}, "by_hour": {}},
+                "statistics": {
+                    "total_entries": 0,
+                    "by_priority": {},
+                    "by_service": {},
+                    "by_hour": {},
+                },
                 "errors": [],
                 "recommendations": [],
                 "max_entries": max_entries,
                 "fallback": True,
             }
 
-        def _analyze_service_health_fallback(log_data: Dict[str, Any], service_name: str) -> Dict[str, Any]:
+        def _analyze_service_health_fallback(
+            log_data: Dict[str, Any], service_name: str
+        ) -> Dict[str, Any]:
             _ = log_data
             return {
                 "success": True,
@@ -221,7 +240,9 @@ def _load_software_engineering_tools_api() -> Dict[str, Any]:
                 "fallback": True,
             }
 
-        def _monitor_healing_effectiveness_fallback(healing_history: List[Dict[str, Any]]) -> Dict[str, Any]:
+        def _monitor_healing_effectiveness_fallback(
+            healing_history: List[Dict[str, Any]],
+        ) -> Dict[str, Any]:
             return {
                 "success": True,
                 "overall_success_rate": 0.0,
@@ -296,7 +317,9 @@ def _validate_bool(value: Any, field: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _validate_non_negative_int(value: Any, field: str, minimum: int = 1) -> Optional[Dict[str, Any]]:
+def _validate_non_negative_int(
+    value: Any, field: str, minimum: int = 1
+) -> Optional[Dict[str, Any]]:
     if not isinstance(value, int) or value < minimum:
         return _error_result(f"{field} must be an integer >= {minimum}", **{field: value})
     return None
@@ -332,7 +355,11 @@ def _validate_string_list(value: Any, field: str, *, minimum: int = 1) -> Option
 
 
 def _validate_object_list(value: Any, field: str, *, minimum: int = 0) -> Optional[Dict[str, Any]]:
-    if not isinstance(value, list) or len(value) < minimum or any(not isinstance(item, dict) for item in value):
+    if (
+        not isinstance(value, list)
+        or len(value) < minimum
+        or any(not isinstance(item, dict) for item in value)
+    ):
         qualifier = f"at least {minimum} " if minimum else ""
         return _error_result(f"{field} must be a list of {qualifier}objects", **{field: value})
     return None
@@ -391,7 +418,9 @@ async def scrape_repository(
     return envelope
 
 
-async def search_repositories(query: str, max_results: int = 3, github_token: Optional[str] = None) -> Dict[str, Any]:
+async def search_repositories(
+    query: str, max_results: int = 3, github_token: Optional[str] = None
+) -> Dict[str, Any]:
     validation = _require_string(query, "query")
     if validation is not None:
         return validation
@@ -475,7 +504,10 @@ async def parse_workflow_logs(
     validation = _require_string(log_content, "log_content")
     if validation is not None:
         return validation
-    for field, value in {"detect_errors": detect_errors, "extract_patterns": extract_patterns}.items():
+    for field, value in {
+        "detect_errors": detect_errors,
+        "extract_patterns": extract_patterns,
+    }.items():
         validation = _validate_bool(value, field)
         if validation is not None:
             return validation
@@ -515,7 +547,10 @@ async def parse_systemd_logs(
     if validation is not None:
         return validation
     if priority_filter is not None:
-        if not isinstance(priority_filter, str) or priority_filter.strip().lower() not in _PRIORITY_LEVELS:
+        if (
+            not isinstance(priority_filter, str)
+            or priority_filter.strip().lower() not in _PRIORITY_LEVELS
+        ):
             return _error_result(
                 "priority_filter must be null or one of: alert, crit, debug, emerg, err, info, notice, warning",
                 priority_filter=priority_filter,
@@ -529,7 +564,9 @@ async def parse_systemd_logs(
             _API["parse_systemd_logs"](
                 log_content=log_content.strip(),
                 service_filter=service_filter.strip() if isinstance(service_filter, str) else None,
-                priority_filter=priority_filter.strip().lower() if isinstance(priority_filter, str) else None,
+                priority_filter=priority_filter.strip().lower()
+                if isinstance(priority_filter, str)
+                else None,
                 max_entries=max_entries,
             )
         )
@@ -541,7 +578,9 @@ async def parse_systemd_logs(
     if envelope.get("status") == "success":
         envelope.setdefault("success", True)
         envelope.setdefault("entries", [])
-        envelope.setdefault("statistics", {"total_entries": 0, "by_priority": {}, "by_service": {}, "by_hour": {}})
+        envelope.setdefault(
+            "statistics", {"total_entries": 0, "by_priority": {}, "by_service": {}, "by_hour": {}}
+        )
         envelope.setdefault("errors", [])
         envelope.setdefault("recommendations", [])
     return envelope
@@ -556,7 +595,9 @@ async def analyze_service_health(log_data: Dict[str, Any], service_name: str) ->
 
     clean_service_name = service_name.strip()
     try:
-        result = await _await_maybe(_API["analyze_service_health"](log_data=log_data, service_name=clean_service_name))
+        result = await _await_maybe(
+            _API["analyze_service_health"](log_data=log_data, service_name=clean_service_name)
+        )
     except Exception as exc:
         return _error_result(str(exc), service_name=clean_service_name)
 
@@ -586,7 +627,10 @@ async def parse_kubernetes_logs(
         if validation is not None:
             return validation
     if severity_filter is not None:
-        if not isinstance(severity_filter, str) or severity_filter.strip().upper() not in _K8S_SEVERITIES:
+        if (
+            not isinstance(severity_filter, str)
+            or severity_filter.strip().upper() not in _K8S_SEVERITIES
+        ):
             return _error_result(
                 "severity_filter must be null or one of: CRITICAL, DEBUG, ERROR, FATAL, INFO, WARN",
                 severity_filter=severity_filter,
@@ -599,9 +643,13 @@ async def parse_kubernetes_logs(
         result = await _await_maybe(
             _API["parse_kubernetes_logs"](
                 log_content=log_content.strip(),
-                namespace_filter=namespace_filter.strip() if isinstance(namespace_filter, str) else None,
+                namespace_filter=namespace_filter.strip()
+                if isinstance(namespace_filter, str)
+                else None,
                 pod_filter=pod_filter.strip() if isinstance(pod_filter, str) else None,
-                severity_filter=severity_filter.strip().upper() if isinstance(severity_filter, str) else None,
+                severity_filter=severity_filter.strip().upper()
+                if isinstance(severity_filter, str)
+                else None,
                 max_entries=max_entries,
             )
         )
@@ -637,7 +685,9 @@ async def analyze_pod_health(log_data: Dict[str, Any], pod_name: str) -> Dict[st
 
     clean_pod_name = pod_name.strip()
     try:
-        result = await _await_maybe(_API["analyze_pod_health"](log_data=log_data, pod_name=clean_pod_name))
+        result = await _await_maybe(
+            _API["analyze_pod_health"](log_data=log_data, pod_name=clean_pod_name)
+        )
     except Exception as exc:
         return _error_result(str(exc), pod_name=clean_pod_name)
 
@@ -755,7 +805,9 @@ async def monitor_healing_effectiveness(healing_history: List[Dict[str, Any]]) -
         return validation
 
     try:
-        result = await _await_maybe(_API["monitor_healing_effectiveness"](healing_history=healing_history))
+        result = await _await_maybe(
+            _API["monitor_healing_effectiveness"](healing_history=healing_history)
+        )
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -922,7 +974,11 @@ def register_native_software_engineering_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "error_logs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                    "error_logs": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string", "minLength": 1},
+                    },
                     "pattern_library": {"type": ["object", "null"]},
                     "min_occurrences": {"type": "integer", "minimum": 1, "default": 2},
                 },
@@ -960,7 +1016,11 @@ def register_native_software_engineering_tools(manager: Any) -> None:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "healing_history": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+                    "healing_history": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "object"},
+                    },
                 },
                 "required": ["healing_history"],
             },

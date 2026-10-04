@@ -40,8 +40,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 16,  # Adjust based on available memory
         "cuda_optimization_level": "highest",
         "optimize_spectrogram": True,  # Specialized audio preprocessing
-        "feature_extraction_on_gpu": True
-    }
+        "feature_extraction_on_gpu": True,
+    },
 )
 
 # Wav2Vec2 on CUDA
@@ -54,8 +54,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 24,
         "cuda_optimization_level": "highest",
         "feature_extraction_on_gpu": True,
-        "optimize_for_streaming": False  # Set to True for streaming audio
-    }
+        "optimize_for_streaming": False,  # Set to True for streaming audio
+    },
 )
 
 # CLAP (audio-text embedding) on CUDA
@@ -67,8 +67,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 8,
         "cuda_optimization_level": "highest",
-        "feature_extraction_on_gpu": True
-    }
+        "feature_extraction_on_gpu": True,
+    },
 )
 ```
 
@@ -99,8 +99,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 8,  # Start with smaller batch size than CUDA
         "rocm_optimization_level": "high",
         "optimize_spectrogram": True,
-        "feature_extraction_on_gpu": True
-    }
+        "feature_extraction_on_gpu": True,
+    },
 )
 
 # Wav2Vec2 on ROCm
@@ -112,8 +112,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 16,
         "rocm_optimization_level": "high",
-        "feature_extraction_on_gpu": True
-    }
+        "feature_extraction_on_gpu": True,
+    },
 )
 ```
 
@@ -142,8 +142,8 @@ platform = UnifiedWebPlatform(
         "use_mps_graph": True,
         "optimize_spectrogram": True,
         "feature_extraction_on_gpu": True,
-        "power_efficient": True  # For battery life on laptops
-    }
+        "power_efficient": True,  # For battery life on laptops
+    },
 )
 
 # Wav2Vec2 on MPS
@@ -156,8 +156,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 8,
         "use_mps_graph": True,
         "feature_extraction_on_gpu": True,
-        "power_efficient": True
-    }
+        "power_efficient": True,
+    },
 )
 ```
 
@@ -186,8 +186,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "power_mode": "efficient",
         "hexagon_enabled": True,  # Use Hexagon DSP
-        "feature_extraction_on_dsp": True  # Audio-specific optimization
-    }
+        "feature_extraction_on_dsp": True,  # Audio-specific optimization
+    },
 )
 
 # Wav2Vec2 on Qualcomm
@@ -201,8 +201,8 @@ platform = UnifiedWebPlatform(
         "power_mode": "efficient",
         "hexagon_enabled": True,
         "feature_extraction_on_dsp": True,
-        "optimize_for_voice": True  # For voice-specific tasks
-    }
+        "optimize_for_voice": True,  # For voice-specific tasks
+    },
 )
 ```
 
@@ -232,8 +232,8 @@ platform = UnifiedWebPlatform(
         "use_wasm_threads": True,
         "use_simd": True,
         "feature_extraction_in_browser": True,  # Browser audio processing
-        "streaming_chunks": True  # Process in smaller chunks
-    }
+        "streaming_chunks": True,  # Process in smaller chunks
+    },
 )
 
 # Wav2Vec2 on WebNN
@@ -246,8 +246,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "use_wasm_threads": True,
         "use_simd": True,
-        "feature_extraction_in_browser": True
-    }
+        "feature_extraction_in_browser": True,
+    },
 )
 ```
 
@@ -278,8 +278,8 @@ platform = UnifiedWebPlatform(
         "optimize_for_browser": "firefox",  # Firefox is ~20% faster
         "compute_shader_optimizations": True,
         "audio_specific_workgroups": True,  # 256x1x1 workgroups for Firefox
-        "feature_extraction_on_gpu": True
-    }
+        "feature_extraction_on_gpu": True,
+    },
 )
 
 # Wav2Vec2 on WebGPU (Firefox recommended)
@@ -293,8 +293,8 @@ platform = UnifiedWebPlatform(
         "shader_precompile": True,
         "optimize_for_browser": "firefox",  # Firefox is ~20% faster
         "compute_shader_optimizations": True,
-        "audio_specific_workgroups": True
-    }
+        "audio_specific_workgroups": True,
+    },
 )
 
 # CLAP on WebGPU (Firefox recommended)
@@ -307,8 +307,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "shader_precompile": True,
         "optimize_for_browser": "firefox",  # Firefox is ~20% faster
-        "compute_shader_optimizations": True
-    }
+        "compute_shader_optimizations": True,
+    },
 )
 ```
 
@@ -319,11 +319,7 @@ platform = UnifiedWebPlatform(
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="whisper-small",
-    model_type="audio",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="whisper-small", model_type="audio", platform="webgpu")
 
 # Apply Firefox-specific optimizations (if Firefox detected)
 if platform.browser_info.get("name", "").lower() == "firefox":

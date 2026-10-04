@@ -41,17 +41,17 @@ from predictive_performance.visualization import AdvancedVisualization, create_v
 # Initialize visualization system (default: interactive=True)
 vis = AdvancedVisualization(
     output_dir="./visualizations",
-    interactive=True  # Set to False for static images
+    interactive=True,  # Set to False for static images
 )
 
 # Create a simple 3D visualization
 vis.create_3d_visualization(
     data=performance_data,  # DataFrame or path to CSV/JSON
     x_metric="batch_size",
-    y_metric="throughput", 
+    y_metric="throughput",
     z_metric="memory_usage",
     color_metric="hardware",
-    title="3D Performance Visualization"
+    title="3D Performance Visualization",
 )
 
 # Generate a performance dashboard
@@ -59,16 +59,16 @@ vis.create_performance_dashboard(
     data=performance_data,
     metrics=["throughput", "latency_mean", "memory_usage"],
     groupby=["model_name", "hardware"],
-    title="Performance Dashboard"
+    title="Performance Dashboard",
 )
 
 # Create a time-series visualization
 vis.create_time_series_visualization(
     data=performance_data,
     time_column="timestamp",
-    metric="throughput", 
+    metric="throughput",
     groupby=["model_name", "hardware"],
-    title="Performance Over Time"
+    title="Performance Over Time",
 )
 
 # Generate a complete set of visualizations
@@ -80,7 +80,7 @@ visualization_files = vis.create_batch_visualizations(
     include_time_series=True,
     include_power_efficiency=True,
     include_dimension_reduction=True,
-    include_confidence=True
+    include_confidence=True,
 )
 
 # Create a comprehensive report
@@ -88,7 +88,7 @@ report_path = create_visualization_report(
     visualization_files=visualization_files,
     title="Performance Visualization Report",
     output_file="visualization_report.html",
-    output_dir="./visualizations"
+    output_dir="./visualizations",
 )
 ```
 
@@ -169,7 +169,7 @@ viz.create_3d_visualization(
     model_families=["Text", "Vision"],
     hardware_types=["CPU", "GPU", "WebGPU"],
     output_path="3d_scatter.html",
-    title="Hardware Performance Comparison: Throughput vs Memory vs Latency"
+    title="Hardware Performance Comparison: Throughput vs Memory vs Latency",
 )
 ```
 
@@ -182,7 +182,7 @@ This component offers several visualization modes:
        y_metric="memory",
        z_metric="latency",
        color_by="hardware_type",
-       output_path="3d_scatter.html"
+       output_path="3d_scatter.html",
    )
    ```
 
@@ -194,7 +194,7 @@ This component offers several visualization modes:
        z_metric="latency",
        show_surface=True,
        surface_contours=True,
-       output_path="3d_surface.html"
+       output_path="3d_surface.html",
    )
    ```
 
@@ -207,7 +207,7 @@ This component offers several visualization modes:
        cluster_points=True,
        num_clusters=4,
        show_cluster_centroids=True,
-       output_path="3d_clustered.html"
+       output_path="3d_clustered.html",
    )
    ```
 
@@ -219,7 +219,7 @@ This component offers several visualization modes:
        z_metric="latency",
        enable_animation=True,
        animation_frame="batch_size",
-       output_path="3d_animated.html"
+       output_path="3d_animated.html",
    )
    ```
 
@@ -230,7 +230,7 @@ This component offers several visualization modes:
        y_metric="memory",
        z_metric="latency",
        regression_plane=True,
-       output_path="3d_regression.html"
+       output_path="3d_regression.html",
    )
    ```
 
@@ -258,7 +258,7 @@ vis.create_3d_visualization(
     z_metric="memory_usage",
     color_metric="hardware",
     size_metric="confidence",
-    title="3D Performance Visualization"
+    title="3D Performance Visualization",
 )
 ```
 
@@ -278,7 +278,7 @@ vis.create_performance_dashboard(
     data=df,
     metrics=["throughput", "latency_mean", "memory_usage"],
     groupby=["model_category", "hardware"],
-    title="Performance Dashboard"
+    title="Performance Dashboard",
 )
 ```
 
@@ -301,7 +301,7 @@ vis.create_time_series_visualization(
     groupby=["model_name", "hardware"],
     include_trend=True,
     window_size=5,
-    title="Performance Over Time"
+    title="Performance Over Time",
 )
 
 # Create an animated time-series visualization with interactive controls
@@ -313,7 +313,7 @@ vis.create_animated_time_series_visualization(
     time_interval="day",  # Aggregate by day
     include_trend=True,
     window_size=5,
-    title="Performance Trends Over Time"
+    title="Performance Trends Over Time",
 )
 ```
 
@@ -338,7 +338,7 @@ vis.create_power_efficiency_visualization(
     performance_metric="throughput",
     power_metric="power_consumption",
     groupby=["model_category", "hardware"],
-    title="Power Efficiency Analysis"
+    title="Power Efficiency Analysis",
 )
 ```
 
@@ -361,7 +361,7 @@ vis.create_dimension_reduction_visualization(
     method="pca",  # or "tsne"
     n_components=2,
     groupby="model_category",
-    title="Feature Importance Visualization"
+    title="Feature Importance Visualization",
 )
 ```
 
@@ -382,7 +382,7 @@ vis.create_prediction_confidence_visualization(
     metric="throughput",
     confidence_column="confidence",
     groupby=["model_category", "hardware"],
-    title="Prediction Confidence Visualization"
+    title="Prediction Confidence Visualization",
 )
 ```
 
@@ -406,7 +406,7 @@ visualization_files = vis.create_batch_visualizations(
     include_time_series=True,
     include_power_efficiency=True,
     include_dimension_reduction=True,
-    include_confidence=True
+    include_confidence=True,
 )
 ```
 
@@ -422,7 +422,7 @@ report_path = create_visualization_report(
     visualization_files=visualization_files,
     title="Performance Visualization Report",
     output_file="visualization_report.html",
-    output_dir="./visualizations"
+    output_dir="./visualizations",
 )
 ```
 
@@ -452,7 +452,7 @@ vis = AdvancedVisualization(
     dpi=150,
     output_format="svg",
     output_dir="./custom_visualizations",
-    interactive=True
+    interactive=True,
 )
 ```
 
@@ -476,12 +476,13 @@ for model_name in ["bert-base-uncased", "t5-small", "vit-base"]:
                 model_name=model_name,
                 model_type=model_name.split("-")[0],
                 hardware_platform=hardware,
-                batch_size=batch_size
+                batch_size=batch_size,
             )
             predictions.append(prediction)
 
 # Convert predictions to DataFrame
 import pandas as pd
+
 df = pd.DataFrame(predictions)
 
 # Visualize predictions
@@ -526,7 +527,7 @@ viz.create_animated_time_series(
     dimensions=["hardware_type"],
     time_interval="day",
     time_range=90,  # Last 90 days of data
-    title="Throughput Over Time by Hardware Type"
+    title="Throughput Over Time by Hardware Type",
 )
 
 # Advanced usage with trend analysis and anomaly detection
@@ -542,8 +543,8 @@ viz.create_animated_time_series(
     title="Latency Trends with Anomaly Detection",
     filters={
         "batch_size": [1, 4, 16, 32],  # Only specific batch sizes
-        "model_family": ["Text", "Vision"]  # Only specific model families
-    }
+        "model_family": ["Text", "Vision"],  # Only specific model families
+    },
 )
 
 # Add event markers to correlate with performance changes
@@ -554,9 +555,9 @@ viz.create_animated_time_series(
     events=[
         {"date": "2025-05-15", "label": "Framework v2.1 Release", "color": "green"},
         {"date": "2025-06-01", "label": "Hardware Upgrade", "color": "blue"},
-        {"date": "2025-06-10", "label": "Config Change", "color": "orange"}
+        {"date": "2025-06-10", "label": "Config Change", "color": "orange"},
     ],
-    title="Performance Impact of System Changes"
+    title="Performance Impact of System Changes",
 )
 ```
 
@@ -616,16 +617,10 @@ To switch modes:
 
 ```python
 # Enable progressive display (default)
-viz.create_animated_time_series(
-    metric="throughput",
-    progressive_display=True
-)
+viz.create_animated_time_series(metric="throughput", progressive_display=True)
 
 # Disable progressive display
-viz.create_animated_time_series(
-    metric="throughput",
-    progressive_display=False
-)
+viz.create_animated_time_series(metric="throughput", progressive_display=False)
 ```
 
 #### Event Correlation
@@ -639,8 +634,8 @@ viz.create_animated_time_series(
     events=[
         {"date": "2025-05-15", "label": "Framework v2.1 Release", "color": "green"},
         {"date": "2025-06-01", "label": "Hardware Upgrade", "color": "blue"},
-        {"date": "2025-06-10", "label": "Config Change", "color": "orange", "effect": "negative"}
-    ]
+        {"date": "2025-06-10", "label": "Config Change", "color": "orange", "effect": "negative"},
+    ],
 )
 ```
 
@@ -657,7 +652,7 @@ viz.create_animated_time_series(
     show_trend=True,
     trend_window=7,  # 7-day moving average
     show_anomalies=True,
-    anomaly_threshold=2.5  # Z-score threshold
+    anomaly_threshold=2.5,  # Z-score threshold
 )
 ```
 
@@ -670,28 +665,16 @@ Data can be aggregated at different time intervals:
 
 ```python
 # Hourly aggregation
-viz.create_animated_time_series(
-    metric="throughput",
-    time_interval="hour"
-)
+viz.create_animated_time_series(metric="throughput", time_interval="hour")
 
 # Daily aggregation (default)
-viz.create_animated_time_series(
-    metric="throughput",
-    time_interval="day"
-)
+viz.create_animated_time_series(metric="throughput", time_interval="day")
 
 # Weekly aggregation
-viz.create_animated_time_series(
-    metric="throughput",
-    time_interval="week"
-)
+viz.create_animated_time_series(metric="throughput", time_interval="week")
 
 # Monthly aggregation
-viz.create_animated_time_series(
-    metric="throughput",
-    time_interval="month"
-)
+viz.create_animated_time_series(metric="throughput", time_interval="month")
 ```
 
 #### Multi-Dimensional Filtering and Grouping
@@ -700,16 +683,10 @@ The visualization supports filtering and grouping by multiple dimensions:
 
 ```python
 # Group by hardware type
-viz.create_animated_time_series(
-    metric="throughput",
-    dimensions=["hardware_type"]
-)
+viz.create_animated_time_series(metric="throughput", dimensions=["hardware_type"])
 
 # Group by multiple dimensions
-viz.create_animated_time_series(
-    metric="throughput",
-    dimensions=["model_family", "hardware_type"]
-)
+viz.create_animated_time_series(metric="throughput", dimensions=["model_family", "hardware_type"])
 
 # Apply filters to specific dimensions
 viz.create_animated_time_series(
@@ -717,8 +694,8 @@ viz.create_animated_time_series(
     dimensions=["model_family"],
     filters={
         "hardware_type": ["GPU", "WebGPU"],  # Only GPU and WebGPU hardware
-        "batch_size": [1, 4, 16]  # Only specific batch sizes
-    }
+        "batch_size": [1, 4, 16],  # Only specific batch sizes
+    },
 )
 ```
 
@@ -729,9 +706,7 @@ The component supports exporting animations to different formats:
 ```python
 # Create and display an animated visualization
 viz.create_animated_time_series(
-    metric="throughput",
-    dimensions=["hardware_type"],
-    output_path="animated_throughput.html"
+    metric="throughput", dimensions=["hardware_type"], output_path="animated_throughput.html"
 )
 
 # Export the animation as MP4
@@ -837,14 +812,11 @@ viz.create_animated_time_series(
     speed_selector=True,
     events=[
         {"date": "2025-05-15", "label": "Framework v2.1 Release", "color": "green"},
-        {"date": "2025-06-01", "label": "Hardware Upgrade", "color": "blue"}
+        {"date": "2025-06-01", "label": "Hardware Upgrade", "color": "blue"},
     ],
-    filters={
-        "batch_size": [1, 4, 16],
-        "model_family": ["Text", "Vision"]
-    },
+    filters={"batch_size": [1, 4, 16], "model_family": ["Text", "Vision"]},
     title="Comprehensive Performance Visualization",
-    output_path="comprehensive_animation.html"
+    output_path="comprehensive_animation.html",
 )
 
 # Export the animation in multiple formats
@@ -870,7 +842,7 @@ viz = AdvancedVisualizationSystem(db_api=db_api, output_dir="./visualizations")
 viz.create_3d_performance_visualization(
     metrics=["throughput_items_per_second", "average_latency_ms", "memory_peak_mb"],
     dimensions=["model_family", "hardware_type", "batch_size", "precision"],
-    title="3D Performance Visualization"
+    title="3D Performance Visualization",
 )
 ```
 
@@ -893,7 +865,7 @@ viz.create_hardware_comparison_heatmap(
     model_families=["transformers", "vision", "audio"],
     hardware_types=["nvidia_a100", "amd_mi250", "intel_arc", "apple_m2"],
     batch_size=1,
-    title="Hardware Comparison by Model Family"
+    title="Hardware Comparison by Model Family",
 )
 ```
 
@@ -915,7 +887,7 @@ viz.create_power_efficiency_visualization(
     hardware_types=["nvidia_a100", "amd_mi250", "intel_arc"],
     model_families=["transformers", "vision", "audio"],
     batch_sizes=[1, 8, 32],
-    title="Power Efficiency Visualization"
+    title="Power Efficiency Visualization",
 )
 ```
 
@@ -953,17 +925,19 @@ python test_advanced_visualization.py --viz-type all --db-path ./benchmark_db.du
 The Advanced Visualization System can be configured with various options:
 
 ```python
-viz.configure({
-    "theme": "dark",             # 'light' or 'dark'
-    "color_palette": "plasma",   # 'viridis', 'plasma', 'inferno', etc.
-    "default_width": 1200,       # Width in pixels
-    "default_height": 900,       # Height in pixels
-    "auto_open": True,           # Automatically open visualizations in browser
-    "include_annotations": True, # Include annotations on charts
-    "animation_duration": 1500,  # Animation duration in milliseconds
-    "include_controls": True,    # Include interactive controls
-    "save_data": True,           # Save data alongside visualizations
-})
+viz.configure(
+    {
+        "theme": "dark",  # 'light' or 'dark'
+        "color_palette": "plasma",  # 'viridis', 'plasma', 'inferno', etc.
+        "default_width": 1200,  # Width in pixels
+        "default_height": 900,  # Height in pixels
+        "auto_open": True,  # Automatically open visualizations in browser
+        "include_annotations": True,  # Include annotations on charts
+        "animation_duration": 1500,  # Animation duration in milliseconds
+        "include_controls": True,  # Include interactive controls
+        "save_data": True,  # Save data alongside visualizations
+    }
+)
 ```
 
 ### Dependencies
@@ -1066,7 +1040,7 @@ viz.create_animated_time_series_visualization(
     comparative_dimension="model_family",
     time_range=90,
     normalized=True,  # Normalize values for fair comparison
-    title="Relative Performance by Hardware Platform"
+    title="Relative Performance by Hardware Platform",
 )
 ```
 
@@ -1082,7 +1056,7 @@ viz.create_animated_time_series_visualization(
     time_range=90,
     detect_anomalies=True,
     anomaly_threshold=2.5,  # Z-score threshold for anomaly detection
-    title="Latency Anomalies Over Time"
+    title="Latency Anomalies Over Time",
 )
 ```
 
@@ -1091,7 +1065,9 @@ viz.create_animated_time_series_visualization(
 For statistical analysis and visualization of performance regressions with advanced features like confidence intervals, trend lines, and interactive controls:
 
 ```python
-from duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
+from duckdb_api.distributed_testing.dashboard.regression_visualization import (
+    RegressionVisualization,
+)
 from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
 
 # Initialize the components
@@ -1101,7 +1077,7 @@ visualizer = RegressionVisualization(output_dir="./visualizations/regression")
 # Detect regressions in time series data
 time_series_data = {
     "timestamps": [...],  # List of timestamps
-    "values": [...]       # Corresponding metric values
+    "values": [...],  # Corresponding metric values
 }
 regressions = detector.detect_regressions(time_series_data, "latency_ms")
 
@@ -1113,14 +1089,12 @@ figure = visualizer.create_interactive_regression_figure(
     title="Latency Regression Analysis",
     include_confidence_intervals=True,
     include_trend_lines=True,
-    include_annotations=True
+    include_annotations=True,
 )
 
 # Export the visualization
 visualizer.export_regression_visualization(
-    figure_dict=figure,
-    output_path="./latency_regression_analysis.html",
-    format="html"
+    figure_dict=figure, output_path="./latency_regression_analysis.html", format="html"
 )
 
 # Generate comprehensive report
@@ -1128,7 +1102,7 @@ visualizer.create_regression_summary_report(
     metrics_data={"latency_ms": time_series_data},
     regressions_by_metric={"latency_ms": regressions},
     output_path="./regression_report.html",
-    include_plots=True
+    include_plots=True,
 )
 ```
 
@@ -1137,7 +1111,9 @@ visualizer.create_regression_summary_report(
 When used with the EnhancedVisualizationDashboard, you can control visualization options through the UI:
 
 ```python
-from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
+from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import (
+    EnhancedVisualizationDashboard,
+)
 
 # Create and configure the dashboard
 dashboard = EnhancedVisualizationDashboard(
@@ -1145,7 +1121,7 @@ dashboard = EnhancedVisualizationDashboard(
     output_dir="./visualizations/dashboard",
     theme="dark",
     enable_regression_detection=True,
-    enhanced_visualization=True
+    enhanced_visualization=True,
 )
 
 # Start the dashboard (provides UI controls for all regression visualization options)
@@ -1173,9 +1149,9 @@ viz.create_animated_time_series_visualization(
     events=[
         {"date": "2025-05-15", "label": "Framework v2.1 Release", "color": "green"},
         {"date": "2025-06-01", "label": "Hardware Upgrade", "color": "blue"},
-        {"date": "2025-06-10", "label": "Config Change", "color": "orange"}
+        {"date": "2025-06-10", "label": "Config Change", "color": "orange"},
     ],
-    title="Performance Impact of System Changes"
+    title="Performance Impact of System Changes",
 )
 ```
 
@@ -1198,7 +1174,7 @@ dashboard_path = viz.create_dashboard(
     dashboard_name="hardware_overview",
     template="hardware_comparison",
     title="Hardware Performance Overview",
-    description="Comparison of performance metrics across different hardware platforms"
+    description="Comparison of performance metrics across different hardware platforms",
 )
 
 # Create a custom dashboard with specific components
@@ -1213,7 +1189,7 @@ dashboard_path = viz.create_dashboard(
             "dimensions": ["model_family", "hardware_type"],
             "title": "3D Performance Visualization",
             "width": 1,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "time-series",
@@ -1223,11 +1199,11 @@ dashboard_path = viz.create_dashboard(
             "window_size": 3,
             "title": "Performance Trends Over Time",
             "width": 2,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=2,
-    row_height=500
+    row_height=500,
 )
 ```
 
@@ -1242,9 +1218,7 @@ dashboard_config = viz.get_dashboard("hardware_overview")
 
 # Update an existing dashboard
 updated_path = viz.update_dashboard(
-    dashboard_name="hardware_overview",
-    title="Updated Hardware Overview",
-    columns=3
+    dashboard_name="hardware_overview", title="Updated Hardware Overview", columns=3
 )
 
 # Add a component to a dashboard
@@ -1253,23 +1227,18 @@ viz.add_component_to_dashboard(
     component_type="power",
     component_config={
         "title": "Power Efficiency Analysis",
-        "hardware_types": ["nvidia_a100", "amd_mi250", "intel_arc"]
+        "hardware_types": ["nvidia_a100", "amd_mi250", "intel_arc"],
     },
     width=2,
-    height=1
+    height=1,
 )
 
 # Remove a component from a dashboard
-viz.remove_component_from_dashboard(
-    dashboard_name="hardware_overview",
-    component_index=1
-)
+viz.remove_component_from_dashboard(dashboard_name="hardware_overview", component_index=1)
 
 # Export a dashboard to different formats
 viz.export_dashboard(
-    dashboard_name="hardware_overview",
-    format="pdf",
-    output_path="./reports/hardware_overview.pdf"
+    dashboard_name="hardware_overview", format="pdf", output_path="./reports/hardware_overview.pdf"
 )
 ```
 
@@ -1468,14 +1437,14 @@ viz.create_dashboard(
             "metric": "throughput",
             "title": "Throughput Comparison by Hardware Platform",
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "power",
             "title": "Power Efficiency Analysis",
             "hardware_types": ["nvidia_a100", "amd_mi250", "intel_arc", "apple_m2"],
             "width": 1,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "time-series",
@@ -1483,9 +1452,9 @@ viz.create_dashboard(
             "dimensions": ["hardware_type"],
             "title": "Throughput Trends by Hardware Platform",
             "width": 1,
-            "height": 1
-        }
-    ]
+            "height": 1,
+        },
+    ],
 )
 ```
 
@@ -1507,7 +1476,7 @@ viz.create_dashboard(
             "dimensions": ["model_family"],
             "title": "3D Performance Visualization by Model Family",
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "time-series",
@@ -1516,9 +1485,9 @@ viz.create_dashboard(
             "include_trend": True,
             "title": "Throughput Trends by Model Family",
             "width": 2,
-            "height": 1
-        }
-    ]
+            "height": 1,
+        },
+    ],
 )
 ```
 
@@ -1545,17 +1514,17 @@ viz.create_dashboard(
             "events": [
                 {"date": "2025-03-15", "label": "Optimization Phase 1", "color": "green"},
                 {"date": "2025-04-10", "label": "Optimization Phase 2", "color": "blue"},
-                {"date": "2025-05-05", "label": "Optimization Phase 3", "color": "purple"}
-            ]
+                {"date": "2025-05-05", "label": "Optimization Phase 3", "color": "purple"},
+            ],
         },
         {
             "type": "heatmap",
             "metric": "throughput",
             "title": "Current Throughput by Model and Hardware",
             "width": 2,
-            "height": 1
-        }
-    ]
+            "height": 1,
+        },
+    ],
 )
 ```
 
@@ -1586,36 +1555,31 @@ Export capabilities are integrated directly into the Advanced Visualization Syst
 # Export a 3D visualization
 exports = viz.export_3d_visualization(
     visualization_data=result,
-    formats=['html', 'png', 'pdf'],
-    visualization_id="hardware_performance_3d"
+    formats=["html", "png", "pdf"],
+    visualization_id="hardware_performance_3d",
 )
 
 # Export a heatmap visualization
 exports = viz.export_heatmap_visualization(
     visualization_data=result,
-    formats=['html', 'png', 'pdf'],
-    visualization_id="hardware_comparison"
+    formats=["html", "png", "pdf"],
+    visualization_id="hardware_comparison",
 )
 
 # Export a power efficiency visualization
 exports = viz.export_power_visualization(
-    visualization_data=result,
-    formats=['html', 'png', 'pdf'],
-    visualization_id="power_efficiency"
+    visualization_data=result, formats=["html", "png", "pdf"], visualization_id="power_efficiency"
 )
 
 # Export a time-series visualization with animations
 exports = viz.export_time_series_visualization(
     visualization_data=result,
-    formats=['html', 'png', 'pdf', 'mp4', 'gif'],
-    visualization_id="performance_trends"
+    formats=["html", "png", "pdf", "mp4", "gif"],
+    visualization_id="performance_trends",
 )
 
 # Export a dashboard
-dashboard_path = viz.export_dashboard(
-    dashboard_name="performance_dashboard",
-    format="pdf"
-)
+dashboard_path = viz.export_dashboard(dashboard_name="performance_dashboard", format="pdf")
 ```
 
 ### Optimized Animation Export
@@ -1631,9 +1595,9 @@ animation_path = viz.export_animated_time_series(
     settings={
         "width": 1920,  # HD resolution
         "height": 1080,
-        "fps": 30,      # High frame rate
-        "duration": 15000  # 15 seconds
-    }
+        "fps": 30,  # High frame rate
+        "duration": 15000,  # 15 seconds
+    },
 )
 ```
 
@@ -1648,35 +1612,37 @@ exports = viz.export_all_visualizations(
         "3d_visualization": result_3d,
         "heatmap_visualization": result_heatmap,
         "power_visualization": result_power,
-        "time_series_visualization": result_time_series
+        "time_series_visualization": result_time_series,
     },
     formats={
-        '3d': ['html', 'png', 'pdf'],
-        'heatmap': ['html', 'png', 'pdf'],
-        'power': ['html', 'png', 'pdf'],
-        'time-series': ['html', 'png', 'pdf', 'mp4', 'gif']
+        "3d": ["html", "png", "pdf"],
+        "heatmap": ["html", "png", "pdf"],
+        "power": ["html", "png", "pdf"],
+        "time-series": ["html", "png", "pdf", "mp4", "gif"],
     },
     create_index=True,
-    title="All Visualization Types"
+    title="All Visualization Types",
 )
 
 # Generate a comprehensive export report
 report_path = viz.generate_export_report(
     title="Visualization Export Report",
-    description="Comprehensive report of all exported visualizations"
+    description="Comprehensive report of all exported visualizations",
 )
 
 # Configure default export settings
-viz.configure_export_settings({
-    "width": 1200,
-    "height": 800,
-    "scale": 2,
-    "include_plotlyjs": True,
-    "include_mathjax": False,
-    "full_html": True,
-    "fps": 30,
-    "duration": 10000
-})
+viz.configure_export_settings(
+    {
+        "width": 1200,
+        "height": 800,
+        "scale": 2,
+        "include_plotlyjs": True,
+        "include_mathjax": False,
+        "full_html": True,
+        "fps": 30,
+        "duration": 10000,
+    }
+)
 ```
 
 ### Command-Line Export Tool
@@ -1747,7 +1713,7 @@ dashboard_path = dashboard.create_dashboard(
     dashboard_name="hardware_overview",
     template="hardware_comparison",
     title="Hardware Performance Overview",
-    description="Comparison of performance metrics across different hardware platforms"
+    description="Comparison of performance metrics across different hardware platforms",
 )
 
 # Create a custom dashboard with specific components
@@ -1761,10 +1727,10 @@ dashboard_path = dashboard.create_dashboard(
             "config": {
                 "metrics": ["throughput_items_per_second", "average_latency_ms", "memory_peak_mb"],
                 "dimensions": ["model_family", "hardware_type"],
-                "title": "3D Performance Visualization"
+                "title": "3D Performance Visualization",
             },
             "width": 1,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "animated-time-series",
@@ -1772,14 +1738,14 @@ dashboard_path = dashboard.create_dashboard(
                 "metric": "throughput_items_per_second",
                 "dimensions": ["model_family", "hardware_type"],
                 "time_range": 90,
-                "title": "Performance Trends Over Time"
+                "title": "Performance Trends Over Time",
             },
             "width": 2,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=2,
-    row_height=500
+    row_height=500,
 )
 ```
 
@@ -1794,34 +1760,24 @@ dashboard_config = dashboard.get_dashboard("hardware_overview")
 
 # Update an existing dashboard
 updated_path = dashboard.update_dashboard(
-    dashboard_name="hardware_overview",
-    title="Updated Hardware Overview",
-    columns=3
+    dashboard_name="hardware_overview", title="Updated Hardware Overview", columns=3
 )
 
 # Add a component to a dashboard
 dashboard.add_component_to_dashboard(
     dashboard_name="hardware_overview",
     component_type="heatmap",
-    component_config={
-        "metric": "memory_peak_mb",
-        "title": "Memory Usage Comparison"
-    },
+    component_config={"metric": "memory_peak_mb", "title": "Memory Usage Comparison"},
     width=2,
-    height=1
+    height=1,
 )
 
 # Remove a component from a dashboard
-dashboard.remove_component_from_dashboard(
-    dashboard_name="hardware_overview",
-    component_index=1
-)
+dashboard.remove_component_from_dashboard(dashboard_name="hardware_overview", component_index=1)
 
 # Export a dashboard to different formats
 dashboard.export_dashboard(
-    dashboard_name="hardware_overview",
-    format="pdf",
-    output_path="./reports/hardware_overview.pdf"
+    dashboard_name="hardware_overview", format="pdf", output_path="./reports/hardware_overview.pdf"
 )
 
 # Delete a dashboard
@@ -2030,7 +1986,7 @@ dashboard_path = dashboard.create_dashboard(
     dashboard_name="hardware_evaluation",
     template="hardware_comparison",
     title="Hardware Platform Evaluation",
-    description="Comprehensive evaluation of hardware platforms for model inference"
+    description="Comprehensive evaluation of hardware platforms for model inference",
 )
 ```
 
@@ -2046,7 +2002,7 @@ dashboard_path = dashboard.create_dashboard(
     dashboard_name="model_analysis",
     template="model_analysis",
     title="Model Family Performance Analysis",
-    description="Analysis of performance metrics across different model families"
+    description="Analysis of performance metrics across different model families",
 )
 ```
 
@@ -2074,23 +2030,23 @@ dashboard_path = dashboard.create_dashboard(
                 "events": [
                     {"date": "2025-03-15", "label": "Optimization Phase 1", "color": "green"},
                     {"date": "2025-04-10", "label": "Optimization Phase 2", "color": "blue"},
-                    {"date": "2025-05-05", "label": "Optimization Phase 3", "color": "purple"}
+                    {"date": "2025-05-05", "label": "Optimization Phase 3", "color": "purple"},
                 ],
-                "title": "Throughput Changes Over Time"
+                "title": "Throughput Changes Over Time",
             },
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "heatmap",
             "config": {
                 "metric": "throughput_items_per_second",
-                "title": "Current Throughput by Model and Hardware"
+                "title": "Current Throughput by Model and Hardware",
             },
             "width": 2,
-            "height": 1
-        }
-    ]
+            "height": 1,
+        },
+    ],
 )
 ```
 
@@ -2112,19 +2068,16 @@ dashboard_path = dashboard.create_dashboard(
             "config": {
                 "metrics": ["memory_peak_mb", "batch_size", "model_size_mb"],
                 "dimensions": ["model_family", "hardware_type"],
-                "title": "Memory Usage in 3D Space"
+                "title": "Memory Usage in 3D Space",
             },
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "heatmap",
-            "config": {
-                "metric": "memory_peak_mb",
-                "title": "Peak Memory Usage Comparison"
-            },
+            "config": {"metric": "memory_peak_mb", "title": "Peak Memory Usage Comparison"},
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "animated-time-series",
@@ -2132,14 +2085,14 @@ dashboard_path = dashboard.create_dashboard(
                 "metric": "memory_peak_mb",
                 "dimensions": ["model_family", "hardware_type"],
                 "time_range": 90,
-                "title": "Memory Usage Trends Over Time"
+                "title": "Memory Usage Trends Over Time",
             },
             "width": 2,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=2,
-    row_height=500
+    row_height=500,
 )
 ```
 
@@ -2163,20 +2116,24 @@ dashboard_path = dashboard.create_dashboard(
             "config": {
                 "metric": "throughput_items_per_second",
                 "model_families": ["transformers+vision", "audio+transformers", "vision+audio"],
-                "title": "Multi-Model Throughput Comparison"
+                "title": "Multi-Model Throughput Comparison",
             },
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "3d",
             "config": {
-                "metrics": ["throughput_items_per_second", "memory_reduction_percent", "latency_improvement_percent"],
+                "metrics": [
+                    "throughput_items_per_second",
+                    "memory_reduction_percent",
+                    "latency_improvement_percent",
+                ],
                 "dimensions": ["model_combination", "hardware_type"],
-                "title": "Tensor Sharing Benefits"
+                "title": "Tensor Sharing Benefits",
             },
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "animated-time-series",
@@ -2184,14 +2141,14 @@ dashboard_path = dashboard.create_dashboard(
                 "metric": "memory_reduction_percent",
                 "dimensions": ["model_combination", "tensor_sharing_type"],
                 "time_range": 90,
-                "title": "Memory Reduction Trends with Tensor Sharing"
+                "title": "Memory Reduction Trends with Tensor Sharing",
             },
             "width": 2,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=2,
-    row_height=500
+    row_height=500,
 )
 ```
 
@@ -2220,30 +2177,24 @@ dashboard_path = dashboard.create_dashboard(
             "config": {
                 "metrics": ["throughput_items_per_second", "average_latency_ms", "memory_peak_mb"],
                 "dimensions": ["model_family", "hardware_type"],
-                "title": "3D Performance Visualization"
+                "title": "3D Performance Visualization",
             },
             "width": 2,
-            "height": 2
+            "height": 2,
         },
         # Heatmap in the third column, first row
         {
             "type": "heatmap",
-            "config": {
-                "metric": "throughput_items_per_second",
-                "title": "Throughput Heatmap"
-            },
+            "config": {"metric": "throughput_items_per_second", "title": "Throughput Heatmap"},
             "width": 1,
-            "height": 1
+            "height": 1,
         },
         # Heatmap in the third column, second row
         {
             "type": "heatmap",
-            "config": {
-                "metric": "average_latency_ms",
-                "title": "Latency Heatmap"
-            },
+            "config": {"metric": "average_latency_ms", "title": "Latency Heatmap"},
             "width": 1,
-            "height": 1
+            "height": 1,
         },
         # Time-series visualization spanning the full width of the third row
         {
@@ -2252,14 +2203,14 @@ dashboard_path = dashboard.create_dashboard(
                 "metric": "throughput_items_per_second",
                 "dimensions": ["model_family", "hardware_type"],
                 "time_range": 90,
-                "title": "Performance Trends Over Time"
+                "title": "Performance Trends Over Time",
             },
             "width": 3,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=3,  # 3-column grid
-    row_height=400  # Smaller row height
+    row_height=400,  # Smaller row height
 )
 ```
 
@@ -2277,10 +2228,14 @@ from duckdb_api.visualization.advanced_visualization import CustomizableDashboar
 data = pd.read_csv("performance_data.csv")
 
 # Find top performing hardware platforms
-top_hardware = data.groupby("hardware_type")["throughput_items_per_second"].mean().nlargest(3).index.tolist()
+top_hardware = (
+    data.groupby("hardware_type")["throughput_items_per_second"].mean().nlargest(3).index.tolist()
+)
 
 # Find most memory-intensive model families
-memory_intensive_models = data.groupby("model_family")["memory_peak_mb"].mean().nlargest(3).index.tolist()
+memory_intensive_models = (
+    data.groupby("model_family")["memory_peak_mb"].mean().nlargest(3).index.tolist()
+)
 
 # Create dashboard with dynamically configured components
 dashboard = CustomizableDashboard(output_dir="./dashboards")
@@ -2294,24 +2249,24 @@ dashboard_path = dashboard.create_dashboard(
             "config": {
                 "metric": "throughput_items_per_second",
                 "hardware_types": top_hardware,  # Dynamically selected hardware
-                "title": "Top Hardware Throughput Comparison"
+                "title": "Top Hardware Throughput Comparison",
             },
             "width": 2,
-            "height": 1
+            "height": 1,
         },
         {
             "type": "heatmap",
             "config": {
                 "metric": "memory_peak_mb",
                 "model_families": memory_intensive_models,  # Dynamically selected models
-                "title": "Memory-Intensive Models Comparison"
+                "title": "Memory-Intensive Models Comparison",
             },
             "width": 2,
-            "height": 1
-        }
+            "height": 1,
+        },
     ],
     columns=2,
-    row_height=500
+    row_height=500,
 )
 ```
 
@@ -2327,69 +2282,72 @@ import argparse
 import os
 from duckdb_api.visualization.advanced_visualization import CustomizableDashboard
 
+
 def main():
     parser = argparse.ArgumentParser(description="Interactive Dashboard Generator")
     parser.add_argument("--output-dir", default="./dashboards", help="Output directory")
-    parser.add_argument("--theme", choices=["light", "dark"], default="light", help="Dashboard theme")
+    parser.add_argument(
+        "--theme", choices=["light", "dark"], default="light", help="Dashboard theme"
+    )
     args = parser.parse_args()
-    
+
     # Create dashboard instance
     dashboard = CustomizableDashboard(theme=args.theme, output_dir=args.output_dir)
-    
+
     # Interactive prompts
     print("Interactive Dashboard Generator")
     print("-" * 50)
-    
+
     # Get dashboard name and title
     dashboard_name = input("Enter dashboard name: ")
     title = input("Enter dashboard title: ")
     description = input("Enter dashboard description: ")
-    
+
     # Choose template or custom
-    use_template = input("Use a template? (y/n): ").lower() == 'y'
-    
+    use_template = input("Use a template? (y/n): ").lower() == "y"
+
     if use_template:
         # Show available templates
         templates = dashboard.list_available_templates()
         print("\nAvailable templates:")
         for i, (name, details) in enumerate(templates.items()):
-            print(f"{i+1}. {name}: {details.get('title', '')}")
-        
+            print(f"{i + 1}. {name}: {details.get('title', '')}")
+
         # Select template
         template_idx = int(input("Select template number: ")) - 1
         template_name = list(templates.keys())[template_idx]
-        
+
         # Create dashboard from template
         dashboard_path = dashboard.create_dashboard(
             dashboard_name=dashboard_name,
             template=template_name,
             title=title,
-            description=description
+            description=description,
         )
     else:
         # Custom dashboard
         components = []
-        
+
         # Add components
         while True:
-            add_component = input("Add a component? (y/n): ").lower() == 'y'
+            add_component = input("Add a component? (y/n): ").lower() == "y"
             if not add_component:
                 break
-            
+
             # Show available component types
             comp_types = dashboard.list_available_components()
             print("\nAvailable component types:")
             for i, (name, desc) in enumerate(comp_types.items()):
-                print(f"{i+1}. {name}: {desc}")
-            
+                print(f"{i + 1}. {name}: {desc}")
+
             # Select component type
             comp_idx = int(input("Select component type number: ")) - 1
             comp_type = list(comp_types.keys())[comp_idx]
-            
+
             # Configure component
             config = {}
             config["title"] = input("Component title: ")
-            
+
             # Basic configuration based on component type
             if comp_type == "3d":
                 config["metrics"] = input("Metrics (comma-separated): ").split(",")
@@ -2399,23 +2357,20 @@ def main():
                 dimensions = input("Dimensions (comma-separated): ")
                 if dimensions:
                     config["dimensions"] = dimensions.split(",")
-            
+
             # Component size
             width = int(input("Component width (columns): "))
             height = int(input("Component height (rows): "))
-            
+
             # Add component to list
-            components.append({
-                "type": comp_type,
-                "config": config,
-                "width": width,
-                "height": height
-            })
-        
+            components.append(
+                {"type": comp_type, "config": config, "width": width, "height": height}
+            )
+
         # Get layout settings
         columns = int(input("Number of columns in the grid: "))
         row_height = int(input("Row height in pixels: "))
-        
+
         # Create custom dashboard
         dashboard_path = dashboard.create_dashboard(
             dashboard_name=dashboard_name,
@@ -2423,16 +2378,18 @@ def main():
             description=description,
             components=components,
             columns=columns,
-            row_height=row_height
+            row_height=row_height,
         )
-    
+
     print(f"\nDashboard created successfully: {dashboard_path}")
-    
+
     # Open in browser
-    open_browser = input("Open dashboard in browser? (y/n): ").lower() == 'y'
+    open_browser = input("Open dashboard in browser? (y/n): ").lower() == "y"
     if open_browser:
         import webbrowser
+
         webbrowser.open(f"file://{os.path.abspath(dashboard_path)}")
+
 
 if __name__ == "__main__":
     main()
@@ -2468,12 +2425,13 @@ python -m duckdb_api.distributed_testing.run_monitoring_dashboard --enable-visua
 The integration between the Advanced Visualization System and the Monitoring Dashboard is facilitated by the `VisualizationDashboardIntegration` class:
 
 ```python
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
+from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    VisualizationDashboardIntegration,
+)
 
 # Create the integration component
 viz_integration = VisualizationDashboardIntegration(
-    dashboard_dir="./dashboards",
-    integration_dir="./dashboards/monitor_integration"
+    dashboard_dir="./dashboards", integration_dir="./dashboards/monitor_integration"
 )
 
 # Create an embedded dashboard for the overview page
@@ -2483,21 +2441,19 @@ dashboard_details = viz_integration.create_embedded_dashboard(
     template="overview",
     title="System Overview Dashboard",
     description="Overview of system performance metrics",
-    position="below"  # Can be "above", "below", or "tab"
+    position="below",  # Can be "above", "below", or "tab"
 )
 
 # Generate a dashboard from performance data
 dashboard_path = viz_integration.generate_dashboard_from_performance_data(
     performance_data=analytics_data,
     name="performance_dashboard",
-    title="Performance Analytics Dashboard"
+    title="Performance Analytics Dashboard",
 )
 
 # Get HTML for embedding the dashboard in a web page
 iframe_html = viz_integration.get_dashboard_iframe_html(
-    name="overview_dashboard",
-    width="100%",
-    height="600px"
+    name="overview_dashboard", width="100%", height="600px"
 )
 
 # Update an embedded dashboard
@@ -2506,7 +2462,7 @@ viz_integration.update_embedded_dashboard(
     title="Updated Overview Dashboard",
     description="Updated description",
     position="above",
-    page="results"
+    page="results",
 )
 
 # Remove an embedded dashboard
@@ -2519,10 +2475,7 @@ templates = viz_integration.list_available_templates()
 components = viz_integration.list_available_components()
 
 # Export a dashboard to a different format
-viz_integration.export_embedded_dashboard(
-    name="overview_dashboard",
-    format="html"
-)
+viz_integration.export_embedded_dashboard(name="overview_dashboard", format="html")
 ```
 
 ### Dashboard Management UI
