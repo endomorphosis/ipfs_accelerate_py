@@ -2731,6 +2731,52 @@ class WorktreeLifecycleStore:
                 record=None,
             )
 
+        if (
+            record.is_terminal
+            and record.terminal_reason
+            == "verification_deferred_checkout_lease_unavailable"
+        ):
+            # A provider-dispatched candidate retained because protected-path
+            # verification could not acquire the repository checkout lease is
+            # terminal only with respect to the original worker claim.  Its
+            # bytes are still the sole candidate evidence.  Generic cleanup
+            # must not erase them before the receipt-bound recovery path has
+            # reproduced their fingerprint under the checkout transaction.
+            return CleanupDecision(
+                disposition=CleanupDisposition.DENY,
+                reason="verification_deferred_candidate_recovery_required",
+                record=record,
+                failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                provider_call_allowed=False,
+                attempt_consumed=False,
+            )
+
+        if (
+            record.is_terminal
+            and record.terminal_reason
+            == "verification_deferred_candidate_recovery_authorized"
+        ):
+            # Recovery may relax the retained-candidate fence only after its
+            # rescue ref is durable.  Even then, cleanup remains restricted
+            # to the exact lease which owned the fingerprint-bound terminal
+            # record; generic cleanup and peer lanes must stay fenced.
+            if caller_lease_id and caller_lease_id == record.lease_id:
+                return CleanupDecision(
+                    disposition=CleanupDisposition.ALLOW,
+                    reason="verification_deferred_recovery_owner_after_rescue",
+                    record=record,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
+            return CleanupDecision(
+                disposition=CleanupDisposition.DENY,
+                reason="verification_deferred_recovery_owner_required",
+                record=record,
+                failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                provider_call_allowed=False,
+                attempt_consumed=False,
+            )
+
         if record.is_terminal:
             return _mirror_cleanup_decision(
                 disposition=CleanupDisposition.ALLOW,
