@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 import pytest
 
@@ -421,10 +422,10 @@ def test_trace_contract_schema_identities_are_declared_and_bound() -> None:
         "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
     )
     assert CounterexampleTrace.SCHEMA == COUNTEREXAMPLE_TRACE_SCHEMA == (
-        "ipfs_accelerate_py/agent-supervisor/counterexample-trace@1"
+        "ipfs_accelerate_py/agent-supervisor/solver-counterexample-trace@1"
     )
     assert CheckerTrace.SCHEMA == CHECKER_TRACE_SCHEMA == (
-        "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
+        "ipfs_accelerate_py/agent-supervisor/independent-checker-trace@1"
     )
     assert AuthoritativeDisposition.SCHEMA == AUTHORITATIVE_DISPOSITION_SCHEMA == (
         "ipfs_accelerate_py/agent-supervisor/authoritative-disposition@1"
@@ -637,3 +638,196 @@ def test_authority_lattice_keeps_hammer_candidates_off_the_proof_root() -> None:
     assert authority_class_for_role(ProverRole.KERNEL) is AuthorityClass.KERNEL
     assert not AuthorityClass.CANDIDATE.can_author_proof
     assert AuthorityClass.KERNEL.can_author_proof
+
+
+def _one_lane_router(kind=PropertyKind.KERNEL_CHECK, *, timeout_seconds=1, **options):
+    role = ProverRole.KERNEL if kind is PropertyKind.KERNEL_CHECK else ProverRole.MODEL_CHECKER
+    prover = "lean" if kind is PropertyKind.KERNEL_CHECK else "z3"
+    return MultiProverRouter({kind: PropertyPolicy(
+        kind, (ProverLane(prover, role, 0),), timeout_seconds=timeout_seconds, max_parallel=1,
+    )}, **options)
+
+
+@pytest.mark.parametrize(("evidence", "outcome", "reason"), [
+    ({"ast_scope_ids": ["elsewhere.py::unrelated"]}, AttemptOutcome.UNKNOWN, "scope_escapes"),
+    ({"bounds": {"k": 2}}, AttemptOutcome.UNKNOWN, "bounds_disagree"),
+    ({"finite_bounds": {"k": True}}, AttemptOutcome.UNKNOWN, "bounds_disagree"),
+    ({"ast_scope_ids": 17}, AttemptOutcome.MALFORMED, "malformed prover binding"),
+    ({"finite_bounds": [1]}, AttemptOutcome.MALFORMED, "malformed prover binding"),
+])
+def test_counterexample_binding_rejection_retains_reported_outcome(evidence, outcome, reason):
+    obligation = PropertyObligation("binding-negative", PropertyKind.FINITE_CONSTRAINT, "x >= 0",
+        metadata={"ast_scope_ids": ["state.py::step"], "finite_bounds": {"k": 1}})
+    result = _one_lane_router(PropertyKind.FINITE_CONSTRAINT).execute(obligation,
+        lambda request, cancel: ProverOutput(AttemptOutcome.COUNTEREXAMPLE,
+            evidence={"model": {"x": -1}, **evidence}, conclusive=True))
+    attempt = result.attempts[0]
+    assert attempt.reported_outcome is AttemptOutcome.COUNTEREXAMPLE
+    assert attempt.effective_outcome is outcome
+    assert not attempt.conclusive and reason in attempt.detail
+    assert result.verdict is not PortfolioVerdict.DISPROVED
+    assert project_portfolio_traces(result)[1] == ()
+
+
+@pytest.mark.parametrize("reported", [AttemptOutcome.VERIFIED, AttemptOutcome.CANDIDATE,
+                                      AttemptOutcome.COUNTEREXAMPLE])
+@pytest.mark.parametrize(("field", "failure"), [
+    ("environment_lock_id", "stale_environment_lock"),
+    ("kernel_version", "stale_kernel_version"),
+    ("statement_digest", "stale_statement_receipt"),
+])
+def test_stale_binding_rejected_for_every_potentially_conclusive_output(reported, field, failure):
+    expected = {"environment_lock_id": "lock:current", "kernel_version": "4.19.0",
+                "statement_digest": "statement:current"}
+    obligation = PropertyObligation("stale-binding", PropertyKind.KERNEL_CHECK, "True", metadata=expected)
+    result = _one_lane_router().execute(obligation,
+        lambda request, cancel: ProverOutput(reported, evidence={**expected, field: "stale"},
+            conclusive=reported is AttemptOutcome.COUNTEREXAMPLE))
+    attempt = result.attempts[0]
+    assert attempt.reported_outcome is reported
+    assert attempt.effective_outcome is (AttemptOutcome.UNKNOWN if reported is AttemptOutcome.COUNTEREXAMPLE
+                                         else AttemptOutcome.MALFORMED)
+    assert not attempt.conclusive and failure in attempt.detail
+    assert not result.authority_attempt_ids
+    assert result.verdict not in {PortfolioVerdict.PROVED, PortfolioVerdict.DISPROVED}
+
+
+@pytest.mark.parametrize("evidence", [
+    {"environment_lock_id": "lock:current", "toolchain_id": "lock:stale"},
+    {"kernel_version": "4.19.0", "itp_version": "old"},
+    {"kernel_version": 419},
+])
+def test_binding_aliases_and_types_cannot_hide_stale_certificates(evidence):
+    obligation = PropertyObligation("alias-binding", PropertyKind.KERNEL_CHECK, "True",
+        metadata={"environment_lock_id": "lock:current", "kernel_version": "4.19.0"})
+    result = _one_lane_router().execute(obligation,
+        lambda request, cancel: ProverOutput(AttemptOutcome.VERIFIED, evidence=evidence))
+    assert result.attempts[0].effective_outcome is AttemptOutcome.MALFORMED
+    assert not result.authority_attempt_ids and result.verdict is not PortfolioVerdict.PROVED
+
+
+def test_matching_version_aliases_retain_configured_checker_acceptance():
+    obligation = PropertyObligation("matching-binding", PropertyKind.KERNEL_CHECK, "True",
+        metadata={"environment_lock_id": "lock:current", "kernel_version": "4.19.0",
+                  "statement_digest": "statement:current"})
+    evidence = {"toolchain_id": "lock:current", "itp_version": "4.19.0",
+                "statement_digest": "statement:current"}
+    result = _one_lane_router().execute(obligation,
+        lambda request, cancel: ProverOutput(AttemptOutcome.VERIFIED, evidence=evidence))
+    assert result.attempts[0].effective_outcome is AttemptOutcome.VERIFIED
+    assert result.verdict is PortfolioVerdict.PROVED
+
+
+def _router_lease():
+    from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
+        MultiProverResourceBudget, MultiProverResourceLease,
+    )
+    return MultiProverResourceLease(MultiProverResourceBudget(
+        cpu_slots=1, process_slots=1, thread_slots=1, memory_bytes=4096,
+        wall_time_ms=5_000, max_portfolio_width=1,
+    ))
+
+
+def _await_router_cleanup(lease):
+    deadline = time.monotonic() + 2
+    while lease.active_children and time.monotonic() < deadline:
+        time.sleep(.005)
+    assert lease.active_children == ()
+    assert lease.usage.cpu_slots == lease.usage.process_slots == lease.usage.memory_bytes == 0
+
+
+def test_router_memory_admission_rejects_before_runner():
+    lease = _router_lease()
+    calls = []
+    router = _one_lane_router(resource_lease=lease, resource_memory_bytes=4097)
+    result = router.execute(_obligation(PropertyKind.KERNEL_CHECK),
+        lambda request, cancel: calls.append(request))
+    assert calls == []
+    assert result.attempts[0].effective_outcome is AttemptOutcome.BLOCKED
+    assert "memory_bytes" in result.attempts[0].detail
+    _await_router_cleanup(lease)
+    lease.close()
+
+
+def test_router_timeout_keeps_live_runner_capacity_until_exit():
+    lease = _router_lease()
+    entered, release = threading.Event(), threading.Event()
+
+    def runner(request, cancel):
+        entered.set()
+        assert release.wait(3)
+        assert cancel.is_set()
+        return ProverOutput(AttemptOutcome.VERIFIED)
+
+    router = _one_lane_router(timeout_seconds=.2, resource_lease=lease, resource_memory_bytes=1024)
+    started = time.monotonic()
+    try:
+        result = router.execute(_obligation(PropertyKind.KERNEL_CHECK), runner)
+        assert time.monotonic() - started < 1 and entered.is_set()
+        assert result.verdict is not PortfolioVerdict.PROVED
+        assert not result.authority_attempt_ids
+        assert lease.usage.cpu_slots == lease.usage.process_slots == 1
+        assert lease.usage.memory_bytes == 1024
+        blocked = _one_lane_router(resource_lease=lease).execute(
+            _obligation(PropertyKind.KERNEL_CHECK), lambda request, cancel: pytest.fail("capacity reused"))
+        assert blocked.attempts[0].effective_outcome is AttemptOutcome.BLOCKED
+        lease.close()
+        assert lease.usage.cpu_slots == 1
+    finally:
+        release.set()
+        _await_router_cleanup(lease)
+        lease.close()
+    assert result.verdict is not PortfolioVerdict.PROVED and not result.authority_attempt_ids
+
+
+@pytest.mark.parametrize("reported", [AttemptOutcome.VERIFIED, AttemptOutcome.COUNTEREXAMPLE])
+def test_root_closure_cancels_runner_and_rejects_late_authority(reported):
+    lease = _router_lease()
+    entered, release = threading.Event(), threading.Event()
+    receipts, signals = [], []
+
+    def runner(request, cancel):
+        signals.append(cancel)
+        entered.set()
+        assert release.wait(3)
+        return ProverOutput(reported, evidence={"result": True},
+                            conclusive=reported is AttemptOutcome.COUNTEREXAMPLE)
+
+    router = _one_lane_router(resource_lease=lease, resource_memory_bytes=1024)
+    caller = threading.Thread(target=lambda: receipts.append(router.execute(
+        _obligation(PropertyKind.KERNEL_CHECK), runner)))
+    caller.start()
+    try:
+        assert entered.wait(2)
+        lease.close()
+        assert signals[0].is_set()
+        assert lease.usage.cpu_slots == lease.usage.process_slots == 1
+        release.set()
+        caller.join(2)
+        assert not caller.is_alive() and len(receipts) == 1
+        attempt = receipts[0].attempts[0]
+        assert attempt.reported_outcome is reported
+        assert attempt.effective_outcome is AttemptOutcome.CANCELLED
+        assert not attempt.conclusive and not receipts[0].authority_attempt_ids
+        assert receipts[0].verdict not in {PortfolioVerdict.PROVED, PortfolioVerdict.DISPROVED}
+    finally:
+        release.set()
+        caller.join(3)
+        _await_router_cleanup(lease)
+
+
+@pytest.mark.parametrize("bad", [object(), {}, True])
+def test_router_requires_an_actual_supervisor_resource_lease(bad):
+    with pytest.raises(ContractValidationError, match="resource_lease"):
+        MultiProverRouter(resource_lease=bad)
+
+
+@pytest.mark.parametrize("memory", [-1, True, 1.5])
+def test_router_rejects_invalid_lane_memory_reservations(memory):
+    with pytest.raises(ContractValidationError, match="resource_memory_bytes"):
+        MultiProverRouter(resource_memory_bytes=memory)
+
+
+def test_router_memory_reservation_requires_its_admission_authority():
+    with pytest.raises(ContractValidationError, match="requires resource_lease"):
+        MultiProverRouter(resource_memory_bytes=1024)

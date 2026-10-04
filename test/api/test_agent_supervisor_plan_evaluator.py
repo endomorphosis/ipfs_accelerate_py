@@ -131,7 +131,7 @@ def test_plan_branch_schema_round_trips_all_scheduler_evidence() -> None:
         (lambda item: item.pop("predicted_files"), "predicted_files"),
         (lambda item: item.update(predicted_symbols=[]), "predicted_symbols"),
         (lambda item: item.update(validation_commands=[]), "validation_commands"),
-        (lambda item: item.update(validation_proof=[]), "validation_proof"),
+        (lambda item: item.update(validation_proof=[""]), "validation_proof"),
         (lambda item: item.update(estimated_cost=-1), "estimated_cost"),
         (lambda item: item.update(risk=1.5), "risk"),
         (lambda item: item.update(expected_objective_delta=-0.1), "expected_objective_delta"),

@@ -1378,6 +1378,19 @@ class LifecycleOrchestrator:
             try:
                 launched = self._process.launch(profile, fencing_epoch=state.intent.fencing_epoch)
             except Exception as exc:
+                from .before_popen_refusal import (
+                    _boundary_matches, verify_lifecycle_before_popen_refusal,
+                )
+                if (state.intent.action is LifecycleAction.START
+                        and state.old_tree is None and state.new_tree is None and not state.old_tree_fenced
+                        and not state.observed_effects and not state.compensation
+                        and _boundary_matches(exc, profile, state.intent)):
+                    empty = self._process.snapshot(profile)
+                    if not empty.members:
+                        state = self._advance(state, LifecycleSagaPhase.FAILED,
+                            failure_code="refused_before_popen_without_process_effect")
+                        raise verify_lifecycle_before_popen_refusal(
+                            exc, profile=profile, state=state, empty_tree=empty) from exc
                 state = self._advance(
                     state,
                     LifecycleSagaPhase.PARTIAL_FAILURE,

@@ -536,7 +536,7 @@ def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
         raise ContextCompilationError("text must be a string")
     if "\x00" in value:
         raise ContextCompilationError("text must not contain NUL")
-    text = value.strip()
+    text = value
     limit = _integer(max_bytes, "max_bytes", minimum=1)
     if not text:
         return ()
@@ -562,12 +562,12 @@ def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
             semantic = max(prefix.rfind(" "), prefix.rfind("\t"))
         if semantic >= 1:
             boundary = semantic + 1
-        chunk = remaining[:boundary].strip()
-        if chunk:
-            chunks.append(chunk)
-        remaining = remaining[boundary:].lstrip()
-    if remaining.strip():
-        chunks.append(remaining.strip())
+        # Boundaries can occur inside a JSON string or indented source.
+        # Preserve every byte, including whitespace at both chunk edges.
+        chunks.append(remaining[:boundary])
+        remaining = remaining[boundary:]
+    if remaining:
+        chunks.append(remaining)
     return tuple(chunks)
 
 

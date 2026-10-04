@@ -510,7 +510,7 @@ class ContextPacker:
                 tier = ContextTier.EVIDENCE
                 if admission.admission == ADMISSION_CONSERVATIVE:
                     # Conservative remains visible.
-                    assumption_list = _text_list(
+                    assumption_list = _dedupe_sorted(
                         list(assumption_list)
                         + [
                             f"conservative_capsule:{admission.ref.capsule_cid}"
@@ -591,7 +591,7 @@ class ContextPacker:
                     f"raw_source:{admission.ref.capsule_cid}:{admission.ref.source_cid}"
                 )
                 for caveat in admission.caveats:
-                    assumption_list = _text_list(
+                    assumption_list = _dedupe_sorted(
                         list(assumption_list) + [f"caveat:{caveat}"],
                         "assumptions",
                     )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -9,12 +11,14 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
     PROVER_RESOURCE_CLASSES,
     BundleProverSupervisor,
+    ChildResourceLease,
     DeterministicResultCache,
     ExecutionStatus,
     MultiProverResourceBudget,
     MultiProverResourceClass,
     MultiProverResourceManager,
     ProverResourceRequest,
+    ProverExecutionContext,
     ProverTask,
     ProverTaskExecutor,
     SerialProverSupervisor,
@@ -428,30 +432,145 @@ def test_timeout_terminates_process_group_releases_capacity_and_bounds_diagnosti
     assert again.status is ExecutionStatus.SUCCEEDED
 
 
-def test_root_cancellation_terminates_running_command_and_returns_partial_receipt() -> None:
+def test_root_cancellation_terminates_running_command_and_returns_partial_receipt(tmp_path) -> None:
     lease = MultiProverResourceManager().open_lease(_budget(wall_time_ms=5_000), host=_host())
+    ready = tmp_path / "native-ready"
     task = ProverTask.command_task(
         "cancel",
         MultiProverResourceClass.PROTOCOL_VERIFICATION,
-        [sys.executable, "-c", "import time; print('started',flush=True); time.sleep(30)"],
+        [sys.executable, "-c", "import os,pathlib,sys,time; "
+         "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)", str(ready)],
     )
     receipts = []
     thread = threading.Thread(
         target=lambda: receipts.append(ProverTaskExecutor(lease).execute(task))
     )
     thread.start()
-    deadline = time.monotonic() + 2
-    while not lease.active_children and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert lease.active_children
-    lease.cancel()
-    thread.join(3)
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if ready.exists() and ready.read_text():
+                break
+            time.sleep(0.01)
+        assert ready.exists() and ready.read_text(), "native process never signalled readiness"
+        pid = int(ready.read_text())
+        assert lease.active_children
+        lease.cancel()
+        thread.join(3)
 
-    assert not thread.is_alive()
-    assert receipts[0].status is ExecutionStatus.CANCELLED
-    assert receipts[0].partial
-    assert lease.active_children == ()
-    assert lease.usage.process_slots == 0
+        assert not thread.is_alive()
+        assert receipts[0].status is ExecutionStatus.CANCELLED
+        assert receipts[0].partial
+        assert receipts[0].process_group_id == pid
+        if os.name == "posix":
+            # The executor must have reaped the native child before releasing
+            # its capacity, not merely sent a signal to it.
+            with pytest.raises(ChildProcessError):
+                os.waitpid(pid, os.WNOHANG)
+        assert lease.active_children == ()
+        assert lease.usage.process_slots == 0
+    finally:
+        lease.close()
+        thread.join(3)
+
+
+@pytest.mark.parametrize("exit_normally", [False, True])
+def test_command_cancelled_before_first_poll_never_publishes_completion_or_cache(
+    monkeypatch, tmp_path, exit_normally,
+) -> None:
+    lease = MultiProverResourceManager().open_lease(_budget(wall_time_ms=5_000), host=_host())
+    ready = tmp_path / "registered-native-ready"
+    # A successful exit is also unsafe to cache if cancellation won before
+    # receipt publication. Exercise both ordinary termination and exit code 0.
+    if exit_normally and os.name != "posix":
+        pytest.skip("graceful SIGTERM fixture requires POSIX")
+    script = ("import os,pathlib,signal,sys,time; "
+              + ("signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); " if exit_normally else "")
+              + "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)")
+    task = ProverTask.command_task(
+        "cancel-before-poll", MultiProverResourceClass.PROTOCOL_VERIFICATION,
+        [sys.executable, "-c", script, str(ready)],
+        deterministic=True, cache_key="cancel-before-poll", deterministic_identity="native:v1",
+    )
+    cache = DeterministicResultCache()
+    original = ChildResourceLease.set_terminator
+    entered = []
+
+    def cancel_after_registration(child, callback):
+        original(child, callback)
+        try:
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if ready.exists() and ready.read_text():
+                    break
+                time.sleep(0.01)
+            assert ready.exists() and ready.read_text(), "native process never signalled readiness"
+            entered.append(int(ready.read_text()))
+        finally:
+            # Execute the real registered terminator before _execute_command
+            # reaches its first poll, including when fixture startup fails.
+            lease.cancel()
+
+    monkeypatch.setattr(ChildResourceLease, "set_terminator", cancel_after_registration)
+    try:
+        receipt = ProverTaskExecutor(lease, cache=cache).execute(task)
+        assert receipt.status is ExecutionStatus.CANCELLED
+        assert receipt.partial and receipt.reasons == ("cancelled",)
+        assert entered == [receipt.process_group_id]
+        assert (receipt.exit_code == 0) is exit_normally
+        assert not receipt.successful and cache.get(task) is None
+        assert lease.active_children == () and lease.usage.process_slots == 0
+        if os.name == "posix":
+            with pytest.raises(ChildProcessError):
+                os.waitpid(entered[0], os.WNOHANG)
+    finally:
+        lease.close()
+
+
+def test_command_deadline_at_native_completion_cannot_publish_success_or_cache(monkeypatch) -> None:
+    lease = MultiProverResourceManager().open_lease(_budget(wall_time_ms=5_000), host=_host())
+    task = ProverTask.command_task(
+        "deadline-at-completion", MultiProverResourceClass.PROTOCOL_VERIFICATION,
+        [sys.executable, "-c", "print('completed', flush=True)"],
+        deterministic=True, cache_key="deadline-at-completion", deterministic_identity="native:v1",
+    )
+    cache = DeterministicResultCache()
+    expired = threading.Event()
+    processes = []
+    original_popen = subprocess.Popen
+    original_terminator = ChildResourceLease.set_terminator
+    original_remaining = ProverExecutionContext.remaining_seconds.fget
+
+    def launch(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    def expire_after_native_exit(child, callback):
+        original_terminator(child, callback)
+        try:
+            assert processes[-1].wait(timeout=2) == 0
+            # Control deadline observation at this exact boundary instead of
+            # relying on sleep durations or host scheduling to expose the race.
+            expired.set()
+        finally:
+            if processes[-1].poll() is None:
+                callback()
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    monkeypatch.setattr(ChildResourceLease, "set_terminator", expire_after_native_exit)
+    monkeypatch.setattr(ProverExecutionContext, "remaining_seconds", property(
+        lambda context: 0.0 if expired.is_set() else original_remaining(context)))
+    try:
+        receipt = ProverTaskExecutor(lease, cache=cache).execute(task)
+        assert receipt.status is ExecutionStatus.TIMED_OUT
+        assert receipt.exit_code == 0 and receipt.partial
+        assert receipt.reasons == ("timeout",) and not receipt.successful
+        assert len(processes) == 1 and processes[0].poll() == 0
+        assert cache.get(task) is None
+        assert lease.active_children == () and lease.usage.process_slots == 0
+    finally:
+        lease.close()
 
 
 def test_provider_and_model_capacity_are_reclaimed_after_inference() -> None:
@@ -550,6 +669,11 @@ def test_wall_time_is_one_root_deadline_not_a_fresh_timeout_per_child() -> None:
         ExecutionStatus.ADMISSION_REJECTED,
     }
     assert result.receipts[1].partial
+    # A timeout returns before an uncooperative callable finishes sleeping;
+    # its reservation drains only when the execution thread has exited.
+    deadline = time.monotonic() + 1
+    while lease.active_children and time.monotonic() < deadline:
+        time.sleep(0.005)
     assert lease.usage.cpu_slots == 0
 
 

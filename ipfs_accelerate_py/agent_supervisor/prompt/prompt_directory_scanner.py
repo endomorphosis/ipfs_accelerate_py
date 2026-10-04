@@ -1597,7 +1597,9 @@ def scan_prompt_directory_detailed(
             "upstream_identity": behavior.dirty_worktree_root,
         }
     )
-    program_root = _cid_for(
+    # PromptGoalGraph carries this producer root as a canonical CIDv1. Other
+    # scan observations retain their existing digest namespaces.
+    program_root = prompt_workflow_cid(
         {
             "identity_kind": "program-behavior-root",
             "upstream_identity": behavior.behavior_root,

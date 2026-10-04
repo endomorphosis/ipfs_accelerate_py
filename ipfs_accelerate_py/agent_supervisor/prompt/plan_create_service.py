@@ -11,6 +11,8 @@
 * stale root/policy observations fail closed rather than silently regenerating;
 * deterministic and model-assisted modes share one frozen input/bounds
   snapshot; and
+* complete supplied semantic values qualify preview identity and reuse, while
+  opaque live dependencies make previews explicitly nonreusable; and
 * :meth:`PlanCreateService.workflow_preview` remains the canonical
   compatibility alias for create-plan preview during migration (shared facade
   integration with control CLI/MCP belongs to PDR-032).
@@ -20,13 +22,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import threading
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
+import uuid
 
 from ..analysis.planning_analysis_factory import (
     PLANNING_ANALYSIS_FACTORY_INTERFACE,
@@ -86,9 +90,20 @@ PLAN_CREATE_STAGE_RESULT_SCHEMA: Final[str] = (
 PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-create-input-snapshot@1"
 )
+PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/plan-create-input-snapshot@2"
+)
+PLAN_CREATE_SEMANTIC_MATERIAL_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/plan-create-semantic-material-binding@1"
+)
+MAX_SEMANTIC_MATERIAL_BYTES: Final[int] = 4 * 1024 * 1024
+MAX_SEMANTIC_MATERIAL_DEPTH: Final[int] = 48
+MAX_SEMANTIC_MATERIAL_NODES: Final[int] = 100_000
 PLAN_CREATE_MATERIALS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-create-materials@1"
 )
+LIVE_ROOT_OBSERVATION_PROFILE: Final[str] = "repository-live-root-observation@1"
+ROOT_OBSERVATION_PROFILE_FIELD: Final[str] = "root_observation_profile"
 
 # Existing workflow preview remains a canonical compatibility alias for create.
 WORKFLOW_PREVIEW_COMPATIBILITY_ALIAS: Final[str] = "workflow_preview"
@@ -206,9 +221,10 @@ def _canonical(value: Any) -> Any:
     )
 
 
-def _assert_body_free(value: Any, label: str = "record") -> None:
+def _assert_body_free(value: Any, label: str = "record", *, finite_input_floats: bool = False) -> None:
     if isinstance(value, float):
-        raise PlanCreateBodyError(f"{label} may not contain floating-point values")
+        if not finite_input_floats or not math.isfinite(value):
+            raise PlanCreateBodyError(f"{label} may not contain floating-point values")
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
@@ -225,12 +241,12 @@ def _assert_body_free(value: Any, label: str = "record") -> None:
                 raise PlanCreateBodyError(
                     f"{label} may not contain secrets or source bodies ({key})"
                 )
-            _assert_body_free(item, label)
+            _assert_body_free(item, label, finite_input_floats=finite_input_floats)
     elif isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
     ):
         for item in value:
-            _assert_body_free(item, label)
+            _assert_body_free(item, label, finite_input_floats=finite_input_floats)
     elif isinstance(value, (bytes, bytearray)):
         raise PlanCreateBodyError(f"{label} may not contain binary bodies")
 
@@ -244,6 +260,92 @@ def _digest(namespace: str, value: Any) -> str:
     return "sha256:" + hashlib.sha256(
         f"{namespace}\n".encode("utf-8") + encoded
     ).hexdigest()
+
+
+class _UnprojectableSemanticMaterial(Exception):
+    """An opaque live object cannot qualify an exact reusable input binding."""
+
+
+def _semantic_material_wire(value: Any, *, allow_records: bool = True,
+                            node_budget: list[int] | None = None) -> bytes:
+    """Hash finite candidate inputs without passing numbers into proof identities."""
+    remaining = [MAX_SEMANTIC_MATERIAL_NODES] if node_budget is None else node_budget
+    def project(item, depth=0):
+        remaining[0] -= 1
+        if remaining[0] < 0 or depth > MAX_SEMANTIC_MATERIAL_DEPTH:
+            raise PlanCreateBodyError("semantic material structure exceeds its bound")
+        if isinstance(item, Enum):
+            return {"$enum": f"{type(item).__module__}.{type(item).__qualname__}",
+                    "value": project(item.value, depth + 1)}
+        if item is None or isinstance(item, (str, bool, int)):
+            return item
+        if isinstance(item, float):
+            if not math.isfinite(item):
+                raise PlanCreateBodyError("semantic materials require finite numbers")
+            return item
+        if isinstance(item, Mapping):
+            if type(item) not in (dict, MappingProxyType):
+                raise _UnprojectableSemanticMaterial(type(item).__name__)
+            if not all(isinstance(key, str) for key in item):
+                raise PlanCreateBodyError("semantic material mapping keys must be strings")
+            _assert_body_free({key: None for key in item}, "semantic material input")
+            return {"$mapping": {key: project(member, depth + 1)
+                                  for key, member in sorted(item.items())}}
+        if isinstance(item, (bytes, bytearray)):
+            raise PlanCreateBodyError("semantic materials may not contain binary bodies")
+        if isinstance(item, Sequence) and not isinstance(item, str):
+            if type(item) not in (list, tuple):
+                raise _UnprojectableSemanticMaterial(type(item).__name__)
+            return {"$sequence": type(item).__name__,
+                    "items": [project(member, depth + 1) for member in item]}
+        if callable(item):
+            raise _UnprojectableSemanticMaterial(type(item).__name__)
+        if allow_records and is_dataclass(item) and not isinstance(item, type):
+            values = {member.name: getattr(item, member.name) for member in fields(item)}
+            # Workflow sources retain a transient body outside their public
+            # descriptor. Keep this legacy caller usable, with reuse disabled.
+            if values.get("_transient_body") is not None:
+                raise _UnprojectableSemanticMaterial(type(item).__name__)
+            return {"$record": f"{type(item).__module__}.{type(item).__qualname__}",
+                    "fields": project(values, depth + 1)}
+        # An arbitrary to_dict() can omit behavior-relevant attributes. Such
+        # live objects are supported only as explicitly nonreusable inputs.
+        raise _UnprojectableSemanticMaterial(type(item).__name__)
+    try:
+        payload = project(value)
+        _assert_body_free(payload, "semantic material input", finite_input_floats=True)
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise PlanCreateBodyError("bounded canonical semantic input required") from exc
+    if len(raw) > MAX_SEMANTIC_MATERIAL_BYTES:
+        raise PlanCreateBodyError("semantic material byte bound exceeded")
+    return raw
+
+
+def _validate_material_binding(value: Mapping[str, Any]) -> dict:
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema", "field_digests", "unsupported_fields", "reuse_supported", "opaque_material_nonce",
+    } or value["schema"] != PLAN_CREATE_SEMANTIC_MATERIAL_BINDING_SCHEMA:
+        raise PlanCreateServiceError("closed semantic material binding required")
+    result = dict(value)
+    digest_map, unsupported = result["field_digests"], result["unsupported_fields"]
+    if not isinstance(digest_map, Mapping) or not isinstance(unsupported, Mapping):
+        raise PlanCreateServiceError("semantic material field support maps required")
+    allowed = {member.name for member in fields(PlanCreateMaterials)}
+    if (set(digest_map) & set(unsupported) or set(digest_map) | set(unsupported) != allowed
+            or any(not isinstance(digest, str) or not digest.startswith("sha256:")
+                   or len(digest) != 71 or any(c not in "0123456789abcdef" for c in digest[7:])
+                   for digest in digest_map.values())
+            or any(not isinstance(reason, str) or not reason or len(reason) > 128 for reason in unsupported.values())
+            or type(result["reuse_supported"]) is not bool
+            or result["reuse_supported"] != (not unsupported)):
+        raise PlanCreateServiceError("invalid semantic material support or field identities")
+    nonce = result["opaque_material_nonce"]
+    if (not isinstance(nonce, str) or (not unsupported and nonce)
+            or (unsupported and (len(nonce) != 32 or any(c not in "0123456789abcdef" for c in nonce)))):
+        raise PlanCreateServiceError("opaque semantic materials require a unique preview binding")
+    return _canonical(result)
 
 
 def _plain_mapping(value: Any) -> dict[str, Any]:
@@ -340,7 +442,11 @@ def _coerce_roots(value: Any) -> PlanAuthorityRoots | None:
 
 @dataclass(frozen=True)
 class PlanCreateInputSnapshot:
-    """Exact request/root/budget bindings shared by every planning mode."""
+    """Request/root/budget bindings and optional full semantic material identity.
+
+    Request-only callers retain schema @1. Supplying materials produces @2
+    with body-free field digests and explicit support for exact reuse.
+    """
 
     SCHEMA: ClassVar[str] = PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA
 
@@ -362,8 +468,15 @@ class PlanCreateInputSnapshot:
     dirty_tree_policy: DirtyTreePolicy
     bounds_digest: str
     snapshot_cid: str = ""
+    material_binding: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if self.material_binding:
+            binding = _validate_material_binding(self.material_binding)
+            object.__setattr__(self, "material_binding", MappingProxyType({
+                key: MappingProxyType(value) if isinstance(value, dict) else value
+                for key, value in binding.items()
+            }))
         material = self._material()
         _assert_body_free(material, "plan create input snapshot")
         computed = _digest("plan-create-input-snapshot", material)
@@ -374,8 +487,9 @@ class PlanCreateInputSnapshot:
         object.__setattr__(self, "snapshot_cid", computed)
 
     def _material(self) -> dict[str, Any]:
-        return {
-            "schema": PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA,
+        material = {
+            "schema": (PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA if self.material_binding
+                       else PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA),
             "request_cid": self.request_cid,
             "repository_id": self.repository_id,
             "repository_root": self.repository_root,
@@ -398,12 +512,18 @@ class PlanCreateInputSnapshot:
             "dirty_tree_policy": self.dirty_tree_policy.value,
             "bounds_digest": self.bounds_digest,
         }
+        if self.material_binding:
+            material["material_binding"] = _canonical(self.material_binding)
+        return material
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._material(), "snapshot_cid": self.snapshot_cid}
 
     @classmethod
-    def from_request(cls, request: PlanCreateRequest) -> "PlanCreateInputSnapshot":
+    def from_request(cls, request: PlanCreateRequest, *,
+                     materials: "PlanCreateMaterials | Mapping[str, Any] | None" = None) -> "PlanCreateInputSnapshot":
+        typed_materials = _coerce_materials(materials)
+        binding = typed_materials.to_semantic_binding() if materials is not None else {}
         bounds = {
             "budget": request.budget.to_dict(),
             "required_analysis_operations": list(
@@ -439,14 +559,24 @@ class PlanCreateInputSnapshot:
             task_source_kind=request.task_source_kind,
             dirty_tree_policy=request.dirty_tree_policy,
             bounds_digest=_digest("plan-create-bounds", bounds),
+            material_binding=binding,
         )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanCreateInputSnapshot":
         if not isinstance(payload, Mapping):
             raise PlanCreateServiceError("input snapshot payload must be a mapping")
-        if payload.get("schema") not in (None, PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA):
+        if payload.get("schema") not in (None, PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA,
+                                         PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA):
             raise PlanCreateServiceError("unsupported input snapshot schema")
+        binding = payload.get("material_binding", {})
+        if (payload.get("schema") == PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA and not binding
+                or binding and payload.get("schema") != PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA):
+            raise PlanCreateServiceError("snapshot schema differs from semantic material binding")
+        if payload.get("schema") == PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA:
+            allowed = {member.name for member in fields(cls)} | {"schema"}
+            if set(payload) - allowed:
+                raise PlanCreateServiceError("unknown material-bound input snapshot field")
         roots = _coerce_roots(payload.get("roots"))
         if roots is None:
             raise PlanCreateServiceError("input snapshot requires roots")
@@ -496,6 +626,7 @@ class PlanCreateInputSnapshot:
                 )
             ),
             bounds_digest=str(payload.get("bounds_digest") or ""),
+            material_binding=binding,
             snapshot_cid=str(payload.get("snapshot_cid") or ""),
         )
         if payload.get("snapshot_cid") not in (None, "", value.snapshot_cid):
@@ -808,8 +939,54 @@ class PlanCreateMaterials:
     workflow_request: Any = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
+    def to_semantic_binding(self, *, opaque_nonce: str = "") -> dict[str, Any]:
+        """Bind full supplied values; opaque live dependencies disable reuse.
+
+        Finite candidate numbers enter only this local JSON byte digest. The
+        snapshot/receipt contains body-free digests, and proof identity rules
+        retain their existing numeric restrictions.
+        """
+        supplied = False
+        for member in fields(self):
+            value = getattr(self, member.name)
+            if member.default is None and value is None:
+                continue
+            if type(member.default) is tuple and type(value) is tuple and not value:
+                continue
+            if member.default is MISSING and member.default_factory is dict and type(value) is dict and not value:
+                continue
+            supplied = True
+            break
+        if not supplied:
+            return {}
+        field_digests, unsupported = {}, {}
+        total_bytes = 0
+        node_budget = [MAX_SEMANTIC_MATERIAL_NODES]
+        for member in fields(self):
+            try:
+                raw = _semantic_material_wire(
+                    getattr(self, member.name),
+                    allow_records=member.name not in {"model_provider", "evidence_adapters"},
+                    node_budget=node_budget,
+                )
+            except _UnprojectableSemanticMaterial as exc:
+                unsupported[member.name] = "opaque:" + str(exc)[:120]
+                continue
+            total_bytes += len(raw)
+            if total_bytes > MAX_SEMANTIC_MATERIAL_BYTES:
+                raise PlanCreateBodyError("combined semantic material byte bound exceeded")
+            field_digests[member.name] = "sha256:" + hashlib.sha256(
+                b"plan-create-semantic-input\n" + member.name.encode() + b"\n" + raw
+            ).hexdigest()
+        return _validate_material_binding({
+            "schema": PLAN_CREATE_SEMANTIC_MATERIAL_BINDING_SCHEMA,
+            "field_digests": field_digests, "unsupported_fields": unsupported,
+            "reuse_supported": not unsupported,
+            "opaque_material_nonce": (opaque_nonce or uuid.uuid4().hex) if unsupported else "",
+        })
+
     def to_binding_dict(self) -> dict[str, Any]:
-        """Body-free binding projection used in input digests (no stage bodies)."""
+        """Legacy stage metadata; exact input identity uses to_semantic_binding."""
 
         payload = {
             "schema": PLAN_CREATE_MATERIALS_SCHEMA,
@@ -843,12 +1020,23 @@ class PlanCreateMaterials:
         return payload
 
 
+def _coerce_materials(value: Any) -> PlanCreateMaterials:
+    if value is None:
+        return PlanCreateMaterials()
+    if isinstance(value, PlanCreateMaterials):
+        return value
+    if isinstance(value, Mapping):
+        return PlanCreateMaterials(**dict(value))
+    raise PlanCreateServiceError("materials must be PlanCreateMaterials or a mapping")
+
+
 def freeze_plan_create_input_snapshot(
     request: PlanCreateRequest | Mapping[str, Any],
+    *, materials: PlanCreateMaterials | Mapping[str, Any] | None = None,
 ) -> PlanCreateInputSnapshot:
     """Freeze the exact inputs and bounds shared by every planning mode."""
 
-    return PlanCreateInputSnapshot.from_request(_coerce_request(request))
+    return PlanCreateInputSnapshot.from_request(_coerce_request(request), materials=materials)
 
 
 def plan_create_request_from_workflow(
@@ -864,6 +1052,7 @@ def plan_create_request_from_workflow(
     usage_policy_root: str = "",
     configuration_root: str = "",
     dirty_worktree_root: str = "",
+    scope_paths: Sequence[str] | None = None,
 ) -> PlanCreateRequest:
     """Project a prompt workflow request into a create-plan request.
 
@@ -985,7 +1174,7 @@ def plan_create_request_from_workflow(
         prompt_source_cid=prompt_cid,
         repository_id=resolved_repo_id,
         repository_root=repository_root,
-        scope_paths=(scope,),
+        scope_paths=tuple(scope_paths) if scope_paths is not None else (scope,),
         dirty_tree_policy=DirtyTreePolicy.OBSERVE_AND_BIND,
         task_source_kind=task_source_kind,
         board_namespace=board_namespace,
@@ -1040,10 +1229,13 @@ class PlanCreateService:
         parallel_compiler: ParallelPlanCompiler | None = None,
         scanner: Any | None = None,
         root_observer: Callable[..., Mapping[str, Any]] | None = None,
+        require_live_root_observation: bool = False,
         receipt_store: MutableMapping[str, Mapping[str, Any]] | Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         workflow_supervisor: Any | None = None,
     ) -> None:
+        if type(require_live_root_observation) is not bool:
+            raise PlanCreateServiceError("require_live_root_observation must be an exact bool")
         self.analysis_factory = analysis_factory
         self.optional_analysis = optional_analysis
         if (
@@ -1067,6 +1259,7 @@ class PlanCreateService:
         self.parallel_compiler = parallel_compiler or ParallelPlanCompiler()
         self.scanner = scanner
         self.root_observer = root_observer
+        self.require_live_root_observation = require_live_root_observation
         self.receipt_store = receipt_store
         self._clock_ms = clock_ms or (lambda: 0)
         self.workflow_supervisor = workflow_supervisor
@@ -1150,6 +1343,16 @@ class PlanCreateService:
         materials: PlanCreateMaterials,
     ) -> None:
         expected = request.roots
+        if self.require_live_root_observation:
+            if not callable(self.root_observer):
+                raise PlanCreateStaleRootError("strict root observation requires a callable live observer")
+            observed = self.root_observer(request)
+            # Static materials are an additional binding, never a substitute
+            # for reading the current source/policy through the live owner.
+            if materials.current_roots is not None:
+                self._require_complete_root_match(materials.current_roots, expected)
+            self._require_complete_root_match(observed, expected)
+            return
         observed = materials.current_roots
         if observed is None and self.root_observer is not None:
             observed = self.root_observer(request)
@@ -1170,6 +1373,35 @@ class PlanCreateService:
             raise PlanCreateStaleRootError(
                 "policy root is stale relative to the create request"
             )
+
+    @staticmethod
+    def _require_complete_root_match(observed: Any, expected: PlanAuthorityRoots) -> None:
+        if type(observed) is not PlanAuthorityRoots:
+            required = {member.name for member in fields(PlanAuthorityRoots)}
+            if not isinstance(observed, Mapping) or not required.issubset(observed):
+                raise PlanCreateStaleRootError("strict live observation requires complete authority roots")
+        try:
+            roots = _coerce_roots(observed)
+            if roots is None:
+                raise PlanCreateStaleRootError("strict live observation requires complete authority roots")
+            roots.require_current(expected)
+        except (PlanRevisionStaleRootError, ValueError, TypeError) as exc:
+            raise PlanCreateStaleRootError("stale root/policy or invalid complete live observation") from exc
+
+    def _bind_root_observation_profile(self, materials: PlanCreateMaterials) -> PlanCreateMaterials:
+        if not self.require_live_root_observation:
+            if isinstance(materials.extra, Mapping) and ROOT_OBSERVATION_PROFILE_FIELD in materials.extra:
+                raise PlanCreateServiceError("repository live-root materials require the strict service policy")
+            return materials
+        if not isinstance(materials.extra, Mapping):
+            raise PlanCreateServiceError("planning materials extra must be a mapping")
+        reserved = ROOT_OBSERVATION_PROFILE_FIELD in materials.extra
+        if reserved and materials.extra[ROOT_OBSERVATION_PROFILE_FIELD] != LIVE_ROOT_OBSERVATION_PROFILE:
+            raise PlanCreateServiceError("unsupported repository root observation profile")
+        # Bind the trusted service policy into semantic input/cache identity
+        # without mutating caller-owned material fields or legacy snapshots.
+        return replace(materials, extra={**materials.extra,
+            ROOT_OBSERVATION_PROFILE_FIELD: LIVE_ROOT_OBSERVATION_PROFILE})
 
     def _stage_scan(
         self,
@@ -2069,29 +2301,30 @@ class PlanCreateService:
 
         typed_request = _coerce_request(request)
         typed_mode = _coerce_mode(mode)
-        if materials is None:
-            typed_materials = PlanCreateMaterials()
-        elif isinstance(materials, PlanCreateMaterials):
-            typed_materials = materials
-        elif isinstance(materials, Mapping):
-            typed_materials = PlanCreateMaterials(**dict(materials))
-        else:
-            raise PlanCreateServiceError(
-                "materials must be PlanCreateMaterials or a mapping"
-            )
+        typed_materials = self._bind_root_observation_profile(_coerce_materials(materials))
 
         # Freeze inputs/bounds before any mode-specific work so deterministic
         # and model-assisted paths share exact bindings.
-        snapshot = freeze_plan_create_input_snapshot(typed_request)
+        snapshot = freeze_plan_create_input_snapshot(typed_request, materials=typed_materials)
+        reuse_supported = snapshot.material_binding.get("reuse_supported", True)
+        def require_frozen_materials():
+            current = typed_materials.to_semantic_binding(
+                opaque_nonce=snapshot.material_binding.get("opaque_material_nonce", ""))
+            if current != _canonical(snapshot.material_binding):
+                raise PlanCreateServiceError("semantic materials changed during preview")
         cache_key = self._cache_key(
             snapshot, typed_mode, compatibility_alias=compatibility_alias
         )
         with self._lock:
-            cached = self._preview_by_key.get(cache_key)
+            cached = self._preview_by_key.get(cache_key) if reuse_supported else None
             if cached is not None:
                 # Restart/idempotent path: re-validate roots, never silently
                 # regenerate against a different observation.
                 self._require_current_roots(typed_request, typed_materials)
+                require_frozen_materials()
+                if self.require_live_root_observation:
+                    self._require_current_roots(typed_request, typed_materials)
+                    require_frozen_materials()
                 return cached
 
             self._require_current_roots(typed_request, typed_materials)
@@ -2147,6 +2380,9 @@ class PlanCreateService:
             )
             # Keep stage order authority as declared even though parallel is
             # compiled before the admission join below.
+            if self.require_live_root_observation:
+                self._require_current_roots(typed_request, typed_materials)
+                require_frozen_materials()
             admission_result, admission = self._stage_admission(
                 typed_request,
                 typed_materials,
@@ -2226,8 +2462,12 @@ class PlanCreateService:
                 wrote_effects=(),
                 compatibility_alias=compatibility_alias,
             )
+            if self.require_live_root_observation:
+                self._require_current_roots(typed_request, typed_materials)
+            require_frozen_materials()
             self._persist(receipt)
-            self._preview_by_key[cache_key] = receipt
+            if reuse_supported:
+                self._preview_by_key[cache_key] = receipt
             # Touch clock for observability hooks (read-only).
             _ = self._clock_ms()
             return receipt
@@ -2327,6 +2567,7 @@ def create_default_plan_create_service(
     workflow_supervisor: Any | None = None,
     receipt_store: MutableMapping[str, Mapping[str, Any]] | Any | None = None,
     root_observer: Callable[..., Mapping[str, Any]] | None = None,
+    require_live_root_observation: bool = False,
     clock_ms: Callable[[], int] | None = None,
     build_analysis_factory: bool = True,
 ) -> PlanCreateService:
@@ -2352,6 +2593,7 @@ def create_default_plan_create_service(
         workflow_supervisor=workflow_supervisor,
         receipt_store=receipt_store,
         root_observer=root_observer,
+        require_live_root_observation=require_live_root_observation,
         clock_ms=clock_ms,
     )
     if factory is not None:
@@ -2369,10 +2611,14 @@ PlanCreateService.preview = PlanCreateService.preview_create
 __all__ = [
     "CREATE_STAGE_ORDER",
     "PLAN_CREATE_INPUT_SNAPSHOT_SCHEMA",
+    "PLAN_CREATE_MATERIAL_INPUT_SNAPSHOT_SCHEMA",
+    "PLAN_CREATE_SEMANTIC_MATERIAL_BINDING_SCHEMA",
     "PLAN_CREATE_PREVIEW_SCHEMA",
     "PLAN_CREATE_SERVICE_INTERFACE",
     "PLAN_CREATE_SERVICE_VERSION",
     "PLAN_CREATE_STAGE_RESULT_SCHEMA",
+    "LIVE_ROOT_OBSERVATION_PROFILE",
+    "ROOT_OBSERVATION_PROFILE_FIELD",
     "WORKFLOW_PREVIEW_COMPATIBILITY_ALIAS",
     "PlanCreateBodyError",
     "PlanCreateInputSnapshot",

@@ -597,6 +597,9 @@ class DeterministicDoctorRuntime:
         self._analysis_factory: Any | None = None
         self._evidence: DeterministicDoctorEvidenceBundle | None = None
         self._stage_receipts: dict[str, Mapping[str, Any]] = {}
+        self._composition_inputs: Any | None = None
+        self._composition_result: Any | None = None
+        self._composition_transaction: Any | None = None
         self._lock = threading.RLock()
         self._service: DeterministicDoctorService = create_deterministic_doctor_service(
             policy=policy,
@@ -608,7 +611,7 @@ class DeterministicDoctorRuntime:
                 synthesis=self._deferred_stage_backend(DoctorRuntimeStage.SYNTHESIS_PREVIEW),
                 impact=self._deferred_stage_backend(DoctorRuntimeStage.IMPACT),
                 transaction=self._transaction_backend,
-                fixed_point=self._deferred_stage_backend(DoctorRuntimeStage.FIXED_POINT),
+                fixed_point=self._fixed_point_backend,
                 retrieve=self._deferred_stage_backend(DoctorRuntimeStage.RETRIEVE),
                 tactician=self._deferred_stage_backend(DoctorRuntimeStage.TACTICIAN),
                 proof=self._deferred_stage_backend(DoctorRuntimeStage.PROOF),
@@ -638,6 +641,32 @@ class DeterministicDoctorRuntime:
     @property
     def evidence(self) -> DeterministicDoctorEvidenceBundle | None:
         return self._evidence
+
+    @property
+    def composition_result(self) -> Any | None:
+        """Typed native stage results, including the compiled transaction plan."""
+        return self._composition_result
+
+    @property
+    def composition_transaction(self) -> Any | None:
+        """Native durable transaction report, separate from task completion."""
+        return self._composition_transaction
+
+    def bind_composition(self, inputs: Any) -> None:
+        """Bind an explicitly reviewed operator to this exact observed checkout.
+
+        This does not execute a prover or write source. JSON proof assertions
+        are deliberately not accepted at this local trust boundary.
+        """
+        from .doctor_repair_composition import DoctorCompositionInputs
+
+        if type(inputs) is not DoctorCompositionInputs:
+            raise DeterministicDoctorRuntimeError("typed_composition_required")
+        with self._lock:
+            inputs.assert_current(self.checkout_root, self.build_evidence())
+            self._composition_inputs = inputs
+            self._composition_result = None
+            self._composition_transaction = None
 
     def capability_graph(self) -> dict[str, Any]:
         """Report current lazy state without loading an unrequested stage."""
@@ -698,15 +727,18 @@ class DeterministicDoctorRuntime:
             and "snapshot" not in payload
         ):
             evidence = self.build_evidence()
-            payload["snapshot"] = evidence.snapshot.to_dict()
-            payload.setdefault("roots", evidence.snapshot.roots.to_dict())
-            payload.setdefault(
-                "finding_ids",
-                tuple(
-                    str(getattr(item, "finding_id", "") or getattr(item, "content_id", ""))
-                    for item in evidence.findings
-                ),
-            )
+            snapshot = evidence.snapshot
+            if self._composition_inputs is not None and operation in {
+                DoctorOperation.PLAN.value, DoctorOperation.REPAIR.value,
+            }:
+                self._composition_inputs.assert_current(self.checkout_root, evidence)
+                snapshot = self._composition_inputs.snapshot
+            payload["snapshot"] = snapshot.to_dict()
+            payload.setdefault("roots", snapshot.roots.to_dict())
+            # The exact snapshot and runtime evidence bind the full finding set.
+            # Do not duplicate it into the optional, 256-item request annotation.
+            # Explicit caller finding_ids remain subject to the service bound.
+
         result = self._service.execute(payload)
         return DeterministicDoctorRuntimeReport(
             result=result,
@@ -908,22 +940,14 @@ class DeterministicDoctorRuntime:
             },
             claimed_tree_id=roots.tree_id,
         )
-        bridge_class = _import_symbol(
+        materialize = _import_symbol(
             "ipfs_accelerate_py.agent_supervisor.analysis.doctor_contract_adapters",
-            "DiagnosisObligationBridge",
+            "materialize_runtime_diagnostics",
         )
-        bridge = bridge_class.from_diagnostic_snapshot(
-            diag_snapshot,
-            require_repository_id=roots.repository_id,
-            notes=("runtime_exact_checkout",),
+        snapshot, findings, manifest_cid = materialize(
+            diag_snapshot, require_repository_id=roots.repository_id
         )
-        if bridge.snapshot_bridge is None:  # pragma: no cover - constructor invariant
-            raise DeterministicDoctorRuntimeError(
-                "snapshot_bridge_missing", "diagnostic bridge omitted the snapshot"
-            )
-        snapshot = bridge.snapshot_bridge.materialize_deterministic()
-        findings = bridge.snapshot_bridge.materialize_finding_deterministics()
-        return diag_snapshot, snapshot, findings, bridge.content_id
+        return diag_snapshot, snapshot, findings, manifest_cid
 
     def _diagnose_backend(
         self,
@@ -971,6 +995,34 @@ class DeterministicDoctorRuntime:
 
         del policy
         evidence = self.build_evidence()
+        if self._composition_inputs is not None:
+            from .doctor_repair_composition import compose_doctor_repair
+
+            inputs = self._composition_inputs
+            inputs.assert_current(self.checkout_root, evidence)
+            if request.snapshot != inputs.snapshot:
+                raise DeterministicDoctorRuntimeError("composition_request_snapshot_mismatch")
+            composed = compose_doctor_repair(inputs)
+            self._composition_result = composed
+            self._stage_receipts.update(composed.stages)
+            return DoctorOperationResult(
+                request_id=request.request_id, operation=DoctorOperation.PLAN.value,
+                mode=request.mode, disposition=(DoctorRepairDisposition.SUPPORTED
+                    if composed.admitted else DoctorRepairDisposition.ABSTAIN),
+                incident_id=request.incident_cid(), read_only=True,
+                policy_decision=policy_decision,
+                reason_codes=("native_composition_admitted" if composed.admitted
+                              else "native_composition_abstained",),
+                explanation="Executed native tactician, sealed proof, synthesis and impact gates; "
+                            "transaction and fixed-point completion require separate admission.",
+                changed=False,
+                status={"snapshot_id": inputs.snapshot.snapshot_id,
+                        "plan_id": composed.plan.plan_id if composed.plan is not None else "",
+                        "transaction_ready": composed.admitted,
+                        "task_completion_authorized": False},
+                stage_refs={name: str(value.get("receipt_id", ""))
+                            for name, value in composed.stages.items()},
+            )
         receipts: dict[str, Mapping[str, Any]] = {}
         unavailable: list[str] = []
         for stage in (
@@ -994,6 +1046,30 @@ class DeterministicDoctorRuntime:
                     "reason_code": exc.reason_code,
                     "remediation": exc.remediation,
                 }
+        if DoctorRuntimeStage.TACTICIAN.value not in unavailable:
+            tactician = self._factory.get(DoctorRuntimeStage.TACTICIAN)()
+            plans = []
+            for finding in evidence.findings:
+                planned = tactician.plan_finding(
+                    finding, snapshot=evidence.snapshot,
+                    current_roots=evidence.snapshot.roots,
+                )
+                plans.append({
+                    "finding_id": finding.finding_id,
+                    "receipt_id": planned.receipt_id,
+                    "disposition": planned.disposition.value,
+                    "reason_codes": list(planned.reason_codes),
+                })
+            receipts[DoctorRuntimeStage.TACTICIAN.value] = {
+                "status": "executed",
+                "reason_code": "findings_planned" if plans else "no_findings",
+                "snapshot_id": evidence.snapshot.snapshot_id,
+                "finding_count": len(evidence.findings),
+                "plans": plans,
+                "model_invocation_count": 0,
+                "semantic_authority": False,
+                "remediation": _STAGE_REMEDIATIONS[DoctorRuntimeStage.TACTICIAN],
+            }
         self._stage_receipts.update(receipts)
         reasons = (
             DoctorServiceCapabilityCode.STAGE_BACKEND_MISSING.value,
@@ -1073,6 +1149,10 @@ class DeterministicDoctorRuntime:
         policy: DeterministicDoctorPolicy,
         policy_decision: Any,
     ) -> DoctorOperationResult:
+        if self._composition_inputs is not None:
+            return self._composition_transaction_backend(
+                request, policy=policy, policy_decision=policy_decision,
+            )
         # Loading the class proves wiring only.  A production mutation needs
         # real adapters and the service's control dependency, never defaults.
         self._factory.get(DoctorRuntimeStage.TRANSACTION)
@@ -1082,6 +1162,98 @@ class DeterministicDoctorRuntime:
             )
         return self._deferred_stage_backend(DoctorRuntimeStage.TRANSACTION)(
             request, policy=policy, policy_decision=policy_decision
+        )
+
+    def _composition_transaction_backend(
+        self, request: DoctorOperationRequest, *,
+        policy: DeterministicDoctorPolicy, policy_decision: Any,
+    ) -> DoctorOperationResult:
+        from .doctor_repair_composition import (
+            DoctorCompositionError, composition_step_validator,
+        )
+        from .doctor_worktree_adapter import DoctorExactEdit, DoctorWorktreeAdapter
+
+        inputs = self._composition_inputs
+        composed = self._composition_result
+        if (composed is None or not composed.admitted or inputs.worktree_adapter is None):
+            return self._deferred_stage_backend(DoctorRuntimeStage.TRANSACTION)(
+                request, policy=policy, policy_decision=policy_decision,
+            )
+        if request.operation != DoctorOperation.REPAIR.value or request.plan != composed.plan:
+            raise DoctorCompositionError("transaction requires the exact composed repair plan")
+        # Refresh all native evidence before mutation, including non-target
+        # graph inputs. The separate service already enforced mode and policy.
+        inputs.assert_current(self.checkout_root, self.build_evidence(refresh=True))
+        proof = inputs.hammer.reverify_authoritative(
+            composed.proof, current_roots=inputs.theorem.roots,
+        )
+        if not proof.mutation_capable:
+            raise DoctorCompositionError("proof lost sealed authority before transaction")
+        adapter = inputs.worktree_adapter
+        if type(adapter) is not DoctorWorktreeAdapter or adapter.repository_root != self.checkout_root:
+            raise DoctorCompositionError("worktree adapter is not bound to this checkout")
+        if not adapter.require_clean_base:
+            raise DoctorCompositionError("composition transaction requires a clean native base")
+        if not inputs.base_ref or inputs.target_ref not in adapter.permitted_refs:
+            raise DoctorCompositionError("explicit base commit and allowlisted target ref required")
+        import subprocess
+
+        head = subprocess.check_output(
+            [adapter.git_executable, "-C", str(self.checkout_root), "rev-parse", "HEAD"],
+            text=True,
+        ).strip()
+        if head != inputs.base_ref:
+            raise DoctorCompositionError("checkout HEAD differs from the reviewed base commit")
+        overlay = composed.synthesis.overlay
+        before = inputs.synthesis.file_text
+        after = before[:overlay.span_start] + overlay.replacement + before[overlay.span_end:]
+        edit = DoctorExactEdit(
+            path=overlay.path,
+            before_hash="sha256:" + hashlib.sha256(before.encode()).hexdigest(),
+            after_bytes=after.encode(),
+        )
+        transaction_type = self._factory.get(DoctorRuntimeStage.TRANSACTION)
+        report = transaction_type().execute_live(
+            composed.plan, worktree_adapter=adapter, edits=(edit,),
+            target_ref=inputs.target_ref, base_ref=inputs.base_ref,
+            step_validator=composition_step_validator(composed),
+        )
+        self._composition_transaction = report
+        self._stage_receipts[DoctorRuntimeStage.TRANSACTION.value] = {
+            "status": "executed", "receipt_id": report.content_id,
+            "disposition": report.disposition.value, "committed": report.committed,
+            "reason_codes": list(report.reason_codes), "task_completion_authorized": False,
+        }
+        return DoctorOperationResult(
+            request_id=request.request_id, operation=request.operation, mode=request.mode,
+            disposition=(DoctorRepairDisposition.SUPPORTED if report.committed
+                         else DoctorRepairDisposition.ABSTAIN),
+            incident_id=request.incident_cid(), read_only=False,
+            policy_decision=policy_decision, reason_codes=tuple(report.reason_codes),
+            explanation="Native transaction committed to the allowlisted Git ref. "
+                        "Independent residual diagnosis and fixed-point completion remain required."
+                        if report.committed else "Native transaction did not commit.",
+            changed=report.committed,
+            status={"transaction_id": report.transaction_id, "committed": report.committed,
+                    "task_completion_authorized": False, "fixed_point": "pending"},
+            stage_refs={"transaction": report.content_id},
+        )
+
+    def _fixed_point_backend(
+        self, request: DoctorOperationRequest, *,
+        policy: DeterministicDoctorPolicy, policy_decision: Any,
+    ) -> Any:
+        if self._composition_transaction is not None:
+            # Retain the accurate committed transaction result instead of
+            # replacing it with a misleading unchanged abstention. Completion
+            # is explicitly absent until independently produced evidence exists.
+            self._stage_receipts[DoctorRuntimeStage.FIXED_POINT.value] = {
+                "status": "deferred", "reason_code": "independent_fixed_point_required",
+                "task_completion_authorized": False,
+            }
+            return None
+        return self._deferred_stage_backend(DoctorRuntimeStage.FIXED_POINT)(
+            request, policy=policy, policy_decision=policy_decision,
         )
 
 

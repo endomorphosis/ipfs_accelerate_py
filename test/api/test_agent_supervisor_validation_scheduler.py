@@ -751,6 +751,28 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor()
     not sys.platform.startswith("linux"),
     reason="sealed memfd launchers are Linux-specific",
 )
+def test_sealed_validation_launcher_is_executable_by_the_child(tmp_path: Path) -> None:
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(
+            command="python3 -c 'raise SystemExit(0)'",
+            raw_command="python3 -c 'raise SystemExit(0)'",
+        ),
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+    assert result["returncode"] == 0, result.get("output")
+    assert result.get("error") in {None, ""}
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
 def test_daemon_raw_no_site_profile_preserves_approved_pythonpath(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

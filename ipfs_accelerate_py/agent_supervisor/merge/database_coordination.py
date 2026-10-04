@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import threading
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -1506,6 +1507,21 @@ def _validate_coordination_authority(connection: Any) -> None:
             )
 
 
+def _require_existing_coordination_path(path: Path) -> tuple[int, int]:
+    """Reject absent or redirected local authority before any installation."""
+    try:
+        if not path.is_absolute() or path.resolve(strict=True) != path:
+            raise ValueError("coordination authority path is not canonical")
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("coordination authority is not a regular file")
+        return metadata.st_dev, metadata.st_ino
+    except (OSError, ValueError) as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            "existing canonical local coordination authority required"
+        ) from exc
+
+
 def _coordination_registry_projection_from_connection(
     connection: Any,
     *,
@@ -1785,18 +1801,27 @@ class DatabaseCoordinator:
         *,
         clock_ms: ClockMs | None = None,
         default_lease_ms: int = DEFAULT_LEASE_MS,
+        require_existing_authority: bool = False,
     ) -> None:
         if not duckdb_available():
             raise DuckDBUnavailableError(
                 "DuckDB is required for DatabaseCoordinator; install the optional "
                 "duckdb dependency"
             )
+        if type(require_existing_authority) is not bool:
+            raise TypeError("require_existing_authority must be a boolean")
+        self._require_existing_authority = require_existing_authority
         if is_quack_transport_target(database_path):
+            if require_existing_authority:
+                raise DatabaseCoordinationError(
+                    "existing-authority protection requires a local coordinator"
+                )
             self._open_target = str(database_path).strip()
             self._path = Path(self._open_target)
             self._quack_transport = True
         else:
-            self._open_target = Path(database_path)
+            self._open_target = (Path(database_path).absolute() if require_existing_authority
+                                 else Path(database_path))
             self._path = self._open_target
             self._quack_transport = False
         self._clock_ms = clock_ms or _default_clock_ms
@@ -1826,11 +1851,22 @@ class DatabaseCoordinator:
                 )
             if self.is_open:
                 return self
-            if not self._quack_transport:
+            existing_identity = None
+            if self._require_existing_authority:
+                existing_identity = _require_existing_coordination_path(self._path)
+            elif not self._quack_transport:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
-            connection = open_duckdb_connection(self._open_target)
+            connection = (open_duckdb_connection(self._open_target, prefer_quack=False)
+                          if self._require_existing_authority
+                          else open_duckdb_connection(self._open_target))
             try:
-                if not self._quack_transport:
+                if self._require_existing_authority:
+                    if _require_existing_coordination_path(self._path) != existing_identity:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "existing coordination authority changed while opening"
+                        )
+                    _validate_coordination_authority(connection)
+                elif not self._quack_transport:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                         connection.execute(statement)
                     for key, value in (
@@ -4308,6 +4344,92 @@ class DatabaseCoordinator:
             except Exception:
                 self._rollback_if_open(connection)
                 raise
+
+    def execute_with_task_claim_fence(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        callback: Callable[[FencedLease], Any],
+        *,
+        minimum_remaining_ms: int = 0,
+    ) -> Any:
+        """Hold one exact live task authority through an external callback.
+
+        The task claim, lease, attempt, latest fence and absence of logical
+        completion are checked in one native transaction before and after the
+        callback.  This coordinator's lock and exclusive DuckDB connection
+        remain held.  The process-serialized adapter additionally holds its
+        common file lock for the entire operation.  Callers must select that
+        adapter when separate processes share the authority.
+
+        The callback receives the exact immutable protected lease, so an owner
+        can check its actual expiry again immediately before a later effect.
+        A lease observed before this transaction is not an expiry substitute:
+        an otherwise authentic renewal may have shortened the deadline.
+
+        Before entering the callback, expiry must be strictly later than the
+        owner's current clock plus ``minimum_remaining_ms``.  The callback
+        cannot renew or re-enter this authority; a suppressed re-entry still
+        fails the operation.  Afterward the same tuple must remain live and the
+        owner clock cannot have moved backwards.  A post-check or commit failure
+        does not roll back external effects: callers must retain possible
+        effects/UNKNOWN and their cleanup duty, never infer no effect from this
+        method raising.  Only this coordinator transaction can be rolled back.
+        """
+
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        if (type(minimum_remaining_ms) is not int
+                or not 0 <= minimum_remaining_ms <= MAX_LEASE_MS):
+            raise DatabaseCoordinationBoundsError(
+                "task callback remaining budget must be a bounded nonnegative integer"
+            )
+        identity = self._task_claim_identity(claim)
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            if not getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationError(
+                    "could not start task-claim callback transaction"
+                )
+            self._fenced_callback_reentry_detected = False
+            try:
+                before_ms = self._now_ms()
+                lease = self._protect_task_claim_unlocked(
+                    connection, identity=identity, now=before_ms,
+                    expected_attempt_status=AttemptStatus.RUNNING,
+                    allow_logically_completed=False, record_event=True,
+                )
+                if lease.expires_at_ms <= before_ms + minimum_remaining_ms:
+                    raise DatabaseCoordinationExpiredError(
+                        "task claim lacks the full callback acknowledgement budget"
+                    )
+                self._fenced_callback_active = True
+                try:
+                    result = callback(lease)
+                finally:
+                    self._fenced_callback_active = False
+                if self._fenced_callback_reentry_detected:
+                    raise DatabaseCoordinationConflictError(
+                        "fenced callback attempted to re-enter DatabaseCoordinator"
+                    )
+                after_ms = self._now_ms()
+                if after_ms < before_ms:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "coordination clock moved backwards during fenced callback"
+                    )
+                self._protect_task_claim_unlocked(
+                    connection, identity=identity, now=after_ms,
+                    expected_attempt_status=AttemptStatus.RUNNING,
+                    allow_logically_completed=False, record_event=False,
+                )
+                connection.commit()
+                return result
+            except BaseException:
+                self._rollback_if_open(connection)
+                raise
+            finally:
+                self._fenced_callback_active = False
+                self._fenced_callback_reentry_detected = False
 
     def execute_with_task_and_resource_fences(
         self,
@@ -7542,6 +7664,7 @@ _PROCESS_SERIALIZED_COORDINATOR_METHODS: Final[frozenset[str]] = frozenset(
         "takeover",
         "protect_write",
         "protect_task_claim",
+        "execute_with_task_claim_fence",
         "execute_with_task_and_resource_fences",
         "expire_task_claim",
         "record_recovery_plan_delta",
@@ -7603,12 +7726,16 @@ class ProcessSerializedDatabaseCoordinator:
         clock_ms: ClockMs | None = None,
         default_lease_ms: int = DEFAULT_LEASE_MS,
         lock_timeout_seconds: float = 30.0,
+        require_existing_authority: bool = False,
     ) -> None:
         if is_quack_transport_target(database_path):
             raise DatabaseCoordinationError(
                 "process-serialized coordinator requires a local DuckDB authority"
             )
         self._path = Path(database_path).absolute()
+        if type(require_existing_authority) is not bool:
+            raise TypeError("require_existing_authority must be a boolean")
+        self._require_existing_authority = require_existing_authority
         self._clock_ms = clock_ms
         self._default_lease_ms = _lease_duration_ms(int(default_lease_ms))
         self._lock_timeout_seconds = float(lock_timeout_seconds)
@@ -7641,6 +7768,8 @@ class ProcessSerializedDatabaseCoordinator:
             self._reject_callback_reentry()
             if not self._closed:
                 return self
+            if self._require_existing_authority:
+                _require_existing_coordination_path(self._path)
             # Install/verify the existing coordinator schema once without
             # retaining its DuckDB connection after this logical adapter
             # opens.  Holding the lifecycle lock prevents a concurrent close
@@ -7680,6 +7809,7 @@ class ProcessSerializedDatabaseCoordinator:
             self._path,
             clock_ms=self._clock_ms,
             default_lease_ms=self._default_lease_ms,
+            require_existing_authority=self._require_existing_authority,
         )
         try:
             opened = stack.enter_context(coordinator)
@@ -7770,10 +7900,13 @@ class ProcessSerializedDatabaseCoordinator:
 
             call_args = args
             call_kwargs = dict(kwargs)
-            if method_name == "execute_with_task_and_resource_fences":
-                if len(call_args) >= 3:
+            if method_name in {"execute_with_task_and_resource_fences",
+                               "execute_with_task_claim_fence"}:
+                callback_position = (2 if method_name == "execute_with_task_and_resource_fences"
+                                     else 1)
+                if len(call_args) > callback_position:
                     mutable_args = list(call_args)
-                    mutable_args[2] = self._guard_callback(mutable_args[2])
+                    mutable_args[callback_position] = self._guard_callback(mutable_args[callback_position])
                     call_args = tuple(mutable_args)
                 elif "callback" in call_kwargs:
                     call_kwargs["callback"] = self._guard_callback(
@@ -7781,7 +7914,7 @@ class ProcessSerializedDatabaseCoordinator:
                     )
                 else:
                     raise TypeError(
-                        "execute_with_task_and_resource_fences requires callback"
+                        f"{method_name} requires callback"
                     )
             elif method_name == "claim_ready_task":
                 accept_task_cid = call_kwargs.get("accept_task_cid")
@@ -7815,6 +7948,7 @@ def open_process_serialized_database_coordinator(
     clock_ms: ClockMs | None = None,
     default_lease_ms: int = DEFAULT_LEASE_MS,
     lock_timeout_seconds: float = 30.0,
+    require_existing_authority: bool = False,
 ) -> ProcessSerializedDatabaseCoordinator:
     """Open a short-lived-operation adapter over one coordinator file."""
 
@@ -7823,6 +7957,7 @@ def open_process_serialized_database_coordinator(
         clock_ms=clock_ms,
         default_lease_ms=default_lease_ms,
         lock_timeout_seconds=lock_timeout_seconds,
+        require_existing_authority=require_existing_authority,
     ).open()
 
 
@@ -7831,6 +7966,7 @@ def open_database_coordinator(
     *,
     clock_ms: ClockMs | None = None,
     default_lease_ms: int = DEFAULT_LEASE_MS,
+    require_existing_authority: bool = False,
 ) -> DatabaseCoordinator:
     """Open a :class:`DatabaseCoordinator` on ``database_path``."""
 
@@ -7838,6 +7974,7 @@ def open_database_coordinator(
         database_path,
         clock_ms=clock_ms,
         default_lease_ms=default_lease_ms,
+        require_existing_authority=require_existing_authority,
     ).open()
 
 
@@ -7948,3 +8085,22 @@ __all__ = [
     "open_process_serialized_database_coordinator",
     "read_coordination_registry_projection",
 ]
+
+
+CONTROL_READY_FRONTIER_RECONCILIATION_EVENT: Final[str] = (
+    "control_ready_frontier_reconciled"
+)
+
+
+TASK_COMPLETION_REARM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-completion-rearm@1"
+)
+
+
+TASK_COMPLETION_REARM_EVENT: Final[str] = "task_completion_rearmed"
+
+
+CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-ready-frontier-reconciliation@1"
+)

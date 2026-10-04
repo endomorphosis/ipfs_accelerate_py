@@ -207,6 +207,10 @@ class ProductionServiceComposition:
             kwargs["planner"] = self.extras["planner"]
         if self.extras.get("admission") is not None:
             kwargs["admission"] = self.extras["admission"]
+        if self.extras.get("admission_request_factory") is not None:
+            kwargs["admission_request_factory"] = self.extras["admission_request_factory"]
+        if self.extras.get("optional_analysis") is not None:
+            kwargs["optional_analysis"] = self.extras["optional_analysis"]
         if self.extras.get("markdown_materializer") is not None:
             kwargs["markdown_materializer"] = self.extras["markdown_materializer"]
         if self.extras.get("duckdb_materializer") is not None:
@@ -271,8 +275,8 @@ def _require_activation(config: Mapping[str, Any] | None) -> tuple[int, bool, bo
 
     if config is None:
         raise ConfigurationUnavailableError(
-            "no production scheduler config; call Supervisor.init_local() or "
-            "open from an authorized repository root"
+            "no production scheduler config; local profile initialization does "
+            "not activate a scheduler; open from an authorized repository root"
         )
     activation = config.get("protected_runtime_activation")
     if not isinstance(activation, Mapping):

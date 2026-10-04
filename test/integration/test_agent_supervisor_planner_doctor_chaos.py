@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+from test.integration.test_agent_supervisor_doctor_transaction_live import _validate_python_candidate
+
 from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts import (
     DeterministicDoctorPlan,
     DoctorAuthorityRoots,
@@ -548,6 +550,7 @@ def test_process_crash_after_ref_cas_restores_exact_roots(tmp_path: Path) -> Non
     plan = _plan(before)
     report = DeterministicDoctorTransaction().execute_live(
         plan,
+        step_validator=_validate_python_candidate,
         worktree_adapter=_adapter(
             root, tmp_path / "state", tuple(before), fault=crash
         ),
@@ -591,6 +594,7 @@ def test_worktree_tamper_and_repository_drift_restore_exact_roots(
     adapter_holder["adapter"] = adapter
     report = DeterministicDoctorTransaction().execute_live(
         _plan(before),
+        step_validator=_validate_python_candidate,
         worktree_adapter=adapter,
         edits=(
             DoctorExactEdit(
@@ -622,6 +626,7 @@ def test_incomplete_scc_and_stale_before_hash_do_not_mutate_ref(
     with pytest.raises(Exception, match="cover.*complete|complete exact"):
         DeterministicDoctorTransaction().execute_live(
             plan,
+            step_validator=_validate_python_candidate,
             worktree_adapter=adapter,
             edits=(
                 DoctorExactEdit(
@@ -638,6 +643,7 @@ def test_incomplete_scc_and_stale_before_hash_do_not_mutate_ref(
     with pytest.raises(DoctorWorktreeTamperError, match="before_hash"):
         DeterministicDoctorTransaction().execute_live(
             plan,
+            step_validator=_validate_python_candidate,
             worktree_adapter=_adapter(root, tmp_path / "state2", tuple(before)),
             edits=(
                 DoctorExactEdit(
@@ -673,6 +679,7 @@ def test_live_commit_then_exact_root_identity(tmp_path: Path) -> None:
     )
     report = DeterministicDoctorTransaction().execute_live(
         plan,
+        step_validator=_validate_python_candidate,
         worktree_adapter=_adapter(root, tmp_path / "state", tuple(before)),
         edits=edits,
         target_ref="refs/heads/main",
