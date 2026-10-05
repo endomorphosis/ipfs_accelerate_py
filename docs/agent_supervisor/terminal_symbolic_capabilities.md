@@ -393,7 +393,7 @@ independent-review integration described below.
 The [independent-review qualification](evidence/supervisor-independent-review-20261005/qualification.json)
 records the final source-pinned local checks, original seven failing integration
 cases, development failures and their corrections. Those seven cases now pass.
-The final local selection passes 293 tests with unchanged source, datasets and
+The final local selection passes 328 tests with unchanged source, datasets and
 retained model hashes, fresh AST catalogs and no skipped selected cases.
 Fifteen existing cases remain outside this qualification: two security tests
 exercise retired handoff APIs, and thirteen runner tests have existing API or
@@ -409,10 +409,11 @@ An operator explicitly selects `grok-implement-codex-independent-review`.
 The supervisor, native daemon entrypoint and DuckDB-to-Portal execution factory
 carry the same policy, context budget, timeout and signing-key path. An optional
 launch-receipt path and exact CID travel together and are verified against the
-existing four-root launch authority. Adoption rejects missing, duplicated or
-changed operator fields. Task metadata cannot select the policy or its trust
-roots. CLI context defaults remain 24,576 tokens and 300 seconds; this packet
-budget is separate from the GTE autoencoder token windows. Model defaults remain
+existing four-root launch authority. Adoption requires canonical flag names and
+rejects abbreviated, missing, duplicated or changed operator fields. Task
+metadata cannot select the policy or its trust roots. CLI context defaults
+remain 24,576 tokens and 300 seconds; this packet budget is separate from the
+GTE autoencoder token windows. Model defaults remain
 Grok 4.7 for implementation and GPT-6.1-Sol with medium reasoning for review.
 
 The joined execution path derives a bounded source packet from the exact task
@@ -438,9 +439,9 @@ postimages.
 
 Native validation, candidate binding and Git commit precede effect finalization
 and Ed25519 attestation. Failed validation emits neither a candidate commit nor
-an attestation. The durable merge request carries all four signed review
-records. Another lane or a restarted daemon verifies these carriers against its
-operator-pinned policy and shared public key before integration and completion.
+an attestation. The durable merge request carries all four review records bound
+by the attestation. Another lane or a restarted daemon verifies these carriers
+against its operator-pinned policy and shared public key before integration and completion.
 Recovery constructors inherit operator settings from their owner. Carriers
 cannot install a different policy or signer.
 
@@ -452,8 +453,9 @@ Pending completion intents revalidate the current task and signed material
 before queue or decision publication. Independent review remains one gate;
 native validation, proof, source and publication owners retain their authority.
 
-`production-task-contract@2` binds every task fact and metadata entry except
-the case/whitespace-normalized workflow `status`. The native ready-to-completed
+`production-task-contract@2` binds task identity, requirements, dependencies,
+effect scope and every metadata entry except the case/whitespace-normalized
+workflow `status`. The native ready-to-completed
 projection therefore preserves the reviewed task meaning and canonical revision.
 Acceptance, validation, provider metadata and effect scope remain bound. Earlier
 raw-status contract CIDs fail closed; they are not silently reinterpreted as

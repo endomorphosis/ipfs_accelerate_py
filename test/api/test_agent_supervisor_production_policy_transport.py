@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
     implementation_supervisor as supervisor_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_attestation import (
@@ -207,6 +208,67 @@ def test_disabled_policy_does_not_adopt_policy_bearing_daemon(tmp_path):
     assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
     command.extend((POLICY_OPTIONS[0], PRODUCTION_CLI_POLICY_NAME))
     assert not supervisor._managed_daemon_matches_command_line(shlex.join(command))
+
+
+def _policy_values(tmp_path):
+    return dict(zip(POLICY_OPTIONS, (
+        PRODUCTION_CLI_POLICY_NAME,
+        "3072",
+        "240",
+        str(tmp_path / "shared authority" / "review.ed25519"),
+        str(tmp_path / "launch authority" / "receipt.json"),
+        "sha256:" + "a" * 64,
+    )))
+
+
+def _abbreviated_argument(option, value, style):
+    abbreviated = option[:-1]
+    return [abbreviated, value] if style == "pair" else [abbreviated + "=" + value]
+
+
+@pytest.mark.parametrize("option", POLICY_OPTIONS)
+@pytest.mark.parametrize("style", ("pair", "equals"))
+def test_disabled_policy_rejects_native_argparse_abbreviations(tmp_path, option, style):
+    supervisor = supervisor_module.PortalImplementationSupervisor(_config(tmp_path))
+    command = supervisor._build_daemon_command()
+    addition = _abbreviated_argument(option, _policy_values(tmp_path)[option], style)
+    marker = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    parsed = daemon_module.parse_args([*command[command.index(marker) + 1:], *addition])
+    field = option[2:].replace("-", "_")
+    expected = "240.0" if option == POLICY_OPTIONS[2] else _policy_values(tmp_path)[option]
+    assert str(getattr(parsed, field)) == expected
+    assert not supervisor._managed_daemon_matches_command_line(shlex.join([*command, *addition]))
+
+
+@pytest.mark.parametrize("style", ("pair", "equals"))
+def test_disabled_policy_rejects_complete_native_abbreviated_policy(tmp_path, style):
+    supervisor = supervisor_module.PortalImplementationSupervisor(_config(tmp_path))
+    command = supervisor._build_daemon_command()
+    additions = [
+        token
+        for option, value in _policy_values(tmp_path).items()
+        for token in _abbreviated_argument(option, value, style)
+    ]
+    marker = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    parsed = daemon_module.parse_args([*command[command.index(marker) + 1:], *additions])
+    assert parsed.implement is True
+    assert parsed.production_provider_policy == PRODUCTION_CLI_POLICY_NAME
+    assert parsed.production_provider_context_budget_tokens == 3072
+    assert parsed.production_provider_timeout_seconds == 240.0
+    assert parsed.production_provider_review_authority_key_path == tmp_path / "shared authority" / "review.ed25519"
+    assert parsed.production_provider_launch_authority_receipt_path == tmp_path / "launch authority" / "receipt.json"
+    assert parsed.production_provider_launch_authority_receipt_content_id == "sha256:" + "a" * 64
+    assert not supervisor._managed_daemon_matches_command_line(shlex.join([*command, *additions]))
+
+
+@pytest.mark.parametrize("option", POLICY_OPTIONS)
+@pytest.mark.parametrize("style", ("pair", "equals"))
+def test_configured_policy_rejects_extra_abbreviated_selection(tmp_path, option, style):
+    supervisor = _policy_supervisor(tmp_path)
+    command = supervisor._build_daemon_command()
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+    additions = _abbreviated_argument(option, _policy_values(tmp_path)[option], style)
+    assert not supervisor._managed_daemon_matches_command_line(shlex.join([*command, *additions]))
 
 
 def test_malformed_quoted_command_never_adopted(tmp_path):

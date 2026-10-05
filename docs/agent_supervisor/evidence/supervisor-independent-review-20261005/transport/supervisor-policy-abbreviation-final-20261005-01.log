@@ -1,0 +1,25 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 133 items
+
+test/api/test_agent_supervisor_production_policy_transport.py .......... [  7%]
+........................................................................ [ 61%]
+............                                                             [ 70%]
+test/api/test_agent_supervisor_production_provider_cli.py .............. [ 81%]
+.........................                                                [100%]
+
+- generated xml file: /dev/shm/supervisor-policy-abbreviation-final-20261005-01.xml -
+============================= slowest 10 durations =============================
+2.43s call     test/api/test_agent_supervisor_production_policy_transport.py::test_policy_defaults_match_current_policy_without_creating_authority
+1.02s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+0.70s call     test/api/test_agent_supervisor_production_policy_transport.py::test_disabled_policy_rejects_native_argparse_abbreviations[equals---production-provider-context-budget-tokens]
+0.65s call     test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-content-id]
+0.64s call     test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-path]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-launch-authority-receipt-path]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-review-authority-key-path]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-launch-authority-receipt-content-id]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[duplicate---production-provider-policy]
+0.61s call     test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-policy]
+============================= 133 passed in 56.63s =============================

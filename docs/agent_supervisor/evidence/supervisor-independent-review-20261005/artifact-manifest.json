@@ -155,6 +155,34 @@
     "bytes": 52867,
     "sha256": "640b8afea198c2bee8e00c4f53127ee6e7f090fd08b7f4a1b7d7c0d95fd5edb8"
   },
+  "final-02-after.json": {
+    "bytes": 6572,
+    "sha256": "f1913605c82b1d53e54423b7011297d45f4d68a6a313a749a13a18d264eada89"
+  },
+  "final-02-before.json": {
+    "bytes": 6572,
+    "sha256": "f1913605c82b1d53e54423b7011297d45f4d68a6a313a749a13a18d264eada89"
+  },
+  "final-02-selection.json": {
+    "bytes": 3039,
+    "sha256": "fdb0dfa00bc31b87dbf18422994b41c8c535ea7170b7b1bd5232ab673e8288e2"
+  },
+  "final-02.command.sh": {
+    "bytes": 3564,
+    "sha256": "f9863cac92429aa3ef79b4740b8adb9acbb024074a358a5a1783017d56f895fa"
+  },
+  "final-02.log": {
+    "bytes": 3769,
+    "sha256": "4572db2cb508810dc669f4bb85d84e7e0b923aee2b88768c51e188e54d23c564"
+  },
+  "final-02.qualification.json": {
+    "bytes": 55553,
+    "sha256": "6e4baf11cb7115c60b02e9df046c4a5a2f146b156895da640bf1040d2b0d9a21"
+  },
+  "final-02.xml": {
+    "bytes": 59785,
+    "sha256": "c1516305cab6c281fbbfe313620b03578afe81a89d4156c39b5d6e6bd2974140"
+  },
   "final-core-after.json": {
     "bytes": 5278,
     "sha256": "fa71c5387b02823954d76ca9d2318c5372afc90dd64decced51d34cecd653619"
@@ -178,6 +206,10 @@
   "final-core.xml": {
     "bytes": 65698,
     "sha256": "f97242e728d518616e42e3eba8233b42b0a7f786838abb6284d61c0b81f65814"
+  },
+  "finalize_qualification.py": {
+    "bytes": 3032,
+    "sha256": "7296e468c8817db90e79e9003bb574848c2b2fe4782bc22c8e43102eb4368944"
   },
   "live-draft04.log": {
     "bytes": 1006,
@@ -220,8 +252,12 @@
     "sha256": "fadde97bcb9e622e8c48f95b94b75d229996b1a3ecd541d908f4372ce9913d21"
   },
   "run_qualification.py": {
-    "bytes": 6761,
-    "sha256": "91f7688aad2054069293ebe1f680aadacad4a218824b97f9cb0eabe4e64d3778"
+    "bytes": 7128,
+    "sha256": "99b75001defc304f96a0a0190130ba6e6038dab2abe6637d4ccd4f09c397564b"
+  },
+  "transport/adoption-abbreviation-probe-01.json": {
+    "bytes": 4485,
+    "sha256": "e9831b8a128e883a32efded0eeddebb69bf351add40d28c4490539d4ca95bd9d"
   },
   "transport/completion-currentness-probe-corrected-01.json": {
     "bytes": 1994,
@@ -236,8 +272,8 @@
     "sha256": "f061c732c13b284085899d6cf164a0799e906a474e840c7022e47cb56f087919"
   },
   "transport/handoff.json": {
-    "bytes": 1265,
-    "sha256": "b8b71e30ca0752df0edca573b997bb124603cd04faefe7ce73a45a60f5fffb05"
+    "bytes": 1756,
+    "sha256": "20eaea1b7ee959591a87f69c5d4cdb180265facd4bc8005520c2defacf3b6b26"
   },
   "transport/patch-final-diagnostic-03.json": {
     "bytes": 980,
@@ -252,8 +288,8 @@
     "sha256": "310e0a39a4063924949608af21705f3dee982f0897a36d4865bb61fc1ee83eb6"
   },
   "transport/readonly-review.json": {
-    "bytes": 3868,
-    "sha256": "c98812761ad3ce23fe3acf995e7e9e777d41003909063ad485d3dc43b2bae4c8"
+    "bytes": 5156,
+    "sha256": "0d1b019fc7011923e91ad03fc55737795ede667f8f9937522a11e935c31f6bb9"
   },
   "transport/retired-authority-forwarding-baseline/diagnostic.json": {
     "bytes": 1793,
@@ -278,6 +314,18 @@
   "transport/retired-security-fa51-baseline/supervisor-retired-security-fa51-20261005-01.xml": {
     "bytes": 2023,
     "sha256": "3c70ac206d2b87929634a265afb62212812036d64c9d6d6804d725469527f8aa"
+  },
+  "transport/supervisor-policy-abbreviation-final-20261005-01.json": {
+    "bytes": 358497,
+    "sha256": "e5cc1167d13b7dba0d362b07359bcc04478b0f084e4ba02609b5f15319659091"
+  },
+  "transport/supervisor-policy-abbreviation-final-20261005-01.log": {
+    "bytes": 2716,
+    "sha256": "2211306eb46c618ad2e52b943f51fbeb7d15f61210389ff9111d868328e26d96"
+  },
+  "transport/supervisor-policy-abbreviation-final-20261005-01.xml": {
+    "bytes": 25887,
+    "sha256": "d6068eba8a0b15ee4ed3769d35f9f1d84d787feefed3f1814393e8424e290e00"
   },
   "transport/supervisor-policy-transport-20261005-01.json": {
     "bytes": 325623,
@@ -358,5 +406,17 @@
   "daemon/daemon-options02.xml": {
     "bytes": 5646,
     "sha256": "ba90fb6758ce443e76a30d019983eb15f4cec2c5fd9aadebe7ccc373f82e910b"
+  },
+  "documentation-gates-final.log": {
+    "bytes": 200,
+    "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+  },
+  "documentation-gates-final.json": {
+    "bytes": 169,
+    "sha256": "ca874e126b5e1419837f63babeb5ec654a4081a6d329e1a594d081632a28b0a3"
+  },
+  "qualification.json": {
+    "bytes": 7112,
+    "sha256": "44c70e94c02135c629d7c9cdd57b2cf44891a944d5385977dddd376f8c694b2f"
   }
 }

@@ -22373,6 +22373,26 @@ class PortalImplementationSupervisor:
                 self.config.production_provider_review_authority_key_path
             ),
         }
+        protected_options = (
+            *production_options,
+            "--production-provider-launch-authority-receipt-path",
+            "--production-provider-launch-authority-receipt-content-id",
+        )
+        for token in tokens:
+            option_name = token.partition("=")[0]
+            if (
+                option_name.startswith("--")
+                and len(option_name) > 2
+                and any(
+                    protected.startswith(option_name)
+                    and protected != option_name
+                    for protected in protected_options
+                )
+            ):
+                # Native argparse accepts unique abbreviations. Adoption
+                # requires the canonical spelling so a disabled policy cannot
+                # overlook an abbreviated operator selection or override.
+                return False
         for option, expected in production_options.items():
             # These four values are one operator policy, including its review
             # signing authority. Never adopt a partially matching policy or

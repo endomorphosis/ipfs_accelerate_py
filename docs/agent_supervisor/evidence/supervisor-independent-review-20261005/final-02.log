@@ -1,0 +1,41 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 343 items / 15 deselected / 328 selected
+
+test/api/test_agent_supervisor_production_provider_cli.py .............. [  4%]
+.........................                                                [ 11%]
+test/api/test_agent_supervisor_production_reviewed_effect.py ......      [ 13%]
+test/api/test_agent_supervisor_production_provider_security_regressions.py . [ 14%]
+............                                                             [ 17%]
+test/api/test_agent_supervisor_contract_packet_provider_router.py ...... [ 19%]
+.........................                                                [ 27%]
+test/api/test_agent_supervisor_production_context_slice.py ............. [ 31%]
+.......                                                                  [ 33%]
+test/api/test_agent_supervisor_production_policy_transport.py .......... [ 36%]
+........................................................................ [ 58%]
+............                                                             [ 61%]
+test/api/test_production_independent_review_contract.py ................ [ 66%]
+..............                                                           [ 71%]
+test/api/test_production_daemon_operator_options.py .................... [ 77%]
+.........                                                                [ 79%]
+test/api/test_production_reviewed_patch_preparation.py ................. [ 85%]
+.....                                                                    [ 86%]
+test/api/test_agent_supervisor_implementation_daemon_runner.py ......... [ 89%]
+..........................                                               [ 97%]
+test/api/test_agent_supervisor_preflight_patch_recovery.py .........     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/final-02.xml -
+============================= slowest 10 durations =============================
+2.30s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.93s call     test/api/test_agent_supervisor_production_provider_cli.py::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding
+1.45s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+1.16s call     test/api/test_agent_supervisor_preflight_patch_recovery.py::test_portal_retains_preflight_store_for_retry_after_contended_close
+1.02s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+0.67s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-timeout-seconds]
+0.64s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_manual_completion_authority_revalidation_only_propagates_end_to_end
+0.62s call     test/api/test_agent_supervisor_production_policy_transport.py::test_policy_defaults_match_current_policy_without_creating_authority
+0.61s call     test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-review-authority-key-path]
+0.61s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_queue_namespace
+================ 328 passed, 15 deselected in 150.45s (0:02:30) ================

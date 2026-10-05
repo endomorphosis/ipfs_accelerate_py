@@ -1,0 +1,137 @@
+{
+  "base_commit": "b2a712a1cdf192f0f54559c23506df0a9e6aa2cf",
+  "source_files": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": {
+      "bytes": 37191,
+      "sha256": "8fa69a87e4d99fc7f942506e5ab7840b73ed7ca5d41dd0f58716e07489fc16b9"
+    },
+    "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py": {
+      "bytes": 292546,
+      "sha256": "14715cfebe235215f994b6f01c2dd3fd15d1b3fef020bd277d2edd397ef6ab34"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": {
+      "bytes": 210697,
+      "sha256": "f64254ad4d0bddd69ca366bebf986f75fb1853ed63f9a105d9d3d895d964a9ef"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 16092,
+      "sha256": "933cbe2b0262f061166edc4ea86ea6b3f08d31eab37ae06560be37a1de2c0284"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/security_source_program_advisor_384.py": {
+      "bytes": 17786,
+      "sha256": "d5f42bc8b7a625f2894559609a42526350b8e9636cb0b04a0dbd9111e5525be7"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": {
+      "bytes": 62321,
+      "sha256": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py": {
+      "bytes": 154882,
+      "sha256": "386c10761ccd78cc117d3f25ad988b1a3e8b996e40c339fe9758d689816f880f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3225812,
+      "sha256": "8c32bc2422e9f4509264dc2b8663d835702cdedbf80c83d9de5741791115e8af"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": {
+      "bytes": 71945,
+      "sha256": "045907b45ae3ec96f5de3a1d5ab09440fc72d5f25eb38024d9887dd1022c0ee9"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": {
+      "bytes": 1000374,
+      "sha256": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py": {
+      "bytes": 189106,
+      "sha256": "437bf35e763e7210e38e4d502c571f9387af0f31d0c5641121973489fab3f98f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": {
+      "bytes": 19045,
+      "sha256": "e3edc291d7b76432204109b91a9a56fb57054ec17d02d6ad30e55ec0f9ceb69f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_attestation.py": {
+      "bytes": 44263,
+      "sha256": "bdf04b7d4f2792249792b216673da42bae77ddc6e4e024d81a790a8f8252efa4"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_cli.py": {
+      "bytes": 39530,
+      "sha256": "e67181a26de012098d1ea3fd7e7026cfc63e079e2bd1d3449fc779ab26fc6931"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": {
+      "bytes": 75784,
+      "sha256": "c29bdafe7b3e17bc1d2e96b3049a2442a2962935fe42286b3a6e8628984d8cb8"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "bytes": 541196,
+      "sha256": "d9158127d84f9b3ee4612aade7355ba0017dbea2357a3047d2d2bdd2f050f908"
+    },
+    "ipfs_accelerate_py/testing/pytest_ast_seal.py": {
+      "bytes": 18519,
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e"
+    },
+    "test/api/test_agent_supervisor_contract_packet_provider_router.py": {
+      "bytes": 26955,
+      "sha256": "dc1a74d5a0a81f8f7fe7acb3eccb3236fde2471a5042548f4505094cfcd036d1"
+    },
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py": {
+      "bytes": 74118,
+      "sha256": "d4df991c39d842db489d1e4c4aee563c754eabc2b585c6bdaf4c6293037e8b0b"
+    },
+    "test/api/test_agent_supervisor_preflight_patch_recovery.py": {
+      "bytes": 9321,
+      "sha256": "a39cf93ee6bbf91ba7928e7be1af6141fa9ec7092bace6139217d4294879576a"
+    },
+    "test/api/test_agent_supervisor_production_context_slice.py": {
+      "bytes": 35366,
+      "sha256": "f64d05b1953917c03825ce03a84c2aeaf1814777ba5bdf16cd58a4154a6cff03"
+    },
+    "test/api/test_agent_supervisor_production_policy_transport.py": {
+      "bytes": 13719,
+      "sha256": "5a6a7a3622ee27774fc753577ebf9a67c0602fbbbbc552c50ca7ff04aedb6f19"
+    },
+    "test/api/test_agent_supervisor_production_provider_cli.py": {
+      "bytes": 57747,
+      "sha256": "946508bb0ced878edbd0ac9f555f63a8268d63bebb0368bf160e5bd0959394b4"
+    },
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py": {
+      "bytes": 32134,
+      "sha256": "ddfdf345448f6303932e126e779e72d2d68ad2ef502dfb274573e772c907aaa5"
+    },
+    "test/api/test_agent_supervisor_production_reviewed_effect.py": {
+      "bytes": 20184,
+      "sha256": "94562f4571348da9f0ced6b3657c6e8d3e17a8bb98bb5396995a9dc71aaa83a5"
+    },
+    "test/api/test_production_daemon_operator_options.py": {
+      "bytes": 3981,
+      "sha256": "11e7535c21ac01543d21b37f66b71193436a4e809f7e385b34c4774451a108d0"
+    },
+    "test/api/test_production_independent_review_contract.py": {
+      "bytes": 31261,
+      "sha256": "7e0191f684a60be96d86d265e3673ce43dfbbb7e168ae251072bb86d2d763f3e"
+    },
+    "test/api/test_production_reviewed_patch_preparation.py": {
+      "bytes": 9191,
+      "sha256": "173dd0935eb84a147eb21362217985c0607f1d46744a2f6d1313c185a1995313"
+    }
+  },
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "datasets_tracked_status": "",
+  "retained_assets": {
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 {
+  "adoption_abbreviation_final_qualification": "supervisor-policy-abbreviation-final-20261005-01.json",
   "authority_baseline": "/home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/transport/retired-authority-forwarding-baseline",
   "base_commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
   "checkpoint_model_embedding_changes": false,
@@ -6,6 +7,11 @@
   "final_combined_frozen_run_required": true,
   "handoff_branch": "agent/supervisor-independent-review-20261005",
   "handoff_head": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "latest_head": "b2a712a1cdf192f0f54559c23506df0a9e6aa2cf",
+  "latest_owned_files_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+    "test/api/test_agent_supervisor_production_policy_transport.py": "5a6a7a3622ee27774fc753577ebf9a67c0602fbbbbc552c50ca7ff04aedb6f19"
+  },
   "owned_files_sha256": {
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "de0dcff3ae9b09467338bc67b801e8d3a5eb03bda9f99b28174eb24fb83b4c41",
     "test/api/test_agent_supervisor_production_policy_transport.py": "d1aa21e820da07960c6535da70c6a95b9ce4b43b412bb2406340a2c5a3eba37e"

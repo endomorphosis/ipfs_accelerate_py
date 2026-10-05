@@ -2,12 +2,18 @@
   "external_model_calls": 0,
   "final_combined_frozen_qualification_required": true,
   "final_source_review": {
+    "adoption_latest_source_sha256": {
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+      "test/api/test_agent_supervisor_production_policy_transport.py": "5a6a7a3622ee27774fc753577ebf9a67c0602fbbbbc552c50ca7ff04aedb6f19"
+    },
+    "adoption_qualification": "supervisor-policy-abbreviation-final-20261005-01.json",
     "child_umask_validation": "Strict int -1..0777; default -1 preserves inherited behavior elsewhere; production apply explicitly passes022 without mutating process-wide umask.",
     "completion_candidate_only_calls": "require_current_target=False is limited to pre-merge reviewed candidate checks/enqueue; final completion uses actual selected branch target.",
     "completion_sink_invoked": false,
     "evidence": "final-closed-probes-02.json",
     "external_model_calls": 0,
     "final_combined_pytest_qualification_required": true,
+    "final_root_combined_qualification_required": true,
     "production_edits_by_reviewer": false,
     "source_pins_unchanged_across_final_probes": true,
     "status": "all_confirmed_findings_addressed"
@@ -47,6 +53,14 @@
       "observation": "Fault-injected git apply installs approved postimage and returns rc=1. Route is rejected with write_performed=false and no reviewed effect binding; baseline remains unrestored.",
       "recommended_boundary": "Reconstruct intended patch postimages in the private Git index before mutation, register intended owned byte/mode effects before apply, and compare-and-swap rollback; preserve external drift.",
       "status": "corrected_native_probes_passed"
+    },
+    {
+      "corrected_evidence": "supervisor-policy-abbreviation-final-20261005-01.json",
+      "final_observation": "Matcher rejects shorter double-dash prefixes in pair and equals forms, including configured extra selections, while canonical generated commands and native parsing compatibility remain intact. Twenty-six added tests include all twelve single disabled forms, two complete native parser selections and twelve configured extra forms.",
+      "id": "abbreviated_operator_policy_adoption",
+      "initial_evidence": "adoption-abbreviation-probe-01.json",
+      "original_issue": "A disabled supervisor ignored abbreviated spellings of all six protected options although native argparse resolved them to operator policy fields.",
+      "status": "corrected_focused_qualification_passed"
     }
   ],
   "immutable_retired_security_baseline": "retired-security-fa51-baseline/qualification.json",

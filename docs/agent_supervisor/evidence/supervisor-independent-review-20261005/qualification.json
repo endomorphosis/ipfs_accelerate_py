@@ -2,17 +2,17 @@
   "schema": "supervisor-independent-review-qualification@1",
   "status": "qualified_local_operator_review_integration",
   "date_utc": "2026-10-05",
-  "source_base": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
-  "final_local_run": "final-01.qualification.json",
+  "source_base": "b2a712a1cdf192f0f54559c23506df0a9e6aa2cf",
+  "final_local_run": "final-02.qualification.json",
   "counts": {
-    "passed": 293,
+    "passed": 328,
     "failure": 0,
     "error": 0,
     "skipped": 0
   },
   "source_assets_and_datasets_pins_unchanged": true,
   "ast_sealing": {
-    "records": 293,
+    "records": 328,
     "closure_files_min": 977,
     "closure_files_max": 978,
     "any_completion_authority": false
@@ -91,5 +91,24 @@
     "authenticated live provider dispatch qualification",
     "15 independently reproduced baseline test mismatches",
     "broader symbolic operator/decomposition and behavioral contracts"
-  ]
+  ],
+  "upstream_integrated_commit": "cda8d05433b4c5453e63c54e121b6f49a992294e",
+  "previous_frozen_local_run": "final-01.qualification.json",
+  "original_seven_cases_all_passed": [
+    "test.api.test_agent_supervisor_production_provider_cli::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding",
+    "test.api.test_agent_supervisor_production_provider_cli::test_forged_fully_current_attestation_from_metadata_signer_is_rejected",
+    "test.api.test_agent_supervisor_production_provider_cli::test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate",
+    "test.api.test_agent_supervisor_production_provider_cli::test_signed_attestation_cannot_choose_its_own_expected_policy",
+    "test.api.test_agent_supervisor_production_provider_cli::test_daemon_cli_accepts_operator_policy_without_task_metadata",
+    "test.api.test_agent_supervisor_production_provider_cli::test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption",
+    "test.api.test_agent_supervisor_production_provider_cli::test_supervisor_rejects_budget_without_explicit_provider_policy"
+  ],
+  "selection": "final-02-selection.json",
+  "current_source_pins": "final-02-before.json",
+  "additional_controls": [
+    "26 native-parse and managed-child abbreviated-policy regressions",
+    "9 upstream literal-path, CRLF patch and bounded persistence controls"
+  ],
+  "adoption_abbreviation_original_probe": "transport/adoption-abbreviation-probe-01.json",
+  "hosted_ci": "not qualified by this local run"
 }

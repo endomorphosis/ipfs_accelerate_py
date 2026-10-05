@@ -28,6 +28,11 @@ OWNERS = [
     'ipfs_accelerate_py/agent_supervisor/todo_daemon/contract_packet_provider_router.py',
     'ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py',
     'ipfs_accelerate_py/testing/pytest_ast_seal.py',
+    'ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py',
+    'ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+    'ipfs_accelerate_py/agent_supervisor/runtime/security_source_program_advisor_384.py',
+    'ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py',
+    'ipfs_accelerate_py/llm_router.py',
 ]
 ASSETS = [
     Path.home() / '.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors',
