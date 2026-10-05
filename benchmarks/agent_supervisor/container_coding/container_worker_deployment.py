@@ -284,10 +284,9 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         await run("native-codex-binary", "python3 -I -c " + shlex.quote(native_codex_exposure_script()))
     else:
         # Deployment already exposed and pinned this root-owned executable.
-        from .terminal_grok_deployment import GROK_VERSION_OUTPUT
+        from .terminal_grok_deployment import require_grok_version_output
         observed = await run("native-grok-version", ROOT + "/provider-bin/grok --version")
-        if observed.stdout.strip() != GROK_VERSION_OUTPUT:
-            raise ValueError("worker Grok version differs")
+        require_grok_version_output(observed.stdout)
     boundary = {
         "schema": "supervisor-container-worker-boundary@1",
         "container_id": cid,

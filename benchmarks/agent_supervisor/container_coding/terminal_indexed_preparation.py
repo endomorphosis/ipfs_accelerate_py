@@ -642,13 +642,12 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             require_applicability_budget()
         return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds, repository_preview=repository_preview)
     executable = "codex" if provider_selection["provider"] == "codex_cli" else "/opt/ipfs-supervisor/provider-bin/grok"
-    expected = ("codex-cli " + CLI_VERSION if provider_selection["provider"] == "codex_cli"
-                else "grok 1.0.46 (2765805b9442) [stable]")
     version = subprocess.run([executable, "--version"], check=True, capture_output=True, text=True, timeout=15).stdout.strip()
-    if version != expected:
-        raise ValueError("native baseline parity requires codex-cli " + CLI_VERSION
-            if provider_selection["provider"] == "codex_cli" else
-            "native Grok version differs from selected benchmark profile")
+    if provider_selection["provider"] == "grok_cli":
+        from .terminal_grok_deployment import require_grok_version_output
+        require_grok_version_output(version)
+    elif version != "codex-cli " + CLI_VERSION:
+        raise ValueError("native baseline parity requires codex-cli " + CLI_VERSION)
     (state / "planner-invoked.json").open("x").write(json.dumps({"cli_version": version}) + "\n")
     request = PromptWorkflowRequest.from_dict(prepared["request"])
     scan = DirectoryScanReceipt.from_dict(prepared["scan"])

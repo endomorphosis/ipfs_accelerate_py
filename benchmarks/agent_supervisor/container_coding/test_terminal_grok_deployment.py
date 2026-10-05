@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import tarfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -124,3 +125,54 @@ def test_exposure_script_rechecks_native_identity_and_root_ownership():
     assert grok.GROK_SHA256 in script and grok.GROK_VERSION_OUTPUT in script
     assert "os.chown(target,0,0)" in script and "target.chmod(0o555)" in script
     assert "source.is_symlink()" in script and "platform.machine()!='aarch64'" in script
+
+
+@pytest.mark.parametrize("output", ["grok 1.0.46 (2765805b9442)",
+                                  "grok 1.0.46 (2765805b9442) [stable]"])
+def test_exact_pinned_version_accepts_standalone_and_managed_metadata(output):
+    assert grok.require_grok_version_output(output + "\n") == output
+
+
+@pytest.mark.parametrize("output", [None, [], 1, "", "grok 1.0.46", "grok 1.0.45 (2765805b9442)",
+    "grok 1.0.46 (000000000000)", "grok 1.0.46 (2765805b9442) [nightly]",
+    "grok 1.0.46 (2765805b9442)\nextra output"])
+def test_version_normalization_cannot_accept_another_version_build_or_channel(output):
+    with pytest.raises(ValueError, match="pinned build"):
+        grok.require_grok_version_output(output)
+
+
+@pytest.mark.parametrize("output,exit_code", [("grok 1.0.46 (2765805b9442)", 0),
+    ("grok 1.0.46 (2765805b9442) [stable]", 0),
+    ("grok 1.0.46 (2765805b9442)", 1), ("grok 1.0.46 (foreign)", 0)])
+def test_rendered_exposure_checks_actual_native_probe_result(binary, tmp_path, monkeypatch, capsys, output, exit_code):
+    import os
+    import platform
+    import shutil
+    import subprocess
+    root = tmp_path / "runtime"
+    source = root / grok.GROK_PATH
+    source.parent.mkdir(parents=True)
+    shutil.copyfile(binary, source)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "aarch64")
+    ownership = []
+    monkeypatch.setattr(os, "chown", lambda path, uid, gid: ownership.append((str(path), uid, gid)))
+    def probe(argv, **kwargs):
+        assert argv == [str(root / "provider-bin/grok"), "--version"]
+        assert kwargs["env"] == {"HOME": str(root / "home"), "PATH": "/usr/bin:/bin"}
+        return SimpleNamespace(returncode=exit_code, stdout=output + "\n", stderr="private-diagnostic")
+    monkeypatch.setattr(subprocess, "run", probe)
+    if exit_code or "foreign" in output:
+        with pytest.raises(SystemExit, match="native Grok version differs"):
+            exec(compile(grok.grok_exposure_script(str(root)), "native-grok-exposure", "exec"), {})
+        raw = capsys.readouterr().out
+        result = json.loads(raw)
+        assert result["schema"] == "native-grok-version-failure@1"
+        assert "private-diagnostic" not in raw and "foreign" not in raw
+    else:
+        exec(compile(grok.grok_exposure_script(str(root)), "native-grok-exposure", "exec"), {})
+        result = json.loads(capsys.readouterr().out)
+        assert result["version_output_observed"] == output
+        assert result["sha256"] == grok.GROK_SHA256
+    assert ownership == [(str(root / "provider-bin/grok"), 0, 0)]
+    assert result["provider_calls"] == 0

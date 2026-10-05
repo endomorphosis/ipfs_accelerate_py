@@ -35,7 +35,9 @@ def test_grok_profile_config_and_frozen_collection_identity(tmp_path):
             provider_profile=profiles.GROK_PROFILE, setup_cache_selection={})
 
 
-def test_verbatim_fenced_instruction_enters_selected_signed_grok_planner(original, monkeypatch):
+@pytest.mark.parametrize('version_output', ['grok 1.0.46 (2765805b9442)',
+                                         'grok 1.0.46 (2765805b9442) [stable]'])
+def test_verbatim_fenced_instruction_enters_selected_signed_grok_planner(original, monkeypatch, version_output):
     root, instruction, state = original
     text = 'Inspect bottle.py. Example output:\n```json\n{"file_path":"/app/bottle.py","cwe_id":[]}\n```\n'
     instruction.write_text(text)
@@ -48,7 +50,7 @@ def test_verbatim_fenced_instruction_enters_selected_signed_grok_planner(origina
     actual = prep.subprocess.run
     def command(argv, *args, **kwargs):
         if argv == ['/opt/ipfs-supervisor/provider-bin/grok', '--version']:
-            return SimpleNamespace(stdout='grok 1.0.46 (2765805b9442) [stable]\n')
+            return SimpleNamespace(stdout=version_output + '\n')
         return actual(argv, *args, **kwargs)
     monkeypatch.setattr(prep.subprocess, 'run', command)
     calls = []

@@ -9,10 +9,18 @@ import tarfile
 
 GROK_VERSION = "1.0.46"
 GROK_VERSION_OUTPUT = "grok 1.0.46 (2765805b9442) [stable]"
+GROK_VERSION_OUTPUTS = ("grok 1.0.46 (2765805b9442)", GROK_VERSION_OUTPUT)
 GROK_PROFILE = "grok-4.7-cli-1.0.46@1"
 GROK_PATH = "providers/grok/grok"
 GROK_SHA256 = "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
 GROK_BYTES = 142867512
+
+
+def require_grok_version_output(value: str) -> str:
+    """Accept the pinned build with or without managed-install channel metadata."""
+    if type(value) is not str or value.strip() not in GROK_VERSION_OUTPUTS:
+        raise ValueError("native Grok version differs from the pinned build")
+    return value.strip()
 
 
 def grok_binding() -> dict:
@@ -86,6 +94,9 @@ target=root/'provider-bin/grok';target.parent.mkdir(mode=0o755,exist_ok=True)
 if target.exists() or target.is_symlink():raise SystemExit('Grok exposure already exists')
 shutil.copyfile(source,target);target.chmod(0o555);os.chown(target,0,0)
 result=subprocess.run([str(target),'--version'],capture_output=True,text=True,timeout=15,env={{'HOME':str(root/'home'),'PATH':'/usr/bin:/bin'}})
-if result.returncode or result.stdout.strip()!={GROK_VERSION_OUTPUT!r}:raise SystemExit('native Grok version differs')
-print(json.dumps({{'schema':'native-grok-runtime-bundle@1','version':{GROK_VERSION!r},'sha256':{GROK_SHA256!r},'bytes':{GROK_BYTES},'provider_calls':0}}))
+matches=result.stdout.strip() in {GROK_VERSION_OUTPUTS!r}
+if result.returncode or not matches:
+ print(json.dumps({{'schema':'native-grok-version-failure@1','return_code':result.returncode,'pinned_version_observed':matches,'stdout_bytes':len(result.stdout.encode()),'stderr_bytes':len(result.stderr.encode()),'provider_calls':0}}))
+ raise SystemExit('native Grok version differs')
+print(json.dumps({{'schema':'native-grok-runtime-bundle@1','version':{GROK_VERSION!r},'version_output_observed':result.stdout.strip(),'sha256':{GROK_SHA256!r},'bytes':{GROK_BYTES},'provider_calls':0}}))
 '''
