@@ -24,8 +24,135 @@ def heartbeat(tmp_path, **updates):
     return path
 
 
-def sample(recorder, tmp_path, current=None):
-    return recorder.sample(task=current or task(), task_cid="task:fixture", state=tmp_path, now=101.)
+def sample(recorder, tmp_path, current=None, *, startup=None):
+    return recorder.sample(task=current or task(), task_cid="task:fixture", state=tmp_path, now=101., startup=startup)
+
+
+def startup(*, receipts=1, errors=0, **updates):
+    return dict(schema="admitted-native-startup-observation@1", start_timeout_ms=20000,
+        stop_timeout_ms=20000, bootstrap_wait_seconds=30, observations=[], observations_truncated=False,
+        bootstrap_receipt_count=receipts, bootstrap_error_count=errors, **updates)
+
+
+def test_post_start_failure_window_counts_new_native_errors_and_confirms_without_mutation(tmp_path):
+    recorder = progress.NativeProgress(started=100.)
+    current = task()
+    original = copy.deepcopy(vars(current))
+    # Neither failures observed before START nor repeated reads of one error
+    # are additional post-START failed bootstrap attempts.
+    for _ in range(4):
+        assert sample(recorder, tmp_path, current, startup=startup(errors=7)) is None
+    recorder.begin_post_start(startup=startup(errors=7))
+    for count in (7, 8, 8, 8, 9, 10):
+        assert sample(recorder, tmp_path, current, startup=startup(errors=count)) is None
+    assert sample(recorder, tmp_path, current, startup=startup(errors=10)) == "repeated_post_start_bootstrap_failure"
+    assert recorder.report["latest"]["bootstrap"] == {
+        "availability": "observed", "receipt_count": 1, "error_count": 10,
+        "new_errors_without_native_progress": 3, "failure_window_confirmed": True}
+    assert vars(current) == original
+    assert all(recorder.report[key] is False for key in
+               ("completion_authority", "settlement_authority", "retry_authority"))
+    assert recorder.report["post_start_bootstrap_guard"]["root_cause_verified"] is False
+
+
+@pytest.mark.parametrize("change", ["receipt", "error_regression", "receipt_regression", "revision", "status",
+    "heartbeat_sequence", "heartbeat_generation", "heartbeat_regression", "heartbeat_missing",
+    "heartbeat_malformed", "missing_diagnostics", "malformed_counts", "no_receipt", "saturated"])
+def test_post_start_failure_window_cannot_stitch_progress_or_uncertain_observations(tmp_path, change):
+    recorder = progress.NativeProgress(started=100.)
+    recorder.begin_post_start(startup=startup(receipts=2, errors=4))
+    path = heartbeat(tmp_path, sequence=3)
+    assert sample(recorder, tmp_path, startup=startup(receipts=2, errors=4)) is None
+    assert sample(recorder, tmp_path, startup=startup(receipts=2, errors=7)) is None
+    changed = startup(receipts=2, errors=7)
+    current = task()
+    if change == "receipt": changed = startup(receipts=3, errors=7)
+    elif change == "error_regression": changed = startup(receipts=2, errors=6)
+    elif change == "receipt_regression": changed = startup(receipts=1, errors=7)
+    elif change == "revision": current.revision += 1
+    elif change == "status": current.status = "retrying"
+    elif change == "heartbeat_sequence": heartbeat(tmp_path, sequence=4)
+    elif change == "heartbeat_generation": heartbeat(tmp_path, sequence=3, process_instance_id="new-generation")
+    elif change == "heartbeat_regression": heartbeat(tmp_path, sequence=2)
+    elif change == "heartbeat_missing": path.unlink()
+    elif change == "heartbeat_malformed": path.write_text("private malformed heartbeat")
+    elif change == "missing_diagnostics": changed = None
+    elif change == "malformed_counts": changed = startup(receipts=True, errors=7)
+    elif change == "no_receipt": changed = startup(receipts=0, errors=7)
+    elif change == "saturated": changed = startup(receipts=65535, errors=7)
+    assert sample(recorder, tmp_path, current, startup=changed) is None
+    assert sample(recorder, tmp_path, current, startup=changed) is None
+    assert "private" not in json.dumps(recorder.report)
+
+
+def test_post_start_guard_recovers_after_success_and_prioritizes_canonical_completion(tmp_path):
+    recorder = progress.NativeProgress(started=100.)
+    recorder.begin_post_start(startup=startup())
+    assert sample(recorder, tmp_path, startup=startup(errors=3)) is None
+    assert sample(recorder, tmp_path, startup=startup(receipts=2, errors=3)) is None
+    assert sample(recorder, tmp_path, startup=startup(receipts=2, errors=6)) is None
+    assert sample(recorder, tmp_path, task(status="completed"), startup=startup(receipts=2, errors=6)) == "native_task_completed"
+
+
+def test_post_start_guard_requires_observed_exact_task_and_abstains_on_unknown_status(tmp_path):
+    recorder = progress.NativeProgress(started=100.)
+    recorder.begin_post_start(startup=startup())
+    for current in (task(task_cid="foreign"), task(revision=True), task(status="private_status")):
+        for _ in range(3):
+            assert sample(recorder, tmp_path, current, startup=startup(errors=5)) is None
+    assert "private_status" not in json.dumps(recorder.report)
+
+
+@pytest.mark.parametrize("initial", [None, startup(receipts=0), startup(errors=65535)])
+def test_post_start_guard_never_credits_errors_before_first_usable_baseline(tmp_path, initial):
+    recorder = progress.NativeProgress(started=100.)
+    recorder.begin_post_start(startup=initial)
+    for _ in range(4):
+        assert sample(recorder, tmp_path, startup=startup(errors=10)) is None
+        assert recorder.report["latest"]["bootstrap"]["new_errors_without_native_progress"] == 0
+    assert sample(recorder, tmp_path, startup=startup(errors=13)) is None
+    assert sample(recorder, tmp_path, startup=startup(errors=13)) == "repeated_post_start_bootstrap_failure"
+
+
+def test_bootstrap_failure_diagnostics_projection_preserves_old_schema_and_detaches_new_buckets():
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    assert driver._project_native_startup(startup()) == startup()
+    original = startup(bootstrap_failure_counts=[{"phase": "validation", "reason": "validation_failed", "count": 3}])
+    projected = driver._project_native_startup(original)
+    projected["bootstrap_failure_counts"][0]["count"] = 4
+    assert original["bootstrap_failure_counts"][0]["count"] == 3
+
+
+def test_bootstrap_failure_diagnostics_closed_sets_match_runtime_and_preserve_all_buckets():
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    from ipfs_accelerate_py.agent_supervisor.entrypoints import admitted_benchmark_runtime as runtime
+    assert driver.BOOTSTRAP_FAILURE_PHASES == runtime.BOOTSTRAP_FAILURE_PHASES
+    assert driver.BOOTSTRAP_FAILURE_REASONS == runtime.BOOTSTRAP_FAILURE_REASONS
+    buckets = [{"phase": phase, "reason": reason, "count": 65535}
+               for phase in sorted(runtime.BOOTSTRAP_FAILURE_PHASES)
+               for reason in sorted(runtime.BOOTSTRAP_FAILURE_REASONS)]
+    assert len(buckets) > 16
+    assert driver._project_native_startup(startup(bootstrap_failure_counts=buckets))["bootstrap_failure_counts"] == buckets
+    with pytest.raises(ValueError):
+        driver._project_native_startup(startup(bootstrap_failure_counts=buckets + buckets[-1:]))
+
+
+@pytest.mark.parametrize("bad", [None, {}, ["private"],
+    [{"phase": "private", "reason": "unknown", "count": 1}],
+    [{"phase": "request", "reason": "private", "count": 1}],
+    [{"phase": [], "reason": {}, "count": 1}],
+    [{"phase": "request", "reason": "unknown", "count": True}],
+    [{"phase": "request", "reason": "unknown", "count": 0}],
+    [{"phase": "request", "reason": "unknown", "count": 65536}],
+    [{"phase": "request", "reason": "unknown", "count": 1, "message": "private"}],
+    [{"phase": "request", "reason": "unknown", "count": 1}] * 2,
+    [{"phase": "validation", "reason": "validation_failed", "count": 1},
+     {"phase": "request", "reason": "request_mismatch", "count": 1}],
+    [{"phase": "request", "reason": "unknown", "count": 1}] * 153])
+def test_bootstrap_failure_diagnostics_rejects_unbounded_or_untrusted_buckets(bad):
+    from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
+    with pytest.raises(ValueError):
+        driver._project_native_startup(startup(bootstrap_failure_counts=bad))
 
 
 @pytest.mark.parametrize("reason", sorted(progress.QUIESCENT_STOP_REASONS))
@@ -147,7 +274,8 @@ def test_final_metadata_separates_provider_timeout_from_unattributed_timeout(pha
     assert "private" not in json.dumps(recorder.report)
 
 
-@pytest.mark.parametrize("outcome", ["quarantine", "completed", "observation_failure"])
+@pytest.mark.parametrize("outcome", ["quarantine", "completed", "observation_failure",
+    "bootstrap_failure", "bootstrap_observation_failure", "bootstrap_recovery"])
 def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_path, monkeypatch, outcome):
     """Exercise the real driver loop/cleanup with authored owner/runtime doubles."""
     from contextlib import nullcontext
@@ -164,7 +292,8 @@ def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_pat
     launch = state / "launch"
     launch.mkdir()
     reason = "unsettled_portal_failure_quarantine"
-    heartbeat(launch, selection_idle_reason=reason)
+    bootstrap_case = outcome.startswith("bootstrap_")
+    heartbeat(launch, selection_idle_reason="no_ready_tasks" if bootstrap_case else reason)
     monkeypatch.delenv("IPFS_DATASETS_PROOF_RESOURCE_PROFILE", raising=False)
     monkeypatch.setattr(driver, "ROOT", tmp_path)
     monkeypatch.setattr(driver.os, "geteuid", lambda: 1000)
@@ -172,8 +301,13 @@ def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_pat
     monkeypatch.setattr(driver.time, "monotonic", lambda: now[0])
     def tick(_):
         now[0] += .5
-        assert now[0] <= 1001, "quiescent driver should not spin to its work deadline"
-        heartbeat(launch, selection_idle_reason=reason, sequence=2)
+        assert now[0] <= (1003 if bootstrap_case else 1001), "driver should not spin to its work deadline"
+        if bootstrap_case:
+            if outcome == "bootstrap_recovery" and now[0] >= 1003:
+                current.status = "completed"
+                current.revision += 1
+        else:
+            heartbeat(launch, selection_idle_reason=reason, sequence=2)
     monkeypatch.setattr(driver.time, "sleep", tick)
     monkeypatch.setattr(driver.signal, "signal", lambda *args: None)
     monkeypatch.setattr(driver.signal, "setitimer", lambda *args: None)
@@ -198,14 +332,20 @@ def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_pat
     current = task(status="completed" if outcome == "completed" else "in_progress")
     source = SimpleNamespace(get_task=lambda _: current)
     def observe():
-        if outcome == "observation_failure":
+        if outcome in {"observation_failure", "bootstrap_observation_failure"}:
             raise RuntimeError("authored failure after stop decision")
         return {}
+    def diagnostics():
+        if not bootstrap_case:
+            return {}
+        ticks = int((now[0] - 1000) * 2)
+        return startup(receipts=2 if outcome == "bootstrap_recovery" and ticks >= 4 else 1,
+            errors=min(3, ticks), bootstrap_failure_counts=[])
     def create(*args, **kwargs):
         options.append(kwargs)
         return SimpleNamespace(state=launch, profile=object(),
             start=lambda: SimpleNamespace(to_dict=lambda: {"status": "succeeded"}),
-            observe=observe, startup_diagnostics=lambda: {},
+            observe=observe, startup_diagnostics=diagnostics,
             stop=lambda: stops.append("stop") or SimpleNamespace(to_dict=lambda: {"status": "succeeded"}),
             close=lambda: stops.append("close"),
             process=SimpleNamespace(snapshot=lambda _: SimpleNamespace(members=[])))
@@ -222,10 +362,12 @@ def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_pat
         module = ModuleType(name); vars(module).update(attrs); monkeypatch.setitem(sys.modules, name, module)
     report = driver.run(instruction=tmp_path / "instruction.md", state=state, arm="full")
     assert stops == ["stop", "close"]
-    assert report["task_completed"] is (outcome == "completed")
+    completed = outcome in {"completed", "bootstrap_recovery"}
+    assert report["task_completed"] is completed
     assert report["remaining_processes"] == 0 and report["worker_cleanup_returncode"] == 0
     assert report["native_progress"]["stop"]["status"] == "succeeded"
-    assert report["native_progress"]["stop_reason"] == ("native_task_completed" if outcome == "completed" else reason)
+    assert report["native_progress"]["stop_reason"] == ("native_task_completed" if completed else
+        "repeated_post_start_bootstrap_failure" if bootstrap_case else reason)
     assert options[0]["implementation_timeout_seconds"] == 220
     assert report["implementation_timeout_seconds"] == 220
     assert report["provider_invocations"] == []

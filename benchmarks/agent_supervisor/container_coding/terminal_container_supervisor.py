@@ -93,11 +93,21 @@ def _arm_cleanup_deadline(deadline: float) -> None:
     signal.setitimer(signal.ITIMER_REAL, max(.001, deadline - time.monotonic() - 2))
 
 
+BOOTSTRAP_FAILURE_PHASES = frozenset({
+    "validation", "peer", "request", "process_tree", "duplicate_birth", "lease", "grant", "response"})
+BOOTSTRAP_FAILURE_REASONS = frozenset({
+    "validation_failed", "peer_mismatch", "request_mismatch", "process_tree_unavailable",
+    "process_root_missing", "process_root_ambiguous", "process_child_missing",
+    "process_child_ambiguous", "process_child_is_root", "process_parent_mismatch",
+    "process_scope_mismatch", "duplicate_birth", "lease_unavailable", "lease_mismatch",
+    "lease_expired", "grant_unavailable", "grant_lifetime_exceeded", "response_failed", "unknown"})
+
+
 def _project_native_startup(value):
     """Keep startup timing diagnostic-only and exclude runtime/source bodies."""
     fields = {"schema", "start_timeout_ms", "stop_timeout_ms", "bootstrap_wait_seconds",
         "observations", "observations_truncated", "bootstrap_receipt_count", "bootstrap_error_count"}
-    if (type(value) is not dict or set(value) != fields
+    if (type(value) is not dict or set(value) not in (fields, fields | {"bootstrap_failure_counts"})
             or type(value["schema"]) is not str or value["schema"] != "admitted-native-startup-observation@1"):
         raise ValueError("closed native startup observation required")
     if (type(value["start_timeout_ms"]) is not int or not 2000 <= value["start_timeout_ms"] <= 120000
@@ -119,7 +129,22 @@ def _project_native_startup(value):
                 or not 0 <= row["seconds"] <= 900):
             raise ValueError("bounded startup phase observation required")
         observations.append(dict(row))
-    return {**value, "observations": observations}
+    result = {**value, "observations": observations}
+    if "bootstrap_failure_counts" in value:
+        failures = value["bootstrap_failure_counts"]
+        if (type(failures) is not list
+                or len(failures) > len(BOOTSTRAP_FAILURE_PHASES) * len(BOOTSTRAP_FAILURE_REASONS)
+                or any(type(row) is not dict or set(row) != {"phase", "reason", "count"}
+                       or type(row["phase"]) is not str or row["phase"] not in BOOTSTRAP_FAILURE_PHASES
+                       or type(row["reason"]) is not str or row["reason"] not in BOOTSTRAP_FAILURE_REASONS
+                       or type(row["count"]) is not int or not 1 <= row["count"] <= 65535
+                       for row in failures)):
+            raise ValueError("closed bounded native bootstrap failures required")
+        keys = [(row["phase"], row["reason"]) for row in failures]
+        if keys != sorted(set(keys)):
+            raise ValueError("native bootstrap failures must be sorted unique buckets")
+        result["bootstrap_failure_counts"] = [dict(row) for row in failures]
+    return result
 
 
 def _router_reply(stdout: str) -> tuple[str, dict]:
@@ -707,13 +732,22 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 report["start"] = runtime.start().to_dict()
                 if report["start"]["status"] != "succeeded":
                     raise RuntimeError("native supervisor START failed")
+                try:
+                    startup = _project_native_startup(runtime.startup_diagnostics())
+                except Exception:
+                    startup = None
+                progress.begin_post_start(startup=startup)
                 while time.monotonic() < work_deadline - 1:
                     task_state = owner.source.get_task(task.task_cid)
                     report["task_state"] = {"task_cid": task.task_cid, "status": task_state.status,
                                              "revision": task_state.revision}
                     try:
+                        startup = _project_native_startup(runtime.startup_diagnostics())
+                    except Exception:
+                        startup = None
+                    try:
                         progress_stop = progress.sample(task=task_state, task_cid=task.task_cid,
-                            state=runtime.state, now=time.monotonic())
+                            state=runtime.state, now=time.monotonic(), startup=startup)
                     except Exception:
                         # Diagnostics cannot suppress native cleanup or turn a
                         # reader failure into permission to settle/retry work.

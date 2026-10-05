@@ -19,6 +19,7 @@ import stat
 HEARTBEAT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1"
 MAX_HEARTBEAT_BYTES = 65536
 MAX_TRANSITIONS = 32
+POST_START_BOOTSTRAP_ERROR_LIMIT = 3
 TERMINAL_STATUSES = frozenset({"completed", "failed", "blocked", "cancelled"})
 TASK_STATUSES = TERMINAL_STATUSES | {"ready", "pending", "in_progress", "retrying"}
 IDLE_REASONS = frozenset({
@@ -65,6 +66,19 @@ def _identity(value):
 
 def _closed(value, allowed):
     return value if type(value) is str and value in allowed else "unrecognized"
+
+
+def _bootstrap_counts(value):
+    # The driver supplies the native runtime's closed diagnostic projection.
+    # Counts observe bootstrap attempts, not their cause or task correctness.
+    if (type(value) is dict
+            and value.get("schema") == "admitted-native-startup-observation@1"
+            # Saturated counters cannot establish absence of later progress.
+            and all(_number(value.get(key), maximum=65534) for key in
+                    ("bootstrap_receipt_count", "bootstrap_error_count"))
+            and value["bootstrap_receipt_count"] > 0):
+        return value["bootstrap_receipt_count"], value["bootstrap_error_count"]
+    return None
 
 
 def project_task(task, *, task_cid: str) -> dict:
@@ -171,11 +185,65 @@ class NativeProgress:
         self.transitions = deque(maxlen=MAX_TRANSITIONS)
         self.previous = None
         self.quiescent = None
+        self.bootstrap_enabled = False
+        self.bootstrap_counts = None
+        self.bootstrap_error_base = None
+        self.bootstrap_anchor = None
+        self.bootstrap_confirmation = None
         self.report = {"schema": "terminal-native-progress@1", "samples": 0,
             "transition_count": 0, "transitions_omitted": 0, "transitions": [],
             "completion_authority": False, "settlement_authority": False, "retry_authority": False}
 
-    def sample(self, *, task, task_cid: str, state: Path, now: float) -> str | None:
+    def begin_post_start(self, *, startup=None):
+        """Arm only after the driver's successful native START observation."""
+        self.bootstrap_enabled = True
+        self._reset_bootstrap(_bootstrap_counts(startup))
+        self.report["post_start_bootstrap_guard"] = {
+            "new_error_threshold": POST_START_BOOTSTRAP_ERROR_LIMIT,
+            "unchanged_confirmation_required": True, "root_cause_verified": False}
+
+    def _reset_bootstrap(self, counts, anchor=None):
+        self.bootstrap_counts = counts
+        self.bootstrap_error_base = None if counts is None else counts[1]
+        self.bootstrap_anchor = anchor
+        self.bootstrap_confirmation = None
+
+    def _sample_bootstrap(self, *, startup, task_row, heartbeat):
+        if not self.bootstrap_enabled:
+            return None, None
+        counts = _bootstrap_counts(startup)
+        if (counts is None or task_row.get("availability") != "observed"
+                or task_row.get("status") not in {"ready", "pending", "in_progress", "retrying"}
+                or heartbeat.get("availability") not in {"observed", "missing"}):
+            self._reset_bootstrap(None)
+            return {"availability": "unavailable"}, None
+        # Any native task/heartbeat change conservatively starts a new window.
+        # A missing heartbeat is allowed; a malformed/unreadable one abstains.
+        anchor = (task_row["status"], task_row["revision"], json.dumps(heartbeat, sort_keys=True))
+        previous = self.bootstrap_counts
+        reset = (previous is None or counts[0] != previous[0] or counts[1] < previous[1]
+                 or (self.bootstrap_anchor is not None and self.bootstrap_anchor != anchor))
+        if reset:
+            self._reset_bootstrap(counts, anchor)
+        self.bootstrap_anchor = anchor
+        self.bootstrap_counts = counts
+        delta = counts[1] - self.bootstrap_error_base
+        observation = {"availability": "observed", "receipt_count": counts[0],
+            "error_count": counts[1], "new_errors_without_native_progress": delta}
+        confirmation = (counts, anchor)
+        stop = None
+        if delta >= POST_START_BOOTSTRAP_ERROR_LIMIT:
+            # Confirm on a subsequent unchanged sample: independent native
+            # counter reads are cooperative observations, not an atomic snapshot.
+            if self.bootstrap_confirmation == confirmation:
+                stop = "repeated_post_start_bootstrap_failure"
+            self.bootstrap_confirmation = confirmation
+        else:
+            self.bootstrap_confirmation = None
+        observation["failure_window_confirmed"] = stop is not None
+        return observation, stop
+
+    def sample(self, *, task, task_cid: str, state: Path, now: float, startup=None) -> str | None:
         task_row = project_task(task, task_cid=task_cid)
         heartbeat = read_heartbeat(state)
         elapsed = max(0., now - self.started)
@@ -183,9 +251,13 @@ class NativeProgress:
             raise ValueError("finite observation time required")
         self.report["samples"] += 1
         row = {"seconds": elapsed, "task": task_row, "heartbeat": heartbeat}
+        bootstrap, bootstrap_stop = self._sample_bootstrap(
+            startup=startup, task_row=task_row, heartbeat=heartbeat)
+        if bootstrap is not None:
+            row["bootstrap"] = bootstrap
         self.report["latest"] = row
         # Heartbeat sequence advancement alone does not flood the transcript.
-        signature = json.dumps([task_row, {k: v for k, v in heartbeat.items() if k != "sequence"}], sort_keys=True)
+        signature = json.dumps([task_row, {k: v for k, v in heartbeat.items() if k != "sequence"}, bootstrap], sort_keys=True)
         if signature != self.previous:
             self.previous = signature
             self.transitions.append(row)
@@ -208,6 +280,8 @@ class NativeProgress:
                 self.quiescent = current
             else:
                 self.quiescent = None
+        if stop is None:
+            stop = bootstrap_stop
         if stop:
             self.report["stop_reason"] = stop
         return stop

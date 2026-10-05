@@ -62,6 +62,39 @@ from .isolated_benchmark_runtime import (
     _git,
 )
 
+BOOTSTRAP_FAILURE_PHASES = frozenset({
+    "validation", "peer", "request", "process_tree", "duplicate_birth", "lease",
+    "grant", "response",
+})
+BOOTSTRAP_FAILURE_REASONS = frozenset({
+    "validation_failed", "peer_mismatch", "request_mismatch",
+    "process_tree_unavailable", "process_root_missing", "process_root_ambiguous",
+    "process_child_missing", "process_child_ambiguous", "process_child_is_root",
+    "process_parent_mismatch", "process_scope_mismatch", "duplicate_birth",
+    "lease_unavailable", "lease_mismatch", "lease_expired", "grant_unavailable",
+    "grant_lifetime_exceeded", "response_failed", "unknown",
+})
+
+
+def _bootstrap_tree_rejection(tree, matches, *, pid, process, profile):
+    """Classify an exact native-child refusal without weakening its checks."""
+    roots = tree.roots
+    if not roots:
+        return "process_root_missing"
+    if len(roots) != 1:
+        return "process_root_ambiguous"
+    if not matches:
+        return "process_child_missing"
+    if len(matches) != 1:
+        return "process_child_ambiguous"
+    if pid == roots[0].pid:
+        return "process_child_is_root"
+    if matches[0].parent_pid != roots[0].pid:
+        return "process_parent_mismatch"
+    if not process.child_scope_matches(profile, matches[0]):
+        return "process_scope_mismatch"
+    return None
+
 
 def _candidate_git_environment():
     """Bind owner commit identity and closed Git configuration to this launch.
@@ -486,6 +519,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 inventory_execution_scope._remember_constructor_cleanup(runtime)
             runtime.bootstrap_receipts = []
             runtime.bootstrap_errors = []
+            runtime._bootstrap_failure_counts = {}
             options = [
                 "--todo-path", str(server.config.database_path), "--state-dir", str(runtime.state / "run"),
                 "--state-prefix", "admitted", "--task-prefix", "## ",
@@ -1040,13 +1074,29 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 "seconds": min(900.0, max(0.0, (item["finished"] or now) - item["started"]))}
                 for item in self._startup_trace]
             truncated = self._startup_trace_truncated
+            failures = [{"phase": phase, "reason": reason, "count": count}
+                for (phase, reason), count in sorted(
+                    getattr(self, "_bootstrap_failure_counts", {}).items())]
         return {"schema": "admitted-native-startup-observation@1",
             "start_timeout_ms": self.start_timeout_ms or self.timeout_ms,
             "stop_timeout_ms": self.timeout_ms,
             "bootstrap_wait_seconds": (self.start_timeout_ms or 30_000) / 1000,
             "observations": observations, "observations_truncated": truncated,
             "bootstrap_receipt_count": min(65_535, len(self.bootstrap_receipts)),
-            "bootstrap_error_count": min(65_535, len(self.bootstrap_errors))}
+            "bootstrap_error_count": min(65_535, len(self.bootstrap_errors)),
+            "bootstrap_failure_counts": failures}
+
+    def _record_bootstrap_failure(self, phase, reason):
+        # Selectors are internal enum constants, never exception text or
+        # provider-controlled data. This is diagnostic, not restart authority.
+        if phase not in BOOTSTRAP_FAILURE_PHASES or reason not in BOOTSTRAP_FAILURE_REASONS:
+            raise ValueError("unknown bootstrap failure classification")
+        with self._startup_trace_lock:
+            counts = self._bootstrap_failure_counts
+            key = (phase, reason)
+            # The closed phase/reason product bounds the number of keys;
+            # retain every recognized bucket rather than silently truncating.
+            counts[key] = min(65_535, counts.get(key, 0) + 1)
 
     def _verify_operation(self, operation):
         if operation is not Operation.STOP:
@@ -1117,11 +1167,14 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 return
             with channel:
                 channel.settimeout(5)
+                phase, reason = "validation", "validation_failed"
                 try:
                     self._startup_validate("bootstrap_validation")
+                    phase, reason = "peer", "peer_mismatch"
                     pid, uid, _gid = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                     if uid != os.geteuid():
                         raise ValueError("bootstrap peer belongs to another owner")
+                    phase, reason = "request", "request_mismatch"
                     request = _receive_frame(channel)
                     birth = read_process_birth(pid)
                     if (set(request) != {"schema", "pid", "process_birth", "process_birth_id", "client_id", "store_id"}
@@ -1130,30 +1183,33 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                             or request["process_birth_id"] != process_birth_id(birth)
                             or request["client_id"] != self.client_id or request["store_id"] != self.owner_identity.store_id):
                         raise ValueError("bootstrap request differs from kernel peer and exact grant")
+                    phase, reason = "process_tree", "process_tree_unavailable"
                     tree = self.process.snapshot(self.profile)
                     matches = [item for item in tree.members if item.pid == pid]
-                    if (len(tree.roots) != 1 or len(matches) != 1 or pid == tree.roots[0].pid
-                            or matches[0].parent_pid != tree.roots[0].pid
-                            or not self.process.child_scope_matches(self.profile, matches[0])):
+                    rejection = _bootstrap_tree_rejection(tree, matches, pid=pid,
+                        process=self.process, profile=self.profile)
+                    if rejection is not None:
+                        reason = rejection
                         raise ValueError(
                             "bootstrap peer is not the exact native supervisor child "
-                            f"(roots={len(tree.roots)}, matches={len(matches)}, "
-                            f"parent={matches[0].parent_pid if matches else 0}, "
-                            f"root={tree.roots[0].pid if tree.roots else 0}, "
-                            f"scope={bool(matches and self.process.child_scope_matches(self.profile, matches[0]))}, "
-                            f"option={self.process.last_scope_mismatch})"
+                            f"({rejection})"
                         )
+                    phase, reason = "duplicate_birth", "duplicate_birth"
                     if any(item["process_birth_id"] == process_birth_id(birth) for item in self.bootstrap_receipts):
                         raise ValueError("bootstrap for this child birth was already issued")
+                    phase, reason = "lease", "lease_unavailable"
                     protected = self.coordinator.protect_write(
                         self.lease, expected_fencing_token=self.lease.fencing_token,
                         expected_fence_epoch=self.lease.fence_epoch,
                     )
                     if protected.resource_id != self.run_id or protected.owner_session_id != self.local_profile.identity_did:
+                        reason = "lease_mismatch"
                         raise ValueError("bootstrap run lease changed owner")
                     remaining_seconds = (protected.expires_at_ms - time.time_ns() // 1_000_000) // 1000 - 1
                     if remaining_seconds < 1:
+                        reason = "lease_expired"
                         raise ValueError("native launch lease has no remaining child grant lifetime")
+                    phase, reason = "grant", "grant_unavailable"
                     token, _grant = self.server.issue_typed_client_grant_record(
                         client_id=self.client_id, process_birth_id=process_birth_id(birth), peer_pid=pid,
                         allowed_operations=daemon_required_owner_operations(),
@@ -1161,6 +1217,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         ttl_seconds=min(self.manifest["lifetime_seconds"], remaining_seconds),
                     )
                     if _grant.expires_at > protected.expires_at_ms:
+                        reason = "grant_lifetime_exceeded"
                         raise ValueError("child grant issuance exceeded its native run lease")
                     self.process.remember_bootstrapped_child(matches[0])
                     receipt = {"schema": "admitted-child-bootstrap-observation@1", "pid": pid,
@@ -1171,6 +1228,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                                "run_lease_expires_at_ms": protected.expires_at_ms,
                                "credential_in_argv": False, "completion_authority": False}
                     self.bootstrap_receipts.append(receipt)
+                    phase, reason = "response", "response_failed"
                     self._record("child-bootstrap", receipt)
                     _send_frame(channel, {"schema": STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA, "ok": True,
                                           "endpoint": self.owner_identity.listen_uri,
@@ -1180,6 +1238,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                                           "token": token, "execution_route_policy": self.route_policy.to_dict()})
                 except Exception as exc:
                     self.bootstrap_errors.append({"type": type(exc).__name__, "message": str(exc)[:512]})
+                    self._record_bootstrap_failure(phase, reason)
 
     def start(self):
         from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
