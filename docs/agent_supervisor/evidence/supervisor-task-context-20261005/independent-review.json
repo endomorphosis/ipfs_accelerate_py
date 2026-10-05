@@ -1,0 +1,47 @@
+{
+  "schema": "supervisor-task-context-independent-review@1",
+  "frozen_new_sources": {
+    "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py": {
+      "bytes": 38437,
+      "sha256": "30840f8af89454d001ac23aee834283a452210a1a5b6a654185c10658e8ddaf7"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py": {
+      "bytes": 34165,
+      "sha256": "2bf9e91d80f9caad5b98e44a17f055041cb6825d6f296b3064e5b1e0f34eb9f9"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py": {
+      "bytes": 2722,
+      "sha256": "c1f5c4860e3eca0fa8db0e1a584623b58b309f999f1290c331dfe3dba57fc002"
+    },
+    "test/api/test_task_ir_selection.py": {
+      "bytes": 14554,
+      "sha256": "98b96a3c6ca84c69a0ecabdba52b6ed8b02966ed2a4777eca5f77be15288b0a5"
+    }
+  },
+  "reviewers": [
+    "/root/multitask_native_review",
+    "/root/multitask_preparation",
+    "/root"
+  ],
+  "result": "no blocking issue found for advisory independent-root context scope",
+  "verified_joins": [
+    "complete signed pending task body, identity and physical relations against complete admitted graph",
+    "actual readiness including dependency, block and cooldown checks",
+    "exact signed semantic source scope and query",
+    "exact per-root native world projection and current watermark",
+    "real retained source/numeric vector replay and native retrieval descriptor",
+    "bounded plain bundle before any Source384 runtime consumer",
+    "cold reopen exact existing DB identity before open; missing DB does not recreate",
+    "all ten nullable native IR selectors and one cooperative catalog generation",
+    "closed typed metadata and bounded canonical repository runtime artifacts"
+  ],
+  "limits": [
+    "authored reviewed inputs and retained lexical fixture are not GTE reconstruction quality measurements",
+    "new path rebuilds AST/capsules; only supplied numerical vectors are reused",
+    "query-vector replay is not a proof of query-text semantic alignment",
+    "metadata nominations do not authenticate checkpoint/Hub bytes or runtime",
+    "independent roots only; reviewed-profile execution still refuses",
+    "cooperative source/native/catalog endpoint observations are not atomic snapshots"
+  ],
+  "completion_authority": false
+}

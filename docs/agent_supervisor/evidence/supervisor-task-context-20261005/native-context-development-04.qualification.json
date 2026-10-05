@@ -1,0 +1,66 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-04.xml",
+    "--basetemp=/tmp/ordinary-supervisor-native-context-development-04-fe3fccd2e2fb49729522c5fb5f512a8f",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[database]",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_actual_all_task_world_cannot_replace_selected_root_world",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-native-context-development-04-33f3af298edd4c659500284c8becfb30.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 0,
+  "elapsed_seconds": 97.88569192998693,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 5,
+    "closure_files_min": 987,
+    "closure_files_max": 987,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 5,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[database]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_actual_all_task_world_cannot_replace_selected_root_world": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_rehashed_source384_bundle_cannot_change_plain_context_route[inline]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_rehashed_source384_bundle_cannot_change_plain_context_route[reference]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_rehashed_source384_bundle_cannot_change_plain_context_route[downgrade]": "passed"
+  },
+  "evidence_files": {
+    "native-context-development-04.xml": {
+      "bytes": 1220,
+      "sha256": "fc2487ec1a9ec5ab0d6ff041d0c58a30c540b60771df5b4e0b6e695d2e1418bd"
+    },
+    "native-context-development-04.log": {
+      "bytes": 2412,
+      "sha256": "6ee60324000c3086f909d17b027f29f05af6f0ac904047b82c44739807c75fec"
+    }
+  }
+}

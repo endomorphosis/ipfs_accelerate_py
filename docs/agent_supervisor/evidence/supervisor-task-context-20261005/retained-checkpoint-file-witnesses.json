@@ -1,0 +1,106 @@
+{
+  "schema": "retained-context-checkpoint-file-witnesses@1",
+  "scope": "Independent read-only filesystem witnesses match nine existing catalog checkpoint pins; no decoder was loaded or admitted and no model quality was measured. This does not change the catalog resolver authority flags.",
+  "assets": [
+    {
+      "record_id": "ir-model-asset-binding/v1:159874d5af2ed0030b99b46c07855331e7340237efc8572dcabaac3f5430edf2",
+      "ir_family_id": "codebase_ir",
+      "dimension": 8,
+      "dimension_role": "latent",
+      "pin": {
+        "bytes": 673933,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+        "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:327b68fdd5889632e5752370a9c168a80ada5597436264fb1d6fb5fc483e778f",
+      "ir_family_id": "codebase_ir",
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "pin": {
+        "bytes": 304490,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+        "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:071271a7f4ea577092091837b38503d049075ec74026e17b7d1d0a5cce4ea34e",
+      "ir_family_id": "security_ir",
+      "dimension": 8,
+      "dimension_role": "latent",
+      "pin": {
+        "bytes": 1786933,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json",
+        "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+      }
+    },
+    {
+      "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+      "ir_family_id": "security_ir",
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "pin": {
+        "bytes": 597741,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+        "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:0667978d2ddf1bc81bab1fe6a56852b4fd00471d2aa75666d11331bd06db1542",
+      "ir_family_id": "legal_ir",
+      "dimension": 8,
+      "dimension_role": "latent",
+      "pin": {
+        "bytes": 17392573,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json",
+        "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:0223722e8243fbe34bebc9ad0bdf4b90e820e93ec4d0a59f1699cf0d836a0c06",
+      "ir_family_id": "legal_ir",
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "pin": {
+        "bytes": 1646128,
+        "path": "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+        "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:075582d348e5c583e399ea30065ffa2c1ccfb0488cb8123a5be60e496c4068f9",
+      "ir_family_id": "intent_ir",
+      "dimension": 8,
+      "dimension_role": "latent",
+      "pin": {
+        "bytes": 76824494,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json",
+        "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+      }
+    },
+    {
+      "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+      "ir_family_id": "intent_ir",
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "pin": {
+        "bytes": 586049,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+        "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+      }
+    },
+    {
+      "record_id": "ir-model-asset-binding/v1:2071f8de906f83bd3febdd8834ee7f17133e9b888cf592d05fbea797b98eb689",
+      "ir_family_id": "legal_ir",
+      "dimension": 768,
+      "dimension_role": "input_embedding",
+      "pin": {
+        "bytes": 6360717,
+        "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+        "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+      }
+    }
+  ],
+  "completion_authority": false
+}

@@ -1,0 +1,140 @@
+{
+  "schema": "supervisor-task-context-qualification@1",
+  "implementation_baseline": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "owned_implementation_commit": "4e0322ef6f4a496e9c2e2934e9797045526888a0",
+  "qualified_source_base_commit": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "phase": "advisory independent ready-root context and exact persisted IR metadata nomination",
+  "public_profile_schema": "terminal-public-task-profile@3",
+  "receipt_schema": "terminal-reviewed-ready-task-contexts@1",
+  "final_run": "final-01.qualification.json",
+  "counts": {
+    "passed": 445,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "distinct_passing_cases": 445,
+  "selection": "final-selection-01.json",
+  "ast_sealing": {
+    "records": 445,
+    "closure_files_min": 17,
+    "closure_files_max": 1039,
+    "any_completion_authority": false
+  },
+  "current_source_pins": "final-01-before.json",
+  "manually_pinned_source_and_test_files": 65,
+  "source_assets_and_datasets_pins_unchanged": true,
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "retained_assets": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json": {
+      "bytes": 673933,
+      "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+    },
+    "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930": {
+      "bytes": 304490,
+      "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json": {
+      "bytes": 1786933,
+      "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json": {
+      "bytes": 597741,
+      "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json": {
+      "bytes": 17392573,
+      "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json": {
+      "bytes": 1646128,
+      "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json": {
+      "bytes": 76824494,
+      "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json": {
+      "bytes": 586049,
+      "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json": {
+      "bytes": 6360717,
+      "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  },
+  "retained_assets_scope": "Thirteen exact existing files: nine selected catalog checkpoint witnesses plus four preceding embedding/decoder assets. No claim to inventory every model.",
+  "new_native_context_controls": 67,
+  "new_exact_catalog_controls": 40,
+  "baseline": {
+    "run": "baseline-01.qualification.json",
+    "counts": {
+      "passed": 125,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    },
+    "all_baseline_nodes_retained": true
+  },
+  "count_scope": "Only final-01 distinct nodes contribute to the final total. Baseline and development selections overlap and are not added.",
+  "independent_review": "independent-review.json",
+  "historical_diagnostics": "development-diagnostics.json",
+  "native_process_audit": "final-01.native-process-audit.json",
+  "catalog_survey": {
+    "record": "live-model-manager-catalog-survey.json",
+    "scope": "one explicit existing ModelManager DuckDB metadata store",
+    "declarations": 668,
+    "complete_schema_task_profile_format_identities": 2,
+    "nomination_record": "retained-ir-catalog-nominations.json",
+    "existing_exact_nominations": 9,
+    "missing_768_families_in_this_store": [
+      "codebase_ir",
+      "security_ir",
+      "intent_ir"
+    ],
+    "checkpoint_witness_record": "retained-checkpoint-file-witnesses.json"
+  },
+  "limitations": [
+    "Authored reviewed inputs and lexical test vectors do not measure GTE decoder reconstruction or query semantic alignment.",
+    "Existing source ASTs/capsules are rebuilt; supplied numerical retrieval vectors are reused.",
+    "New positive native fixture covers two independent roots in a three-task graph; bounds do not qualify sixteen-root capacity.",
+    "Controlled source/native mutations test cooperative currentness; observations are not atomic FS/native/catalog snapshots.",
+    "Existing Source384 regression tests are authored transport controls with a validator stub, not inference qualification. New plain-route guards do not invoke that validator.",
+    "Exact catalog metadata nominations do not authenticate checkpoint/Hub bytes or admit decoder runtimes; separate filesystem witnesses leave those flags false.",
+    "Dependent contexts, reviewed-profile launch, parallel worker execution and completion remain unqualified."
+  ],
+  "remaining_plan": [
+    "Recover missing schema/task/profile/format identities from original validated checkpoint manifests, preserving separate format registrations and ablations.",
+    "Join exact family/schema/task/dimension geometry to existing encoder/cache/checkpoint/Hub revisions, separate DuckDB/DuckLake inventories and verified token/span/runtime receipts.",
+    "Bind dependent contexts to checked predecessor publications and the resulting source successor.",
+    "Qualify parallel isolated worktree leases, validation/review, merge currentness and durable completion/restart before execution admission.",
+    "Keep autoformalized candidates separate from checked proofs; reuse old teachers, embeddings, heads and held-out splits for qualified distillation."
+  ],
+  "new_path_provider_calls": 0,
+  "new_path_embedding_calls": 0,
+  "new_path_model_loading_calls": 0,
+  "new_path_training_steps": 0,
+  "retained_model_assets_regenerated": false,
+  "new_benchmark_score": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "proof_authority": false,
+  "hosted_ci": "Not qualified by these local runs; publication readback will inspect the actual hosted check.",
+  "source_binding_note": "Final regression ran on the unchanged 5ab baseline plus the four frozen new files. All 65 manual source/test bindings were then verified in the committed source tree; later publication merges are documentation-only."
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "supervisor-task-context-committed-source-readback@1",
+  "source_commit": "4e0322ef6f4a496e9c2e2934e9797045526888a0",
+  "manual_source_and_test_bindings": 65,
+  "all_committed_objects_match_final_run": true,
+  "completion_authority": false
+}

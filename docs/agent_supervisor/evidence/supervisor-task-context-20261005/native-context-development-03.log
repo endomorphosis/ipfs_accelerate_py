@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005
+configfile: pytest.ini
+collected 6 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py . [ 16%]
+.....                                                                    [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-03.xml -
+============================= slowest 10 durations =============================
+17.36s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_roots_with_actual_empty_program_population_need_no_vectors
+13.81s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[True]
+13.76s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[metadata1]
+13.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[None]
+13.63s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[foreign-metadata]
+3.44s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[None]
+3.13s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[True]
+3.10s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[metadata1]
+3.06s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_actual_active_block_with_ready_status_still_refuses_context
+3.04s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[foreign-metadata]
+======================== 6 passed in 101.51s (0:01:41) =========================

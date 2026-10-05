@@ -1,0 +1,60 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-01.xml",
+    "--basetemp=/tmp/ordinary-supervisor-native-context-development-01-8640e484af3c418f9e3275e07d733be2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-native-context-development-01-8878c50cf5364f229f691e4f578bd70d.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 1,
+  "elapsed_seconds": 16.22913208999671,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 0,
+    "closure_files_min": null,
+    "closure_files_max": null,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 0,
+    "failure": 1,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence": "failure"
+  },
+  "evidence_files": {
+    "native-context-development-01.xml": {
+      "bytes": 1546,
+      "sha256": "9539fde19f2e7942d2b3caebe750e94e90f74a71c7b84cd77ddbf89ba2d4b81b"
+    },
+    "native-context-development-01.log": {
+      "bytes": 2432,
+      "sha256": "0c843ca8de4e16077a7ddbabb27ee74483a6487b137232373550b3547ddc5ac9"
+    }
+  }
+}

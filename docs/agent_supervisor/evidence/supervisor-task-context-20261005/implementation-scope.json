@@ -1,0 +1,25 @@
+{
+  "schema": "supervisor-ready-context-scope@1",
+  "baseline": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "phase": "ready root contexts using retained native vector snapshots and exact readonly IR catalog nominations",
+  "runtime_execution_guard_retained": true,
+  "verified_predecessor_successors_remaining": true,
+  "generalized_ir_runtime_admission_remaining": true,
+  "existing_context_aliases_must_not_be_relabelled": true,
+  "existing_model_assets_remain_frozen": true,
+  "concurrent_worktree_survey": {
+    "terminal-expansion-20261005": {
+      "head": "d343e8fdb",
+      "tracked_clean": true,
+      "overlapping_existing_context_and_profile_owners_preserved": true
+    },
+    "shared_external_main": {
+      "head": "03eb84149",
+      "many_dirty_files_preserved": true
+    },
+    "our_existing_team_agents": "Read-only initial surveys, then disjoint new helper/validator/test ownership."
+  },
+  "completion_authority": false
+}

@@ -729,9 +729,9 @@ signed admission and transactional materialization. The existing version 1
 profile, specification and smoke bytes keep their default path. The native
 qualification and remaining execution boundary are recorded below.
 
-The following increment binds each task to its source revision, dependency wave
-and native world context, including verified source successors after earlier
-changes. Each context retains its selected IR family, schema/version, decoder
+The ready-root context increment below binds each selected task to the original
+signed source revision and its current native world. Dependent tasks still need
+verified source successors after earlier changes. Each context retains its selected IR family, schema/version, decoder
 task, dimension, token/span budget and frozen asset identities. CodebaseIR,
 SecurityIR, LegalIR and IntentIR keep separate inventories and checkpoints,
 with parallel 8D, 384D and 768D selections. Bind each context to its selected
@@ -741,8 +741,9 @@ increment then uses an explicit multi-task native scope, isolated worktrees and
 leases, independent
 validation/review, merge currentness and durable completion. Its controls must
 cover parallel independent tasks, dependency-aware readiness and cold restart
-before claiming parallel execution. These context and execution increments
-remain planned; reviewed preparation alone does not implement them.
+before claiming parallel execution. The explicit ready-root context route is implemented below. Decoder runtime
+admission, dependent source successors and reviewed-profile execution remain
+planned; reviewed preparation alone does not implement them.
 
 ## Reviewed multi-task preparation and native binding (2026-10-05)
 
@@ -785,8 +786,9 @@ commits.
 The native fixture has two independent root tasks and a third task depending
 on both. The typed owner exposes only the roots as initially ready and retains
 both dependency edges. These observations qualify administrative scheduling,
-not task execution or source interpretation quality. Initial/context
-preparation refuses this profile. `AdmittedBenchmarkRuntime.create` refuses
+not task execution or source interpretation quality. The legacy initial/context
+preparation routes refuse this profile; the explicit ready-root route below
+prepares advisory contexts. `AdmittedBenchmarkRuntime.create` refuses
 both observation and implementation launches before allocating runtime state;
 unsigned preparation metadata cannot lift that boundary. Existing generic
 multi-task admissions keep their separate execution rules.
@@ -797,29 +799,125 @@ never executes candidate code. Semantic correctness and an aggregate
 multi-task completion bound still need separate validators. Existing manifest,
 scan and serialized-input ceilings remain in force, so structural validity of
 a 16-task profile does not guarantee admission of an oversized declaration.
-The remaining per-task context work must retain separate IR family,
-schema/version, decoder task, 8D/384D/768D selection, token/span budget,
-DuckDB/DuckLake inventory and pinned embedding/checkpoint identities.
+Full decoder runtime admission still must retain separate IR family,
+schema/version, decoder task, 8D/384D/768D geometry, verified token/span budget,
+DuckDB/DuckLake inventory and pinned embedding/checkpoint identities. The
+ready-root route below preserves exact catalog nominations while those runtime
+checks remain unqualified.
 
-The next context increment has three acceptance gates:
+The remaining context and execution work has three acceptance gates:
 
-- Key each context by repository/source revision, task CID, requirement CID,
-  dependency wave and verified predecessor publications. Also bind its IR family,
-  schema/version, decoder task, dimension, token/span budget, inventory database
-  identity and immutable Hugging Face/checkpoint revision. Resolve that full
-  identity through ModelManager; keep cached embeddings and decoder assets
-  bound to their original hashes.
-- Build contexts for ready tasks from the native owner. Independent roots may
-  have separate contexts for the same source revision. A dependent task must
-  use verified source successors after its prerequisites publish. Missing
-  assets, a mismatched family/decoder or stale source/dependency receipts must
-  refuse context admission; an unavailable selection cannot silently choose a
-  different IR or dimension.
-- Qualify parallel ready roots, dependency waves, source changes, cache reuse
-  and cold restart with actual native contexts. Then qualify isolated worktree
-  leases, validation/review, merge currentness and durable completion before
-  enabling the reviewed profile's execution path. Autoformalized candidates
-  remain distinct from checked proofs in the proof index.
+- Extend current source/task/requirement/world bindings with dependency waves
+  and verified predecessor publications. Join each exact IR family,
+  schema/version, decoder task and dimension geometry to verified token/span
+  budgets, inventory database identity and immutable Hugging Face/checkpoint
+  revisions through actual runtime admission. Preserve retained asset hashes.
+- Require a dependent task to use verified source successors after prerequisites
+  publish. Missing assets, mismatched family/decoder or stale source/dependency
+  receipts must refuse runtime context admission; unavailable selections cannot
+  silently choose a different IR or dimension. Root context nomination alone
+  cannot lift those gates.
+- Retain the ready-root/cache/cold-reopen controls below and qualify dependency
+  waves and larger admitted populations. Qualify isolated worktree leases,
+  validation/review, merge currentness and durable completion before enabling
+  reviewed-profile execution. Autoformalized candidates remain distinct from
+  checked proofs in the proof index.
+
+## Ready-root contexts and exact retained IR nominations (2026-10-05)
+
+The [frozen context qualification](evidence/supervisor-task-context-20261005/qualification.json)
+passed **445 checks** with zero failures, errors or skips, including all 125
+unchanged baseline nodes, 67 new native context controls and 40 exact catalog
+controls. All cases have fresh AST seals without completion authority. The 65
+manual source/test pins, datasets checkout and thirteen existing retained files
+stayed unchanged. Baseline and development runs overlap and are not added.
+
+`terminal_multitask_context.prepare_ready_task_contexts` is the explicit
+administrative route for 1–16 selected ready roots in an admitted reviewed
+multi-task profile. It verifies the complete signed native task population,
+physical output/acceptance/validation rows and retained planning receipt, then
+asks the actual owner for readiness. A task with an active blocker cannot enter
+because its stored status says ready. Every selected task must be an independent
+root; marking prerequisites complete does not admit a dependent task yet.
+
+Nonempty programs require supplied existing native `CodeVectorIndexSnapshot`
+and `CodeVectorSearchResult` objects covering every signed program input.
+The route replays their numerical and source bindings and reuses their vector
+bytes for each root. It builds separate task-alias-bound semantic, retrieval
+and live intent-world envelopes without relabelling an earlier artifact. Source
+ASTs and capsules are rebuilt by the existing semantic producer. An actually
+empty program uses the native empty-population observation. No embedding,
+decoder load, training or provider call occurs in this route; numerical replay
+alone does not establish query-vector semantic alignment or reconstruction
+quality.
+
+`load_ready_task_contexts` cold-reopens the canonical receipt using a trusted
+expected byte digest and independently checks the current signed source,
+profile/admission, native owner identity, readiness and complete pending
+contracts. It then loads the real semantic, retrieval and live world owners,
+requiring the exact signed program scope/query, per-root world projection and
+original retrieval identities. The task bundle must be the bounded plain
+nomination format. Source384 runtime bundle variants cannot enter this route.
+Repository runtime paths, regular-file bounds and typed closed metadata are
+checked before generic consumer calls. Any native intent event conservatively
+stales the wave; these are cooperative currentness checks, not an atomic
+filesystem/database transaction.
+
+Optional `ir_catalog_path` and `ir_selections` bind each selected task CID to
+explicit persisted ModelManager catalog nominations. The resolver preserves
+all ten native selectors: family, dimension, dimension role, schema version,
+decoder task, profile ID, format ID, asset role, record ID and checkpoint ID.
+Different heads can coexist within one family/dimension; competing assets for
+one complete namespace refuse. All selected nominations must belong to one
+unchanged logical catalog generation. Unknown fields remain unknown and a
+missing exact choice refuses. These metadata observations authenticate neither
+checkpoint bytes nor Hugging Face payloads and grant no decoder runtime,
+training, proof, execution or completion authority.
+
+The [retained catalog survey](evidence/supervisor-task-context-20261005/live-model-manager-catalog-survey.json)
+read one explicit existing ModelManager DuckDB store without constructing the
+manager or changing the store. It contains 668 IR declarations, including
+detached components and an existing UI/UX family. Only two declarations have
+all four schema-version/decoder-task/profile/format fields populated. The core
+family/dimension counts in that store are:
+
+| Family | 8D latent declarations | 384D input-embedding declarations | 768D input-embedding declarations |
+| --- | ---: | ---: | ---: |
+| CodebaseIR | 7 | 2 | 0 |
+| SecurityIR | 18 | 47 | 0 |
+| LegalIR | 16 | 90 | 10 |
+| IntentIR | 18 | 19 | 0 |
+
+LegalIR also has one separate 8D input-embedding declaration; its geometry is
+not interchangeable with the 8D latent column. These counts describe this
+store's metadata and do not count qualified decoders or survey every host
+inventory. [Nine exact existing nominations](evidence/supervisor-task-context-20261005/retained-ir-catalog-nominations.json)
+resolve across the four 8D/384D pairs and LegalIR 768D. Exact CodebaseIR,
+SecurityIR and IntentIR 768D nominations refuse in this store. A separate
+[filesystem witness](evidence/supervisor-task-context-20261005/retained-checkpoint-file-witnesses.json)
+matched all nine selected checkpoint files to their registered byte hashes
+without loading them. These witnesses do not change the resolver's false
+checkpoint/runtime authority flags or select a quality winner.
+
+The next work should recover missing format identities from original validated
+checkpoint manifests, retaining separate registrations for semantic IR,
+source-text reconstruction and each formal-logic output task. It must preserve
+family-specific 8D/384D/768D inventories and DuckDB/DuckLake identities, cached
+embedding geometry/encoder revisions and immutable public Hugging Face
+revisions. Runtime admission must join those exact declarations to authenticated
+checkpoint bytes, the actual family/decoder ABI, verified token/span ceilings,
+inventory and runtime receipts. The context route's 8192-byte query bound is
+not an encoder token-budget claim. Reuse the existing teachers, embeddings,
+heads and held-out reconstruction splits when qualifying distillation; do not
+infer an 8192-token capability from the selected dimension or seed new training
+from random weights.
+
+After runtime selections qualify, bind dependent contexts to checked
+predecessor publications and the resulting source successor, then qualify
+parallel isolated worktree leases, independent validation/review, merge
+currentness and durable restart/completion. Keep generated formal candidates
+separate from checked proofs in the proof index. The reviewed profile's legacy
+context and native launch guards remain in place until those gates pass.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 

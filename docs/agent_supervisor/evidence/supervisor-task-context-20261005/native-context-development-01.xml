@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="15.431" timestamp="2026-10-05T16:15:13.050740+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context" name="test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence" time="4.067"><failure message="ValueError: native task differs from its complete signed pending contract and relations">benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py:93: in test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence
+    result = _prepare_contexts(case, vectors)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py:77: in _prepare_contexts
+    return contexts.prepare_ready_task_contexts(state=case["state"],
+benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py:312: in prepare_ready_task_contexts
+    native = _native_observation(intent, admission, verified, selected)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py:127: in _native_observation
+    raise ValueError("native task differs from its complete signed pending contract and relations")
+E   ValueError: native task differs from its complete signed pending contract and relations</failure></testcase></testsuite></testsuites>

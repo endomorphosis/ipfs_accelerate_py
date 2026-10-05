@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005
+configfile: pytest.ini
+collected 5 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py . [ 20%]
+....                                                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-04.xml -
+============================= slowest 10 durations =============================
+15.11s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[database]
+14.43s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_actual_all_task_world_cannot_replace_selected_root_world
+13.68s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[inline]
+13.64s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[downgrade]
+13.43s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[reference]
+3.33s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[database]
+3.17s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[downgrade]
+3.04s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[reference]
+2.93s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_rehashed_source384_bundle_cannot_change_plain_context_route[inline]
+2.87s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_actual_all_task_world_cannot_replace_selected_root_world
+========================= 5 passed in 97.05s (0:01:37) =========================
