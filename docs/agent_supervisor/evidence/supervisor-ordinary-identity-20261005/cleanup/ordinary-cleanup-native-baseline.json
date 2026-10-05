@@ -1,0 +1,22 @@
+{
+  "desired_argv_equals_actual": false,
+  "identity_sidecar_exists": false,
+  "weak_string_match_before_cleanup": true,
+  "owned_fencer_refusal": {
+    "fenced": false,
+    "reason": "managed_daemon_ownership_unproven"
+  },
+  "process_live_after_fencer_refusal": true,
+  "native_cleanup_result": {
+    "pid": 140969,
+    "terminated": true,
+    "quiesced": true,
+    "remaining_pid": null,
+    "pid_path": "/tmp/ordinary-sink-native-audit-b7qb_9zz/repo/state/portal_managed_daemon.pid"
+  },
+  "child_exit_after_cleanup": -9,
+  "pid_marker_preserved": false,
+  "source_sha256_before": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+  "source_sha256_after": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+  "source_unchanged": true
+}

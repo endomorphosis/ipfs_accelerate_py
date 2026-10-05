@@ -1,0 +1,7 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "202c35e004ca6bbda0a29c78f5b2a25c5d143b1d39963111894c45db72d4766d",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+  "test/api/test_ordinary_supervisor_child_fence.py": "886777a88a12762548d3e30c0f4902e15792412203f7a9c681cbd11eea6d0cb2"
+}

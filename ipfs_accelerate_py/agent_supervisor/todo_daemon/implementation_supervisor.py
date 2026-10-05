@@ -192,6 +192,7 @@ from .supervisor_runtime import (
     supervised_child_identity_path,
     terminate_direct_child_process,
     write_supervised_child_identity,
+    _supervised_child_identity_session_quiesced,
 )
 from .worktrees import (
     WORKTREE_POOL_SCHEMA,
@@ -6644,6 +6645,19 @@ def isolated_exact_source_head_matches_capsule_pin(
     return all(character in "0123456789abcdef" for character in source_head)
 
 
+def _validated_validation_max_workers(value: object) -> int | None:
+    if value is not None and (type(value) is not int or not 1 <= value <= 256):
+        raise ValueError("validation maximum workers must be an integer from 1 through 256")
+    return value
+
+
+def _validation_max_workers_cli(value: str) -> int:
+    try:
+        return _validated_validation_max_workers(int(value))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
 @dataclass
 class PortalSupervisorConfig:
     todo_path: Path
@@ -6824,6 +6838,7 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        _validated_validation_max_workers(self.validation_max_workers)
         if not self.production_provider_policy:
             if any(
                 value is not None
@@ -7498,16 +7513,10 @@ class PortalImplementationSupervisor:
                     "ipfs_accelerate_py.agent_supervisor."
                     "todo_implementation_supervisor.supervisor"
                 ),
-                "status": "stopped",
+                "status": "stopped" if cleanup.get("quiesced") is True else "termination_blocked",
                 "updated_at": utc_now(),
                 "supervisor_pid": os.getpid(),
                 "supervisor_pid_alive": False,
-                "daemon_pid": None,
-                "daemon_pid_alive": False,
-                "active_worker_count": 0,
-                "active_worker_pids": [],
-                "worker_descendant_count": 0,
-                "stalled_without_active_worker": False,
                 "stop_signal": int(stop_signal),
                 "last_exit_code": 128 + int(stop_signal),
                 "last_recycle_reason": "supervisor_signal_shutdown",
@@ -7517,6 +7526,25 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        if cleanup.get("quiesced") is True:
+            payload.update({"daemon_pid": None, "daemon_pid_alive": False,
+                            "active_worker_count": 0, "active_worker_pids": [],
+                            "worker_descendant_count": 0,
+                            "stalled_without_active_worker": False})
+        else:
+            observed_pid = (cleanup.get("pid") or cleanup.get("remaining_pid")
+                            or payload.get("daemon_pid"))
+            payload["daemon_pid"] = observed_pid
+            try:
+                observed_birth = read_process_birth(int(observed_pid)) if observed_pid else None
+                observed_liveness = (owner_liveness(observed_birth)
+                                     if observed_birth is not None else OwnerLiveness.UNKNOWN)
+            except (OSError, TypeError, ValueError):
+                observed_liveness = OwnerLiveness.UNKNOWN
+            if observed_liveness in (OwnerLiveness.ALIVE, OwnerLiveness.DEAD):
+                payload["daemon_pid_alive"] = observed_liveness is OwnerLiveness.ALIVE
+            else:
+                payload.setdefault("daemon_pid_alive", None)
         write_json_atomic(status_path, payload)
 
     def _supervisor_maintenance_timeout_seconds(self) -> float:
@@ -11096,6 +11124,13 @@ class PortalImplementationSupervisor:
                 cleanup = self._terminate_managed_daemon_tree()
                 interrupted_reconciliation = (
                     self._reconcile_interrupted_implementation_after_shutdown()
+                    if cleanup.get("quiesced") is True
+                    else {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_cleanup_unproven",
+                        "completion_authority": False,
+                    }
                 )
                 try:
                     self._record_event(
@@ -11259,7 +11294,9 @@ class PortalImplementationSupervisor:
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         child_env = {}
-        if getattr(self.config.configured_board_live_admission, "board_namespace", "") == "semantic-addressed-world-model-v1":
+        if (not self.config.plan_bound_dispatch
+                or getattr(self.config.configured_board_live_admission, "board_namespace", "")
+                == "semantic-addressed-world-model-v1"):
             child_env = {
                 SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(self._managed_daemon_identity_path()),
                 SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(self._managed_daemon_owner_scope(), sort_keys=True),
@@ -12032,6 +12069,12 @@ class PortalImplementationSupervisor:
                 "active_task_id": task_id,
             }
         stop = self._terminate_managed_daemon_tree(grace_seconds=2.0)
+        if stop.get("quiesced") is not True:
+            result = {"attempted": True, "released": False,
+                      "reason": "completed_task_cleanup_blocked",
+                      "active_task_id": task_id, "stop": stop}
+            self._record_event("completed_leftover_execution_blocked", result)
+            return result
         repaired_at = utc_now()
         consume_stale_active_attempt(state)
         state.active_attempt = 0
@@ -21648,6 +21691,14 @@ class PortalImplementationSupervisor:
             )
             if daemon_token not in tokens:
                 return False
+            if not self.config.plan_bound_dispatch and self.config.accepted_control_plane_pin is None:
+                prefix = ((sys.executable, str(daemon_script_path))
+                          if daemon_script_path is not None else (
+                              sys.executable, "-P", "-c", ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                              IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
+                          ))
+                if tokens[:len(prefix)] != prefix:
+                    return False
 
             def exact_option(option: str, expected: str) -> bool:
                 values = [
@@ -21727,7 +21778,10 @@ class PortalImplementationSupervisor:
             *,
             pid: int,
             grace_seconds: float = 1.0,
+            expected_identity_record_id: str | None = None,
         ) -> dict[str, Any]:
+            from ..merge.worktree_lifecycle import _read_boot_id
+
             identity_path = self._managed_daemon_identity_path()
             identity = load_supervised_child_identity(identity_path)
             if identity is None:
@@ -21735,6 +21789,9 @@ class PortalImplementationSupervisor:
                     "fenced": False,
                     "reason": "managed_daemon_ownership_unproven",
                 }
+            if (expected_identity_record_id is not None
+                    and identity.record_id != expected_identity_record_id):
+                return {"fenced": False, "reason": "managed_daemon_identity_markers_changed"}
             if (
                 identity.process_birth.pid != int(pid)
                 or dict(identity.owner_scope)
@@ -21748,26 +21805,26 @@ class PortalImplementationSupervisor:
                     "reason": "managed_daemon_ownership_scope_mismatch",
                 }
             liveness = supervised_child_identity_liveness(identity)
-            if liveness is OwnerLiveness.DEAD:
-                return {
-                    "fenced": False,
-                    "pid_reused": bool(process_is_running(pid)),
-                    "reason": "managed_daemon_recorded_process_dead",
-                }
-            if liveness is not OwnerLiveness.ALIVE:
+            if _read_boot_id() != identity.process_birth.boot_id:
+                return {"fenced": False, "reason": "managed_daemon_process_boot_unproven"}
+            if liveness not in (OwnerLiveness.ALIVE, OwnerLiveness.DEAD):
                 return {
                     "fenced": False,
                     "reason": "managed_daemon_ownership_liveness_unknown",
                 }
             observed_argv = read_process_command_argv(pid)
-            if observed_argv is None or observed_argv != identity.command:
+            if liveness is OwnerLiveness.ALIVE and (
+                observed_argv is None or observed_argv != identity.command
+            ):
                 return {
                     "fenced": False,
                     "reason": "managed_daemon_command_identity_mismatch",
                 }
             # Re-read birth identity immediately before entering the existing
             # freeze/rescan/kill fence. A reused numeric PID is never signalled.
-            if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
+            if supervised_child_identity_liveness(identity) not in (
+                OwnerLiveness.ALIVE, OwnerLiveness.DEAD
+            ) or _read_boot_id() != identity.process_birth.boot_id:
                 return {
                     "fenced": False,
                     "reason": "managed_daemon_process_birth_changed",
@@ -21782,10 +21839,7 @@ class PortalImplementationSupervisor:
                     identity.process_birth.start_time_ticks
                 ),
             )
-            gone = (
-                supervised_child_identity_liveness(identity)
-                is OwnerLiveness.DEAD
-            )
+            gone = _supervised_child_identity_session_quiesced(identity)
             return {
                 "fenced": bool(fenced and gone),
                 "reason": (
@@ -21971,7 +22025,7 @@ class PortalImplementationSupervisor:
                 command.extend(
                     [
                         "--validation-max-workers",
-                        str(max(1, int(self.config.validation_max_workers))),
+                        str(_validated_validation_max_workers(self.config.validation_max_workers)),
                     ]
                 )
             for path in self.config.generated_dirty_repair_paths:
@@ -22128,36 +22182,57 @@ class PortalImplementationSupervisor:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
 
         pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
         pid = self._read_managed_daemon_pid()
-        if pid is not None:
-            command_line = process_command_line(pid) if process_is_running(pid) else ""
-            if not self._managed_daemon_matches_command_line(command_line):
-                pid = None
-        if pid is None:
-            pid = self._find_matching_managed_daemon_pid()
-
-        terminated = bool(
-            pid is not None
-            and terminate_pid_tree(
-                pid,
-                grace_seconds=max(0.0, float(grace_seconds)),
-                freeze_first=True,
-                require_gone=True,
-            )
-        )
-        remaining_pid = self._find_matching_managed_daemon_pid()
+        identity = load_supervised_child_identity(identity_path)
+        result = {"pid": pid, "terminated": False, "quiesced": False,
+                  "remaining_pid": pid, "pid_path": str(pid_path),
+                  "identity_path": str(identity_path), "blocked": True}
         try:
-            if pid_path.is_file():
-                pid_path.unlink()
+            markers = {}
+            for path in (pid_path, identity_path):
+                if path.is_symlink() or (path.exists() and not path.is_file()):
+                    return {**result, "reason": "managed_daemon_identity_marker_unproven"}
+                markers[path] = path.read_bytes() if path.exists() else None
         except OSError:
-            pass
-        return {
-            "pid": pid,
-            "terminated": terminated,
-            "quiesced": remaining_pid is None,
-            "remaining_pid": remaining_pid,
-            "pid_path": str(pid_path),
-        }
+            return {**result, "reason": "managed_daemon_identity_marker_unavailable"}
+        if markers[pid_path] is not None:
+            try:
+                captured_pid = int(markers[pid_path].decode("ascii").strip())
+            except (UnicodeError, ValueError):
+                return {**result, "reason": "managed_daemon_pid_marker_unproven"}
+            if captured_pid <= 1 or captured_pid != pid:
+                return {**result, "reason": "managed_daemon_pid_marker_unproven"}
+        elif pid is not None:
+            return {**result, "reason": "managed_daemon_identity_markers_changed"}
+        if pid is None and identity is not None:
+            pid = identity.process_birth.pid
+            result.update({"pid": pid, "remaining_pid": pid})
+        if pid is None:
+            if any(value is not None for value in markers.values()):
+                return {**result, "reason": "managed_daemon_ownership_unproven"}
+            remaining = self._find_matching_managed_daemon_pid()
+            return {**result, "quiesced": remaining is None,
+                    "blocked": remaining is not None, "remaining_pid": remaining,
+                    "reason": "no_recorded_managed_daemon"}
+        fenced = self._fence_recorded_managed_daemon(
+            pid=pid, grace_seconds=grace_seconds,
+            expected_identity_record_id=identity.record_id if identity is not None else None,
+        )
+        if fenced.get("fenced") is not True:
+            return {**result, "reason": fenced.get("reason"), "fence": fenced}
+        result.update({"terminated": True, "fence": fenced})
+        try:
+            for path, captured in markers.items():
+                if path.is_symlink() or (path.read_bytes() if path.exists() else None) != captured:
+                    return {**result, "reason": "managed_daemon_identity_markers_changed"}
+            for path, captured in markers.items():
+                if captured is not None:
+                    path.unlink()
+        except OSError:
+            return {**result, "reason": "managed_daemon_identity_marker_cleanup_failed"}
+        return {**result, "quiesced": True, "blocked": False,
+                "remaining_pid": None, "reason": "managed_daemon_owned_process_fenced"}
 
     def _read_managed_daemon_pid(self) -> int | None:
         try:
@@ -22353,13 +22428,35 @@ class PortalImplementationSupervisor:
         ]
         if not all(fragment in command_line for fragment in required_fragments):
             return False
-        has_implement_flag = "--implement" in command_line
-        if self.config.implement != has_implement_flag:
-            return False
         try:
             tokens = shlex.split(command_line)
         except ValueError:
             return False
+        if self.config.implement != ("--implement" in tokens):
+            return False
+        execution_options = {
+            "--state-dir": (str(self.config.state_dir),),
+            "--state-prefix": (self.config.state_prefix,),
+            "--todo-path": (str(self.config.todo_path),),
+            "--max-task-attempts": (str(max(0, int(self.config.max_task_attempts))),),
+            "--validation-max-workers": (() if self.config.validation_max_workers is None
+                                         else (str(self.config.validation_max_workers),)),
+            "--implementation-protected-path": tuple(self.config.implementation_protected_paths),
+        }
+        for option, expected in execution_options.items():
+            if any(token.startswith(option + "=") or (
+                    token.startswith("--") and len(token) > 2
+                    and token != "--implement"
+                    and option.startswith(token.partition("=")[0])
+                    and option != token.partition("=")[0]
+            ) for token in tokens):
+                return False
+            occurrences = [index for index, token in enumerate(tokens) if token == option]
+            if any(index + 1 >= len(tokens) for index in occurrences):
+                return False
+            values = [tokens[index + 1] for index in occurrences]
+            if len(values) != len(expected) or len(set(values)) != len(values) or set(values) != set(expected):
+                return False
 
         production_options = {
             "--production-provider-policy": self.config.production_provider_policy,
@@ -22550,6 +22647,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max-restarts", type=int, default=10)
+    parser.add_argument("--validation-max-workers", type=_validation_max_workers_cli,
+                        default=None, help="Maximum concurrent validation workers, from 1 through 256")
     parser.add_argument(
         "--max-task-attempts",
         type=int,
@@ -23539,6 +23638,7 @@ def supervisor_config_from_args(
         implementation_timeout=args.implementation_timeout,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
+        validation_max_workers=getattr(args, "validation_max_workers", None),
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,

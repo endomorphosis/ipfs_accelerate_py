@@ -1,0 +1,292 @@
+{
+  "actions": {
+    "benchmark_score_claim": false,
+    "model_downloads": 0,
+    "native_START_calls": 0,
+    "production_source_edits": 0,
+    "provider_calls": 0,
+    "raw_database_or_key_copies": 0,
+    "retained_IR_or_checkpoint_edits": 0,
+    "test_source_edits": 0,
+    "training_steps": 0
+  },
+  "baseline_qualifications": [
+    {
+      "argv": [
+        "python",
+        "-B",
+        "-m",
+        "pytest",
+        "--noconftest",
+        "--import-mode=importlib",
+        "-c",
+        "pytest.ini",
+        "-q",
+        "--tb=short",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "--junitxml=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.xml",
+        "test/api/test_intent_requirement_adapter.py",
+        "test/api/test_intent_symbolic_planning_ordered.py"
+      ],
+      "catalog_file_count": 986,
+      "catalog_scope_limitation": "The benchmark implementation helper terminal_indexed_preparation.py is not in this AST catalog. Its separately retained read-only SHA256 matches the current HEAD blob. Do not claim complete AST tracing for that helper.",
+      "command": "env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.xml test/api/test_intent_requirement_adapter.py test/api/test_intent_symbolic_planning_ordered.py > /dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.log 2>&1",
+      "completion_authority_seal_count": 0,
+      "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+      "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "duration_seconds": 27.09,
+      "explicit_environment_overrides": {
+        "HF_HUB_OFFLINE": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.duckdb",
+        "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+        "TRANSFORMERS_OFFLINE": "1"
+      },
+      "files": {
+        "log": {
+          "bytes": 2130,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.log",
+          "sha256": "2e94edd0b1295a90ff19341b11b3edcc7e957ab941df973378333edf3d50c8b7"
+        },
+        "xml": {
+          "bytes": 6468,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.xml",
+          "sha256": "63e0754aedac731883c68eeb2a5233b129f0ce2fd1e66e5a607033f03d2c745d"
+        }
+      },
+      "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+      "inherited_environment_not_recorded": true,
+      "passed": 38,
+      "qualification": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.qualification.json",
+      "raw_database_copied": false,
+      "source_pin_catalog": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.source-pins.json",
+      "success_seal_count": 38,
+      "totals": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 38
+      }
+    },
+    {
+      "argv": [
+        "python",
+        "-B",
+        "-m",
+        "pytest",
+        "--noconftest",
+        "--import-mode=importlib",
+        "-c",
+        "pytest.ini",
+        "-q",
+        "--tb=short",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "--junitxml=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py"
+      ],
+      "catalog_file_count": 993,
+      "catalog_scope_limitation": "The benchmark implementation helper terminal_indexed_preparation.py is not in this AST catalog. Its separately retained read-only SHA256 matches the current HEAD blob. Do not claim complete AST tracing for that helper.",
+      "command": "env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.xml benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py > /dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.log 2>&1",
+      "completion_authority_seal_count": 0,
+      "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+      "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "duration_seconds": 40.65,
+      "explicit_environment_overrides": {
+        "HF_HUB_OFFLINE": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.duckdb",
+        "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+        "TRANSFORMERS_OFFLINE": "1"
+      },
+      "files": {
+        "log": {
+          "bytes": 2672,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.log",
+          "sha256": "3adf29dd8f82c12434d0eebec7581cbe6ef8a2597b84bb94f8b5e97f2e58bb57"
+        },
+        "xml": {
+          "bytes": 16967,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.xml",
+          "sha256": "ac9cb8e209440dd219e4567718a66f308243794397436412389c573c9c659f12"
+        }
+      },
+      "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+      "inherited_environment_not_recorded": true,
+      "passed": 89,
+      "qualification": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.qualification.json",
+      "raw_database_copied": false,
+      "source_pin_catalog": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.source-pins.json",
+      "success_seal_count": 89,
+      "totals": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 89
+      }
+    }
+  ],
+  "completion_authority": false,
+  "current_turn_decision": "Root selected ordinary worker identity/stop closure. The generic decomposition proposal is explicitly pending and no profile extension was implemented.",
+  "dataset_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+  "dataset_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "doctor_core_scope_note": "doctor_task_workflow.py:242 checks exactly one match for a selected task CID, not that the entire graph is singleton. The Terminal benchmark dispatch wrapper is the separate singleton.",
+  "downstream_singletons": [
+    {
+      "condition": "context() requires one admitted task CID.",
+      "line": 838,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "condition": "Initial context descriptor has one task_alias from prepared spec.",
+      "line": 239,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py"
+    },
+    {
+      "condition": "bind_admitted_context requires one ready graph task with the original alias.",
+      "line": 613,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py"
+    },
+    {
+      "condition": "Native owner rebind requires one task and one selected context.",
+      "line": 44,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py"
+    },
+    {
+      "condition": "Benchmark context audit expects one canonical task contract.",
+      "line": 361,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+    },
+    {
+      "condition": "Benchmark Doctor dispatch requires the sole admitted task.",
+      "line": 106,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py"
+    },
+    {
+      "condition": "Native benchmark START preflight requires exactly one admitted task.",
+      "line": 77,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py"
+    },
+    {
+      "condition": "Published context refresh requires one admitted task.",
+      "line": 374,
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "condition": "Isolated candidate runner requires one task unless an explicit finite/inventory execution scope supplies the native authority.",
+      "line": 392,
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "condition": "Retained indexed qualification assumes the complete single declared task; it must not be silently widened.",
+      "line": 36,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_codebase_indexed_planning.py"
+    }
+  ],
+  "execution_authority": false,
+  "finding": {
+    "existing_core": "Atomic reviewed native requirement matchers already join ObligationGraphCompiler, SymbolicCandidatePlanner, PlanCritic, exact PromptGoalGraph dependency/effect projection, FormalPlanCompiler, formal-plan validation, owner replay and transactional materialization.",
+    "missing_join": "Independently reviewed generic task/operation declarations cannot enter the generic benchmark preparation manifest as a multi-task population.",
+    "not_missing": "A second planner, generic neural decoder, model weights, or a proof authority boolean is not required to add this bounded planning/admission join.",
+    "semantic_scope": "administrative_requirement_task_coverage"
+  },
+  "generic_singletons": [
+    {
+      "condition": "@1 task_profile_spec always produces TB-CODE-TASK with no dependencies.",
+      "line": 107,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py"
+    },
+    {
+      "condition": "Provider constraints require one TB-CODE-TASK and empty dependency arrays.",
+      "line": 88,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "condition": "Prepared replay requires len(manifest tasks)==1 and equality with prepared spec.",
+      "line": 132,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    },
+    {
+      "condition": "Preparation fixes max_tasks=1 and signs task_specs=[spec].",
+      "line": 341,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+    }
+  ],
+  "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "observed_total_errors": 0,
+  "observed_total_failures": 0,
+  "observed_total_passed": 127,
+  "observed_total_skips": 0,
+  "phased_opt_in_proposal": {
+    "phase_1": {
+      "authority": "Nomination receipt and decoder output grant no permission. Native signed admission grants administrative scheduling permission; validation, claims, publication and completion remain separate owner gates.",
+      "bindings": "Unique operation/task IDs; exact native matchers retained by existing validator; disjoint declared output subsets whose union equals the generic profile outputs; exact requirement/operation/task dependency mapping; task-specific validation and acceptance keys.",
+      "commands": "Shared runtime canonical producer builds one fixed structural-smoke selector per task with exact bounded argv; no candidate execution, arbitrary validator injection or hidden benchmark verifier exposure.",
+      "declaration": "Opt-in terminal-public-task-profile@2 with <=16 exact task-to-operation bindings, instruction hash and requirement-contract CID. Preserve @1 bytes, smoke and default path.",
+      "existing_refusals": "Do not lift multi-task context, START, Doctor wrapper, candidate-runner or published-refresh refusals in this first increment.",
+      "implementation_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+      ],
+      "preparation": "Sign all canonical specs with the existing active local profile; set max_tasks to the declared bounded count; store an explicit versioned prepared spec list; reconstruct equality before selection and admission.",
+      "required_contract": "Explicit intent-plan-requirement-contract@2 for the complete original public instruction. Atomic mandatory requirements only; reject unresolved source units and unsupported compounds; no direct/provider fallback.",
+      "reuse_join": "build_intent_symbolic_plan -> local.admit_local_benchmark_plan -> local.materialize_local_benchmark_plan, with existing signature/source/profile checks, deterministic replay and owner transaction.",
+      "scope": "Reviewed generic decomposition through planning and native administrative materialization only."
+    },
+    "phase_2": {
+      "invalidation": "Completed task changes must create an explicitly verified source successor and refresh dependent context before it becomes executable; stale task/world/source/model selection refuses.",
+      "reuse": "Reuse exact signed raw source inventory and frozen embedding/index/checkpoint identities; bind each task CID/revision/alias/plan and dependencies to its own native owner world context.",
+      "scope": "Per-task context and source-currentness across dependency waves."
+    },
+    "phase_3": {
+      "qualification": "Qualify dependency-aware readiness, isolated parallel independent tasks and restart recovery before claiming parallel benchmark execution.",
+      "reuse": "Use an explicit native multi-task execution scope following existing finite/inventory owner controls; preserve lease/worktree isolation, exact effects, validation, independent review, merge currentness and durable completion gates.",
+      "scope": "Bounded native execution and publication."
+    },
+    "status": "pending_not_implemented_this_turn"
+  },
+  "priority_row": {
+    "capability": "Symbolic decomposition in generic benchmark profiles",
+    "line": 192,
+    "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+    "priority": "P0"
+  },
+  "proof_authority": false,
+  "recommended_validation": {
+    "existing_regressions": [
+      "test/api/test_intent_requirement_adapter.py",
+      "test/api/test_intent_symbolic_planning.py",
+      "test/api/test_intent_symbolic_planning_ordered.py",
+      "test/api/test_intent_requirement_admission.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py"
+    ],
+    "negative_controls": [
+      "forged signature or inactive profile",
+      "changed instruction/source hash/contract CID",
+      "dropped, added, duplicated, reversed or cyclic task/operation dependencies",
+      "missing/extra/orphan task or requirement",
+      "missing/extra/wrong effect or media type, overlapping task output ownership",
+      "validation/acceptance/argv mismatch",
+      "unresolved source or unsupported compound requirement",
+      "forged accepted/proof/execution/completion flags and owner-resigned selection receipt",
+      "source drift during transactional materialization rolls back complete task population",
+      "fake native owner, mutated native row or dependency edge before owner verification",
+      "@2 context or START rejects until per-task execution scope is qualified"
+    ],
+    "new_parallel_positive": "Two independent operations produce one symbolic wave with two tasks; retain administrative-only scope and no concurrency/success claim.",
+    "new_positive": "Generic @2 profile with two independently authored atomic requirements and two disjoint outputs, one dependency edge; actual prepare -> symbolic compiler/critic/formal validator -> signed admission -> transactional IntentRepository materialization -> real Quack owner task/contract/dependency verification. Zero provider calls or training."
+  },
+  "schema": "supervisor-symbolic-decomposition-readonly-survey@1",
+  "source_pins": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/survey-source-pins.json",
+  "source_semantics_verified": false,
+  "status": "survey_complete_proposal_pending",
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004"
+}

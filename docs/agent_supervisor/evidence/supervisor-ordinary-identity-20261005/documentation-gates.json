@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "returncode": 0,
+  "elapsed_seconds": 0.19531283900141716,
+  "log": "documentation-gates.log",
+  "result": "See retained log."
+}

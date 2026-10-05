@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 28 items
+
+test/api/test_ordinary_supervisor_child_identity.py .................... [ 71%]
+........                                                                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/ordinary-native-green03.xml -
+============================= slowest 10 durations =============================
+2.15s call     test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_a_benign_bootstrap_that_only_contains_expected_argv
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[257]
+0.63s call     test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[1.5]
+0.63s call     test/api/test_ordinary_supervisor_child_identity.py::test_validation_worker_cli_factory_and_child_argv_are_identical[256]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override0]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[scope]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[boot]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[malformed]
+0.61s call     test/api/test_ordinary_supervisor_child_identity.py::test_validation_worker_cli_factory_and_child_argv_are_identical[4]
+============================= 28 passed in 26.25s ==============================

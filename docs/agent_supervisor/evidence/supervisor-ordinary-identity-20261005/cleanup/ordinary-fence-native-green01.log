@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 23 items
+
+test/api/test_ordinary_supervisor_child_fence.py ..................F.... [100%]
+
+=================================== FAILURES ===================================
+_ test_completed_leftover_releases_native_state_only_after_owned_session_fence _
+test/api/test_ordinary_supervisor_child_fence.py:315: in test_completed_leftover_releases_native_state_only_after_owned_session_fence
+    assert persisted.active_task_id == "" and persisted.active_task_cid == ""
+E   AssertionError: assert ('ORD-001' == ''
+E     
+E     + ORD-001)
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-green01.xml -
+============================= slowest 10 durations =============================
+2.17s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]
+1.02s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+0.86s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_keeps_worker_observations_until_native_quiescence[]
+0.78s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+0.76s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_later_worker_after_exact_owned_leader_exit
+0.74s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_clears_only_exact_owned_dead_birth
+0.74s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_uses_exact_live_sidecar_when_pid_marker_is_absent
+0.74s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+0.73s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker
+0.72s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope]
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+======================== 1 failed, 22 passed in 27.14s =========================

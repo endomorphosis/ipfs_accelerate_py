@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.3.4, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/test
+configfile: pytest.ini
+plugins: respx-0.22.0, anyio-4.14.2, asyncio-0.23.8
+asyncio: mode=Mode.STRICT
+collected 542 items / 8 deselected / 534 selected
+
+test/api/test_supervisor_preflight_persistence_deadline.py ...........   [  2%]
+test/api/test_agent_supervisor_preflight_patch_recovery.py .........     [  3%]
+test/api/test_agent_supervisor_dependency_preflight_event_projection.py . [  3%]
+........                                                                 [  5%]
+test/api/test_agent_supervisor_dependency_preflight_recovery_store.py .. [  5%]
+..................................................                       [ 15%]
+test/api/test_agent_supervisor_project_dependency_preflight.py ......... [ 16%]
+........................................................................ [ 30%]
+..............................................                           [ 38%]
+test/api/test_agent_supervisor_lifecycle_orchestrator.py ............... [ 41%]
+.......................                                                  [ 46%]
+test/api/test_agent_supervisor_daemon_checkpoints.py ................... [ 49%]
+..........                                                               [ 51%]
+test/api/test_agent_supervisor_control_lifecycle.py .................    [ 54%]
+test/api/test_supervisor_staged_file_patching.py ......................  [ 58%]
+test/api/test_agent_supervisor_validation_scheduler.py ................. [ 61%]
+..............................................                           [ 70%]
+test/api/test_agent_supervisor_todo_daemon_lazy_exports.py ..            [ 70%]
+test/api/test_todo_daemon_lazy_package.py .....                          [ 71%]
+test/api/test_llm_router_exact_provider_fallback.py ........             [ 73%]
+test/api/test_supervisor_codex_command_owner.py ..................       [ 76%]
+test/api/test_supervisor_router_execution_contract.py .....              [ 77%]
+test/api/test_router_implementation_runner.py ....................       [ 81%]
+test/api/test_agent_supervisor_todo_llm.py ...........                   [ 83%]
+test/api/test_supervisor_modify_seed_contract.py ....................... [ 87%]
+............                                                             [ 90%]
+test/api/test_supervisor_modify_seed_replay.py .....................     [ 94%]
+test/api/test_agent_supervisor_prior_attempt_seed.py ................... [ 97%]
+.............                                                            [100%]
+
+- generated xml file: /home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/supervisor-lifecycle-merged-final-03.xml -
+============================= slowest 10 durations =============================
+16.49s call     api/test_agent_supervisor_todo_daemon_lazy_exports.py::test_implementation_module_entry_points_have_no_runpy_warning
+8.87s call     api/test_todo_daemon_lazy_package.py::test_module_help_has_no_preloaded_module_runpy_warning[ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon]
+8.81s call     api/test_todo_daemon_lazy_package.py::test_lazy_exports_cache_exact_implementation_objects[ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor--export_names1]
+8.73s call     api/test_agent_supervisor_validation_scheduler.py::test_validation_runner_uses_only_inherited_sealed_fds_when_parent_is_non_dumpable
+8.59s call     api/test_todo_daemon_lazy_package.py::test_lazy_exports_cache_exact_implementation_objects[ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon-ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor-export_names0]
+8.26s call     api/test_agent_supervisor_todo_daemon_lazy_exports.py::test_package_import_defers_implementation_modules_until_export_access
+8.09s call     api/test_todo_daemon_lazy_package.py::test_module_help_has_no_preloaded_module_runpy_warning[ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor]
+1.49s call     api/test_llm_router_exact_provider_fallback.py::test_exact_provider_does_not_consume_cross_provider_cached_response
+1.16s call     api/test_agent_supervisor_preflight_patch_recovery.py::test_portal_retains_preflight_store_for_retry_after_contended_close
+0.75s call     api/test_llm_router_exact_provider_fallback.py::test_explicit_exact_provider_disables_cross_provider_fallback
+================ 534 passed, 8 deselected in 275.30s (0:04:35) =================

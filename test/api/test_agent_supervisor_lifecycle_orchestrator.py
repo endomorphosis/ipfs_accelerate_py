@@ -531,6 +531,179 @@ def test_restart_partial_launch_failure_resumes_after_old_fence_only(
     assert adapter.launches == 1
 
 
+class SimulatedOwnerCrash(BaseException):
+    """An interruption which must escape normal launch-failure compensation."""
+
+
+@pytest.mark.parametrize("operation", [Operation.START, Operation.RESTART])
+@pytest.mark.parametrize("observe_health_before_crash", [False, True])
+@pytest.mark.parametrize("reparent_root", [False, True])
+def test_interrupted_startup_reuses_exact_root_and_observes_fresh_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: Operation,
+    observe_health_before_crash: bool,
+    reparent_root: bool,
+) -> None:
+    profile = _profile(tmp_path)
+    clock = Clock()
+    adapter = FakeProcessAdapter(profile, clock)
+    if operation is Operation.RESTART:
+        adapter.seed_tree()
+    owner = _orchestrator(profile, adapter, clock)
+    request = _request(profile, operation=operation)
+    advance = owner._advance
+
+    def interrupt_after_checkpoint(state, phase, **changes):
+        updated = advance(state, phase, **changes)
+        if phase is LifecycleSagaPhase.VERIFYING_HEALTH and (
+            bool(updated.health_window_started_at_ms) == observe_health_before_crash
+        ):
+            raise SimulatedOwnerCrash
+        return updated
+
+    monkeypatch.setattr(owner, "_advance", interrupt_after_checkpoint)
+    with pytest.raises(SimulatedOwnerCrash):
+        owner.execute(request)
+    checkpoint = owner.store.latest()[profile.target_id]
+    assert checkpoint.phase is LifecycleSagaPhase.VERIFYING_HEALTH
+    assert checkpoint.new_tree is not None
+    original_root = checkpoint.new_tree.roots[0]
+    assert adapter.launches == 1
+
+    # A completed child is normal. Time without observations cannot count
+    # toward the health window of the replacement owner.
+    surviving_root = (
+        replace(original_root, parent_pid=42, identity_id="")
+        if reparent_root
+        else original_root
+    )
+    adapter.live = {surviving_root.identity_id: surviving_root}
+    clock.value_ms += 5_000
+    resumed_at = clock.now_ms()
+    resumed = _orchestrator(profile, adapter, clock)
+    receipt = resumed.execute(request)
+
+    assert receipt.succeeded
+    assert receipt.new_tree.roots[0].identity_id == surviving_root.identity_id
+    assert receipt.health_window_started_at_ms >= resumed_at
+    assert receipt.health_window_completed_at_ms - resumed_at >= request.parameters["health_window_ms"]
+    assert adapter.launches == 1
+    assert adapter.terminations == (1 if operation is Operation.RESTART else 0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("start_time_ticks", 99), ("boot_id", "boot:replacement"), ("fencing_epoch", 10)],
+)
+def test_interrupted_startup_rejects_changed_immutable_root_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    profile = _profile(tmp_path)
+    clock = Clock()
+    adapter = FakeProcessAdapter(profile, clock)
+    owner = _orchestrator(profile, adapter, clock)
+    request = _request(profile, operation=Operation.START)
+    advance = owner._advance
+
+    def interrupt_after_launch(state, phase, **changes):
+        updated = advance(state, phase, **changes)
+        if phase is LifecycleSagaPhase.VERIFYING_HEALTH:
+            raise SimulatedOwnerCrash
+        return updated
+
+    monkeypatch.setattr(owner, "_advance", interrupt_after_launch)
+    with pytest.raises(SimulatedOwnerCrash):
+        owner.execute(request)
+    root = owner.store.latest()[profile.target_id].new_tree.roots[0]
+    replacement = replace(root, **{field: value}, identity_id="")
+    adapter.live = {replacement.identity_id: replacement}
+
+    with pytest.raises(ProcessIdentityMismatch, match="different process root"):
+        _orchestrator(profile, adapter, clock).execute(request)
+    assert adapter.launches == 1
+    assert adapter.terminations == 0
+
+
+def test_startup_root_replacement_during_health_never_commits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = _profile(tmp_path)
+    clock = Clock()
+    adapter = FakeProcessAdapter(profile, clock)
+    owner = _orchestrator(profile, adapter, clock)
+    healthy = adapter.healthy
+    health_calls = 0
+
+    def replace_after_observation(*args, **kwargs):
+        nonlocal health_calls
+        result = healthy(*args, **kwargs)
+        health_calls += 1
+        if health_calls == 1:
+            adapter.seed_tree(descendants=0)
+        return result
+
+    monkeypatch.setattr(adapter, "healthy", replace_after_observation)
+    with pytest.raises(ProcessIdentityMismatch, match="different process root"):
+        owner.start(_request(profile, operation=Operation.START))
+
+    assert owner.store.latest()[profile.target_id].receipt is None
+    assert adapter.launches == 1
+    assert adapter.terminations == 0
+
+
+@pytest.mark.parametrize("payload", [b"[]\n", b"\xff", b'{"unfinished":'])
+def test_corrupt_lifecycle_journal_fails_before_process_effects(
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    profile = _profile(tmp_path)
+    clock = Clock()
+    adapter = FakeProcessAdapter(profile, clock)
+    owner = _orchestrator(profile, adapter, clock)
+    owner.store.path.write_bytes(payload)
+
+    with pytest.raises(TransactionConflictError, match="journal"):
+        owner.start(_request(profile, operation=Operation.START))
+    assert adapter.events == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("revision", True),
+        ("revision", -1),
+        ("old_tree_fenced", "false"),
+        ("new_tree", []),
+        ("observed_effects", "effect"),
+        ("compensation", [1]),
+        ("failure_code", []),
+    ],
+)
+def test_invalid_lifecycle_checkpoint_fields_fail_before_process_effects(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    profile = _profile(tmp_path)
+    clock = Clock()
+    adapter = FakeProcessAdapter(profile, clock)
+    owner = _orchestrator(profile, adapter, clock)
+    request = _request(profile, operation=Operation.START)
+    state = owner._reserve(owner._intent(request, profile, LifecycleAction.START))
+    payload = state.to_dict()
+    payload[field] = value
+    owner.store.path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(TransactionConflictError, match="invalid record"):
+        owner.execute(request)
+    assert adapter.events == []
+
+
 def test_fork_without_sustained_health_is_compensated_and_not_success(
     tmp_path: Path,
 ) -> None:

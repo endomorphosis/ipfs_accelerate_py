@@ -1,0 +1,106 @@
+{
+  "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "scope": "Read-only inspected source snapshot; not a claim that every file was included in the AST seal catalog.",
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/terminal_codebase_indexed_planning.py": {
+      "matches_current_head_blob": true,
+      "sha256": "45213cbad0671c6e9b367253e69a4132fcc7bc8b375da50eb8a7635a6deb78be"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "matches_current_head_blob": true,
+      "sha256": "105c40fe072bf32612481b0a037d23835f83987c56cbd302fc623b9b617ae0dd"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": {
+      "matches_current_head_blob": true,
+      "sha256": "17f416a45d873ba77ca10e11eb13b3f61ecd061f6e5ec3b63beba8230e455868"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "matches_current_head_blob": true,
+      "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "matches_current_head_blob": true,
+      "sha256": "98dc854247f794dcc5ea2be6c36abfb321c5cfa2d53a39eba827ede7c7fc2683"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "matches_current_head_blob": true,
+      "sha256": "11e901d8e1123672f355b73ed1b27f5b69a99b8589d74df1b3dd92c3843a6ed1"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py": {
+      "matches_current_head_blob": true,
+      "sha256": "bd189ee79921a9afd81b86ad95d9149b7c65e536400f80816bb853d5556b8474"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": {
+      "matches_current_head_blob": true,
+      "sha256": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": {
+      "matches_current_head_blob": true,
+      "sha256": "69ee5fae8e7310ee1d9ca58a5184b43f1dafc00c8b4d8002f916140e9ba08f36"
+    },
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": {
+      "matches_current_head_blob": true,
+      "sha256": "426036cbd3385142dd5d98846be2185dee0403496de199063f72b3b7ff3510af"
+    },
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "matches_current_head_blob": true,
+      "sha256": "a8efc0edd0d1ba348dda4b5d6fedfbd62e1e50de91eb649e57f3ae6fb771ce1a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py": {
+      "matches_current_head_blob": true,
+      "sha256": "9c0505757b56c52ccc4937cafe56f95e6eb255ef5acc5a3402d11526fc25909d"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py": {
+      "matches_current_head_blob": true,
+      "sha256": "a87cb299e6e77a182a2dd1941100b4f8b080824db7d7575fc6063efcb70a2023"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": {
+      "matches_current_head_blob": true,
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": {
+      "matches_current_head_blob": true,
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py": {
+      "matches_current_head_blob": true,
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py": {
+      "matches_current_head_blob": true,
+      "sha256": "6f566deb7e3d23a32789a42799a896fa60c8ed6cca4a7854c082b02a5c3f0ff2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py": {
+      "matches_current_head_blob": true,
+      "sha256": "4a51d33888c34a24cd0a8733bcb5272c7927f1b3f61186f8322445ba72b7e7ee"
+    },
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": {
+      "matches_current_head_blob": true,
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": {
+      "matches_current_head_blob": true,
+      "sha256": "e375a0be14dcfe7579f917807f9308c7fa42024b67c11b1e0add18452dad0156"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "matches_current_head_blob": true,
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "matches_current_head_blob": true,
+      "sha256": "e0ead6bdb4d4710ae44f3ca323bb0748cbbcc9fac0512ecdca5c95ff1ff8f424"
+    },
+    "test/api/test_intent_requirement_adapter.py": {
+      "matches_current_head_blob": true,
+      "sha256": "4c3aee5701181ecdebe0d4ac2ee729dc20ec8c86b1be146d26d4d6dd6029b030"
+    },
+    "test/api/test_intent_symbolic_planning.py": {
+      "matches_current_head_blob": true,
+      "sha256": "a6383c7153cc96a9340e1082888429d3b05954ce051047d9aca8659a09762939"
+    },
+    "test/api/test_intent_symbolic_planning_ordered.py": {
+      "matches_current_head_blob": true,
+      "sha256": "3a969c1180af20cfa2abec4dea1a77e09e2080177be571099785818c0dbdc397"
+    }
+  }
+}

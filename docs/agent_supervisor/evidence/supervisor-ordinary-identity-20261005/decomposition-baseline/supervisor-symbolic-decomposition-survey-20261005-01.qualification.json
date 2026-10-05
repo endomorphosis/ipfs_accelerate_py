@@ -1,0 +1,59 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-c",
+    "pytest.ini",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.xml",
+    "test/api/test_intent_requirement_adapter.py",
+    "test/api/test_intent_symbolic_planning_ordered.py"
+  ],
+  "catalog_file_count": 986,
+  "catalog_scope_limitation": "The benchmark implementation helper terminal_indexed_preparation.py is not in this AST catalog. Its separately retained read-only SHA256 matches the current HEAD blob. Do not claim complete AST tracing for that helper.",
+  "command": "env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.xml test/api/test_intent_requirement_adapter.py test/api/test_intent_symbolic_planning_ordered.py > /dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.log 2>&1",
+  "completion_authority_seal_count": 0,
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "duration_seconds": 27.09,
+  "explicit_environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.duckdb",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "files": {
+    "log": {
+      "bytes": 2130,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.log",
+      "sha256": "2e94edd0b1295a90ff19341b11b3edcc7e957ab941df973378333edf3d50c8b7"
+    },
+    "xml": {
+      "bytes": 6468,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.xml",
+      "sha256": "63e0754aedac731883c68eeb2a5233b129f0ce2fd1e66e5a607033f03d2c745d"
+    }
+  },
+  "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "inherited_environment_not_recorded": true,
+  "passed": 38,
+  "raw_database_copied": false,
+  "source_pin_catalog": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-survey-20261005-01.source-pins.json",
+  "success_seal_count": 38,
+  "totals": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 38
+  }
+}

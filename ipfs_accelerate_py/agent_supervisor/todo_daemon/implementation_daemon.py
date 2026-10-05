@@ -362,6 +362,7 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+DEPENDENCY_PREFLIGHT_ARTIFACT_LOCK_TIMEOUT_SECONDS = 1.0
 PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS = 2.0
 PROVIDER_RUNNER_BIRTH_POLL_SECONDS = 0.005
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
@@ -67055,6 +67056,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._dependency_preflight_artifact_store = BoundedArtifactStore(
                 self.dependency_preflight_artifact_store_path,
                 refresh_on_lock=True,
+                lock_timeout_seconds=DEPENDENCY_PREFLIGHT_ARTIFACT_LOCK_TIMEOUT_SECONDS,
             )
         store = self._dependency_preflight_artifact_store
         reference = store.put_blob(

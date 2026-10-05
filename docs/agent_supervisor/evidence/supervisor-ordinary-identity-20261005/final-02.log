@@ -1,0 +1,62 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 649 items
+
+test/api/test_ordinary_supervisor_child_identity.py .................... [  3%]
+..........                                                               [  4%]
+test/api/test_ordinary_supervisor_child_fence.py ....................... [  8%]
+                                                                         [  8%]
+test/api/test_agent_supervisor_process_tree_fencing.py .........         [  9%]
+test/api/test_agent_supervisor_bounded_process_fence.py .....            [ 10%]
+test/api/test_agent_supervisor_production_policy_transport.py .......... [ 11%]
+........................................................................ [ 22%]
+............                                                             [ 24%]
+test/api/test_agent_supervisor_production_provider_cli.py .............. [ 26%]
+.........................                                                [ 30%]
+test/api/test_production_daemon_operator_options.py .................... [ 33%]
+.........                                                                [ 35%]
+test/api/test_production_independent_review_contract.py ................ [ 37%]
+..............                                                           [ 39%]
+test/api/test_supervisor_typed_recovery_join.py ........................ [ 43%]
+.....                                                                    [ 44%]
+test/api/test_supervisor_retained_donor_scopes.py ...........            [ 46%]
+test/api/test_prior_seed_guidance_replay.py ...............              [ 48%]
+test/api/test_agent_supervisor_plan_bound_preflight_recovery.py ....     [ 48%]
+test/api/test_agent_supervisor_dependency_preflight_recovery_store.py .. [ 49%]
+..................................................                       [ 57%]
+test/api/test_agent_supervisor_preflight_patch_recovery.py .........     [ 58%]
+test/api/test_supervisor_codex_command_owner.py ..................       [ 61%]
+test/api/test_supervisor_current_model_route.py ........                 [ 62%]
+test/api/test_agent_supervisor_managed_daemon_identity.py .............. [ 64%]
+......                                                                   [ 65%]
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py .........  [ 66%]
+test/api/test_supervisor_modify_seed_contract.py ....................... [ 70%]
+............                                                             [ 72%]
+test/api/test_supervisor_modify_seed_replay.py .....................     [ 75%]
+test/api/test_agent_supervisor_prior_attempt_seed.py ................... [ 78%]
+.............                                                            [ 80%]
+test/api/test_agent_supervisor_daemon_checkpoints.py ................... [ 83%]
+..........                                                               [ 84%]
+test/api/test_agent_supervisor_lifecycle_orchestrator.py ............... [ 87%]
+.......................                                                  [ 90%]
+test/api/test_agent_supervisor_control_lifecycle.py .................    [ 93%]
+test/api/test_supervisor_preflight_persistence_deadline.py ...........   [ 95%]
+test/api/test_supervisor_staged_file_patching.py ......................  [ 98%]
+test/api/test_llm_router_exact_provider_fallback.py ........             [ 99%]
+test/api/test_ordinary_supervisor_shutdown_reconcile.py ..               [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/final-02.xml -
+============================= slowest 10 durations =============================
+2.83s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+2.09s call     test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy[False]
+1.68s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+1.24s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]
+1.19s call     test/api/test_llm_router_exact_provider_fallback.py::test_exact_provider_does_not_consume_cross_provider_cached_response
+1.18s call     test/api/test_agent_supervisor_preflight_patch_recovery.py::test_portal_retains_preflight_store_for_retry_after_contended_close
+1.03s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+1.02s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+0.90s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+0.86s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]
+======================= 649 passed in 366.15s (0:06:06) ========================

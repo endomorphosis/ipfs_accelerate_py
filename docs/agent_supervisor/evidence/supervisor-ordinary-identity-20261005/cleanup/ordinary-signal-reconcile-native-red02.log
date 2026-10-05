@@ -1,0 +1,34 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 2 items
+
+test/api/test_ordinary_supervisor_shutdown_reconcile.py F.               [100%]
+
+=================================== FAILURES ===================================
+_ test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing] _
+test/api/test_ordinary_supervisor_shutdown_reconcile.py:82: in test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence
+    assert asdict(after_state) == before_state
+E   AssertionError: assert {'heartbeat_a...key': '', ...} == {'heartbeat_a...8392518', ...}
+E     
+E     Omitting 55 identical items, use -vv to show
+E     Differing items:
+E     {'heartbeat_at': '2026-10-05T06:44:49.874108+00:00'} != {'heartbeat_at': ''}
+E     {'active_task_cid': ''} != {'active_task_cid': 'baguqeeraesrfwgx4pbbtsee63ylabmauhve3kegtqudokgrvicpzxkbzeuma'}
+E     {'active_attempt': 0} != {'active_attempt': 2}
+E     {'last_implementation_task_id': 'ORD-001'} != {'last_implementation_task_id': ''}...
+E     
+E     ...Full output truncated (10 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/391ebe1d29cab298de86/agent-merge-trains/implementation-tasks-996d26c52581409ef036/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/391ebe1d29cab298de86/agent-merge-trains/implementation-tasks-996d26c52581409ef036/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-signal-reconcile-native-red02.xml -
+============================= slowest 10 durations =============================
+2.52s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]
+1.17s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]
+========================= 1 failed, 1 passed in 13.09s =========================

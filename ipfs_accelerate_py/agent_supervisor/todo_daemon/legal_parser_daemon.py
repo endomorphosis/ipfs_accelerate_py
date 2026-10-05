@@ -5000,6 +5000,7 @@ def _run_command(
     input_text: Optional[str] = None,
     timeout: int = 60,
     environment: Optional[Mapping[str, object]] = None,
+    preserve_output_newlines: bool = False,
 ) -> Dict[str, Any]:
     started = time.time()
     try:
@@ -5011,26 +5012,31 @@ def _run_command(
                 if environment is None
                 else {str(key): str(value) for key, value in environment.items()}
             ),
-            input=input_text,
-            text=True,
+            input=(input_text.encode("utf-8") if preserve_output_newlines and input_text is not None else input_text),
+            text=not preserve_output_newlines,
             capture_output=True,
             timeout=timeout,
             check=False,
         )
+        stdout = proc.stdout.decode("utf-8") if preserve_output_newlines else proc.stdout[-12000:]
+        stderr = proc.stderr.decode("utf-8", errors="replace") if preserve_output_newlines else proc.stderr
         return {
             "valid": proc.returncode == 0,
             "returncode": proc.returncode,
             "command": list(cmd),
-            "stdout": proc.stdout[-12000:],
-            "stderr": proc.stderr[-12000:],
+            "stdout": stdout,
+            "stderr": stderr[-12000:],
             "duration_seconds": round(time.time() - started, 3),
         }
     except subprocess.TimeoutExpired as exc:
+        stdout = (
+            exc.stdout.decode("utf-8") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+        ) if preserve_output_newlines else _command_output_text(exc.stdout)[-12000:]
         return {
             "valid": False,
             "returncode": None,
             "command": list(cmd),
-            "stdout": _command_output_text(exc.stdout)[-12000:],
+            "stdout": stdout,
             "stderr": (f"timeout after {timeout}s\n" + _command_output_text(exc.stderr))[-12000:],
             "duration_seconds": round(time.time() - started, 3),
         }

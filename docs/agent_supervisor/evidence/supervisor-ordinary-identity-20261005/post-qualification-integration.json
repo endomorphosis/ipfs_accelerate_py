@@ -1,0 +1,8 @@
+{
+  "qualified_source_commit": "de1e0034bb51c8b9ea35d63ba526b3ecd37bfcb2",
+  "post_qualification_merge": "fbbf1d620161bf3de9e7e05662286d89cfd7aeff",
+  "integrated_documentation_only_commit": "87545101d",
+  "all_qualified_source_and_test_bytes_match": true,
+  "source_bindings": 50,
+  "changes_after_run": "One upstream documentation-gates evidence JSON; no qualified production or test bytes changed."
+}
