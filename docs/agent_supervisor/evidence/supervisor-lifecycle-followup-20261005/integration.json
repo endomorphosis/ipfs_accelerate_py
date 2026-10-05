@@ -1,0 +1,75 @@
+{
+  "daemon_delta_is_exactly_two_intended_lines": true,
+  "followup_qualification_exists_now": false,
+  "merged_commit": "8b4db97efcf227edb8ff2e0cb20c224a2fdc3b05",
+  "new_followup_qualification_path": "docs/agent_supervisor/evidence/supervisor-lifecycle-followup-20261005/final.json",
+  "own_source_commit": "6264610c40413c82fed3037a38d9fbe3a5f538b5",
+  "production_delta_is_exactly_seven_intended_files": true,
+  "production_paths": [
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py"
+  ],
+  "schema": "supervisor-lifecycle-merge-independent-review/v1",
+  "six_uncontested_sources_byte_identical_to_own_commit": {
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": true
+  },
+  "source_bindings": {
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": {
+      "bytes": 45770,
+      "sha256": "e401957921322df813beeec598c139f69226c6b651ede5478ef8ae5e63f5553e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": {
+      "bytes": 71232,
+      "sha256": "f4aac8583dda864da329c79e5860863dd6c5c66767b9941eb7d8117a4e30dfae"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": {
+      "bytes": 211531,
+      "sha256": "8f73cd5841c4cf3eeb48fa07d3dabc222e23ab35e39e5873c57183b9c1af127b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py": {
+      "bytes": 8403,
+      "sha256": "fa4207391115f54674732d7a4d257a5bb35be95ace8e699c6c1aa4a32cb03e71"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": {
+      "bytes": 41441,
+      "sha256": "e46f54d8c3ba7a38e13daaf837a11a649194a1134a6086889967d6a8fcb7993b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3233162,
+      "sha256": "68beeeba41e543cbb90284f65c12bd07aeda2b896ab12aeb2863d6b4dee1213c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py": {
+      "bytes": 261162,
+      "sha256": "e9ae5b327964490669f29c29e0dd26e492887c780ea260e29e26a4126616fd07"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": {
+      "bytes": 75914,
+      "sha256": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": {
+      "bytes": 161920,
+      "sha256": "c9b81d9d530c94472f0b03600a09d10c6d61a82dd33e5632d691f100937f5f32"
+    }
+  },
+  "source_edits": 0,
+  "status": "passed",
+  "upstream_commit": "77cdae9603c3c2e6bad4bfc0fdea35a2d8cfc88c",
+  "upstream_document_is_exact_prefix_preserving_all_existing_links": true,
+  "upstream_modify_daemon_semantics_unchanged_after_removing_two_timeout_lines": true,
+  "upstream_modify_regression_suites_byte_identical": [
+    "test/api/test_supervisor_modify_seed_contract.py",
+    "test/api/test_supervisor_modify_seed_replay.py",
+    "test/api/test_agent_supervisor_prior_attempt_seed.py"
+  ],
+  "upstream_project_dependency_preflight_byte_identical": true
+}

@@ -656,6 +656,8 @@ adapter's full patch output. Failed reads and undecodable text stop collection
 before a partial or altered patch is returned.
 
 The [follow-up qualification](evidence/supervisor-lifecycle-followup-20261005/final.json)
-records the frozen source bindings, selected regression cases, independent
-review and the unchanged-baseline validation failures. This qualification does
-not produce new model weights, live-provider results or benchmark scores.
+records **534 distinct passing tests**, frozen source bindings and independent
+review. Eight broader validation failures reproduced on the unchanged baseline
+and are excluded from this selection; both runs are retained in the evidence.
+No new Ruff diagnostics were introduced. This qualification does not produce
+new model weights, live-provider results or benchmark scores.

@@ -1,0 +1,169 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/scheduler-baseline-cache-01",
+    "--junitxml=/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/supervisor-lifecycle-validation-scheduler-baseline-01.xml",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+  ],
+  "baseline_after": {
+    "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+    "root": "/home/barberb/lift_coding/.worktrees/supervisor-recovery-routing-20261005",
+    "sources": {
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": {
+        "bytes": 40250,
+        "sha256": "acbffc67417ebc52b293d2bca0df87a67ffdba8dfaf008063994825ecfb65f62"
+      },
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+        "bytes": 3230257,
+        "sha256": "618deb3aea5347af756744053737a88c48bca5cd9101fadc7d1a5c51554c1700"
+      },
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": {
+        "bytes": 129651,
+        "sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d"
+      },
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py": {
+        "bytes": 315155,
+        "sha256": "102ca6af09089b5eee62a72f5452e243d69814adeea7529488446f42904ef8a4"
+      },
+      "test/api/test_agent_supervisor_validation_scheduler.py": {
+        "bytes": 102641,
+        "sha256": "abaf5a173bb43e4db86cef78b6c4aa87bdb05279cbfabb3ce84684c7d7a4bd93"
+      }
+    },
+    "status": ""
+  },
+  "baseline_before": {
+    "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+    "root": "/home/barberb/lift_coding/.worktrees/supervisor-recovery-routing-20261005",
+    "sources": {
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": {
+        "bytes": 40250,
+        "sha256": "acbffc67417ebc52b293d2bca0df87a67ffdba8dfaf008063994825ecfb65f62"
+      },
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+        "bytes": 3230257,
+        "sha256": "618deb3aea5347af756744053737a88c48bca5cd9101fadc7d1a5c51554c1700"
+      },
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": {
+        "bytes": 129651,
+        "sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d"
+      },
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py": {
+        "bytes": 315155,
+        "sha256": "102ca6af09089b5eee62a72f5452e243d69814adeea7529488446f42904ef8a4"
+      },
+      "test/api/test_agent_supervisor_validation_scheduler.py": {
+        "bytes": 102641,
+        "sha256": "abaf5a173bb43e4db86cef78b6c4aa87bdb05279cbfabb3ce84684c7d7a4bd93"
+      }
+    },
+    "status": ""
+  },
+  "baseline_unchanged": true,
+  "cases": [
+    {
+      "message": "AssertionError: assert ['allowed', '...d', 'allowed'] == ['denied', 'd...ed', 'denied']\n  \n  At index 0 diff: 'allowed' != 'denied'\n  \n  Full diff:\n    [\n  -     'denied',\n  -     'denied',...\n  \n  ...Full output truncated (9 lines hidden), use '-vv' to show",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+      "status": "failed"
+    },
+    {
+      "message": "assert 0 == 75",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+      "status": "failed"
+    },
+    {
+      "message": "assert 0 == 75",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+      "status": "failed"
+    },
+    {
+      "message": "assert 'export PYTHO...sys.path}))\\'' == 'python -c \\'...sys.path}))\\''\n  \n  - python -c 'import json,os,sys; print(json.dumps({\"no_site\":sys.flags.no_site,\"no_user_site\":sys.flags.no_user_site,\"site_loaded\":\"site\" in sys.modules,\"sitecustomize_loaded\":\"sitecustomize\" in sys.modules,\"pythonpath\":os.environ.get(\"PYTHONPATH\", \"\"),\"sys_path\":sys.path}))'\n  + export PYTHONPATH=ipfs_datasets_py && python -c 'import json,os,sys; print(json.dumps({\"no_site\":sys.flags.no_site,\"no_user_site\":sys.flags.no",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+      "status": "failed"
+    },
+    {
+      "message": "AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.PortalImplementationDaemon'> has no attribute '_unix_stream_socket_permitted'",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution",
+      "status": "failed"
+    },
+    {
+      "message": "KeyError: 'validation_filesystem_boundary'",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+      "status": "failed"
+    },
+    {
+      "message": "KeyError: 'validation_filesystem_boundary'",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+      "status": "failed"
+    },
+    {
+      "message": "KeyError: 'infrastructure_failure'",
+      "nodeid": "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable",
+      "status": "failed"
+    }
+  ],
+  "comparison_source_junit": {
+    "bytes": 105101,
+    "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/supervisor-lifecycle-final-01.xml",
+    "sha256": "c3b46e9088630c14143082d3740a83e2c3c7db5305e5b0222a05a67985bc8f8a"
+  },
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-recovery-routing-20261005",
+  "dependency_after": {
+    "head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "root": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "sources": {},
+    "status": ""
+  },
+  "dependency_before": {
+    "head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "root": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "sources": {},
+    "status": ""
+  },
+  "dependency_unchanged": true,
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/scheduler-baseline-seal-01.duckdb",
+    "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-recovery-routing-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "exit_code": 1,
+  "junit": {
+    "bytes": 19413,
+    "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/supervisor-lifecycle-validation-scheduler-baseline-01.xml",
+    "sha256": "d6e84da8e4e6c7b25db6d51415e35d14ce6d60fb100d78260067596c5f531804"
+  },
+  "log": {
+    "bytes": 19202,
+    "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/.pytest_cache/supervisor-lifecycle-validation-scheduler-baseline-01.log",
+    "sha256": "de1fbb5f9dd173edfea66bc739b721ac6699bce3d46be0a5302af13d59660e18"
+  },
+  "provider_calls": 0,
+  "schema": "supervisor-lifecycle-baseline-comparison/v1",
+  "seconds": 24.412,
+  "selected_nodeids": [
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+  ],
+  "source_edits": 0,
+  "status": "all_eight_current_failures_reproduced_on_clean_prior_baseline"
+}
