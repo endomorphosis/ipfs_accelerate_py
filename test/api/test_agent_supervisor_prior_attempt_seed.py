@@ -68,18 +68,25 @@ def _authorize_seed(
     )
 
 
-def test_prior_seed_output_attestations_do_not_promote_modify_to_absent_output_authority() -> None:
-    """V2 seed authority only materializes outputs proved absent at baseline."""
+def test_prior_seed_output_attestations_bind_modify_before_and_after_bytes() -> None:
+    """Existing outputs require a typed, exact before/after byte attestation."""
     path = "test/api/test_retry_target.py"
     task = _task(path)
+    before = "def test_old():\n    assert False\n"
+    after = "def test_new():\n    assert True\n"
+
+    def blob(source: str) -> str:
+        payload = source.encode()
+        return hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+
     valid_modify = SimpleNamespace(
         change_kind=SimpleNamespace(value="modify"),
         old_path=path,
         new_path=path,
-        before_source="def test_old():\n    assert False\n",
-        after_source="def test_new():\n    assert True\n",
-        before_blob_id="b" * 40,
-        after_blob_id="a" * 40,
+        before_source=before,
+        after_source=after,
+        before_blob_id=blob(before),
+        after_blob_id=blob(after),
         binary=False,
     )
     renamed = SimpleNamespace(
@@ -103,6 +110,7 @@ def test_prior_seed_output_attestations_do_not_promote_modify_to_absent_output_a
         binary=True,
     )
     validation = SimpleNamespace(
+        accepted=True,
         proposal=SimpleNamespace(
             candidate_diff=(valid_modify, renamed, binary)
         )
@@ -111,7 +119,21 @@ def test_prior_seed_output_attestations_do_not_promote_modify_to_absent_output_a
     assert PortalImplementationDaemon._prior_seed_output_attestations(
         validation,
         task,
-    ) == []
+    ) == [{
+        "path": path,
+        "change_kind": "modify",
+        "before_sha256": hashlib.sha256(before.encode()).hexdigest(),
+        "before_git_blob_id": blob(before),
+        "sha256": hashlib.sha256(after.encode()).hexdigest(),
+        "git_blob_id": blob(after),
+    }]
+    for field in ("before_blob_id", "after_blob_id"):
+        malformed = SimpleNamespace(**{**vars(valid_modify), field: "b" * 40})
+        validation.proposal.candidate_diff = (malformed,)
+        assert PortalImplementationDaemon._prior_seed_output_attestations(validation, task) == []
+    validation.proposal.candidate_diff = (valid_modify,)
+    validation.accepted = False
+    assert PortalImplementationDaemon._prior_seed_output_attestations(validation, task) == []
 
 
 def _git(repo: Path, *args: str) -> str:
