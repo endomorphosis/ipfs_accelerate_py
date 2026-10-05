@@ -1,0 +1,188 @@
+{
+  "benchmark_advantage_claimed": false,
+  "billing_total_verified": false,
+  "budget_seconds": {
+    "native_session": 960,
+    "outer_agent_both": 960,
+    "setup_both": 1800,
+    "supervisor_cleanup_reserve": 60,
+    "supervisor_coding_call": 300,
+    "supervisor_driver": 900,
+    "supervisor_planning_call": 90,
+    "supervisor_work": 840
+  },
+  "cache_included_in_input_tokens": true,
+  "causal_claim": false,
+  "checks": {
+    "all_declared_controls_exactly_match": false,
+    "both_original_task_inputs_unchanged": true,
+    "both_retry_policies_disabled": true,
+    "native_declared_trial_profile_matches": true,
+    "native_job_returncode_zero": true,
+    "native_original_result_hash_matches": true,
+    "native_receipt_complete": true,
+    "native_result_finished": true,
+    "native_runtime_cli_model_reasoning_observed": true,
+    "native_usage_corrobated_by_job": true,
+    "retry_policies_semantically_equal": true
+  },
+  "comparison_source_sha256": "0494f2c7bdf7f223dd7748582d517dc6725d093fdaad24d15fb36c06721c62c8",
+  "created_utc": "2026-10-05T14:55:02.769339+00:00",
+  "dollar_cost": null,
+  "evidence": [
+    {
+      "bytes": 7528,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+      "sha256": "2a72916e8f312022f9af04bc4637e397a5ddc50770f169d3ff00a68fef6d1dd1"
+    },
+    {
+      "bytes": 199232,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+      "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+    },
+    {
+      "bytes": 4481,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/result.json",
+      "sha256": "99bdb221657148380a5b5737ba83effe7ca05cc0b8345647e70e8554cae42f12"
+    },
+    {
+      "bytes": 2526,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/config.json",
+      "sha256": "5a507dd92450667d072dd11eeed8edeea37a78a8c655244c4396bdcf91424a54"
+    },
+    {
+      "bytes": 3445,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/config.json",
+      "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e"
+    }
+  ],
+  "inspector_sha256": "b0b898382875ec496294e3f31d4dd6d153415d5bc80543d6f7286c84021ef317",
+  "limits": [
+    "One retrospective trial per arm; not a randomized or repeated benchmark estimate.",
+    "Same outer limits do not imply identical internal work/provider-call allowances or tool permissions.",
+    "Setup work, indexed-context preparation and cache treatment differ between arms.",
+    "Strict configuration hashing retains retry-list order differences, even with identical disabled retry policy.",
+    "Unknown or interrupted usage remains unknown; cached input is already included in input."
+  ],
+  "native_observed_sessions": [
+    {
+      "cli_version": "0.160.0",
+      "malformed_lines": 0,
+      "observed_models": [
+        "gpt-6.1-sol"
+      ],
+      "observed_reasoning_efforts": [
+        "high"
+      ],
+      "rollout_sha256": "977a9db4270dfee41ff6b34cd9c943214130ff05af121859eeebad51010e0dd5",
+      "session_id_sha256": "b2f3734e162e677ec45a5bef71005276e24de9f23ee0d838d3807c7ac56ef9b5",
+      "task_complete_observed": true,
+      "token_count_events": 8,
+      "usage": {
+        "cached_input_tokens": 132608,
+        "input_tokens": 154292,
+        "output_tokens": 7458,
+        "total_tokens": 161750
+      }
+    }
+  ],
+  "observed_difference": {
+    "descriptive_single_trial_only": true,
+    "supervisor_agent_seconds_divided_by_native": 1.1674581243282958,
+    "supervisor_agent_seconds_minus_native": 48.246740999999986,
+    "supervisor_tokens_divided_by_native": 1.80174343122102,
+    "supervisor_total_tokens_minus_native": 129682
+  },
+  "observed_outer_invocation_seconds": {
+    "native": 414.69030996301444,
+    "supervisor": 570.6178770500119
+  },
+  "provider_call_count_basis": "native sessions and supervisor router invocations; not individual internal model turns",
+  "raw_model_or_verifier_bodies_exported": false,
+  "rows": [
+    {
+      "arm": "native-codex",
+      "cli_version": "0.160.0",
+      "comparison_profile_matches": true,
+      "declared_controls_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [],
+        "matches": true,
+        "status": "matched"
+      },
+      "durations_seconds": {
+        "agent_execution": 288.112274,
+        "agent_setup": 106.178816,
+        "environment_setup": 3.760896,
+        "verifier": 2.117143
+      },
+      "exception_type": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 132608,
+        "input_tokens": 154292,
+        "output_tokens": 7458,
+        "total_tokens": 161750
+      },
+      "model": "gpt-6.1-sol",
+      "native_usage_complete_observed": true,
+      "official_reward": 0.0,
+      "original_task_inputs_unchanged": true,
+      "outcome": "official_verifier_not_passed",
+      "provider_calls": 1,
+      "reasoning_effort": "high",
+      "reported_identity_matches": true,
+      "task": "largest-eigenval",
+      "tokens": {
+        "cached_input_tokens": 132608,
+        "input_tokens": 154292,
+        "output_tokens": 7458,
+        "total_tokens": 161750
+      },
+      "trial": "largest-eigenval__EKNbpC4"
+    },
+    {
+      "arm": "full",
+      "cli_version": "0.160.0",
+      "comparison_profile_matches": false,
+      "declared_controls_comparison": {
+        "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+        "differences": [
+          "job_controls_sha256.retry"
+        ],
+        "matches": false,
+        "status": "mismatch"
+      },
+      "durations_seconds": {
+        "agent_execution": 336.359015,
+        "agent_setup": 213.207961,
+        "environment_setup": 3.75079,
+        "verifier": 1.992032
+      },
+      "exception_type": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 244992,
+        "input_tokens": 285558,
+        "output_tokens": 5874,
+        "total_tokens": 291432
+      },
+      "model": "gpt-6.1-sol",
+      "native_usage_complete_observed": true,
+      "official_reward": 1.0,
+      "original_task_inputs_unchanged": true,
+      "outcome": "official_verifier_passed",
+      "provider_calls": 2,
+      "reasoning_effort": "high",
+      "reported_identity_matches": true,
+      "task": "largest-eigenval",
+      "tokens": {
+        "cached_input_tokens": 244992,
+        "input_tokens": 285558,
+        "output_tokens": 5874,
+        "total_tokens": 291432
+      },
+      "trial": "largest-eigenval__iieLP5S"
+    }
+  ],
+  "schema": "native-eigenvalue-single-trial-comparison@1",
+  "task": "largest-eigenval"
+}

@@ -1,0 +1,351 @@
+{
+  "checks": {
+    "all_inspector_evidence_bindings_match": true,
+    "all_seven_task_hash_pins_equal": true,
+    "both_original_inputs_reported_unchanged": true,
+    "collector_source_matches_prepared_and_receipt": true,
+    "declared_environment_equal": true,
+    "declared_reasoning_high": true,
+    "five_public_task_inputs_currently_unchanged": true,
+    "harbor_returncode_zero": true,
+    "job_finished_without_errors_or_retries": true,
+    "model_cli_reasoning_declarations_equal": true,
+    "native_config_digest_matches_preparation": true,
+    "native_finished_without_exception": true,
+    "native_job_digest_matches_receipt": true,
+    "native_receipt_complete": true,
+    "native_result_digest_matches_receipt": true,
+    "observed_cli_and_model_match": true,
+    "official_reward_zero_matches_receipt_and_inspector": true,
+    "one_exact_trial": true,
+    "owned_container_absent_by_id_and_name": true,
+    "owned_container_absent_from_all_container_listing": true,
+    "profile_outer_and_setup_limits_equal": true,
+    "retry_order_difference_retained": true,
+    "session_digest_and_metadata_match_inspector": true,
+    "session_observed_identity_and_completion_metadata_match": true,
+    "usage_matches_inspector": true,
+    "usage_tallies_with_actual_job": true
+  },
+  "comparison": {
+    "advantage_claimed": false,
+    "all_task_input_hash_pins_equal": true,
+    "budget_seconds": {
+      "native_session": 960,
+      "outer_agent_both": 960,
+      "setup_both": 1800,
+      "supervisor_cleanup_reserve": 60,
+      "supervisor_coding_call": 300,
+      "supervisor_driver": 900,
+      "supervisor_planning_call": 90,
+      "supervisor_work": 840
+    },
+    "causal_claim": false,
+    "hidden_verifier_bytes_not_rehashed_by_reviewer": true,
+    "inspector_evidence": [
+      {
+        "binding": {
+          "bytes": 7528,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+          "sha256": "2a72916e8f312022f9af04bc4637e397a5ddc50770f169d3ff00a68fef6d1dd1",
+          "stable_during_read": true
+        },
+        "matches_inspector": true
+      },
+      {
+        "binding": {
+          "bytes": 199232,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+          "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf",
+          "stable_during_read": true
+        },
+        "matches_inspector": true
+      },
+      {
+        "binding": {
+          "bytes": 4481,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/result.json",
+          "sha256": "99bdb221657148380a5b5737ba83effe7ca05cc0b8345647e70e8554cae42f12",
+          "stable_during_read": true
+        },
+        "matches_inspector": true
+      },
+      {
+        "binding": {
+          "bytes": 2526,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/config.json",
+          "sha256": "5a507dd92450667d072dd11eeed8edeea37a78a8c655244c4396bdcf91424a54",
+          "stable_during_read": true
+        },
+        "matches_inspector": true
+      },
+      {
+        "binding": {
+          "bytes": 3445,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/config.json",
+          "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e",
+          "stable_during_read": true
+        },
+        "matches_inspector": true
+      }
+    ],
+    "interpretation": "The native session completed its attempt but failed the official verifier. The previously completed full supervisor trial passed. These are descriptive observations from one trial per arm.",
+    "retry_difference": "Same disabled retry policy; exclusion lists have different ordering.",
+    "retry_policy_semantically_equal": true,
+    "strict_common_controls_match": false,
+    "supervisor_agent_seconds": 336.359015,
+    "supervisor_invocation_seconds": 570.6178770500119,
+    "supervisor_official_reward": {
+      "reward": 1.0
+    },
+    "supervisor_setup_seconds": 213.207961,
+    "supervisor_total_tokens": 291432
+  },
+  "current_public_task_bindings": {
+    "environment/Dockerfile": {
+      "bytes": 307,
+      "matches_both": true,
+      "native_preparation_sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+      "stable_during_read": true,
+      "supervisor_preparation_sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+    },
+    "environment/src/eigen.py": {
+      "bytes": 642,
+      "matches_both": true,
+      "native_preparation_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "stable_during_read": true,
+      "supervisor_preparation_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    "environment/src/eval.py": {
+      "bytes": 2246,
+      "matches_both": true,
+      "native_preparation_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "stable_during_read": true,
+      "supervisor_preparation_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "instruction.md": {
+      "bytes": 716,
+      "matches_both": true,
+      "native_preparation_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "stable_during_read": true,
+      "supervisor_preparation_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    "task.toml": {
+      "bytes": 1032,
+      "matches_both": true,
+      "native_preparation_sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+      "stable_during_read": true,
+      "supervisor_preparation_sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+    }
+  },
+  "evidence_bindings": [
+    {
+      "bytes": 7528,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+      "sha256": "2a72916e8f312022f9af04bc4637e397a5ddc50770f169d3ff00a68fef6d1dd1",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 7287,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/preparation.json",
+      "sha256": "506bcacc9f18a830aa28c04029ecb132ba44f36c292ce06e779aa1dd29a93448",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 2526,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/config.json",
+      "sha256": "5a507dd92450667d072dd11eeed8edeea37a78a8c655244c4396bdcf91424a54",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 4481,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/result.json",
+      "sha256": "99bdb221657148380a5b5737ba83effe7ca05cc0b8345647e70e8554cae42f12",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 1128,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/result.json",
+      "sha256": "be9d1a78fc2a11167fff081a51ae36b627cb01073987d5e296a3cc86c0d84ff6",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 6901,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/comparison.json",
+      "sha256": "a7a3691bf26a06af793ee6aef97d08c7c715de4ca4afe1f1d832e6bb69cca3ce",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 8310,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/runtime-review-inflight.json",
+      "sha256": "ac86de2d518c7c4936e0c9a8427e2e629f4df888b58688c1fc60acbed096a85e",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 199232,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+      "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 58970,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/preparation.json",
+      "sha256": "7aabc6addbb38c955af422fc9ec77dff536f1099b1f550ea71f5ade29d550027",
+      "stable_during_read": true
+    },
+    {
+      "bytes": 3445,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/config.json",
+      "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e",
+      "stable_during_read": true
+    }
+  ],
+  "limits": [
+    "CLI, reasoning, and completion events are checked against exported metadata and the pinned collector; private event files were not reread.",
+    "All seven task pins match between preparations and receipts; only five public original inputs were independently rehashed.",
+    "Outer agent limits match at 960 seconds. Native work allowance is 960 seconds; the supervisor has 840 work seconds plus cleanup and outer overhead.",
+    "Setup, indexing, caches, and tool profiles differ between arms.",
+    "One trial per arm does not establish general efficacy or efficiency; fewer tokens on a failed task do not establish an advantage."
+  ],
+  "native_trial": {
+    "cli_version": "0.160.0",
+    "cost": {
+      "billing_total_verified": false,
+      "dollar_cost": null,
+      "failed_task_tokens_preserved": true,
+      "harbor_estimate_present": true,
+      "numeric_harbor_estimate_not_exported": true
+    },
+    "durations_seconds": {
+      "agent_execution": 288.112274,
+      "agent_setup": 106.178816,
+      "environment_setup": 3.760896,
+      "verifier": 2.117143
+    },
+    "exception_info": null,
+    "finished_at": "2026-10-05T14:54:12.104388Z",
+    "invocation_seconds": 414.69030996301444,
+    "model": "gpt-6.1-sol",
+    "native_job_usage": {
+      "cached_input_tokens": 132608,
+      "input_tokens": 154292,
+      "output_tokens": 7458
+    },
+    "native_session_completion_observed_in_exported_metadata": true,
+    "official_reward": {
+      "reward": 0.0
+    },
+    "reasoning_effort": "high",
+    "session_count": 1,
+    "session_metadata": [
+      {
+        "cli_version": "0.160.0",
+        "malformed_lines": 0,
+        "observed_models": [
+          "gpt-6.1-sol"
+        ],
+        "observed_reasoning_efforts": [
+          "high"
+        ],
+        "sha256": "977a9db4270dfee41ff6b34cd9c943214130ff05af121859eeebad51010e0dd5",
+        "task_complete_event_observed": true,
+        "token_count_events": 8
+      }
+    ],
+    "task": "largest-eigenval",
+    "trial": "largest-eigenval__EKNbpC4",
+    "usage": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 132608,
+      "input_tokens": 154292,
+      "output_tokens": 7458,
+      "reasoning_output_tokens": 3135,
+      "total_tokens": 161750
+    }
+  },
+  "observed_at_utc": "2026-10-05T15:00:25.834335+00:00",
+  "owned_container_cleanup": {
+    "all_host_descendants_censused": false,
+    "deleted_from_docker_daemon": true,
+    "inflight_limits": {
+      "image_id": "sha256:33ed3a0dc1a62386afe6e55bbd0da58da69a65a33522ca7c10fcd35bd4030063",
+      "memory_bytes": 17179869184,
+      "memory_swap_bytes": 34359738368,
+      "nano_cpus": 5000000000
+    },
+    "inspect_by_id": {
+      "argv": [
+        "docker",
+        "inspect",
+        "--format",
+        "{{.Id}} {{.State.Status}}",
+        "280563194ebffd72a77a0c006af98f1b3fc0390e2628d3ec31dece8270ac9d65"
+      ],
+      "returncode": 1,
+      "stderr": "error: no such object: 280563194ebffd72a77a0c006af98f1b3fc0390e2628d3ec31dece8270ac9d65",
+      "stdout": ""
+    },
+    "inspect_by_name": {
+      "argv": [
+        "docker",
+        "inspect",
+        "--format",
+        "{{.Id}} {{.State.Status}}",
+        "largest-eigenval__eknbpc4__env-main-1"
+      ],
+      "returncode": 1,
+      "stderr": "error: no such object: largest-eigenval__eknbpc4__env-main-1",
+      "stdout": ""
+    },
+    "listing_by_id": {
+      "argv": [
+        "docker",
+        "ps",
+        "-a",
+        "--filter",
+        "id=280563194ebffd72a77a0c006af98f1b3fc0390e2628d3ec31dece8270ac9d65",
+        "--format",
+        "{{.ID}} {{.Names}} {{.Status}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "owned_container_id": "280563194ebffd72a77a0c006af98f1b3fc0390e2628d3ec31dece8270ac9d65",
+    "owned_container_name": "/largest-eigenval__eknbpc4__env-main-1"
+  },
+  "review_result": "Verified completed native attempt, failed official task, and retained receipt integrity.",
+  "schema": "native-codex-completed-independent-review@1",
+  "scope": {
+    "container_launches": 0,
+    "credentials_read": false,
+    "docker_exec_calls": 0,
+    "hidden_verifier_input_bodies_read": false,
+    "other_source_checkout_modified": false,
+    "private_prompt_bodies_read": false,
+    "private_rollout_files_read": false,
+    "provider_calls": 0,
+    "report_only_file_write": true,
+    "tests_started": 0
+  },
+  "source": {
+    "checkout": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005",
+    "collector_binding": {
+      "bytes": 26635,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "sha256": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+      "stable_during_read": true
+    },
+    "head": "7dda779c99ffc25166459277a6358dcf78caee29"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "created_utc": "2026-10-05T15:00:36.893384+00:00",
+  "evidence": [
+    {
+      "bytes": 57581,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "3c8d822a4bec7b46ca0dfa97fe1c90b17e16e78c210e812baf3130c803601958"
+    },
+    {
+      "bytes": 3676,
+      "path": "docs/agent_supervisor/evidence/terminal-codex-eigenvalue-baseline-20261005/README.md",
+      "sha256": "7033e67bdab8fe28291653c468484ebc01a628e85ef99689b965a8f753af4ea0"
+    },
+    {
+      "bytes": 6901,
+      "path": "docs/agent_supervisor/evidence/terminal-codex-eigenvalue-baseline-20261005/comparison.json",
+      "sha256": "a7a3691bf26a06af793ee6aef97d08c7c715de4ca4afe1f1d832e6bb69cca3ce"
+    }
+  ],
+  "exit_code": 0,
+  "new_readme_relative_links_verified": true,
+  "only_documentation_and_bounded_evidence_changes": true,
+  "schema": "native-eigenvalue-baseline-documentation-gates@1",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+}

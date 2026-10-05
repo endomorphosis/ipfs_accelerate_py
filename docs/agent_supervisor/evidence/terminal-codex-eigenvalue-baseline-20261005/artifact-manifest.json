@@ -1,0 +1,57 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3676,
+      "sha256": "7033e67bdab8fe28291653c468484ebc01a628e85ef99689b965a8f753af4ea0"
+    },
+    "comparison-preflight.json": {
+      "bytes": 1123,
+      "sha256": "e8453ebeace076572d4f21a6628b23a7aa603f6ae217f85bc38d82ee272e9a30"
+    },
+    "comparison.json": {
+      "bytes": 6901,
+      "sha256": "a7a3691bf26a06af793ee6aef97d08c7c715de4ca4afe1f1d832e6bb69cca3ce"
+    },
+    "completed-native-review.json": {
+      "bytes": 14661,
+      "sha256": "2dff59944748e99496677911047ad49c14641e626a3d07f3aea621854a5ab82a"
+    },
+    "documentation-gates.json": {
+      "bytes": 1246,
+      "sha256": "6c98c1a7d7ca6ede70f218a313e8379a8121b08ce7a6e834a26d091381bd264f"
+    },
+    "execute-command.json": {
+      "bytes": 839,
+      "sha256": "96f6a279244f585f9ad97d2792267fea00172ddd0aedf145552fa6686f526dbe"
+    },
+    "execute-exit.json": {
+      "bytes": 55,
+      "sha256": "64fa01d3d316d454e065043e02ff71ce50900af8b4652c92d1eab9a9de84b5b2"
+    },
+    "inspect_comparison.py": {
+      "bytes": 8356,
+      "sha256": "b0b898382875ec496294e3f31d4dd6d153415d5bc80543d6f7286c84021ef317"
+    },
+    "inspection-producer.json": {
+      "bytes": 1213,
+      "sha256": "d7f129b83efc09df2feab720b8e48c218c648d5b1aa907de37223a78e067bcee"
+    },
+    "prepare-command.json": {
+      "bytes": 867,
+      "sha256": "e82097b48be7b8edf94c0f16e0a68acba4ae7431720ff8ebf0e220226a9bf2bc"
+    },
+    "prepare-exit.json": {
+      "bytes": 54,
+      "sha256": "fd77d680d5711b2902fa25c936164c06e3929a0386bab2fb63d768dd28236e9a"
+    },
+    "runtime-review-inflight.json": {
+      "bytes": 8310,
+      "sha256": "ac86de2d518c7c4936e0c9a8427e2e629f4df888b58688c1fc60acbed096a85e"
+    },
+    "source-readback.json": {
+      "bytes": 2458,
+      "sha256": "dac8d300c0d847919bc0d39bc005bcfcbd93d8010190b07768d377a0c4be46df"
+    }
+  },
+  "schema": "bounded-native-eigenvalue-evidence-manifest@1"
+}

@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.native_codex_baseline",
+    "execute",
+    "--task",
+    "largest-eigenval",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01"
+  ],
+  "created_utc": "2026-10-05T14:47:17.802317+00:00",
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005",
+  "environment_overrides": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005"
+  },
+  "selection": "Harbor native Codex baseline explicitly requested; no supervisor, llm_router wrapper, retrieval or autoencoder inference",
+  "source_revision": "e804005fcb12e95e8fea87100fcaba46aadb7727"
+}

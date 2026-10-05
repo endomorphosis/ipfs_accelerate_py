@@ -1,0 +1,197 @@
+{
+  "artifact_bindings": [
+    {
+      "bytes": 7287,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/preparation.json",
+      "sha256": "506bcacc9f18a830aa28c04029ecb132ba44f36c292ce06e779aa1dd29a93448",
+      "unchanged_during_read": true
+    },
+    {
+      "bytes": 2526,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/config.json",
+      "sha256": "5a507dd92450667d072dd11eeed8edeea37a78a8c655244c4396bdcf91424a54",
+      "unchanged_during_read": true
+    }
+  ],
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01",
+  "checks": {
+    "actual_cpu_limit_five": true,
+    "actual_memory_limit_16gib": true,
+    "cli_0_160": true,
+    "common_profile_selected": true,
+    "docker_observation_available": true,
+    "exact_public_task_pins_match": true,
+    "model_gpt_6_1": true,
+    "native_adapter_configured": true,
+    "native_agent_limit_960": true,
+    "observed_container_running": true,
+    "one_attempt_one_concurrent_no_retries": true,
+    "prepared_original_task": true,
+    "reasoning_high": true
+  },
+  "comparison_limits": [
+    "Commonfrozencontrols differonlyinorderingofsame retryexclusion members; noretriesenabled. Existingstrictcomparison mismatchretained, notnormalized.",
+    "Nativeallows960agentseconds; successfulsupervisor allowed840workseconds pluscleanup andouteroverhead.",
+    "ActualDockerlimits donot prove observedmaximum consumption oridenticaltool availability/setup costs.",
+    "Nativeand supervisor runsuse distinct containers; originaltaskinputs areboundseparately."
+  ],
+  "completion_status": "inflight_observation_no_official_score_claim",
+  "configuration": {
+    "agent_setup_timeout_seconds": 1800.0,
+    "agent_timeout_seconds": 960.0,
+    "environment": {
+      "cpu_enforcement_policy": "limit",
+      "delete": true,
+      "extra_allowed_hosts": [],
+      "extra_docker_compose": [],
+      "force_build": true,
+      "import_path": null,
+      "kwargs": {},
+      "memory_enforcement_policy": "limit",
+      "mounts": null,
+      "override_cpus": 5,
+      "override_gpus": null,
+      "override_memory_mb": 16384,
+      "override_storage_mb": null,
+      "override_tpu": null,
+      "type": "docker"
+    },
+    "retry": {
+      "exclude_exceptions": [
+        "RewardFileEmptyError",
+        "VerifierTimeoutError",
+        "ApiUsageLimitError",
+        "AgentSafetyRefusalError",
+        "RewardFileNotFoundError",
+        "AgentAuthenticationError",
+        "VerifierOutputParseError",
+        "AgentTimeoutError",
+        "ModelNotFoundError"
+      ],
+      "include_exceptions": null,
+      "max_retries": 0,
+      "max_wait_sec": 60.0,
+      "min_wait_sec": 1.0,
+      "wait_multiplier": 1.0
+    },
+    "verifier": {
+      "disable": false,
+      "max_timeout_sec": null,
+      "override_timeout_sec": null
+    }
+  },
+  "container_observation": {
+    "argv": [
+      "docker",
+      "inspect",
+      "--format",
+      "{\"id\":{{json .Id}},\"name\":{{json .Name}},\"image_id\":{{json .Image}},\"image_name\":{{json .Config.Image}},\"running\":{{json .State.Running}},\"status\":{{json .State.Status}},\"started_at\":{{json .State.StartedAt}},\"finished_at\":{{json .State.FinishedAt}},\"oom_killed\":{{json .State.OOMKilled}},\"host_pid\":{{json .State.Pid}},\"nano_cpus\":{{json .HostConfig.NanoCpus}},\"memory_bytes\":{{json .HostConfig.Memory}},\"memory_swap_bytes\":{{json .HostConfig.MemorySwap}},\"cpu_period\":{{json .HostConfig.CpuPeriod}},\"cpu_quota\":{{json .HostConfig.CpuQuota}},\"cpuset_cpus\":{{json .HostConfig.CpusetCpus}},\"cpuset_mems\":{{json .HostConfig.CpusetMems}},\"pids_limit\":{{json .HostConfig.PidsLimit}}}",
+      "largest-eigenval__eknbpc4__env-main-1"
+    ],
+    "metadata": {
+      "cpu_period": 0,
+      "cpu_quota": 0,
+      "cpuset_cpus": "",
+      "cpuset_mems": "",
+      "finished_at": "0001-01-01T00:00:00Z",
+      "host_pid": 3959324,
+      "id": "280563194ebffd72a77a0c006af98f1b3fc0390e2628d3ec31dece8270ac9d65",
+      "image_id": "sha256:33ed3a0dc1a62386afe6e55bbd0da58da69a65a33522ca7c10fcd35bd4030063",
+      "image_name": "largest-eigenval__eknbpc4__env-main",
+      "memory_bytes": 17179869184,
+      "memory_swap_bytes": 34359738368,
+      "name": "/largest-eigenval__eknbpc4__env-main-1",
+      "nano_cpus": 5000000000,
+      "oom_killed": false,
+      "pids_limit": null,
+      "running": true,
+      "started_at": "2026-10-05T14:47:21.316351816Z",
+      "status": "running"
+    },
+    "returncode": 0,
+    "stderr": ""
+  },
+  "hidden_verifier_bytes_read": false,
+  "observed_at_utc": "2026-10-05T14:49:37.476325+00:00",
+  "original_public_input_bindings": {
+    "environment/Dockerfile": {
+      "bytes": 307,
+      "matches_preparation": true,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "prepared_sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+      "unchanged_during_read": true
+    },
+    "environment/src/eigen.py": {
+      "bytes": 642,
+      "matches_preparation": true,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "prepared_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "unchanged_during_read": true
+    },
+    "environment/src/eval.py": {
+      "bytes": 2246,
+      "matches_preparation": true,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "prepared_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "unchanged_during_read": true
+    },
+    "instruction.md": {
+      "bytes": 716,
+      "matches_preparation": true,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "prepared_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+      "unchanged_during_read": true
+    },
+    "task.toml": {
+      "bytes": 1032,
+      "matches_preparation": true,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "prepared_sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+      "unchanged_during_read": true
+    }
+  },
+  "prepared_identity": {
+    "agent_timeout_seconds": 960.0,
+    "attempts": 1,
+    "cli_version": "0.160.0",
+    "concurrency": 1,
+    "dataset": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+    "harbor_version": "0.23.0",
+    "host_codex_version": "codex-cli 0.160.0",
+    "max_retries": 0,
+    "model": "gpt-6.1-sol",
+    "native_adapter": "harbor.agents.installed.codex:Codex",
+    "reasoning_effort": "high",
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "schema": "native-codex-harbor-baseline-preparation@1",
+    "task": "largest-eigenval"
+  },
+  "schema": "native-codex-inflight-independent-runtime-review@1",
+  "scope": {
+    "containers_launched": 0,
+    "credentials_read": false,
+    "docker_exec_calls": 0,
+    "private_rollout_or_prompt_bodies_read": false,
+    "provider_calls": 0,
+    "report_only_file_write": true,
+    "services_changed": false,
+    "source_or_task_files_modified": false,
+    "tests_started": 0
+  },
+  "source_checkout": {
+    "baseline_source": {
+      "bytes": 26635,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "sha256": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+      "unchanged_during_read": true
+    },
+    "head": "e804005fcb12e95e8fea87100fcaba46aadb7727",
+    "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005"
+  },
+  "trial": "largest-eigenval__EKNbpC4"
+}

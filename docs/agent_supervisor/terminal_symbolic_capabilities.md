@@ -819,3 +819,17 @@ The historical pending observation and failed trial 02 remain retained; the
 new pass closes those selected-task readiness gates, while 85 untried task names,
 conditional empty-population decoder abstention and matched native-budget
 coverage still prevent a complete suite result.
+
+## Regular Codex eigenvalue baseline (2026-10-05)
+
+The [regular Codex baseline](evidence/terminal-codex-eigenvalue-baseline-20261005/README.md)
+finished with official reward **0.0**, **161,750 observed tokens** and 288.11
+agent seconds. The retained indexed supervisor trial has reward **1.0**,
+291,432 tokens and 336.36 agent seconds. The native failed-trial cost is retained
+with completed usage, independently corroborated by Harbor's job counters.
+Both select the same model, CLI, reasoning and common outer resource limits.
+The supervisor has tighter internal work/provider-call limits, and setup, tools
+and cache treatment differ. Serialized retry-list order also differs while both
+policies disable retries; the strict control mismatch remains visible. This
+one-trial observation does not establish an efficiency or reliability advantage
+or change the full-suite coverage denominator.
