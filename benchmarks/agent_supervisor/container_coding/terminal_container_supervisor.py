@@ -617,7 +617,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             report["phases"]["planning_seconds"] = time.monotonic() - before
         report["planning"] = planned
         if not planned.get("qualified"):
-            raise RuntimeError("the model proposal did not pass independent admission")
+            raise RuntimeError("planning did not produce a qualified, independently admitted plan")
         bundle = None
         if arm == "full":
             phase = "context"

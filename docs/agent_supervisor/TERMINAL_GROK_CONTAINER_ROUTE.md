@@ -4,7 +4,7 @@ The explicit provider profile `grok-4.7-cli-1.0.46@1` selects `grok_cli` / `grok
 
 This development profile binds the Linux aarch64 Grok executable to version/build `grok 1.0.46 (2765805b9442)`, 142,867,512 bytes and SHA-256 `45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e`. Its version output may append the managed-install channel label ` [stable]`; the standalone container binary omits that label. Only those two exact version/build forms are accepted, and the binary hash remains mandatory. The builder requires the resolved, regular executable, packages it as `providers/grok/grok`, and records its independent binding. Deployment verifies the archive, binary and version before exposing the root-owned executable.
 
-Only the selected provider's bounded `auth.json` is transferred separately. The Harbor adapter defaults to the operator's `~/.grok/auth.json`; credentials never enter the archive or deployment receipts. The worker receives its own private credential copy, runs as UID 1001 with no new privileges, and cannot access the supervisor owner's state. Its provider argument must match the root-owned deployment manifest. Planning enables no tools. Coding enables the bounded file/terminal tool profile only after the container boundary is verified.
+Only the selected provider's bounded `auth.json` is transferred separately. The Harbor adapter defaults to the operator's `~/.grok/auth.json`; credentials never enter the archive or deployment receipts. The worker receives its own private credential copy, runs as UID 1001 with no new privileges, and cannot access the supervisor owner's state. Its provider argument must match the root-owned deployment manifest. Planning requests an empty built-in tool allowlist. Coding enables the bounded file/terminal tool profile only after the container boundary is verified.
 
 The benchmark profile disables automatic cross-provider fallback. A Codex attempt uses its own explicit profile and fresh trial evidence. The existing default benchmark profile remains Codex; select Grok explicitly in `prepare`.
 
@@ -55,3 +55,21 @@ are all known and consistent; otherwise that field stays unknown. The native
 receipt retains the original categories.
 
 The scope is `native_final_envelope`, not an assertion of cumulative billing coverage across turns. A successful end-of-turn signal records native provider-session completion independently of token completeness or benchmark success. `usage_complete_observed` remains unknown when the CLI omits its completeness flag. Billing totals and dollar cost remain unverified. Comparisons must retain provider, model, CLI, resource, task and index selections; this route's availability alone establishes no efficiency advantage.
+
+`native_provider_outcome` retains a closed set of native stop reasons and error
+classifications even when token usage is absent. It distinguishes timeouts,
+turn limits, token limits, refusals, cancellation, structured-output retries,
+native execution errors and failed processes. Unknown or malformed values stay
+unknown; contradictory stop-reason aliases are rejected. Plain-JSON errors that
+omit a stop reason can match the pinned CLI's exact, bounded turn-limit message
+templates. The receipt identifies that classification source and never exports
+the message, model response, reasoning or debug log. These observations do not
+grant completion authority or automatically change retry budgets.
+
+`provider_invocation_policy` records the requested native settings: planning
+uses one round, tools profile `none` and permission mode `dontAsk`; coding uses
+at most 128 rounds, tools profile `isolated_coding` and `bypassPermissions` inside
+the verified worker boundary. The `none` profile names the empty built-in tool
+allowlist; Grok's CLI can retain MCP meta-tools, and this deployment transfers no
+host MCP configuration. `provider_output_token_cap_enforced` remains false:
+the router's requested output-token count is not an enforced native CLI limit.

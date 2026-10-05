@@ -542,6 +542,7 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         worker_capsule_limit=projection.get("max_capsules", 8),
         worker_max_bytes=projection.get("max_bytes", 32768),
         **({"program_paths": previous["program_paths"]} if "program_paths" in previous else {}),
+        **({"defer_task_data": True} if "task_data_projection" in previous else {}),
         _refresh_lineage={
             "schema": "supervisor-semantic-context-refresh@1",
             "previous_payload_sha256": metadata["semantic context sha256"],
@@ -549,6 +550,8 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
             "previous_semantic_root_cid": previous["semantic_root_cid"],
             "previous_manifest": previous["manifest"],
             **({"previous_program_paths": previous["program_paths"]} if "program_paths" in previous else {}),
+            **({"previous_task_data_projection": previous["task_data_projection"]}
+                if "task_data_projection" in previous else {}),
             "attempt_id": binding["attempt_id"], "cause": "owner_validated_publication_completed",
         },
     )

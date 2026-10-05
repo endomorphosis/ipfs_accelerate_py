@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.cli_runtime.grok_native_usage import native_grok_observation, grok_usage_receipt
+from ipfs_accelerate_py.cli_runtime.grok_native_usage import (
+    native_grok_observation, grok_outcome_receipt, grok_usage_receipt,
+)
 
 
 def envelope(**changes):
@@ -131,6 +133,11 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
     assert receipt["native_rollout_usage"]["schema"] == "native-grok-final-usage@1"
     assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 33
     assert receipt["completion_authority"] is False
+    assert receipt["provider_invocation_policy"] == {
+        "max_turns": 1 if purpose == "planning" else 128,
+        "tools_profile": "none" if purpose == "planning" else "isolated_coding",
+        "permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
+    }
 
 
 def test_grok_coding_requires_container_boundary_before_provider_call(routed_workspace, monkeypatch):
@@ -157,3 +164,135 @@ def test_runner_grok_failure_receipt_keeps_partial_usage_without_text(routed_wor
     assert receipt["provider_failure"]["reason_code"] == "authentication"
     assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 33
     assert "private-auth-body" not in raw and "private-instruction" not in raw
+
+
+@pytest.mark.parametrize("payload,exit_code,timed_out,reason,stop", [
+    (None, None, True, "timeout", "unknown"),
+    ({"stopReason": "end_turn"}, 0, False, "end_turn", "end_turn"),
+    ({"stopReason": "end_turn"}, 1, False, "process_error", "end_turn"),
+    ({"type": "ERROR", "stopReason": "end_turn"}, 0, False, "execution_error", "end_turn"),
+    ({"stopReason": "max_tokens"}, 0, False, "max_tokens", "max_tokens"),
+    ({"stop_reason": "max_turn_requests"}, 1, False, "max_turns", "max_turn_requests"),
+    ({"subtype": "error_max_turns"}, 1, False, "max_turns", "unknown"),
+    ({"type": "max_turns_reached"}, 1, False, "max_turns", "unknown"),
+    ({"subtype": "error_max_structured_output_retries"}, 1, False, "structured_output_retries", "unknown"),
+    ({"subtype": "error_during_execution"}, 1, False, "execution_error", "unknown"),
+    ({"stopReason": "refusal"}, 0, False, "refusal", "refusal"),
+    ({"stopReason": "cancelled"}, 1, False, "cancelled", "cancelled"),
+    ({"stopReason": "tool_use"}, 0, False, "other_stop", "tool_use"),
+    ({"stopReason": "max_turn_requests"}, None, True, "timeout", "max_turn_requests"),
+])
+def test_closed_native_outcome_survives_absent_usage(payload, exit_code, timed_out, reason, stop):
+    observed = native_grok_observation(payload, exit_code=exit_code, timed_out=timed_out)
+    assert grok_usage_receipt(observed) is None
+    receipt = grok_outcome_receipt(observed)
+    assert receipt["reason_code"] == reason
+    assert receipt["stop_reason"] == stop
+    assert receipt["completion_authority"] is False
+    assert receipt["raw_provider_data_exported"] is False
+
+
+@pytest.mark.parametrize("message", ["max turns reached", "max turns reached (limit: 1)",
+                                   "Reached the maximum number of turns"])
+def test_native_plain_json_max_turn_guard_has_closed_message_classification(message):
+    value = grok_outcome_receipt(native_grok_observation(
+        {"type": "error", "message": message}, exit_code=1))
+    assert value["reason_code"] == "max_turns"
+    assert value["classification_source"] == "message_marker"
+    assert "message" not in value
+
+
+@pytest.mark.parametrize("payload", [
+    {"text": "max turns reached (limit: 1)"},
+    {"message": "max turns reached"},
+    {"type": "error", "message": "private-prefix max turns reached"},
+    {"type": "error", "message": "max turns reached\nprivate-tail"},
+    {"type": "error", "message": "max turns reached (limit: 1234567)"},
+    {"type": "error", "message": {"subtype": "error_max_turns"}},
+    {"usage": {"native_grok_reason_code": "max_turns"}},
+    {"text": {"stopReason": "max_turn_requests"}},
+    {"stopReason": "end_turn", "stop_reason": "max_turn_requests"},
+    {"stopReason": ["max_turn_requests"], "subtype": {"private": "error_max_turns"}, "type": []},
+    {"stopReason": True, "subtype": 1, "type": {}},
+])
+def test_untrusted_or_malformed_outcome_fields_cannot_claim_a_turn_guard(payload):
+    value = grok_outcome_receipt(native_grok_observation(payload, exit_code=1))
+    assert value["reason_code"] != "max_turns"
+    assert "private" not in json.dumps(value)
+
+
+def test_closed_outcome_projection_rejects_spoofed_observation_fields():
+    value = grok_outcome_receipt({
+        "native_grok_reason_code": "private arbitrary body", "native_grok_stop_reason": [],
+        "native_grok_error_subtype": True, "native_grok_process_outcome": {},
+        "native_grok_classification_source": "private arbitrary body",
+        "native_grok_error_observed": "true", "native_grok_envelope_observed": 1,
+        "stop_reason": "max_turn_requests"})
+    assert value["reason_code"] == value["stop_reason"] == value["error_subtype"] == "unknown"
+    assert value["error_observed"] is value["envelope_observed"] is False
+    assert "private" not in json.dumps(value)
+
+
+def test_shared_adapter_retains_usage_free_native_error_outcome(monkeypatch):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    payload = {"type": "error", "message": "max turns reached (limit: 1)",
+               "text": "private native body", "usage": {"native_grok_stop_reason": "end_turn"}}
+    monkeypatch.setattr(llm_router.subprocess, "run", lambda *_a, **_kw:
+        SimpleNamespace(returncode=1, stdout=json.dumps(payload), stderr=""))
+    with pytest.raises(llm_router.LLMRouterError):
+        llm_router._get_grok_cli_provider().generate("private instruction", model_name="grok-4.7")
+    observed = get_last_cli_observation("grok_cli")
+    assert grok_usage_receipt(observed) is None
+    assert grok_outcome_receipt(observed)["reason_code"] == "max_turns"
+    assert grok_outcome_receipt(observed)["stop_reason"] == "unknown"
+
+
+@pytest.mark.parametrize("second", ["private malformed JSON", json.dumps({
+    "type": "error", "message": "private error", "stopReason": [],
+    "native_grok_reason_code": "end_turn", "native_grok_usage_observed": True})])
+def test_shared_adapter_does_not_reuse_previous_success_outcome(monkeypatch, second):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    results = iter([SimpleNamespace(returncode=0, stdout=json.dumps(envelope()), stderr=""),
+                    SimpleNamespace(returncode=1, stdout=second, stderr="")])
+    monkeypatch.setattr(llm_router.subprocess, "run", lambda *_a, **_kw: next(results))
+    provider = llm_router._get_grok_cli_provider()
+    assert provider.generate("first", model_name="grok-4.7") == "private-response"
+    with pytest.raises(llm_router.LLMRouterError):
+        provider.generate("second", model_name="grok-4.7")
+    observed = get_last_cli_observation("grok_cli")
+    assert grok_usage_receipt(observed) is None
+    assert grok_outcome_receipt(observed)["reason_code"] in {"process_error", "execution_error"}
+    assert grok_outcome_receipt(observed)["stop_reason"] == "unknown"
+    assert "private" not in json.dumps(grok_outcome_receipt(observed))
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_runner_retains_usage_free_native_outcome_without_reusing_stale_state(
+        routed_workspace, monkeypatch, capsys, timeout):
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
+    set_last_cli_observation("grok_cli", native_grok_observation(envelope(), exit_code=0))
+    def fail(*_a, **_kw):
+        assert get_last_cli_observation("grok_cli") == {}
+        payload = None if timeout else {"type": "error", "stopReason": "max_turn_requests"}
+        set_last_cli_observation("grok_cli", native_grok_observation(
+            payload, exit_code=None if timeout else 1, timed_out=timeout))
+        if timeout:
+            raise subprocess.TimeoutExpired(["grok", "private-command"], 1)
+        raise routed_workspace.LLMRouterError("private native error")
+    monkeypatch.setattr(routed_workspace, "generate_text", fail)
+    with pytest.raises((routed_workspace.LLMRouterError, subprocess.TimeoutExpired)):
+        runner.run(prompt="private instruction", provider="grok_cli", model="grok-4.7",
+                   timeout=1, max_output_tokens=10, purpose="planning")
+    raw = capsys.readouterr().out
+    receipt = json.loads(raw)
+    assert receipt["native_rollout_usage"] is None
+    assert receipt["native_provider_outcome"]["reason_code"] == ("timeout" if timeout else "max_turns")
+    assert receipt["usage"].get("stop_reason") == (None if timeout else "max_turn_requests")
+    assert "private" not in raw

@@ -210,6 +210,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "read_file,search_replace,grep,list_dir,todo_write,run_terminal_cmd",
             "grok_permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
             "grok_max_turns": 1 if purpose == "planning" else 128}
+        receipt["provider_invocation_policy"] = {
+            "max_turns": provider_options["grok_max_turns"],
+            "tools_profile": "none" if purpose == "planning" else "isolated_coding",
+            "permission_mode": provider_options["grok_permission_mode"],
+        }
     try:
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
@@ -265,8 +270,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 thread_id=str(observation.get("thread_id") or observation.get("session_id") or ""),
                 workspace=root)
         else:
-            from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
+            from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
             receipt["native_rollout_usage"] = grok_usage_receipt(observation)
+            receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
+            if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
+                receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
         receipt["seconds"] = time.monotonic() - started
         print(json.dumps(receipt, sort_keys=True), flush=True)
         if previous is None:
