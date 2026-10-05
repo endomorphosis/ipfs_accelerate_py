@@ -78,3 +78,9 @@ full-suite native-budget score. Unprofiled and unsupported tasks must stay in
 readiness inventories with unknown rewards; they are not executed failures.
 
 The first [three-task full supervisor pilot](../../../docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/README.md) records two official passes and one native-execution timeout, with token accounting and an 88-task readiness inventory. Its Docker source revision remains distinct from the later publication reconciliation.
+
+The subsequent [supervisor recovery trial](../../../docs/agent_supervisor/evidence/terminal-supervisor-blockers-20261005/README.md)
+passes `largest-eigenval` with CLI `0.160.0` and `gpt-6.1-sol` through
+`llm_router`, consuming 291432 observed tokens. It verifies actual Source384
+inference and native completion, and retains the remaining suite blockers.
+It has no matched native or no-index baseline and establishes no efficiency advantage.
