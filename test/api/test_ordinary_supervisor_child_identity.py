@@ -84,8 +84,9 @@ def _identity(supervisor, child, spec):
     )
 
 
-def test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy(tmp_path):
-    supervisor, configured, spec = _loop(tmp_path)
+@pytest.mark.parametrize("implement", [False, True])
+def test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy(tmp_path, implement):
+    supervisor, configured, spec = _loop(tmp_path, *(("--implement",) if implement else ()))
     assert configured.child_env[runtime.SUPERVISED_CHILD_IDENTITY_PATH_ENV] == str(
         supervisor._managed_daemon_identity_path()
     )
@@ -114,6 +115,7 @@ def test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy(tmp_pa
     ("--max-task-attempts", "0"),
     ("--validation-max-workers", "1"),
     ("--implementation-protected-path", "src/unprotected.py"),
+    ("--implementation-protected-pat", "src/unprotected.py"),
     ("--state-prefix", "foreign-prefix"),
 ])
 def test_native_adoption_rejects_appended_execution_policy_override(tmp_path, override):

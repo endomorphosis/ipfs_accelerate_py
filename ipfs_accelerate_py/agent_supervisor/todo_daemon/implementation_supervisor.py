@@ -11124,6 +11124,13 @@ class PortalImplementationSupervisor:
                 cleanup = self._terminate_managed_daemon_tree()
                 interrupted_reconciliation = (
                     self._reconcile_interrupted_implementation_after_shutdown()
+                    if cleanup.get("quiesced") is True
+                    else {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_cleanup_unproven",
+                        "completion_authority": False,
+                    }
                 )
                 try:
                     self._record_event(
@@ -22439,6 +22446,7 @@ class PortalImplementationSupervisor:
         for option, expected in execution_options.items():
             if any(token.startswith(option + "=") or (
                     token.startswith("--") and len(token) > 2
+                    and token != "--implement"
                     and option.startswith(token.partition("=")[0])
                     and option != token.partition("=")[0]
             ) for token in tokens):
