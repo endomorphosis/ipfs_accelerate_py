@@ -514,3 +514,55 @@ but sealed recovery-snapshot integration remains incomplete. Operator-selected
 independent-review daemon wiring is qualified separately above. This router
 qualification uses no paid providers and produces no new Terminal-Bench reward
 or token score.
+
+## Typed restart recovery and shared Codex commands (2026-10-05)
+
+Ordinary Codex daemon invocations now use the command builder owned by
+`llm_router`, including its six model environment aliases. Explicit supervisor
+and signed fallback overrides retain precedence. The daemon retains native
+streaming, cancellation and process custody; sharing argument construction does
+not imply generic `generate_text` usage accounting. The benchmark worker retains
+its existing side-effecting router dispatch. Defaults remain Grok `grok-4.7`
+with the authorized Codex `gpt-6.1-sol` fallback.
+
+Retry seed guidance now survives restart in one bounded artifact bound to the
+exact task revision, namespace and attempt. Recovery and prompt replay share its
+closed decoder, reject duplicate keys and consume the advice only after prompt
+budget acceptance. The artifact stays outside candidate worktrees and carries
+no proof, execution or completion authority.
+
+Typed preflight recovery now uses current Portal projections and canonical
+artifact-store contracts. Parent snapshots and child accepted-tree validation
+join the same exact slice, lane, task and immutable bytes. Reassignment uses the
+actual producer's prefix contract. Retained donor state is recognized only from
+verified launch, fence and never-attempted history; it supplies custody checks,
+without restoring donor execution or merge rights. Ordinary live sibling state
+is likewise custody-checked. Unknown files, changed selected evidence, unsafe
+permissions and redirected paths remain rejected. Git status collection enforces
+byte and record limits while reading, and stable artifact and authority readers
+cannot block on a regular-file-to-FIFO substitution.
+
+The [merged final qualification](evidence/supervisor-recovery-routing-20261005/final.json)
+records **315 distinct passing tests**, with no failures, errors or skips:
+298 joined contract tests, 14 native lifecycle tests and three real Security384
+checkpoint/Lake checks. The source and test hashes stayed unchanged against
+datasets commit `987cf856b2b902aa68c4587bb492b19b932b5d30`. Every passing case has
+an AST seal in a fresh local catalog. Native coverage includes signed
+START/observe/STOP, failed-constructor cleanup and an authored symbolic repair
+with refreshed indexes. No test-owned process remained in the audited test roots.
+The joined suite preserves the upstream independent-review and staged-patch
+contracts merged before qualification.
+
+The [focused recovery evidence](evidence/supervisor-recovery-routing-20261005/preflight.json)
+records the original failures and 86 passing recovery cases, including an actual
+fenced reassignment through snapshot and accepted-tree validation. These cases,
+the [donor checks](evidence/supervisor-recovery-routing-20261005/retained-donor.json),
+[seed replay checks](evidence/supervisor-recovery-routing-20261005/seed.json) and
+[bounded status checks](evidence/supervisor-recovery-routing-20261005/bounded-status.json)
+overlap the final selection and must not be added to its count.
+
+Prior-attempt MODIFY seeding into already-existing outputs remains unsupported
+by preflight v2. Direct-lane advisory guidance without a trusted exact task
+projection remains refused. This focused qualification does not establish that
+every archived legacy suite passes. It uses no paid providers and produces no
+new Terminal-Bench reward or token score.
