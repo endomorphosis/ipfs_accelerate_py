@@ -1,0 +1,852 @@
+{
+  "baseline_count": 22,
+  "baseline_revision": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+  "current_count": 22,
+  "files": [
+    {
+      "baseline_findings": [],
+      "current_findings": [],
+      "introduced_count": 0,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+    },
+    {
+      "baseline_findings": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 10,
+            "row": 17
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "",
+                "end_location": {
+                  "column": 1,
+                  "row": 18
+                },
+                "location": {
+                  "column": 1,
+                  "row": 17
+                }
+              }
+            ],
+            "message": "Remove unused import: `re`"
+          },
+          "location": {
+            "column": 8,
+            "row": 17
+          },
+          "message": "`re` imported but unused",
+          "noqa_row": 17,
+          "url": "https://docs.astral.sh/ruff/rules/unused-import"
+        }
+      ],
+      "current_findings": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 10,
+            "row": 17
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "",
+                "end_location": {
+                  "column": 1,
+                  "row": 18
+                },
+                "location": {
+                  "column": 1,
+                  "row": 17
+                }
+              }
+            ],
+            "message": "Remove unused import: `re`"
+          },
+          "location": {
+            "column": 8,
+            "row": 17
+          },
+          "message": "`re` imported but unused",
+          "noqa_row": 17,
+          "url": "https://docs.astral.sh/ruff/rules/unused-import"
+        }
+      ],
+      "introduced_count": 0,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+    },
+    {
+      "baseline_findings": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 61,
+            "row": 15
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/test/api/test_semantic_router_integration.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "from test.api.test_semantic_router_translation import _reply",
+                "end_location": {
+                  "column": 69,
+                  "row": 15
+                },
+                "location": {
+                  "column": 1,
+                  "row": 15
+                }
+              }
+            ],
+            "message": "Remove unused import: `test.api.test_semantic_router_translation.native`"
+          },
+          "location": {
+            "column": 55,
+            "row": 15
+          },
+          "message": "`test.api.test_semantic_router_translation.native` imported but unused",
+          "noqa_row": 15,
+          "url": "https://docs.astral.sh/ruff/rules/unused-import"
+        },
+        {
+          "cell": null,
+          "code": "F811",
+          "end_location": {
+            "column": 21,
+            "row": 23
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/test/api/test_semantic_router_integration.py",
+          "fix": null,
+          "location": {
+            "column": 15,
+            "row": 23
+          },
+          "message": "Redefinition of unused `native` from line 15",
+          "noqa_row": 23,
+          "url": "https://docs.astral.sh/ruff/rules/redefined-while-unused"
+        }
+      ],
+      "current_findings": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 61,
+            "row": 15
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/test/api/test_semantic_router_integration.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "from test.api.test_semantic_router_translation import _reply",
+                "end_location": {
+                  "column": 69,
+                  "row": 15
+                },
+                "location": {
+                  "column": 1,
+                  "row": 15
+                }
+              }
+            ],
+            "message": "Remove unused import: `test.api.test_semantic_router_translation.native`"
+          },
+          "location": {
+            "column": 55,
+            "row": 15
+          },
+          "message": "`test.api.test_semantic_router_translation.native` imported but unused",
+          "noqa_row": 15,
+          "url": "https://docs.astral.sh/ruff/rules/unused-import"
+        },
+        {
+          "cell": null,
+          "code": "F811",
+          "end_location": {
+            "column": 21,
+            "row": 23
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/test/api/test_semantic_router_integration.py",
+          "fix": null,
+          "location": {
+            "column": 15,
+            "row": 23
+          },
+          "message": "Redefinition of unused `native` from line 15",
+          "noqa_row": 23,
+          "url": "https://docs.astral.sh/ruff/rules/redefined-while-unused"
+        }
+      ],
+      "introduced_count": 0,
+      "path": "test/api/test_semantic_router_integration.py"
+    },
+    {
+      "baseline_findings": [
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 31,
+            "row": 53
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 53
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 53,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 31,
+            "row": 54
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 54
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 54,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 55
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 55
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 55,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 30,
+            "row": 56
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 29,
+            "row": 56
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 56,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 28,
+            "row": 57
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 27,
+            "row": 57
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 57,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 33,
+            "row": 58
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 32,
+            "row": 58
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 58,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 30,
+            "row": 60
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 29,
+            "row": 60
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 60,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 28,
+            "row": 61
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 27,
+            "row": 61
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 61,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 44,
+            "row": 113
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 43,
+            "row": 113
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 113,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 64,
+            "row": 113
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 63,
+            "row": 113
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 113,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 114
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 114
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 114,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 115
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 115
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 115,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 116
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 116
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 116,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 25,
+            "row": 117
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 24,
+            "row": 117
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 117,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 27,
+            "row": 118
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 26,
+            "row": 118
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 118,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 25,
+            "row": 119
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 24,
+            "row": 119
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 119,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 26,
+            "row": 120
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 25,
+            "row": 120
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 120,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 35,
+            "row": 219
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 34,
+            "row": 219
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 219,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 63,
+            "row": 219
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 62,
+            "row": 219
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 219,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        }
+      ],
+      "current_findings": [
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 31,
+            "row": 53
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 53
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 53,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 31,
+            "row": 54
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 54
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 54,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 55
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 55
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 55,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 30,
+            "row": 56
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 29,
+            "row": 56
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 56,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 28,
+            "row": 57
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 27,
+            "row": 57
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 57,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 33,
+            "row": 58
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 32,
+            "row": 58
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 58,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 30,
+            "row": 60
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 29,
+            "row": 60
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 60,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 28,
+            "row": 61
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 27,
+            "row": 61
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 61,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 44,
+            "row": 113
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 43,
+            "row": 113
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 113,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 64,
+            "row": 113
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 63,
+            "row": 113
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 113,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 114
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 114
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 114,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 115
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 115
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 115,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 29,
+            "row": 116
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 28,
+            "row": 116
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 116,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 25,
+            "row": 117
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 24,
+            "row": 117
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 117,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 27,
+            "row": 118
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 26,
+            "row": 118
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 118,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 25,
+            "row": 119
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 24,
+            "row": 119
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 119,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E701",
+          "end_location": {
+            "column": 26,
+            "row": 120
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 25,
+            "row": 120
+          },
+          "message": "Multiple statements on one line (colon)",
+          "noqa_row": 120,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-colon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 35,
+            "row": 222
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 34,
+            "row": 222
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 222,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 63,
+            "row": 222
+          },
+          "filename": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "fix": null,
+          "location": {
+            "column": 62,
+            "row": 222
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "noqa_row": 222,
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon"
+        }
+      ],
+      "introduced_count": 0,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py"
+    }
+  ],
+  "introduced": [],
+  "introduced_count": 0,
+  "schema": "terminal-bench-readiness-lint-comparison/v1"
+}

@@ -1,0 +1,31 @@
+{
+  "code_revision": "730dee888ea55bf5552e4853895f397107bf98c0",
+  "command": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "created_utc": "2026-10-05T07:04:39.716790+00:00",
+  "exit_code": 0,
+  "hosted_ci_limitation": "Prior published documentation job could not start: GitHub account billing lock; local result is not a hosted check status.",
+  "inputs": [
+    {
+      "bytes": 49098,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "c2394e6d7dc7adc7c4241a50bf8776c047f6af4713975a0c468d4088ea6df32b"
+    },
+    {
+      "bytes": 2854,
+      "path": "scripts/docs/run_documentation_gates.py",
+      "sha256": "9cca5cafba0c5b68a6caa88ebf0aa8cb8dd443d57aa9fdae6c437886d47bc12e"
+    },
+    {
+      "bytes": 3479,
+      "path": ".github/workflows/documentation-gates.yml",
+      "sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+    }
+  ],
+  "qualified_source_bindings_unchanged": 2867,
+  "schema": "terminal-bench-readiness-documentation-gates/v1",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+}
