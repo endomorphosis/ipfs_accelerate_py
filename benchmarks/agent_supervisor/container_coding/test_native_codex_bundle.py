@@ -28,7 +28,7 @@ def bundle(tmp_path):
         pytest.skip("native bundle deployment must be tested as container root")
     vendor = tmp_path / "home/.nvm/versions/node/pinned/lib/node_modules/@openai/codex/node_modules/@openai/codex-test/vendor/test/bin"
     vendor.mkdir(parents=True)
-    for name, output in (("codex", "codex-cli 0.158.0"), ("codex-code-mode-host", "Usage: codex-code-mode-host"),
+    for name, output in (("codex", "codex-cli 0.160.0"), ("codex-code-mode-host", "Usage: codex-code-mode-host"),
                          ("another-native-helper", "helper")):
         p = vendor / name
         p.write_text(f"#!{sys.executable}\nprint({output!r})\n")

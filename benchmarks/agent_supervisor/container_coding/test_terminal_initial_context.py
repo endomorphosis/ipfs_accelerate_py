@@ -55,7 +55,7 @@ def _version(monkeypatch):
     native = subprocess.run
     def run(argv, *args, **kwargs):
         if argv == ["codex", "--version"]:
-            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.158.0\n", "")
+            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.160.0\n", "")
         return native(argv, *args, **kwargs)
     monkeypatch.setattr(subprocess, "run", run)
 

@@ -21,7 +21,7 @@ def _plan(state, prepared, monkeypatch, *, should_qualify=True):
     native_run = subprocess.run
     def version(argv, *args, **kwargs):
         if argv == ["codex", "--version"]:
-            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.158.0\n", "")
+            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.160.0\n", "")
         return native_run(argv, *args, **kwargs)
     monkeypatch.setattr(subprocess, "run", version)
     prompts = []

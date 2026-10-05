@@ -172,7 +172,7 @@ def test_accepted_fixture_admission_survives_native_storage_failure(original, mo
     native_run = subprocess.run
     def reported_version(argv, *args, **kwargs):
         if argv == ["codex", "--version"]:
-            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.158.0\n", "")
+            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.160.0\n", "")
         return native_run(argv, *args, **kwargs)
     monkeypatch.setattr(subprocess, "run", reported_version)
     def failed_storage(**kwargs):
@@ -223,7 +223,7 @@ def test_optional_source_unit_advice_reaches_only_bounded_planner_context(origin
     native_run = subprocess.run
     def version(argv,*args,**kwargs):
         if argv == ["codex","--version"]:
-            return subprocess.CompletedProcess(argv,0,"codex-cli 0.158.0\n","")
+            return subprocess.CompletedProcess(argv,0,"codex-cli 0.160.0\n","")
         return native_run(argv,*args,**kwargs)
     monkeypatch.setattr(subprocess,"run",version)
     captured=[]

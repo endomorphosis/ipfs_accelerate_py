@@ -25,13 +25,13 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import (
     load_source384_config, validate_source384_config, validate_source384_assets,
 )
+from .benchmark_provider_profile import CLI_VERSION as CODEX_VERSION, require_runtime_cli_version
 
 ROOT = "/opt/ipfs-supervisor"
 PYTHON = ROOT + "/venv/bin/python"
 # UV 0.9.24 migrates a sibling `toolchains` directory when its selected
 # Python root is absent. Keep that legacy lookup away from shipped Lean.
 PYTHON_INSTALL_DIR = ROOT + "/python-runtime/python"
-CODEX_VERSION = "0.158.0"
 RUNTIME_PYTHON_VERSION = "3.12.12"
 TORCH_CPU_REQUIREMENT = "torch==2.13.0+cpu"
 TORCH_CPU_WHEEL_PREFIX = "runtime-wheels/torch-cpu/"
@@ -747,8 +747,8 @@ def build_runtime_archive(
         raise ValueError("fresh runtime archive directory required")
     if setup_cache_policy is not None:
         import platform
-        from .terminal_setup_cache_advice import POLICY
-        if (setup_cache_policy != POLICY or platform.machine() != "aarch64"
+        from .terminal_setup_cache_advice import POLICIES
+        if (setup_cache_policy not in POLICIES or platform.machine() != "aarch64"
                 or source384_config is None or model_snapshot is not None
                 or any(value is not None for value in (intent_checkpoint,
                     intent_projection_request, intent_action_384_config))):
@@ -949,9 +949,11 @@ async def deploy_supervisor(
     from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
     validate_setup_cache_selection(archive_dir, setup_cache_selection)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
+    manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
+    if install_codex:
+        require_runtime_cli_version(manifest)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
     archive = Path(archive_dir) / "runtime.tar.gz"
     if _sha(archive) != manifest["archive_sha256"]:
         raise ValueError("runtime archive changed")

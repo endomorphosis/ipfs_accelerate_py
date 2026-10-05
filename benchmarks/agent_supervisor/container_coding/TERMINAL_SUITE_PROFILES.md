@@ -39,9 +39,16 @@ The previous `@2` header-applicability selection and reviewed Bottle intent
 contract are task-specific. The generic route invokes the symbolic doctor with
 no header contract; unsupported repairs become explicit residual work through
 `ipfs_accelerate_py.llm_router`. The current comparison route pins `codex_cli`, model
-`gpt-6.1-sol`, high reasoning and CLI `0.158.0`. The retained three-task pilot
-used `gpt-5.6-sol`; changing the model starts a different experiment. This
-container profile does not yet deploy the general supervisor's Grok route. Planning and coding usage both
+`gpt-6.1-sol`, high reasoning and CLI `0.160.0`. The retained three-task pilot
+used `gpt-5.6-sol` and CLI `0.158.0`; changing the model or CLI starts a
+different experiment. This
+container profile does not yet deploy the general supervisor's Grok route.
+Runtime archives must carry the current CLI pin. The optional
+`source384-native-aarch64-dontneed@1` setup-cache policy remains bound to
+CLI `0.158.0` and its original binary hashes. Use the separately pinned
+`source384-native-aarch64-dontneed@2` policy with CLI `0.160.0`; select it
+identically during archive bundling and preparation. Cache advice remains
+optional and grants no resource-admission authority. Planning and coding usage both
 count. The worker permits at most 300 seconds per coding provider call; this is
 separate from the 840-second supervisor work budget and 60-second cleanup reserve.
 Missing token usage stays unknown, and no hard dollar/token ceiling is enforced.

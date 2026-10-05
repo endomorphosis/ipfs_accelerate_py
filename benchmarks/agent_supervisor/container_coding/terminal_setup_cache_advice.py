@@ -1,7 +1,7 @@
 """Explicit, pinned Source384 setup-cache advice; no admission authority.
 
-The policy supports the regular Source384 layout, two public aarch64 Codex
-0.158.0 executables and 131 fixed extension and CPU-wheel payloads. Absent selection does nothing.
+Versioned policies support the regular Source384 layout, two public aarch64
+Codex executables and 131 fixed extension and CPU-wheel payloads. Absent selection does nothing.
 """
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ import shlex
 import stat
 
 POLICY = "source384-native-aarch64-dontneed@1"
-POLICIES = (POLICY,)
+POLICY_V2 = "source384-native-aarch64-dontneed@2"
+POLICIES = (POLICY, POLICY_V2)
 ROOT = "/opt/ipfs-supervisor"
 # Keep this helper self-contained: it also runs under an isolated file loader.
 RESOURCE_PROFILES = ("source384-5cpu-12gib@1", "source384-5cpu-16gib-extended@1")
@@ -32,6 +33,14 @@ CODEX_PINS = {
     "codex": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
     "codex-code-mode-host": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
 }
+CODEX_PINS_V2 = {
+    "codex": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+    "codex-code-mode-host": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c",
+}
+# Independently hashed official npm linux-arm64 package payloads; @1 remains
+# fixed to its original CLI. Selecting a policy never selects the provider.
+CODEX_VERSIONS = {POLICY: "0.158.0", POLICY_V2: "0.160.0"}
+CODEX_POLICY_PINS = {POLICY: CODEX_PINS, POLICY_V2: CODEX_PINS_V2}
 
 
 def _sha(raw):
@@ -64,7 +73,8 @@ def read_selection(path):
 def _selection_shape(value):
     if (type(value) is not dict or set(value) != {"schema", "policy", "manifest_sha256"}
             or value["schema"] != "terminal-setup-cache-selection@1"
-            or value["policy"] != POLICY or type(value["manifest_sha256"]) is not str
+            or type(value["policy"]) is not str or value["policy"] not in POLICIES
+            or type(value["manifest_sha256"]) is not str
             or not re.fullmatch("[0-9a-f]{64}", value["manifest_sha256"])):
         raise ValueError("closed supported setup cache selection required")
 
@@ -107,11 +117,11 @@ def binding_for_manifest(manifest, policy):
     """Build a closed policy using the actual archived helper byte identities."""
     if policy is None:
         return None
-    if policy != POLICY or platform.machine() != "aarch64":
+    if type(policy) is not str or policy not in POLICIES or platform.machine() != "aarch64":
         raise ValueError("unsupported setup cache policy or architecture")
     from .terminal_deployment import validate_source384_binding
     from .terminal_setup_cache_files import checked_rows
-    if validate_source384_binding(manifest) is None or manifest.get("codex_version") != "0.158.0":
+    if validate_source384_binding(manifest) is None or manifest.get("codex_version") != CODEX_VERSIONS[policy]:
         raise ValueError("setup cache policy requires the pinned Source384 and Codex profile")
     if manifest.get("learned_requirements"):
         raise ValueError("legacy relocated embedding layout is unsupported by setup cache policy")
@@ -124,9 +134,9 @@ def binding_for_manifest(manifest, policy):
         if row is None or row["sha256"] != _sha(raw) or row["bytes"] != len(raw):
             raise ValueError("archived cache helper differs from the active canonical owner")
         pins[name] = _sha(raw)
-    return dict(schema="terminal-setup-cache-binding@1", policy=POLICY,
-                architecture="aarch64", codex_version="0.158.0",
-                codex_sha256=dict(CODEX_PINS), helpers=pins,
+    return dict(schema="terminal-setup-cache-binding@1", policy=policy,
+                architecture="aarch64", codex_version=CODEX_VERSIONS[policy],
+                codex_sha256=dict(CODEX_POLICY_PINS[policy]), helpers=pins,
                 native_libraries=library_binding_for_manifest(manifest))
 
 
@@ -152,7 +162,7 @@ def select_setup_cache(archive_dir, policy):
         if binding is not None:
             raise ValueError("archive cache policy requires explicit matching selection")
         return None
-    if policy != POLICY or binding is None or binding["policy"] != policy:
+    if type(policy) is not str or policy not in POLICIES or binding is None or binding["policy"] != policy:
         raise ValueError("selected cache policy differs from the archive")
     return dict(schema="terminal-setup-cache-selection@1", policy=policy,
                 manifest_sha256=_sha(raw))
@@ -238,12 +248,12 @@ async def apply_setup_cache_advice(environment, *, archive_dir, expected, bounda
     from .terminal_deployment import PYTHON
     receipt_path = Path(boundary_output) / "installation/native-codex-binary.log"
     receipt_raw = _regular_bytes(receipt_path, MAX_RECEIPT)
-    require_receipt(json.loads(receipt_raw))
+    require_receipt(json.loads(receipt_raw), codex_version=binding["codex_version"])
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     report = dict(schema="terminal-setup-cache-advice@1", completed=False,
                   selection=expected, archive_sha256=manifest["archive_sha256"],
-                  policy=POLICY, advice_is_best_effort=True, freed_bytes_claimed=False,
+                  policy=binding["policy"], advice_is_best_effort=True, freed_bytes_claimed=False,
                   admission_authority=False, global_drop_caches=False, credential_contents_recorded=False)
     # Upload exact already-validated local bytes, then verify again in the isolated child.
     receipt_copy = output / "native-exposure.json"
@@ -295,11 +305,14 @@ async def apply_setup_cache_advice(environment, *, archive_dir, expected, bounda
             raise ValueError("archive advice receipt differs from selected population")
         report["archive"] = archive
         report["phase"] = "native_binary_advice"
+        native_argv = [ROOT + "/codex-cache-exposure.json", _sha(receipt_raw)]
+        if binding["policy"] == POLICY_V2:
+            native_argv.append(binding["codex_version"])
         native = await invoke("native-advice", modules[:2], modules[1][0],
-            [ROOT + "/codex-cache-exposure.json", _sha(receipt_raw)], receipt_bytes=len(receipt_raw))
+            native_argv, receipt_bytes=len(receipt_raw))
         if (native.get("schema") != "pinned-native-codex-cache-advice@1"
                 or native.get("post_boundary_receipt_sha256") != _sha(receipt_raw)
-                or native.get("codex_version") != "0.158.0" or native.get("selected_files") != 4
+                or native.get("codex_version") != binding["codex_version"] or native.get("selected_files") != 4
                 or native.get("hashed_files") != 4 or native.get("body_reads_after_advice") != 0
                 or native.get("body_read_bytes") != native.get("selected_bytes")
                 or type(native.get("selected_bytes")) is not int or not 0 < native["selected_bytes"] <= 2 * 1024**3

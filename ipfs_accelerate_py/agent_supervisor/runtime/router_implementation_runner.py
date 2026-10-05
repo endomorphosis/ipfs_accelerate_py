@@ -17,6 +17,31 @@ import time
 import uuid
 
 
+def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict:
+    """Project the shared provider classifier without retaining its message."""
+    from ipfs_accelerate_py.llm_allocation.observations import CallErrorKind, classify_provider_failure
+
+    reason = CallErrorKind.UNKNOWN
+    typed_kind = getattr(error, "codex_error_kind", None) if provider == "codex_cli" else None
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+        reason = CallErrorKind.TIMEOUT
+    elif isinstance(typed_kind, CallErrorKind) and typed_kind is not CallErrorKind.SUCCESS:
+        reason = typed_kind
+    else:
+        try:
+            failure = classify_provider_failure(provider, str(error)[:16384], exc=error)
+            if isinstance(failure.kind, CallErrorKind) and failure.kind is not CallErrorKind.SUCCESS:
+                reason = failure.kind
+        except Exception:
+            # Diagnostics must not replace the original provider failure.
+            pass
+    result = {"phase": "provider_invocation", "reason_code": reason.value}
+    status = getattr(error, "codex_error_status", None) if provider == "codex_cli" else None
+    if type(status) is int and 100 <= status <= 599:
+        result["http_status"] = status
+    return result
+
+
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
                         semantic_transport: bool = False) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
@@ -201,6 +226,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         return output, receipt
     except BaseException as error:
         receipt.update(status="failed", error_type=type(error).__name__, failure_phase=failure_phase)
+        if failure_phase == "provider_invocation":
+            receipt["provider_failure"] = _provider_failure_diagnostic(error, provider=provider)
         if failure_phase == "semantic_response_decode":
             from .semantic_router_translation import SemanticTranslationError
             # The closed projection never serializes model text or arbitrary

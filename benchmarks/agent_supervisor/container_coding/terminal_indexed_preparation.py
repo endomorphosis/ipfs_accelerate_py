@@ -36,6 +36,7 @@ from .terminal_task_profile import (
     PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
     task_profile_smoke, task_profile_spec, task_profile_worker_inputs, validate_task_profile,
 )
+from .benchmark_provider_profile import CLI_VERSION
 
 
 MODEL = "gpt-6.1-sol"
@@ -613,8 +614,8 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             require_applicability_budget()
         return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds, repository_preview=repository_preview)
     version = subprocess.run(["codex", "--version"], check=True, capture_output=True, text=True).stdout.strip()
-    if version != "codex-cli 0.158.0":
-        raise ValueError("native baseline parity requires codex-cli 0.158.0")
+    if version != "codex-cli " + CLI_VERSION:
+        raise ValueError("native baseline parity requires codex-cli " + CLI_VERSION)
     (state / "planner-invoked.json").open("x").write(json.dumps({"cli_version": version}) + "\n")
     request = PromptWorkflowRequest.from_dict(prepared["request"])
     scan = DirectoryScanReceipt.from_dict(prepared["scan"])

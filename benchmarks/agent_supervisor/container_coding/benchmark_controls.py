@@ -79,6 +79,25 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             raise ValueError("unsupported supervisor environment requires a new comparison profile")
     else:
         raise ValueError("unsupported benchmark adapter")
+    return _control_record(config, task_input_sha256=task_input_sha256, task=task,
+                           model=model, reasoning_effort=reasoning_effort, cli_version=cli_version)
+
+
+def _control_record(config, *, task_input_sha256, task, model, reasoning_effort, cli_version):
+    """Hash an already declared configuration without selecting a new profile."""
+    if (type(config) is not dict or type(config.get("agents")) is not list
+            or len(config["agents"]) != 1 or type(config["agents"][0]) is not dict):
+        raise ValueError("frozen controls require one configured agent")
+    if (type(task_input_sha256) is not dict or not task_input_sha256
+            or any(type(key) is not str or type(value) is not str or not _DIGEST.fullmatch(value)
+                   for key, value in task_input_sha256.items())):
+        raise ValueError("complete task input hashes required")
+    agent = config["agents"][0]
+    if agent.get("model_name") != model:
+        raise ValueError("frozen model differs from configuration")
+    if agent.get("name") == "codex" and not agent.get("import_path"):
+        if agent.get("kwargs") != {"version": cli_version, "reasoning_effort": reasoning_effort}:
+            raise ValueError("frozen native profile differs from configuration")
     # Commit complete common objects, including resource overrides, retry filters,
     # additional instructions, mounts and tools. Only their digests are exported.
     controls = {
@@ -135,8 +154,11 @@ def observe_controls(prepared, config, *, current_task_hashes):
         return {"status": "invalid", "reason": "invalid_frozen_controls",
                 "declared": None, "configuration_unchanged": False}
     try:
-        current = build_controls(config, task_input_sha256=current_task_hashes,
-                                 **declared["identity"])
+        # Historical runs retain their original model/CLI identity. Observation
+        # replays exact frozen controls; only build_controls selects today's
+        # executable benchmark profile before a new trial.
+        current = _control_record(config, task_input_sha256=current_task_hashes,
+                                  **declared["identity"])
     except (KeyError, TypeError, ValueError):
         return {"status": "mismatch", "reason": "configuration_or_task_inputs_invalid",
                 "declared": declared, "configuration_unchanged": False}

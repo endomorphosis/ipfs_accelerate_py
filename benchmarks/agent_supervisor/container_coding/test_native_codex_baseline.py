@@ -71,7 +71,7 @@ def test_profile_uses_native_agent_and_exact_independent_bounds(tmp_path):
     assert config["tasks"] == [{"path": "/dataset/fix-code-vulnerability"}]
     assert config["agents"][0]["name"] == "codex"
     assert config["agents"][0]["model_name"] == "gpt-6.1-sol"
-    assert config["agents"][0]["kwargs"] == {"version": "0.158.0", "reasoning_effort": "high"}
+    assert config["agents"][0]["kwargs"] == {"version": "0.160.0", "reasoning_effort": "high"}
     assert (
         config["agents"][0]["override_timeout_sec"] == config["agents"][0]["max_timeout_sec"] == 300
     )

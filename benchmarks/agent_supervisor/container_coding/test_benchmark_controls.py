@@ -23,7 +23,7 @@ HASHES = {"instruction.md": "a" * 64, "task.toml": "b" * 64,
 
 def declaration(config, hashes=HASHES):
     return build_controls(config, task_input_sha256=hashes, task="fix-code-vulnerability",
-                          model="gpt-6.1-sol", reasoning_effort="high", cli_version="0.158.0")
+                          model="gpt-6.1-sol", reasoning_effort="high", cli_version="0.160.0")
 
 
 def observation(config, hashes=HASHES):
@@ -178,7 +178,7 @@ def test_supervisor_identity_must_match_source_bound_profile():
     config = supervisor_config(Path("/dataset"), Path("/out"), Path("/archive"), "full")
     with pytest.raises(ValueError, match="fixed source profile"):
         build_controls(config, task_input_sha256=HASHES, task="fix-code-vulnerability",
-                       model="gpt-6.1-sol", reasoning_effort="low", cli_version="0.158.0")
+                       model="gpt-6.1-sol", reasoning_effort="low", cli_version="0.160.0")
     config["agents"][0]["kwargs"]["reasoning_effort"] = "low"
     with pytest.raises(ValueError, match="unsupported supervisor kwargs"):
         declaration(config)

@@ -285,7 +285,7 @@ findings still abstain.
 
 `full_supervisor_benchmark.py` prepares and executes one-shot Harbor trials for
 the `full` and `no-index` arms. Both use the original task Dockerfile and hidden
-verifier and Codex 0.158.0 through the shared model router, with `gpt-6.1-sol`
+verifier and Codex 0.160.0 through the shared model router, with `gpt-6.1-sol`
 and high reasoning in the current comparison profile. Historical trials retain
 their recorded models. The default agent limit is 300 seconds; the explicit
 `source384-5cpu-16gib-extended@1` development profile allows 840 seconds of

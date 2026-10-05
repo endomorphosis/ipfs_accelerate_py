@@ -66,6 +66,134 @@ def test_absent_policy_preserves_default_without_prerequisites(tmp_path):
     assert not (tmp_path / "unused").exists()
 
 
+def test_historical_cache_policy_is_not_reinterpreted_for_current_cli(selected_cache):
+    from benchmarks.agent_supervisor.container_coding.benchmark_provider_profile import CLI_VERSION
+    _, manifest, _, _ = selected_cache
+    assert manifest["codex_version"] == "0.158.0"
+    assert policy.validate_manifest_binding(manifest)["codex_version"] == "0.158.0"
+    manifest["codex_version"] = CLI_VERSION
+    with pytest.raises(ValueError, match="pinned Source384 and Codex profile"):
+        policy.validate_manifest_binding(manifest)
+
+
+@pytest.fixture
+def selected_cache_v2(selected_cache):
+    root, manifest, _, auth = selected_cache
+    manifest["codex_version"] = "0.160.0"
+    manifest["setup_cache"] = policy.binding_for_manifest(manifest, policy.POLICY_V2)
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    return root, manifest, policy.select_setup_cache(root, policy.POLICY_V2), auth
+
+
+def _native_receipt(version, pins):
+    return dict(schema="native-codex-runtime-bundle@1", codex_version=version, provider_calls=0,
+        files=[dict(name=name, source_sha256=pin, sha256=pin, uid=0, mode=0o755)
+               for name, pin in pins.items()],
+        executable_checks={name: dict(returncode=0, stdout_sha256="a" * 64) for name in pins})
+
+
+def test_v2_current_cli_binds_independent_npm_hashes_and_preserves_populations(selected_cache_v2):
+    root, manifest, selection, auth = selected_cache_v2
+    expected = {
+        "codex": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0",
+        "codex-code-mode-host": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c",
+    }
+    binding = policy.validate_manifest_binding(manifest)
+    assert binding["policy"] == policy.POLICY_V2 and binding["codex_version"] == "0.160.0"
+    assert binding["codex_sha256"] == expected == native.PINS_V2
+    assert policy.validate_setup_cache_selection(root, selection) == (manifest, binding)
+    assert len(binding["native_libraries"]["rows"]) == 131
+    assert binding["native_libraries"] == policy.library_binding_for_manifest(manifest)
+    policy.validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=auth)
+    native.require_receipt(_native_receipt("0.160.0", expected), codex_version="0.160.0")
+
+
+@pytest.mark.parametrize("mutation", ["old_policy", "old_version", "old_pins", "mixed_pins", "unknown_policy"])
+def test_v2_policy_rejects_cross_version_or_unknown_substitution(selected_cache_v2, mutation):
+    root, manifest, _, _ = selected_cache_v2
+    if mutation == "old_policy":
+        manifest["setup_cache"]["policy"] = policy.POLICY
+    elif mutation == "old_version":
+        manifest["codex_version"] = manifest["setup_cache"]["codex_version"] = "0.158.0"
+    elif mutation == "old_pins":
+        manifest["setup_cache"]["codex_sha256"] = dict(policy.CODEX_PINS)
+    elif mutation == "mixed_pins":
+        manifest["setup_cache"]["codex_sha256"]["codex"] = policy.CODEX_PINS["codex"]
+    else:
+        manifest["setup_cache"]["policy"] = "source384-native-aarch64-dontneed@3"
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError):
+        policy.select_setup_cache(root, policy.POLICY_V2)
+
+
+@pytest.mark.parametrize("selected_version,receipt_version", [
+    ("0.160.0", "0.158.0"), ("0.158.0", "0.160.0"), ("0.161.0", "0.160.0"),
+])
+def test_native_receipt_version_cannot_select_a_different_cache_policy(selected_version, receipt_version):
+    receipt = _native_receipt(receipt_version, native.PINS_BY_VERSION[receipt_version])
+    with pytest.raises(ValueError):
+        native.require_receipt(receipt, codex_version=selected_version)
+
+
+def test_v2_native_advice_selects_four_copies_of_independent_current_binary_pins(tmp_path, monkeypatch):
+    vendor = tmp_path / "home/.nvm/versions/node/v24/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin"
+    vendor.mkdir(parents=True)
+    (vendor / "codex").write_text("public location fixture")
+    calls = []
+    def advise_selected(root, rows, *, expected_count):
+        calls.append(rows)
+        assert root == tmp_path and expected_count == 4
+        assert {row["role"] for row in rows} == {"vendor", "exposed"}
+        assert {row["uid"] for row in rows} == {0, 1000}
+        assert all(row["sha256"] == native.PINS_V2[row["name"]] for row in rows)
+        return {"selected_files": 4}
+    monkeypatch.setattr(native, "advise_selected", advise_selected)
+    receipt = _native_receipt("0.160.0", native.PINS_V2)
+    assert native.advise(tmp_path, receipt, codex_version="0.160.0")["codex_version"] == "0.160.0"
+    assert len(calls) == 1
+    receipt["files"][-1]["sha256"] = native.PINS[receipt["files"][-1]["name"]]
+    with pytest.raises(ValueError):
+        native.advise(tmp_path, receipt, codex_version="0.160.0")
+    assert len(calls) == 1
+
+
+def test_v2_selection_refuses_old_boundary_receipt_before_upload(selected_cache_v2, tmp_path):
+    root, _, selection, _ = selected_cache_v2
+    boundary = tmp_path / "boundary/installation"
+    boundary.mkdir(parents=True)
+    (boundary / "native-codex-binary.log").write_text(json.dumps(_native_receipt("0.158.0", native.PINS)))
+    environment = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock())
+    output = tmp_path / "advice"
+    with pytest.raises(ValueError):
+        asyncio.run(policy.apply_setup_cache_advice(environment, archive_dir=root, expected=selection,
+            boundary_output=boundary.parent, output=output))
+    environment.upload_file.assert_not_called()
+    environment.exec.assert_not_called()
+    assert not output.exists()
+
+
+def test_v2_transport_rejects_old_native_observation(selected_cache_v2, tmp_path):
+    root, manifest, selection, _ = selected_cache_v2
+    boundary = tmp_path / "boundary/installation"
+    boundary.mkdir(parents=True)
+    receipt = json.dumps(_native_receipt("0.160.0", native.PINS_V2)).encode()
+    (boundary / "native-codex-binary.log").write_bytes(receipt)
+    archive_result = dict(schema="manifest-cache-advice@1", manifest_sha256=selection["manifest_sha256"],
+        archive_sha256=manifest["archive_sha256"], selected_files=len(manifest["files"]),
+        body_reads=0, metadata_unchanged=True, freed_bytes_claimed=False)
+    old_native_result = dict(schema="pinned-native-codex-cache-advice@1", codex_version="0.158.0",
+        post_boundary_receipt_sha256=hashlib.sha256(receipt).hexdigest(), selected_files=4, hashed_files=4,
+        body_reads_after_advice=0, body_read_bytes=100, selected_bytes=100,
+        metadata_unchanged=True, freed_bytes_claimed=False)
+    environment = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock(side_effect=[
+        SimpleNamespace(return_code=0, stdout=json.dumps(row), stderr="")
+        for row in (archive_result, old_native_result)]))
+    with pytest.raises(ValueError, match="native advice receipt differs"):
+        asyncio.run(policy.apply_setup_cache_advice(environment, archive_dir=root, expected=selection,
+            boundary_output=boundary.parent, output=tmp_path / "advice"))
+    assert environment.exec.await_count == 2
+
+
 @pytest.mark.parametrize("field,value", [
     ("policy", "other"), ("architecture", "x86_64"), ("codex_version", "0.159.0"),
     ("codex_sha256", {"codex": "f" * 64}), ("helpers", {}), ("extra", True),
@@ -179,6 +307,10 @@ def test_public_receipt_protection_keeps_strict_reader(selected_cache, tmp_path,
 
 def test_harbor_selected_order_is_deploy_boundary_then_advice(selected_cache, tmp_path, monkeypatch):
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as harbor
+    from benchmarks.agent_supervisor.container_coding import benchmark_provider_profile
+    # Exercise the retained historical policy with its historical configured
+    # CLI; current-profile refusal is covered separately before any deployment.
+    monkeypatch.setattr(benchmark_provider_profile, "CLI_VERSION", "0.158.0")
     root, _, selection, auth = selected_cache
     events = []
     async def deployed(*args, **kwargs):
@@ -327,7 +459,7 @@ def test_131_finite_population_hashes_every_body_before_first_hint(tiny_payload_
     assert result["freed_bytes_claimed"] is False
 
 
-@pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+@pytest.mark.parametrize("scope", ["archive", "archive_v2", "codex", "codex_v2", "libraries"])
 @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
 def test_registered_advice_alarm_propagates_and_cleans_up(
         tiny_payload_population, monkeypatch, capsys, scope, syscall):
@@ -337,6 +469,8 @@ def test_registered_advice_alarm_propagates_and_cleans_up(
     required. Selection uses tiny public fixtures, while the advice loops,
     handler, exception identity, descriptor cleanup and timer cleanup are real.
     """
+    current_policy = scope.endswith("_v2")
+    scope = scope.removesuffix("_v2")
     root, rows = tiny_payload_population
     module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
     registered, timers, calls, expired_errors = [], [], [], []
@@ -367,7 +501,8 @@ def test_registered_advice_alarm_propagates_and_cleans_up(
             (root / row["path"]).rename(root / "source" / row["path"])
             inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
                                   mode=row["mode"], sha256=row["sha256"]))
-        manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+        manifest = dict(archive_sha256="a" * 64,
+            setup_cache={"policy": policy.POLICY_V2 if current_policy else policy.POLICY}, files=inventory)
         raw = json.dumps(manifest).encode()
         manifest_path = root / "setup-cache-manifest.json"
         manifest_path.write_bytes(raw)
@@ -380,9 +515,13 @@ def test_registered_advice_alarm_propagates_and_cleans_up(
                 st_size=info.st_size, st_uid=0, st_gid=0), row)
         monkeypatch.setattr(archive_files, "require_file", fixture_owner)
     elif scope == "codex":
-        monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+        monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64]
+            + (["0.160.0"] if current_policy else []))
         monkeypatch.setattr(native, "read_receipt", lambda *args: {})
-        monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        def advise_codex(path, receipt, **kwargs):
+            assert kwargs == ({"codex_version": "0.160.0"} if current_policy else {})
+            return native.advise_selected(path, rows[:4], expected_count=4)
+        monkeypatch.setattr(native, "advise", advise_codex)
     else:
         monkeypatch.setattr(libraries, "ROWS", rows)
     def invoke(name, fd):
@@ -439,14 +578,18 @@ def test_131_population_late_fault_never_advises(tiny_payload_population, monkey
 
 
 @pytest.mark.parametrize("primary_failure", [False, "value", "timeout"])
+@pytest.mark.parametrize("cache_policy", [policy.POLICY, policy.POLICY_V2])
 def test_receipt_write_failure_preserves_primary_or_refuses_success(
-        selected_cache, tmp_path, monkeypatch, primary_failure):
+        selected_cache, tmp_path, monkeypatch, primary_failure, cache_policy):
     from benchmarks.agent_supervisor.container_coding import terminal_source384_qualification as qualify
     root, manifest, selection, _ = selected_cache
-    receipt = dict(schema="native-codex-runtime-bundle@1", codex_version="0.158.0", provider_calls=0,
-        files=[dict(name=name, source_sha256=pin, sha256=pin, uid=0, mode=0o755)
-               for name, pin in native.PINS.items()],
-        executable_checks={name: dict(returncode=0, stdout_sha256="a" * 64) for name in native.PINS})
+    version = policy.CODEX_VERSIONS[cache_policy]
+    if cache_policy == policy.POLICY_V2:
+        manifest["codex_version"] = version
+        manifest["setup_cache"] = policy.binding_for_manifest(manifest, cache_policy)
+        (root / "manifest.json").write_text(json.dumps(manifest))
+        selection = policy.select_setup_cache(root, cache_policy)
+    receipt = _native_receipt(version, native.PINS_BY_VERSION[version])
     boundary = tmp_path / "boundary"
     (boundary / "installation").mkdir(parents=True)
     raw = json.dumps(receipt).encode()
@@ -454,7 +597,7 @@ def test_receipt_write_failure_preserves_primary_or_refuses_success(
     archive_result = dict(schema="manifest-cache-advice@1", manifest_sha256=selection["manifest_sha256"],
         archive_sha256=manifest["archive_sha256"], selected_files=len(manifest["files"]),
         body_reads=0, metadata_unchanged=True, freed_bytes_claimed=False)
-    codex_result = dict(schema="pinned-native-codex-cache-advice@1", codex_version="0.158.0",
+    codex_result = dict(schema="pinned-native-codex-cache-advice@1", codex_version=version,
         post_boundary_receipt_sha256=hashlib.sha256(raw).hexdigest(), selected_files=4, hashed_files=4,
         body_reads_after_advice=0, body_read_bytes=100, selected_bytes=100,
         metadata_unchanged=True, freed_bytes_claimed=False)
@@ -486,6 +629,8 @@ def test_receipt_write_failure_preserves_primary_or_refuses_success(
     else:
         assert "receipt storage failure" in str(raised.value)
         assert env.exec.await_count == 3
+        native_command = env.exec.await_args_list[1].kwargs["command"]
+        assert ("0.160.0" in native_command) == (cache_policy == policy.POLICY_V2)
         qualify.observe_resources.assert_awaited_once()
 
 

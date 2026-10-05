@@ -32,7 +32,7 @@ def _prepared(tmp_path, runner, *, task_name=SELECTED):
     output.mkdir()
     archive.mkdir()
     (archive / "runtime.tar.gz").write_bytes(b"authored archive fixture")
-    native._json(archive / "manifest.json", {"archive_sha256": native._hash(archive / "runtime.tar.gz")})
+    native._json(archive / "manifest.json", {"archive_sha256": native._hash(archive / "runtime.tar.gz"), "codex_version": native.CLI_VERSION})
     if runner is native:
         config = native.config_for(dataset, output, task_name=task_name)
     else:
@@ -44,6 +44,7 @@ def _prepared(tmp_path, runner, *, task_name=SELECTED):
         command=["authored-harbor", "run", "--config", str(output / "config.json"), "--yes"],
         collector_source_sha256=native._hash(Path(native.__file__)),
         controls_source_sha256=native._hash(Path(benchmark_controls.__file__)),
+        provider_profile_source_sha256=native._hash(Path(native.benchmark_provider_profile.__file__)),
         native_adapter_source_sha256={}, host_source_sha256={}, archive=str(archive),
         archive_sha256=native._hash(archive / "runtime.tar.gz"),
         manifest_sha256=native._hash(archive / "manifest.json"),

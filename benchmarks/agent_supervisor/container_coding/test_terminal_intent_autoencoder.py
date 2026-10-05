@@ -42,7 +42,7 @@ def _plan(state, prepared, monkeypatch):
     original_run = subprocess.run
     def version(argv, *args, **kwargs):
         if argv == ["codex", "--version"]:
-            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.158.0\n", "")
+            return subprocess.CompletedProcess(argv, 0, "codex-cli 0.160.0\n", "")
         return original_run(argv, *args, **kwargs)
     monkeypatch.setattr(subprocess, "run", version)
     captured = []
@@ -263,7 +263,18 @@ def test_bundle_cli_selects_pinned_intent_descriptor(tmp_path, intent_checkpoint
     assert manifest["intent_checkpoint"]["sha256"] == intent_checkpoint["sha256"]
 
 
-def test_harbor_constructor_rejects_string_ablation(tmp_path):
+@pytest.mark.parametrize("disabled", ["false", 0, 1, None])
+@pytest.mark.parametrize("archive_exists", [False, True])
+def test_harbor_constructor_rejects_non_boolean_ablation_before_archive_io(tmp_path, monkeypatch, disabled, archive_exists):
+    from benchmarks.agent_supervisor.container_coding import terminal_setup_cache_advice as cache
+
+    def unexpected_cache_validation(*args, **kwargs):
+        pytest.fail("invalid ablation switch reached archive cache validation")
+
+    monkeypatch.setattr(cache, "validate_setup_cache_selection", unexpected_cache_validation)
+    archive = tmp_path / "archive"
+    if archive_exists:
+        archive.mkdir()
     with pytest.raises(ValueError, match="ablation switch"):
         FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-6.1-sol",
-            runtime_archive=str(tmp_path), disable_intent_autoencoder="false")
+            runtime_archive=str(archive), disable_intent_autoencoder=disabled)

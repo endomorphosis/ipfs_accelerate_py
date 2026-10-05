@@ -3707,6 +3707,48 @@ def _classify_codex_error_kind(*, stdout: str, stderr: str) -> Optional[str]:
     return None
 
 
+def _codex_cli_failure(message: str, *, stdout: str, stderr: str) -> LLMRouterError:
+    """Keep the existing exception text and attach only closed diagnostics.
+
+    Native Codex emits some provider rejections as JSON inside a JSONL error
+    message. Those observations must survive an empty stderr without turning
+    provider response text into persisted metadata or changing retry policy.
+    """
+    error = LLMRouterError(message)
+    try:
+        from .llm_allocation.observations import CallErrorKind, classify_provider_failure
+
+        diagnostic = _extract_first_error_message_from_codex_jsonl((stdout or "")[:262144])
+        diagnostic = (diagnostic or stderr or message)[:16384]
+        status = None
+        native_error_type = None
+        try:
+            nested = json.loads(diagnostic)
+        except (ValueError, TypeError, RecursionError):
+            nested = None
+        if type(nested) is dict and nested.get("type") == "error":
+            supplied_status = nested.get("status")
+            if type(supplied_status) is int and 100 <= supplied_status <= 599:
+                status = supplied_status
+            body = nested.get("error")
+            if type(body) is dict:
+                native_error_type = body.get("type")
+        failure = classify_provider_failure("codex_cli", diagnostic, status_code=status)
+        kind = failure.kind
+        if kind is CallErrorKind.UNKNOWN and (
+                status == 400 or native_error_type == "invalid_request_error"):
+            kind = CallErrorKind.INVALID_REQUEST
+        if isinstance(kind, CallErrorKind) and kind is not CallErrorKind.SUCCESS:
+            error.codex_error_kind = kind
+        if status is not None:
+            # Deliberately not status_code: this diagnostic must not alter the
+            # generic retry/fallback classifier's existing decision inputs.
+            error.codex_error_status = status
+    except Exception:
+        pass
+    return error
+
+
 def _extract_last_agent_message_from_codex_jsonl(text: str) -> Optional[str]:
     """Extract the most recent agent message from Codex --json (JSONL) stdout."""
 
@@ -6400,11 +6442,14 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
             resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
             if kind == "quota_exceeded":
-                raise LLMRouterError("Codex quota exceeded (billing/plan hard limit)")
+                raise _codex_cli_failure("Codex quota exceeded (billing/plan hard limit)",
+                    stdout=proc.stdout or "", stderr=proc.stderr or "")
             if kind == "usage_limit":
                 suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
-                raise LLMRouterError(f"Codex usage limit reached{suffix}")
-            raise LLMRouterError(proc.stderr.strip() or "codex exec failed")
+                raise _codex_cli_failure(f"Codex usage limit reached{suffix}",
+                    stdout=proc.stdout or "", stderr=proc.stderr or "")
+            raise _codex_cli_failure(proc.stderr.strip() or "codex exec failed",
+                stdout=proc.stdout or "", stderr=proc.stderr or "")
 
     return _CodexCLIProvider()
 

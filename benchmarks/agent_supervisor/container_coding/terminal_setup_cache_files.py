@@ -176,7 +176,8 @@ def main():
         manifest = json.loads(raw)
         if manifest['archive_sha256'] != expected_archive:
             raise ValueError('archive selection differs')
-        if manifest.get('setup_cache', {}).get('policy') != 'source384-native-aarch64-dontneed@1':
+        if manifest.get('setup_cache', {}).get('policy') not in (
+                'source384-native-aarch64-dontneed@1', 'source384-native-aarch64-dontneed@2'):
             raise ValueError('explicit supported setup cache policy required')
         result = advise(ROOT, manifest['files'])
         result.update(manifest_sha256=expected_manifest, archive_sha256=expected_archive)

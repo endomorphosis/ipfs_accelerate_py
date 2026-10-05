@@ -23,11 +23,12 @@ import sys
 import time
 
 from benchmarks.agent_supervisor.container_coding import benchmark_controls
+from . import benchmark_provider_profile
+from .benchmark_provider_profile import CLI_VERSION, prepared_provider_identity
 
 
 TASK = "fix-code-vulnerability"
 MODEL = "gpt-6.1-sol"
-CLI_VERSION = "0.158.0"
 REASONING = "high"
 TOKEN_FIELDS = (
     "input_tokens",
@@ -213,6 +214,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         "config_sha256": _hash(output / "config.json"),
         "collector_source_sha256": _hash(Path(__file__)),
         "controls_source_sha256": _hash(Path(benchmark_controls.__file__)),
+        "provider_profile_source_sha256": _hash(Path(benchmark_provider_profile.__file__)),
         "comparison_controls": benchmark_controls.build_controls(
             wire, task_input_sha256=hashes, task=task_name, model=MODEL,
             reasoning_effort=REASONING, cli_version=CLI_VERSION),
@@ -396,6 +398,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
     selected_config = json.loads((output / "config.json").read_text())
     task = _prepared_task(output, prepared, selected_config, job_prefix="native-codex-", task_name=task_name)
+    profile = prepared_provider_identity(prepared, selected_config)
     task_name = task.name
     from .benchmark_resource_profile import execution_budget
     budget = execution_budget(prepared.get("resource_profile"))
@@ -411,8 +414,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             task_matches is True
             and agent.get("name") == "codex"
             and not agent.get("import_path")
-            and agent.get("model_name") == MODEL
-            and agent.get("kwargs") == {"version": CLI_VERSION, "reasoning_effort": REASONING}
+            and agent.get("model_name") == profile["model"]
+            and agent.get("kwargs") == {"version": profile["cli_version"], "reasoning_effort": profile["reasoning_effort"]}
             and agent.get("override_timeout_sec") == budget["harbor_seconds"]
             and agent.get("max_timeout_sec") == budget["harbor_seconds"]
             and not (config.get("verifier") or {}).get("disable", True)
@@ -452,9 +455,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     summary = {
         "schema": "native-codex-harbor-baseline-receipt@1",
         "task": task_name,
-        "model": MODEL,
-        "reasoning_effort": REASONING,
-        "cli_version": CLI_VERSION,
+        **profile,
         "original_task_inputs_unchanged": integrity,
         "comparison_controls": benchmark_controls.observe_controls(
             prepared, json.loads((output / "config.json").read_text()),
@@ -494,6 +495,8 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("prepared baseline driver changed")
     if _hash(Path(benchmark_controls.__file__)) != prepared.get("controls_source_sha256"):
         raise ValueError("prepared benchmark controls owner changed")
+    if _hash(Path(benchmark_provider_profile.__file__)) != prepared.get("provider_profile_source_sha256"):
+        raise ValueError("prepared benchmark provider profile changed")
     if any(
         _hash(Path(path)) != digest
         for path, digest in prepared["native_adapter_source_sha256"].items()

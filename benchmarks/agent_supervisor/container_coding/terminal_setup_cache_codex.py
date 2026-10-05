@@ -24,25 +24,33 @@ PINS={
  'codex':'0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd',
  'codex-code-mode-host':'68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b',
 }
+PINS_V2={
+ 'codex':'50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0',
+ 'codex-code-mode-host':'7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c',
+}
+PINS_BY_VERSION={'0.158.0':PINS,'0.160.0':PINS_V2}
 VENDOR_PATTERN='versions/node/*/lib/node_modules/@openai/codex/node_modules/@openai/codex-*/vendor/*/bin/codex'
 
-def require_receipt(value):
+def require_receipt(value, *, codex_version='0.158.0'):
+    if type(codex_version) is not str or codex_version not in PINS_BY_VERSION:
+        raise ValueError('independently pinned Codex version required')
+    pins=PINS_BY_VERSION[codex_version]
     if (type(value) is not dict or set(value)!={'schema','codex_version','files','executable_checks','provider_calls'}
-            or value['schema']!='native-codex-runtime-bundle@1' or value['codex_version']!='0.158.0'
+            or value['schema']!='native-codex-runtime-bundle@1' or value['codex_version']!=codex_version
             or type(value['provider_calls']) is not int or value['provider_calls']!=0
             or type(value['files']) is not list or len(value['files'])!=2):
         raise ValueError('exact post-boundary native Codex receipt required')
     found=set()
     for row in value['files']:
         if (type(row) is not dict or set(row)!={'name','source_sha256','sha256','uid','mode'}
-                or row['name'] not in PINS or row['name'] in found
-                or row['sha256']!=PINS[row['name']] or row['source_sha256']!=PINS[row['name']]
+                or row['name'] not in pins or row['name'] in found
+                or row['sha256']!=pins[row['name']] or row['source_sha256']!=pins[row['name']]
                 or type(row['uid']) is not int or row['uid']!=0
                 or type(row['mode']) is not int or row['mode']!=0o755):
             raise ValueError('native bundle rows differ from independent pins')
         found.add(row['name'])
     checks=value['executable_checks']
-    if type(checks) is not dict or set(checks)!=set(PINS):raise ValueError('both native checks required')
+    if type(checks) is not dict or set(checks)!=set(pins):raise ValueError('both native checks required')
     for row in checks.values():
         if (type(row) is not dict or set(row)!={'returncode','stdout_sha256'}
                 or type(row['returncode']) is not int or row['returncode']!=0
@@ -107,11 +115,12 @@ def protect_receipt(root, expected_bytes):
         finally:os.close(fd)
     finally:os.close(owner)
 
-def advise(root, receipt):
-    require_receipt(receipt);root=Path(root)
-    rows=[dict(**row,mode=0o755,expected_bytes=None,sha256=PINS[row['name']]) for row in selection(root)]
+def advise(root, receipt, *, codex_version='0.158.0'):
+    require_receipt(receipt,codex_version=codex_version);root=Path(root)
+    pins=PINS_BY_VERSION[codex_version]
+    rows=[dict(**row,mode=0o755,expected_bytes=None,sha256=pins[row['name']]) for row in selection(root)]
     result=advise_selected(root,rows,expected_count=4)
-    return dict(result,schema='pinned-native-codex-cache-advice@1',codex_version='0.158.0')
+    return dict(result,schema='pinned-native-codex-cache-advice@1',codex_version=codex_version)
 
 def advise_selected(root, rows, *, expected_count):
     if type(expected_count) is not int or expected_count not in (4,131):
@@ -215,13 +224,16 @@ def main():
     import platform
     if platform.machine() != 'aarch64':raise ValueError('selected native cache policy requires aarch64')
     if os.geteuid()!=0:raise ValueError('root permission required for exact noatime advice')
-    if len(sys.argv)!=3 or sys.argv[1]!=ROOT+'/codex-cache-exposure.json':
+    if (len(sys.argv) not in (3,4) or sys.argv[1]!=ROOT+'/codex-cache-exposure.json'
+            or len(sys.argv)==4 and sys.argv[3]!='0.160.0'):
         raise ValueError('fixed receipt path and independent digest required')
     def expired(*args):raise TimeoutError('bounded native cache advice expired')
     signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,60)
     try:
         receipt=read_receipt(ROOT,sys.argv[2])
-        result=advise(ROOT,receipt);result['post_boundary_receipt_sha256']=sys.argv[2]
+        result=(advise(ROOT,receipt) if len(sys.argv)==3
+                else advise(ROOT,receipt,codex_version=sys.argv[3]))
+        result['post_boundary_receipt_sha256']=sys.argv[2]
         print(json.dumps(result,sort_keys=True,allow_nan=False))
     finally:signal.setitimer(signal.ITIMER_REAL,0)
 

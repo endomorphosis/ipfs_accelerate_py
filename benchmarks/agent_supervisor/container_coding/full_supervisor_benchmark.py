@@ -18,6 +18,7 @@ from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
 )
 from benchmarks.agent_supervisor.container_coding import benchmark_controls
 from .benchmark_resource_profile import PROFILES, validate_resource_profile
+from .benchmark_provider_profile import prepared_provider_identity, require_runtime_cli_version
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -213,6 +214,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
+    require_runtime_cli_version(manifest)
     from .terminal_deployment import (
         load_intent_action_384_config, _intent_action_384_assets,
         validate_intent_action_384_binding, verify_intent_action_384_archive,
@@ -283,6 +285,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     config = json.loads((output / "config.json").read_text())
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
+    profile = prepared_provider_identity(prepared, config)
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -304,7 +307,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "supervisor": report})
     unchanged = _task_hashes(task) == prepared["task_input_sha256"]
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
-              "task": task.name, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
+              "task": task.name, **profile,
               "original_task_inputs_unchanged": unchanged,
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
@@ -335,6 +338,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime archive changed")
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
+    require_runtime_cli_version(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()))
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
     with (output / "invocation.json").open("x") as stream:

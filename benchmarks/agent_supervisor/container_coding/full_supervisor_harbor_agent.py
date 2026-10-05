@@ -24,6 +24,7 @@ from .terminal_deployment import (
 )
 from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
+from .benchmark_provider_profile import require_runtime_cli_version
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 
@@ -230,6 +231,8 @@ class FullSupervisorAgent(BaseAgent):
         super().__init__(*args, **kwargs)
         if self.model_name != MODEL or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+        if type(disable_intent_autoencoder) is not bool:
+            raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
         self.auth_json = Path(auth_json or Path.home() / ".codex/auth.json")
         self.arm = arm
@@ -242,8 +245,6 @@ class FullSupervisorAgent(BaseAgent):
         validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
             auth_json=self.auth_json, arm=arm, resource_profile=resource_profile)
         self.setup_cache_selection = json.loads(json.dumps(setup_cache_selection))
-        if type(disable_intent_autoencoder) is not bool:
-            raise ValueError("Intent ablation switch must be boolean")
         self.disable_intent_autoencoder = disable_intent_autoencoder
         if intent_requirement_contract is not None:
             if type(intent_requirement_contract) is not dict:
@@ -270,6 +271,7 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        require_runtime_cli_version(manifest)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=self.auth_json,
