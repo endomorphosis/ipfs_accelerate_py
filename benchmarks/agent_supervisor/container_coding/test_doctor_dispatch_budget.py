@@ -43,6 +43,13 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     monkeypatch.setattr(driver.preparation,'initial_context',lambda **kwargs:context_options.append(kwargs) or {})
     monkeypatch.setattr(driver.preparation,'plan',lambda **kwargs:{'qualified':True})
     monkeypatch.setattr(driver.preparation,'context',lambda **kwargs:{'context_bundle':{}})
+    # This budget-only fixture authors its context and isolates the retrieval
+    # boundary; actual authenticated replay is covered by published-context tests.
+    def retrieval_options(*, repository, bundle, task, model_snapshot):
+        assert repository == Path('/app') and bundle == {}
+        assert task.task_cid == 'fixture-task' and model_snapshot is None
+        return dict(published_retrieval_policy=None, published_learned_artifacts=None)
+    monkeypatch.setattr(driver,'_published_retrieval_options',retrieval_options)
     monkeypatch.setattr(driver,'verify_local_benchmark_admission',lambda *args,**kwargs:
         {'graph':SimpleNamespace(tasks=[SimpleNamespace(task_cid='fixture-task',task_key='fixture-key')]),
          'manifest':{'repository_cid':'fixture-repository',
