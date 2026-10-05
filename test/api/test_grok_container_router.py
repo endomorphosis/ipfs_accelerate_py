@@ -123,7 +123,10 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
         assert kwargs["allow_local_fallback"] is kwargs["allow_cross_provider_fallback"] is False
         assert kwargs["grok_max_turns"] == (2 if purpose == "planning" else 128)
         assert kwargs["timeout"] == 180
-        assert kwargs["grok_disallowed_tools"] == "search_tool,use_tool"
+        assert kwargs["grok_tools"] == ("read_file" if purpose == "planning" else
+            "read_file,search_replace,grep,list_dir,todo_write,run_terminal_cmd")
+        assert kwargs["grok_disallowed_tools"] == ("read_file,search_tool,use_tool" if purpose == "planning" else
+            "search_tool,use_tool")
         assert ("run_terminal_cmd" in kwargs["grok_tools"]) is (purpose == "coding")
         assert kwargs["grok_permission_mode"] == ("dontAsk" if purpose == "planning" else "bypassPermissions")
         set_last_cli_observation("grok_cli", {"exit_code": 0, **native_grok_observation(envelope(), exit_code=0)})
@@ -139,7 +142,13 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
         "max_turns": 2 if purpose == "planning" else 128,
         "tools_profile": "none" if purpose == "planning" else "isolated_coding",
         "permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
-        "disallowed_tools": ["search_tool", "use_tool"],
+        "native_tool_allowlist": ["read_file"] if purpose == "planning" else
+            ["read_file", "search_replace", "grep", "list_dir", "todo_write", "run_terminal_cmd"],
+        "native_tool_denylist": ["read_file", "search_tool", "use_tool"] if purpose == "planning" else
+            ["search_tool", "use_tool"],
+        "disallowed_tools": ["read_file", "search_tool", "use_tool"] if purpose == "planning" else
+            ["search_tool", "use_tool"],
+        "effective_toolset_verified": False,
     }
     assert receipt["timeout_seconds"] == 180
 
