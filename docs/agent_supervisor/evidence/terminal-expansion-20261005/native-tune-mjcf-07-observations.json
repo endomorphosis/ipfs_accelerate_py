@@ -1,0 +1,38 @@
+{
+  "advertised_tool_counts": [
+    0
+  ],
+  "checks": 52,
+  "classification_authority": "observation_only",
+  "credential_files_read": false,
+  "first_native_timestamp": "2026-10-05T17:10:18.068000+00:00",
+  "last_native_timestamp": "2026-10-05T17:10:58.994000+00:00",
+  "monitor_seconds": 156.2294440289843,
+  "native_home_observed": true,
+  "native_json_records": 130,
+  "observed_model_rounds": [
+    {
+      "cached_prompt_tokens": 2048,
+      "completion_tokens": 3894,
+      "elapsed_since_turn_start_ms": 39198,
+      "loop_index": 1,
+      "model_elapsed_ms": 39186,
+      "prompt_tokens": 11444,
+      "reasoning_tokens": 3866
+    }
+  ],
+  "private_log_files": 1,
+  "private_log_hashes_exported": false,
+  "provider_calls_during_monitor": 0,
+  "raw_private_logs_exported": false,
+  "read_file_input_boundary_classification": "unknown",
+  "read_file_paths_retained": false,
+  "recognized_terminal_counts": {},
+  "response_body_fields_present": false,
+  "runtime_mutations": 0,
+  "schema": "native-trial-closed-observations@1",
+  "snapshots": 19,
+  "status": "container_unavailable",
+  "tool_outcome_counts": {},
+  "trial_label": "tune-mjcf-07"
+}

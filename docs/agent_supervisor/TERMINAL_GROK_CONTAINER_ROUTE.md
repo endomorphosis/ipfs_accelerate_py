@@ -80,8 +80,11 @@ requested policy is not evidence of the native effective toolset.
 In a retained development trial, `--tools ''` advertised 23 tools and performed
 three `read_file` calls despite the requested `none` profile. The logs did not
 retain their paths, so those reads cannot be classified against the task's input
-boundary. The singleton-then-deny configuration requires a fresh native
-observation of zero tools before claiming planning-tool isolation. This
+boundary. The singleton-then-deny configuration subsequently exhibited zero
+tools in a fresh readiness probe and full task trial; coding exhibited its six
+requested tools. These [native observations](evidence/terminal-expansion-20261005/README.md)
+qualify the pinned configuration without turning requested policy fields into
+per-invocation attestations. This
 deployment transfers no host MCP configuration. The generic
 router retains its previous behavior when this option is omitted.
 `provider_output_token_cap_enforced` remains false:
@@ -90,3 +93,14 @@ the router's requested output-token count is not an enforced native CLI limit.
 The two-round planning cap is a bounded experiment under the selected planning
 deadline; it does not extend that deadline. Native `cancelled` observations from
 earlier one-round attempts do not establish that the turn cap caused the failure.
+
+The retained full trials also leave two distinct gaps. Grok planning returned
+text rejected by the strict JSON plan contract. A separate source-bound symbolic
+plan reached native START and Grok coding, then hit the coding-call deadline and
+a replacement-bootstrap failure loop. The subsequent progress guard observes
+three new bootstrap errors without task, receipt or heartbeat progress and
+requires a second unchanged sample before taking the ordinary STOP path. It
+does not settle tasks, grant retry authority, or repair the underlying bootstrap
+rejection. Closed phase/reason counters preserve that future diagnostic without
+exporting exception messages or credentials. The live failed result remains
+unchanged; these later guards need their own full-container qualification.

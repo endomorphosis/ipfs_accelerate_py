@@ -1,0 +1,156 @@
+{
+  "advertised_tool_counts": [
+    6
+  ],
+  "checks": 303,
+  "classification_authority": "observation_only",
+  "complete_provider_token_totals_known": false,
+  "credential_files_read": false,
+  "first_native_timestamp": "2026-10-05T17:10:44.574000+00:00",
+  "last_native_timestamp": "2026-10-05T17:15:29.341000+00:00",
+  "monitor_seconds": 927.6973786549934,
+  "native_alias_normalizations": {
+    "run_terminal_command": "run_terminal_cmd"
+  },
+  "native_home_observed": true,
+  "native_json_records": 181,
+  "observed_model_rounds": [
+    {
+      "cached_prompt_tokens": 1536,
+      "completion_tokens": 299,
+      "elapsed_since_turn_start_ms": 4729,
+      "loop_index": 1,
+      "model_elapsed_ms": 4721,
+      "prompt_tokens": 30735,
+      "reasoning_tokens": 154
+    },
+    {
+      "cached_prompt_tokens": 30720,
+      "completion_tokens": 4168,
+      "elapsed_since_turn_start_ms": 73183,
+      "loop_index": 2,
+      "model_elapsed_ms": 68439,
+      "prompt_tokens": 34013,
+      "reasoning_tokens": 4037
+    },
+    {
+      "cached_prompt_tokens": 33920,
+      "completion_tokens": 548,
+      "elapsed_since_turn_start_ms": 79873,
+      "loop_index": 3,
+      "model_elapsed_ms": 6625,
+      "prompt_tokens": 38281,
+      "reasoning_tokens": 171
+    },
+    {
+      "cached_prompt_tokens": 38272,
+      "completion_tokens": 489,
+      "elapsed_since_turn_start_ms": 86344,
+      "loop_index": 4,
+      "model_elapsed_ms": 6361,
+      "prompt_tokens": 39113,
+      "reasoning_tokens": 365
+    },
+    {
+      "cached_prompt_tokens": 39040,
+      "completion_tokens": 1381,
+      "elapsed_since_turn_start_ms": 110458,
+      "loop_index": 5,
+      "model_elapsed_ms": 24088,
+      "prompt_tokens": 39684,
+      "reasoning_tokens": 1225
+    },
+    {
+      "cached_prompt_tokens": 39680,
+      "completion_tokens": 193,
+      "elapsed_since_turn_start_ms": 113799,
+      "loop_index": 6,
+      "model_elapsed_ms": 3210,
+      "prompt_tokens": 42158,
+      "reasoning_tokens": 81
+    },
+    {
+      "cached_prompt_tokens": 42112,
+      "completion_tokens": 1003,
+      "elapsed_since_turn_start_ms": 124850,
+      "loop_index": 7,
+      "model_elapsed_ms": 10936,
+      "prompt_tokens": 42424,
+      "reasoning_tokens": 231
+    },
+    {
+      "cached_prompt_tokens": 42368,
+      "completion_tokens": 1066,
+      "elapsed_since_turn_start_ms": 144315,
+      "loop_index": 8,
+      "model_elapsed_ms": 19313,
+      "prompt_tokens": 43905,
+      "reasoning_tokens": 1023
+    },
+    {
+      "cached_prompt_tokens": 43904,
+      "completion_tokens": 53,
+      "elapsed_since_turn_start_ms": 145791,
+      "loop_index": 9,
+      "model_elapsed_ms": 1463,
+      "prompt_tokens": 46159,
+      "reasoning_tokens": 10
+    },
+    {
+      "cached_prompt_tokens": 46080,
+      "completion_tokens": 2503,
+      "elapsed_since_turn_start_ms": 175737,
+      "loop_index": 10,
+      "model_elapsed_ms": 29939,
+      "prompt_tokens": 47072,
+      "reasoning_tokens": 1526
+    },
+    {
+      "cached_prompt_tokens": 46976,
+      "completion_tokens": 5702,
+      "elapsed_since_turn_start_ms": 255989,
+      "loop_index": 11,
+      "model_elapsed_ms": 80079,
+      "prompt_tokens": 50034,
+      "reasoning_tokens": 4352
+    },
+    {
+      "cached_prompt_tokens": 49920,
+      "completion_tokens": 936,
+      "elapsed_since_turn_start_ms": 263773,
+      "loop_index": 12,
+      "model_elapsed_ms": 7703,
+      "prompt_tokens": 55909,
+      "reasoning_tokens": 59
+    },
+    {
+      "cached_prompt_tokens": 55808,
+      "completion_tokens": 1294,
+      "elapsed_since_turn_start_ms": 284293,
+      "loop_index": 13,
+      "model_elapsed_ms": 19975,
+      "prompt_tokens": 57304,
+      "reasoning_tokens": 1045
+    }
+  ],
+  "private_log_files": 1,
+  "private_log_hashes_exported": false,
+  "provider_calls_during_monitor": 0,
+  "raw_private_logs_exported": false,
+  "read_file_input_boundary_classification": "unknown",
+  "read_file_paths_retained": false,
+  "recognized_terminal_counts": {},
+  "response_body_fields_present": false,
+  "runtime_mutations": 0,
+  "schema": "native-trial-closed-final-observations@1",
+  "snapshots": 262,
+  "status": "container_unavailable",
+  "tool_outcome_counts": {
+    "grep:success": 1,
+    "list_dir:success": 1,
+    "read_file:success": 4,
+    "run_terminal_cmd:failed": 2,
+    "run_terminal_cmd:success": 8
+  },
+  "trial_label": "largest-eigenval-01"
+}

@@ -66,6 +66,10 @@ avoids inserting large data tables into the prompt while retaining the
 32768-byte worker context limit. Currentness checks still read and verify the
 whole declared population. Program changes can produce a fresh context;
 immutable task data or generated support changes are refused.
+Fetch references establish availability and an obligation to read the data;
+they do not attest that the model actually read those bytes. Publication refresh
+preserves the same references and rechecks immutable data before admitting a
+successor context.
 
 The generated isolated structural smoke check preserves the file and total
 output byte bounds, rejects symlinks/nonregular outputs, and checks Python
@@ -130,3 +134,10 @@ and mandatory raw-source fetch references make that limit explicit. The
 earlier preparation failures identified two repaired boundaries: fenced public
 instructions needed a separate signed instruction envelope, and structured
 data needed explicit fetch references instead of eager prompt inclusion.
+
+The [expansion evidence](evidence/terminal-expansion-20261005/README.md) records
+the qualified source revisions, regression checks and separate live Grok trial
+outcomes. The [ready-root context qualification](evidence/supervisor-task-context-20261005/README.md)
+adds an advisory route for independently ready version 3 tasks. Native multi-task
+execution, dependent source successors and parallel worker execution remain
+guarded.

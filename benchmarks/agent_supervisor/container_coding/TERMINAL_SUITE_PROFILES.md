@@ -56,6 +56,14 @@ count. The worker permits at most 300 seconds per coding provider call; this is
 separate from the 840-second supervisor work budget and 60-second cleanup reserve.
 Missing token usage stays unknown, and no hard dollar/token ceiling is enforced.
 
+The explicit `source384-5cpu-16gib-planner180@1` profile gives planning 180
+seconds, retaining the extended profile's 900-second total, 840-second work,
+60-second cleanup and 300-second coding-call limits. Existing profiles retain
+90-second planning. The selected cap is signed and replayed; this fresh-run
+profile is not eligible for the older setup-cache policies. The
+[expansion evidence](../../../docs/agent_supervisor/evidence/terminal-expansion-20261005/README.md)
+records its separate Grok experiments and current qualification limits.
+
 The setup adapter records exact public `/app` inputs and initializes Git only in
 the disposable task container when needed. It installs UV in an isolated harness
 virtual environment, preserving the original task interpreter. Inputs may not

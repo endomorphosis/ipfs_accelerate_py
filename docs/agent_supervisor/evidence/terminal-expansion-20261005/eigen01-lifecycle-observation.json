@@ -1,0 +1,148 @@
+{
+  "additional_provider_calls": 0,
+  "limitations": {
+    "no_completion_or_proof_authority": true,
+    "no_reused_one_shot_grant_claim": true,
+    "no_source_drift_causal_claim": true,
+    "original_daemon_exit_reason_not_recovered": true,
+    "original_program_support_hash_currentness_not_collected_before_teardown": true,
+    "underlying_bootstrap_rejection_not_retained": true
+  },
+  "native_tool_telemetry": {
+    "advertised_tool_counts": [
+      6
+    ],
+    "observed_model_round_count": 13,
+    "read_file_paths_retained": false
+  },
+  "observations": {
+    "bootstrap_error_count": 59,
+    "bootstrap_receipt_count": 1,
+    "final_error_traceback": {
+      "frames": [
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "run",
+          "line": 746
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+          "function": "close",
+          "line": 1431
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+          "function": "_require_no_live_launched_children",
+          "line": 526
+        }
+      ],
+      "frames_omitted": 0,
+      "frames_walked": 3,
+      "walk_truncated": false
+    },
+    "final_error_type": "RuntimeError",
+    "implementation_timeout_seconds": 360,
+    "live_readonly_observations": {
+      "closed_marker": "state-owner bootstrap channel closed",
+      "daemon_restart_logs_observed_minimum": 34,
+      "replacement_daemon_error": "StateOwnerBootstrapError",
+      "restart_interval_seconds_approximate": 8,
+      "worker_uid_1001_live_processes": 0
+    },
+    "provider_error_type": "TimeoutExpired",
+    "provider_seconds": 300.1416243459971,
+    "provider_status": "failed",
+    "remaining_processes": 0,
+    "retained_validation_phases": [
+      {
+        "phase": "control_validation",
+        "seconds": 1.3186610270058736,
+        "status": "completed"
+      },
+      {
+        "phase": "control_validation",
+        "seconds": 1.3014815239876043,
+        "status": "completed"
+      },
+      {
+        "phase": "control_validation",
+        "seconds": 1.2545084779849276,
+        "status": "completed"
+      },
+      {
+        "phase": "launch_validation",
+        "seconds": 1.205695520999143,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.2803263180248905,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.354334615985863,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3417008339893073,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.2260766490071546,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.2979551689932123,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3039521590108052,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3183337170048617,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.1919015090097673,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3416893410030752,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.2985237099928781,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3634448979864828,
+        "status": "completed"
+      },
+      {
+        "phase": "bootstrap_validation",
+        "seconds": 1.3182268730015494,
+        "status": "completed"
+      }
+    ],
+    "retained_validation_phases_truncated": true,
+    "start_status": "succeeded",
+    "stop_status": "succeeded",
+    "task_revision": 3,
+    "task_status": "in_progress",
+    "worker_cleanup_returncode": 0
+  },
+  "runtime_mutations": 0,
+  "schema": "grok-eigen-lifecycle-gap-review@1",
+  "source_commit": "c9357feb18226614ae8a9b246a01403a77d0f843"
+}

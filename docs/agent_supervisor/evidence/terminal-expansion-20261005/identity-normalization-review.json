@@ -1,0 +1,17 @@
+{
+  "schema": "qualification-test-identity-normalization-check@1",
+  "exporter_sha256": "0eb970831f370dc4da222a27e2cd31aecfaace0d4d06e5cd3f3d92ad6f4c36b0",
+  "latest_run": "qualification/grok-two-rounds-final-01",
+  "latest_cases": 109,
+  "overlapping_cases": 109,
+  "new_cases": 0,
+  "previous_distinct_cases": 1307,
+  "result_distinct_cases": 1307,
+  "class_suffix_preserved": true,
+  "parameter_identity_preserved": true,
+  "ambiguous_and_unknown_modules_rejected": true,
+  "supersedes": "export-final-04/qualification-summary.json",
+  "previous_count_invalid": true,
+  "reason": "JUnit classname was relative to different pytest rootdir",
+  "model_calls": 0
+}

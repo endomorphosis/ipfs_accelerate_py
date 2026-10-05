@@ -1,0 +1,42 @@
+{
+  "archive_bytes": 1410160670,
+  "archive_hash_recomputed_in_review": false,
+  "archive_sha256_declared": "b7af6134e611c1e5e180b4f67628ed71b33c4996c453f5818da4058d4f319f8c",
+  "benchmark_result": false,
+  "codex_setup_cache_selected": false,
+  "credential_pathnames_present": false,
+  "credentials_in_archive": false,
+  "docker_calls": 0,
+  "grok_archive_member_independently_verified": {
+    "bytes": 142867512,
+    "path": "providers/grok/grok",
+    "platform": "linux-aarch64",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version": "1.0.46",
+    "version_output": "grok 1.0.46 (2765805b9442) [stable]"
+  },
+  "inventory_files": 27349,
+  "manifest_sha256": "0ae724d6b10bec783af96e68683d8572ca39d15c580d319ed2a8d655a89f102f",
+  "provider_calls": 0,
+  "qualified": true,
+  "raw_file_bodies_exported": false,
+  "schema": "terminal-grok-archive-independent-review@1",
+  "seconds": 11.189287485001842,
+  "source_heads": {
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "/home/barberb/lift_coding/.worktrees/terminal-expansion-20261005": "c9357feb18226614ae8a9b246a01403a77d0f843",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  },
+  "source_inventory_comparison": "every declared source/datasets/kit member hash matches its current clean pinned checkout",
+  "source_inventory_verified_files": {
+    "datasets": 8054,
+    "kit": 1289,
+    "source": 2804
+  },
+  "source_status": {
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-expansion-20261005": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+  },
+  "task_inputs_in_archive": false
+}

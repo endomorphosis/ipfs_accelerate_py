@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Supervisor primary-doc vocabulary",
+    "exit_code": 0,
+    "seconds": 0.035890027007553726
+  },
+  {
+    "name": "Maintained-surface relative links",
+    "exit_code": 0,
+    "seconds": 0.09489006098010577
+  },
+  {
+    "name": "Packaging version pin alignment",
+    "exit_code": 0,
+    "seconds": 0.03288022099877708
+  },
+  {
+    "name": "Closeout navigation markers",
+    "exit_code": 0,
+    "seconds": 0.0038930200098548084
+  }
+]

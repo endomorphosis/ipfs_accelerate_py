@@ -1064,3 +1064,29 @@ two router sessions to one, eliminating a 23,766-token planning component
 official reward. Regular Codex already has one session. Further call reduction
 needs a reviewed general numeric operator, compatible float/complex semantics
 and independently measured public correctness and timing gates.
+
+## Expanded profiles and Grok container qualification (2026-10-05)
+
+The [expansion evidence](evidence/terminal-expansion-20261005/README.md) records
+signed preparation and real index hydration for public XML, JSONL and calendar
+task inputs, separate Source384 inference for the Python populations, and
+broader finite alias/signature repairs checked with Lean and Z3. Structured-data
+semantics and numerical behavior remain explicit proof obligations. Publication
+refresh preserves exact data references without claiming that the model fetched
+every retained capsule or source byte.
+
+The pinned Grok route uses `llm_router` inside the isolated worker. Native
+qualification found that an empty Grok tool allowlist enabled its default tools;
+the corrected planning filter independently exhibited zero tools in both a
+readiness probe and a full task trial. Coding exhibited its six requested tools.
+The two latest MuJoCo plans still failed the strict JSON response contract.
+
+The eigenvalue symbolic contract was also exercised in a full Grok trial: two
+goals and one task were admitted with zero planning-provider calls, followed by
+successful native START and coding dispatch. Coding exceeded its 300-second
+limit. Replacement bootstrap failures left the task in progress, and runtime
+closure refused launched-child custody despite STOP reporting zero tracked
+processes. Official reward was zero and token totals were unavailable. This
+qualifies additional route boundaries, not successful Grok task completion or
+an efficiency advantage. The raw model/verifier bodies are excluded from the
+published metadata.

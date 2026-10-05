@@ -1,0 +1,56 @@
+{
+  "aggregate_eligible": false,
+  "clean_committed_run_claimed": false,
+  "counts": {
+    "passed": 86,
+    "skipped": 1
+  },
+  "datasets_changed_bytes_match_later_commit": true,
+  "datasets_changed_source_hashes": {
+    "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "3657261bdf5f8f122846bbd01420182147c27412073055470f4416822760eb39",
+    "tests/unit/logic/security_ir/test_code_header_derivation.py": "9aebade3dc38f2374dd3267bd75d13cc17a4d71945ec1e58e4640bce63a30467"
+  },
+  "datasets_clean_after": false,
+  "datasets_clean_before": false,
+  "evidence": {
+    "command": {
+      "artifact": "qualification/bounded-header-restoration-03-command.json",
+      "bytes": 14256,
+      "sha256": "a08e26246715faafb36c0bb0f2e704cf2e9092cf2963a0bf5b47d67d5ea64e1a"
+    },
+    "exit": {
+      "artifact": "qualification/bounded-header-restoration-03-exit.json",
+      "bytes": 12792,
+      "sha256": "9241a2cc5cab7b80c82f6f0a6d11191aacca2b588baae3347b17b48c5288016e"
+    },
+    "junit": {
+      "artifact": "qualification/bounded-header-restoration-03.xml",
+      "bytes": 18559,
+      "sha256": "04b247be4826d91800b23d2e602de41e6fddcacd13f534d3c2e5881914a853f6"
+    }
+  },
+  "interpretation": "Precommit dirty datasets run; changed bytes replay against a later commit, not a clean-run qualification.",
+  "log_sha256": "2321efcf356333daa20a6465445583c92853aa3ead749fe0329c429a096a83b8",
+  "model_calls": 0,
+  "observed_datasets_revision_after": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "observed_datasets_revision_before": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "observed_source_revision_after": "b3de4a2d6efde6cd1b7f227976b1b0eb4a4f4c9d",
+  "observed_source_revision_before": "b3de4a2d6efde6cd1b7f227976b1b0eb4a4f4c9d",
+  "protected_accelerate_bytes_match_replay_commit": true,
+  "raw_failure_log_test_or_model_bodies_exported": false,
+  "replay_datasets_revision": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "replay_source_revision": "b3de4a2d6efde6cd1b7f227976b1b0eb4a4f4c9d",
+  "run": "qualification/bounded-header-restoration-03",
+  "schema": "datasets-header-development-qualification@1",
+  "seconds": 26.72165025299182,
+  "selected_dataset_test_file_count": 3,
+  "selected_dataset_test_hashes_captured": 1,
+  "selected_modules": [
+    "tests.unit.logic.security_ir.test_bounded_header_checker",
+    "tests.unit.logic.security_ir.test_bounded_header_checker_native",
+    "tests.unit.logic.security_ir.test_code_header_derivation"
+  ],
+  "source_unchanged_reported": true,
+  "status": "green_development_run",
+  "xml_digest_matches_recorder": true
+}

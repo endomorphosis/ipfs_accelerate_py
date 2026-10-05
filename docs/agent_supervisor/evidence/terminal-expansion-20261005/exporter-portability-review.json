@@ -1,0 +1,13 @@
+{
+  "schema": "evidence-checker-portability@1",
+  "passed": 22,
+  "source_sha256": {
+    "inspect_live_trials.py": "dbbcee631ec11f4493c20e8d1cb2526524dfe0326f04c4fa8611054a85df5ba5",
+    "export_evidence.py": "2f6753581108abd7cd1ff44dc1d8080a953c5f387999b3ac0aba614f09d018b3",
+    "check_evidence_exports.py": "6172f3a29e34d121953c9c7d32354cf5a806fa4453bf99a79cb9b86f60b12eb9"
+  },
+  "copied_sibling_modules": 3,
+  "private_artifact_layout_required": false,
+  "source_checkout_required": false,
+  "model_calls": 0
+}

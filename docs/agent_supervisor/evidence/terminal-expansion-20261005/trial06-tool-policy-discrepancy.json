@@ -1,0 +1,40 @@
+{
+  "completion_authority": false,
+  "credential_data_exported": false,
+  "final_response_body_retained_in_native_logs": false,
+  "final_response_format_classification": "unknown",
+  "observed_advertised_tool_counts": [
+    23
+  ],
+  "observed_model_rounds": [
+    {
+      "completion_tokens": 7221,
+      "elapsed_since_turn_start_ms": 74773,
+      "loop_index": 1,
+      "reasoning_tokens": 7048
+    },
+    {
+      "completion_tokens": 6498,
+      "elapsed_since_turn_start_ms": 137409,
+      "loop_index": 2,
+      "reasoning_tokens": 5238
+    }
+  ],
+  "observed_successful_read_file_calls": 3,
+  "private_log_hashes_exported": false,
+  "provider_calls_during_review": 0,
+  "raw_private_log_contents_exported": false,
+  "read_file_input_boundary_classification": "unknown",
+  "read_file_paths_retained": false,
+  "requested_max_turns": 2,
+  "requested_native_tool_allowlist": "",
+  "requested_native_tool_denylist": [
+    "search_tool",
+    "use_tool"
+  ],
+  "requested_policy_matches_observed_tools": false,
+  "requested_timeout_seconds": 180,
+  "requested_tools_profile": "none",
+  "schema": "grok-native-tool-policy-discrepancy@1",
+  "trial": "grok-tune-mjcf-06"
+}
