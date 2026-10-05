@@ -830,9 +830,11 @@ def test_implementation_daemon_dispatches_reconstruction_and_reuses_diagnostic(
         implementation_context_tokenizer=_tokenizer,
         implementation_provider_context_window=2_200,
     )
-    restarted._implementation_seed_failure_guidance[
-        restarted._canonical_ref(task)
-    ] = "seed recovery prose must not follow typed retry JSON"
+    restarted._record_prior_attempt_seed_failure(
+        task=task, attempt=2, seed_plan={"prior_commit": "authored-context-fixture"},
+        seed_apply={"reason": "seed recovery prose must not replace typed retry JSON"},
+        worktree_path=tmp_path / "candidate", branch_name="authored-retry-branch",
+    )
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
 
     wire, end = json.JSONDecoder().raw_decode(retry_prompt)
@@ -842,6 +844,7 @@ def test_implementation_daemon_dispatches_reconstruction_and_reuses_diagnostic(
     assert retry.capsule.diagnostic_receipt_id == diagnostic.receipt_id
     assert oversized_review not in retry_prompt
     assert "seed recovery prose" in retry_prompt[end:]
+    assert restarted._prior_attempt_seed_recovery_guidance(task, 2) == ""
     assert retry.capsule.changed_files == ("src/context.py",)
     assert retry.capsule.changed_symbols == ("ContextCompiler.compile_delta",)
     assert retry.capsule.unresolved_requirement_ids == ("requirement:test",)

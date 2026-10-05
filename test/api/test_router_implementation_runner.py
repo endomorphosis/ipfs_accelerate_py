@@ -22,7 +22,7 @@ def test_codex_router_forwards_reasoning_effort_without_shell_interpolation(monk
     provider = llm_router._get_codex_cli_provider()
     assert provider.generate("literal $(no command)", model_name="pinned", reasoning_effort="high") == "done"
     command, options = observed[0]
-    assert command[command.index("-c") + 1] == "model_reasoning_effort=high"
+    assert command[command.index("-c") + 1] == 'model_reasoning_effort="high"'
     assert options["input"] == "literal $(no command)" and options.get("shell", False) is False
     usage = get_last_cli_observation("codex_cli")
     assert usage["reasoning_effort"] == "high" and usage["exit_code"] == 0

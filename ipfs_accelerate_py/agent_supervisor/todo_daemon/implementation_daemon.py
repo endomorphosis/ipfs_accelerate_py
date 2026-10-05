@@ -2748,14 +2748,16 @@ def _codex_implementation_command(
     model_override: str | None = None,
     reasoning_effort_override: str | None = None,
 ) -> list[str]:
-    """Build the non-interactive Codex implementation argv."""
+    """Select daemon policy for the router-owned native Codex command."""
+
+    from ipfs_accelerate_py.llm_router import build_codex_cli_command
 
     codex_model = (
         str(model_override).strip()
         if model_override is not None
         else (
             os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            or DEFAULT_CODEX_MODEL
+            or None
         )
     )
     codex_context = (
@@ -2774,27 +2776,12 @@ def _codex_implementation_command(
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
 
-    command = [
-        codex,
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(workspace_path),
-    ]
-    if codex_model:
-        command.extend(["-m", codex_model])
-    if codex_context:
-        command.extend(["-c", f"model_context_window={codex_context}"])
-    if codex_reasoning:
-        command.extend(
-            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
-        )
-    if codex_max_threads:
-        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-    if codex_max_depth:
-        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-    command.append("-")
-    return command
+    return build_codex_cli_command(
+        codex_bin=codex, workspace=workspace_path, model_name=codex_model,
+        reasoning_effort=codex_reasoning, context_window=codex_context,
+        max_threads=codex_max_threads, max_depth=codex_max_depth,
+        bypass_approvals_and_sandbox=True,
+    )
 
 
 def _claude_implementation_command(
@@ -34793,6 +34780,11 @@ class PortalImplementationDaemon:
         """Record durable guidance when a prior attempt cannot be reseeded."""
 
         key = self._canonical_ref(task)
+        binding, artifact = self._prior_attempt_seed_guidance_binding(task, attempt)
+        candidate = worktree_path.resolve()
+        if (Path(binding["event_source"]).is_relative_to(candidate)
+                or artifact.resolve().is_relative_to(candidate)):
+            raise ValueError("prior seed guidance requires supervisor state outside candidate")
         prior_commit = str(
             seed_plan.get("prior_commit") or seed_apply.get("seed_ref") or ""
         ).strip()
@@ -34830,8 +34822,20 @@ class PortalImplementationDaemon:
                 "or rewrite compactly inside declared Outputs; do not re-dump "
                 "oversized fixtures."
             ).strip()
+        if len(guidance.encode("utf-8")) > 16_384:
+            raise ValueError("prior seed guidance exceeds its advisory bound")
+        from ..runtime.artifact_store import _atomic_write_bytes
+        record = {**binding, "guidance": guidance,
+            "guidance_sha256": hashlib.sha256(guidance.encode("utf-8")).hexdigest(),
+            "status": "pending", "candidate_worktree": str(candidate),
+            "proof_authority": False, "execution_authority": False, "completion_authority": False}
+        from ..runtime.prior_seed_guidance import validate_guidance_record
+        validate_guidance_record(record, artifact_path=artifact)
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        _atomic_write_bytes(artifact, encoded)
         self._implementation_seed_failure_guidance[key] = guidance
         guide_path = ""
+        skipped_reason = ""
         try:
             # Recovery guidance is supervisor state, not implementation
             # output.  Writing it into the candidate worktree makes the
@@ -34840,18 +34844,17 @@ class PortalImplementationDaemon:
             # implementation logs so retries receive guidance without
             # contaminating the candidate tree.
             guide_dir = self.implementation_log_dir / "seed_recovery"
-            guide_dir.mkdir(parents=True, exist_ok=True)
-            safe_task = re.sub(
-                r"[^a-z0-9._-]+", "-", task.task_id.lower()
-            ).strip("-") or "task"
-            guide_file = (
-                guide_dir
-                / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
-            )
-            guide_file.write_text(guidance + "\n", encoding="utf-8")
-            guide_path = str(guide_file)
+            if guide_dir.resolve().is_relative_to(candidate):
+                skipped_reason = "implementation_log_dir_within_candidate"
+            else:
+                # Human-readable notes preserve the existing recovery layout;
+                # replay uses the exact identity-bound JSON artifact above.
+                safe_task = re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-") or "task"
+                guide_file = guide_dir.resolve() / f"{safe_task}-attempt-{attempt}-seed-recovery.md"
+                _atomic_write_bytes(guide_file, (guidance + "\n").encode("utf-8"))
+                guide_path = str(guide_file)
         except OSError:
-            guide_path = ""
+            skipped_reason = "guidance_file_write_failed"
         self._record_event(
             "implementation_prior_attempt_seed_failed",
             {
@@ -34861,10 +34864,64 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "guidance": guidance,
                 "guidance_path": guide_path,
+                "guidance_storage": "supervisor_artifact" if guide_path else "supervisor_event",
+                "guidance_file_skipped_reason": skipped_reason,
+                "guidance_artifact": str(artifact),
+                "guidance_artifact_sha256": hashlib.sha256(encoded).hexdigest(),
+                "canonical_task_cid": binding["canonical_task_cid"],
+                "canonical_task_key": binding["canonical_task_key"],
+                "board_namespace": binding["board_namespace"],
+                "guidance_schema": binding["schema"],
+                "proof_authority": False, "execution_authority": False, "completion_authority": False,
                 "seed_plan": dict(seed_plan),
                 "seed_apply": dict(seed_apply),
             },
         )
+
+    def _prior_attempt_seed_guidance_binding(self, task: PortalTask, attempt: int):
+        """One bounded state artifact per exact task revision and attempt."""
+        from ..runtime.prior_seed_guidance import SCHEMA, guidance_artifact_path
+        identity = self._identity_for_task(task)
+        binding = {"schema": SCHEMA, "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "canonical_task_key": identity.canonical_task_key,
+            "board_namespace": identity.board_namespace, "attempt": attempt,
+            "event_source": str(self.events_path.absolute())}
+        return binding, guidance_artifact_path(binding)
+
+    def _prior_attempt_seed_guidance_record(self, task: PortalTask, attempt: int):
+        """Read one detached advisory record, never scan or trust candidate logs."""
+        try:
+            binding, artifact = self._prior_attempt_seed_guidance_binding(task, attempt)
+            from ..runtime.multi_supervisor_runner import _read_stable_regular_bytes
+            from ..runtime.prior_seed_guidance import MAX_BYTES, decode_guidance_record
+            if artifact.resolve() != artifact:
+                return None
+            raw, _ = _read_stable_regular_bytes(artifact, max_bytes=MAX_BYTES)
+            if raw is None:
+                return None
+            record = decode_guidance_record(raw, artifact_path=artifact)
+            if (record["status"] != "pending"
+                    or any(type(record[name]) is not type(value) or record[name] != value
+                           for name, value in binding.items())):
+                return None
+            return artifact, record
+        except (OSError, ValueError, TypeError, RuntimeError):
+            return None
+
+    def _prior_attempt_seed_recovery_guidance(self, task: PortalTask, attempt: int) -> str:
+        captured = self._prior_attempt_seed_guidance_record(task, attempt)
+        return captured[1]["guidance"] if captured is not None else ""
+
+    def _consume_prior_attempt_seed_recovery_guidance(self, task: PortalTask, attempt: int, guidance: str) -> None:
+        captured = self._prior_attempt_seed_guidance_record(task, attempt)
+        if captured is None or captured[1]["guidance"] != guidance:
+            raise RuntimeError("prior seed guidance changed before prompt acceptance")
+        artifact, record = captured
+        from ..runtime.artifact_store import _atomic_write_bytes
+        _atomic_write_bytes(artifact, json.dumps({**record, "status": "consumed"},
+            sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"))
+        self._implementation_seed_failure_guidance.pop(self._canonical_ref(task), None)
 
     @staticmethod
     def _board_completion_decision(
@@ -65668,9 +65725,7 @@ class PortalImplementationDaemon:
                             "candidate_input_tokens": candidate_tokens,
                         },
                     )
-            seed_guidance = str(
-                self._implementation_seed_failure_guidance.get(key) or ""
-            ).strip()
+            seed_guidance = self._prior_attempt_seed_recovery_guidance(task, attempt)
             if seed_guidance:
                 rendered = (
                     f"{rendered.rstrip()}\n\n"
@@ -65682,7 +65737,7 @@ class PortalImplementationDaemon:
         if attempt > 1 and seed_guidance:
             # One-shot after the bounded prompt is accepted; failed budget
             # admission must retain the recovery guidance for diagnosis.
-            self._implementation_seed_failure_guidance.pop(key, None)
+            self._consume_prior_attempt_seed_recovery_guidance(task, attempt, seed_guidance)
         if attempt == 1:
             from .database_attempt_feedback import render_database_attempt_feedback
 

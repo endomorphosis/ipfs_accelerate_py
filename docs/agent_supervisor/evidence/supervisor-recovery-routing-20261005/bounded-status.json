@@ -1,0 +1,90 @@
+{
+  "schema": "supervisor-bounded-git-status-qualification@1",
+  "accelerate_base": "cda8d05433b4c5453e63c54e121b6f49a992294e",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "run": "status-green-02",
+  "exit_code": 0,
+  "source_unchanged": true,
+  "passed": 9,
+  "failed": 0,
+  "skipped": 0,
+  "provider_calls": 0,
+  "official_benchmark_score": null,
+  "artifacts": {
+    "command_sha256": "2eff763150e562c68b284f2c608c7c7b1b5e88a75ab4cdde32307ce232a0ca08",
+    "log_sha256": "fdd8a0f146a7dc4a9557a84ec7b59666597829cbf0b7e8401fe0d48b1aa8b984",
+    "xml_sha256": "268c36054055a79196498b5645cbff4ddea84abf768071a81090084f6c7bf075"
+  },
+  "baseline_red": {
+    "run": "status-red-01",
+    "failed": 2,
+    "passed": 0,
+    "reason": "Actual Git status did not reject tiny injected byte or record limits while acquisition was unbounded.",
+    "artifacts": {
+      "command_sha256": "b07bc05fe57a6116059c6265a6ea09a6cf1c14206a4ec37a47be7b4b55ef48a2",
+      "log_sha256": "a55492d4362c03b861ff415fa5dc4543d997acf31eb5cf38ed22e01640d4305f",
+      "xml_sha256": "b64bdda00014ab6e089f14b93a94f15f7f6296cb454e9e8cac68fb6156bc8d28"
+    }
+  },
+  "intermediate_run": {
+    "run": "status-green-01",
+    "passed": 7,
+    "failed": 1,
+    "reason": "Descendant fixture inspected /proc immediately after SIGKILL, before delivery; replaced immediate assertion with a bounded same-PID/birth termination observation.",
+    "artifacts": {
+      "command_sha256": "9db4e2094c2cd00cb96774d106bf25ef0cb663f74e20197db66bd571e5d30f25",
+      "log_sha256": "955ab226689345c21c6f5472a14b1fc46e4848ddb74d6370f378a2bb0c0af6d6",
+      "xml_sha256": "473946803bca194e54352a3265e461f8926aa03cdfef0610770f739d42b416c4"
+    }
+  },
+  "tested_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/bounded_git_status.py": "0893f3a178fb378c0ada64d85d78d4dc7b7ec6e4c4cbaceca59f005c46d0c927",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "241b36f7d38dfa6c1dd15a57af55204dfb224f64ea429acb4b75e54d92d8968e",
+    "test/api/test_plan_bound_git_status_capture.py": "8f11f54f85f585b6819a309988d2c13da6c5c56d720f406effe28c4a0739701c"
+  },
+  "implemented": [
+    "Only _plan_bound_git status acquisition uses bounded selectors; non-status commands retain their existing subprocess.run contract.",
+    "Capture refuses stdout beyond 67108864 bytes, stderr beyond 65536 bytes, or stdout beyond 70000 NUL records before adding excess bytes to retained buffers.",
+    "The existing sanitized Git command/environment and native 30-second deadline remain in effect; text/byte CompletedProcess behavior is preserved.",
+    "Each capture launches start_new_session=True and verifies its leader PID/session/group. Failure SIGKILL targets only that owned process group, then waits up to one second to reap the exact leader and closes all local pipes.",
+    "Owned process-group authority is cleared immediately after successful leader reaping; decoding failure cannot signal a reused group identity.",
+    "Existing recovery aggregate size/record and semantic custody checks remain in place."
+  ],
+  "qualification_scope": [
+    "Actual native Git status with small byte/record caps reproduces and rejects unbounded-acquisition conditions.",
+    "Actual native Git return types and ambient GIT_DIR isolation.",
+    "Harmless authored Python subprocesses exercise stdout/stderr/record overflow and timeout, with exact owned leader reaping and closed pipes.",
+    "Actual forked child retains output pipes after leader exit; timeout fences the dedicated owned group and confirms same-birth descendant terminates within a bounded interval.",
+    "Invalid text decoding after a reaped leader raises without any process-group signal."
+  ],
+  "limitations": [
+    "No live model calls or benchmark score.",
+    "A terminated orphaned descendant may remain a zombie until its actual parent or init reaps it; the helper reaps its exact Popen leader and the control verifies no same-identity descendant remains running."
+  ],
+  "reproduction": {
+    "cwd": "ACCELERATE_CHECKOUT",
+    "umask": "022",
+    "python": "3.12",
+    "environment": {
+      "PYTHONPATH": "ACCELERATE_CHECKOUT:DATASETS_CHECKOUT",
+      "DATASETS_CHECKOUT": "datasets dependency checkout at datasets_head",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "fresh external file per run"
+    },
+    "argv": [
+      "python",
+      "-B",
+      "-c",
+      "import pathlib,os,tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path(os.environ[\"DATASETS_CHECKOUT\"]) / \"tests/__init__.py\"; import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "test/api/test_plan_bound_git_status_capture.py"
+    ]
+  }
+}

@@ -68,7 +68,8 @@ def _authorize_seed(
     )
 
 
-def test_prior_seed_output_attestations_admit_exact_text_modify() -> None:
+def test_prior_seed_output_attestations_do_not_promote_modify_to_absent_output_authority() -> None:
+    """V2 seed authority only materializes outputs proved absent at baseline."""
     path = "test/api/test_retry_target.py"
     task = _task(path)
     valid_modify = SimpleNamespace(
@@ -110,15 +111,7 @@ def test_prior_seed_output_attestations_admit_exact_text_modify() -> None:
     assert PortalImplementationDaemon._prior_seed_output_attestations(
         validation,
         task,
-    ) == [
-        {
-            "path": path,
-            "sha256": hashlib.sha256(
-                valid_modify.after_source.encode("utf-8")
-            ).hexdigest(),
-            "git_blob_id": "a" * 40,
-        }
-    ]
+    ) == []
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -1701,14 +1694,14 @@ def test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate(
         / "rescue"
         / "lig-016-attempt-2-seed-recovery.md"
     )
-    guide = (
-        daemon.implementation_log_dir
-        / "seed_recovery_guidance"
-        / "lig-016-attempt-2-seed-recovery.md"
-    )
+    event = daemon._iter_events()[-1]
+    guide = Path(event["guidance_path"])
     assert not legacy_guide.exists()
+    assert guide.is_relative_to(daemon.implementation_log_dir)
+    assert not guide.is_relative_to(worktree)
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")
+    assert Path(event["guidance_artifact"]).is_file()
     assert _git(worktree, "status", "--short") == ""
 
 
@@ -1760,3 +1753,5 @@ def test_record_prior_attempt_seed_failure_never_writes_inside_candidate(
         event["guidance_file_skipped_reason"]
         == "implementation_log_dir_within_candidate"
     )
+    artifact = Path(event["guidance_artifact"])
+    assert artifact.is_file() and not artifact.is_relative_to(worktree)

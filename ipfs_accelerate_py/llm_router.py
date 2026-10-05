@@ -3963,17 +3963,7 @@ def _effective_model_key(
             or "muse-spark-1.2"
         ).strip()
     if pk in {"codex", "codex_cli"}:
-        return (
-            _coalesce_env(
-                "ipfs_accelerate_py_CODEX_CLI_MODEL",
-                "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
-                "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
-                "ipfs_accelerate_py_CODEX_MODEL",
-                "IPFS_ACCELERATE_PY_CODEX_MODEL",
-                "IPFS_DATASETS_PY_CODEX_MODEL",
-            )
-            or "gpt-6.1-sol"
-        ).strip()
+        return _codex_default_model()
     if pk == "copilot_sdk":
         return _coalesce_env(
             "ipfs_accelerate_py_COPILOT_SDK_MODEL",
@@ -6183,6 +6173,99 @@ def _get_llama_cpp_native_provider(*, auto_install: bool = False) -> Optional[LL
     return _NativeLlamaCppProvider()
 
 
+def _codex_default_model() -> str:
+    return (
+        _coalesce_env(
+            "ipfs_accelerate_py_CODEX_CLI_MODEL",
+            "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
+            "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
+            "ipfs_accelerate_py_CODEX_MODEL",
+            "IPFS_ACCELERATE_PY_CODEX_MODEL",
+            "IPFS_DATASETS_PY_CODEX_MODEL",
+        )
+        or "gpt-6.1-sol"
+    ).strip()
+
+
+def build_codex_cli_command(
+    *,
+    codex_bin: str = "codex",
+    workspace: Optional[str | Path] = None,
+    model_name: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    context_window: Optional[int | str] = None,
+    max_threads: Optional[int | str] = None,
+    max_depth: Optional[int | str] = None,
+    sandbox: Optional[str] = None,
+    bypass_approvals_and_sandbox: bool = False,
+    skip_git_repo_check: bool = False,
+    output_last_message: Optional[str | Path] = None,
+    json_mode: bool = False,
+    resume_session_id: Optional[str] = None,
+) -> list[str]:
+    """Build native Codex argv without launching or changing process custody.
+
+    The supervisor retains its streaming/deadline owner; the text provider
+    retains its usage collector. Explicit native execution policies are not
+    inferred from a model choice. In particular sandbox bypass is opt-in.
+    """
+    model = _codex_default_model() if model_name is None else str(model_name).strip()
+    for name, value in (("bypass_approvals_and_sandbox", bypass_approvals_and_sandbox),
+                        ("skip_git_repo_check", skip_git_repo_check), ("json_mode", json_mode)):
+        if type(value) is not bool:
+            raise ValueError(f"Codex {name} must be a boolean")
+    if reasoning_effort not in {None, "", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
+        raise ValueError("unsupported Codex reasoning_effort")
+    sandbox = str(sandbox or "").strip()
+    if sandbox.lower() == "auto":
+        sandbox = ""
+    if sandbox not in {"", "read-only", "workspace-write", "danger-full-access"}:
+        raise ValueError("unsupported Codex sandbox")
+    if bypass_approvals_and_sandbox and sandbox:
+        raise ValueError("Codex sandbox and sandbox bypass are mutually exclusive")
+
+    def numeric_setting(name: str, value: Optional[int | str], minimum: int) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError(f"Codex {name} must be an integer")
+        text = str(value).strip()
+        if not text.isascii() or not text.isdecimal() or int(text) < minimum:
+            raise ValueError(f"invalid Codex {name}")
+        return str(int(text))
+
+    context = numeric_setting("context_window", context_window, 1)
+    threads = numeric_setting("max_threads", max_threads, 1)
+    depth = numeric_setting("max_depth", max_depth, 0)
+    command = [str(codex_bin), "exec"]
+    if resume_session_id:
+        command.extend(["resume", str(resume_session_id)])
+    if skip_git_repo_check:
+        command.append("--skip-git-repo-check")
+    if bypass_approvals_and_sandbox:
+        command.append("--dangerously-bypass-approvals-and-sandbox")
+    if sandbox:
+        command.extend(["--sandbox", sandbox])
+    if workspace is not None:
+        command.extend(["-C", str(workspace)])
+    if model:
+        command.extend(["-m", model])
+    if context is not None:
+        command.extend(["-c", f"model_context_window={context}"])
+    if reasoning_effort:
+        command.extend(["-c", "model_reasoning_effort=" + json.dumps(reasoning_effort)])
+    if threads is not None:
+        command.extend(["-c", f"agents.max_threads={threads}"])
+    if depth is not None:
+        command.extend(["-c", f"agents.max_depth={depth}"])
+    if output_last_message is not None:
+        command.extend(["--output-last-message", str(output_last_message)])
+    if json_mode:
+        command.append("--json")
+    command.append("-")
+    return command
+
+
 def _get_codex_cli_provider() -> Optional[LLMProvider]:
     if not shutil.which("codex"):
         return None
@@ -6191,18 +6274,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
         def generate(
             self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
         ) -> str:
-            model = (
-                model_name
-                or _coalesce_env(
-                    "ipfs_accelerate_py_CODEX_CLI_MODEL",
-                    "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
-                    "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
-                    "ipfs_accelerate_py_CODEX_MODEL",
-                    "IPFS_ACCELERATE_PY_CODEX_MODEL",
-                    "IPFS_DATASETS_PY_CODEX_MODEL",
-                )
-                or "gpt-6.1-sol"
-            ).strip()
+            model = (model_name or _codex_default_model()).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = (
                 os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
@@ -6225,26 +6297,13 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
                 last_msg_path = last_msg.name
 
-            cmd: list[str] = ["codex", "exec"]
-            if resume_session_id:
-                cmd.extend(["resume", resume_session_id])
-            if skip_git_repo_check:
-                cmd.append("--skip-git-repo-check")
-            # Some Codex CLI builds do not accept '--sandbox auto'.
-            # Treat 'auto' (the default) as "don't pass the flag" so the CLI can
-            # pick its own default sandbox mode.
-            if sandbox and sandbox.lower() != "auto":
-                cmd.extend(["--sandbox", sandbox])
-            if model:
-                cmd.extend(["-m", model])
-            if reasoning_effort is not None:
-                cmd.extend(["-c", "model_reasoning_effort=" + reasoning_effort])
-            cmd.extend(["--output-last-message", last_msg_path])
-            if json_mode:
-                cmd.append("--json")
-            cmd.append("-")
-
             try:
+                cmd = build_codex_cli_command(
+                    model_name=model, reasoning_effort=reasoning_effort,
+                    sandbox=sandbox, skip_git_repo_check=skip_git_repo_check,
+                    output_last_message=last_msg_path, json_mode=json_mode,
+                    resume_session_id=resume_session_id,
+                )
                 proc = subprocess.run(
                     cmd,
                     input=str(prompt),
@@ -6280,6 +6339,12 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         os.unlink(last_msg_path)
                     except OSError:
                         pass
+                raise
+            except BaseException:
+                try:
+                    os.unlink(last_msg_path)
+                except OSError:
+                    pass
                 raise
 
             try:

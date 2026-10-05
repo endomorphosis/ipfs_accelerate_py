@@ -425,6 +425,8 @@ def _commit_v3_route_authorization(
     repo: Path,
     config_path: Path,
     payload: dict[str, object],
+    *,
+    route_id: str = V3_ROUTE_ID,
 ) -> None:
     source_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     source_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
@@ -445,11 +447,11 @@ def _commit_v3_route_authorization(
         effect_bounds=("edit", "isolated_worktree", "test"),
         budget_cid="budget:configured-board-fixture",
         resource_cid="resource:configured-board-fixture",
-        route_id=V3_ROUTE_ID,
+        route_id=route_id,
         reviewer_identity=reviewer_identity,
         reviewer_provider="local_operator",
         fallback_provider_id="codex",
-        fallback_model_id="gpt-5.6-terra",
+        fallback_model_id=payload["provider"]["fallback_model_id"],
         fallback_reasoning_effort="high",
     )
     root_identity_did = lifecycle_root_identity_did()
@@ -508,11 +510,11 @@ def _commit_v3_route_authorization(
         "authority_cid": profile.content_id,
     }
     route = {
-        "route_id": V3_ROUTE_ID,
+        "route_id": route_id,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": payload["provider"]["primary_model_id"],
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": payload["provider"]["fallback_model_id"],
         "fallback_reasoning_effort": "high",
         "allowed_trigger_classes": [
             "grok_authentication_unavailable",
@@ -633,14 +635,17 @@ def _task_block(
 def _seed_v3_task_repo(
     tmp_path: Path,
     blocks: tuple[str, ...],
+    *,
+    models: tuple[str, str] = ("grok-4.6", "gpt-5.6-terra"),
+    route_id: str = V3_ROUTE_ID,
 ) -> tuple[Path, Path, scheduler_module.ConfiguredBoard]:
     repo, config_path = _seed_configured_repo(tmp_path)
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": models[0],
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": models[1],
         "fallback_trigger": "primary_quota_or_auth_unavailable",
         "fallback_reasoning_effort": "high",
         "max_concurrency": 2,
@@ -649,7 +654,7 @@ def _seed_v3_task_repo(
     _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     _git(repo, "add", "docs/tasks.md", "config/scheduler.json")
     _git(repo, "commit", "-m", "seed v3 task population")
-    _commit_v3_route_authorization(repo, config_path, payload)
+    _commit_v3_route_authorization(repo, config_path, payload, route_id=route_id)
     board = load_configured_board(config_path, repo_root=repo)
     return repo, config_path, board
 
@@ -716,6 +721,9 @@ def _common_args(plan: dict[str, object]) -> list[str]:
 
 def _fenced_plan_children(
     tmp_path: Path,
+    *,
+    models: tuple[str, str] = ("grok-4.6", "gpt-5.6-terra"),
+    route_id: str = V3_ROUTE_ID,
 ) -> tuple[
     Path,
     scheduler_module.ConfiguredBoard,
@@ -727,6 +735,7 @@ def _fenced_plan_children(
     repo, _config_path, board = _seed_v3_task_repo(
         tmp_path,
         (_task_block("TEST-A"), _task_block("TEST-B")),
+        models=models, route_id=route_id,
     )
     receipt = materialize_configured_board_execution_plan(
         board,
@@ -10769,3 +10778,98 @@ def test_configured_board_live_seal_real_birth_rejects_before_startup_hook(
     )
     assert completed.returncode == 78
     assert not sentinel.exists()
+
+
+
+def test_produced_reassignment_prefix_matches_recovery_binding_contract(tmp_path: Path) -> None:
+    """Join a real fenced owner transfer to current recovery selection."""
+    from ipfs_accelerate_py.agent_supervisor.control.profile_authority import DEFAULT_SCOPED_ROUTE_ID
+    repo, _board, _receipt, donor, recipient, process = _fenced_plan_children(
+        tmp_path, models=("grok-4.7", "gpt-6.1-sol"), route_id=DEFAULT_SCOPED_ROUTE_ID,
+    )
+    generation = 1
+    token = hashlib.sha256(
+        f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode()
+    ).hexdigest()[:12]
+    lane_id = f"recovery-{generation}-{token}"
+    recipient = replace(
+        recipient, name=lane_id, lane_id=lane_id,
+        state_dir=str(Path(donor.state_dir).parent / lane_id),
+        state_prefix=f"recovery_{generation}_{token}",
+    )
+    donor_state = repo / donor.state_dir
+    donor_state.mkdir(mode=0o700, exist_ok=True)
+    donor_state.chmod(0o700)
+    retained_state = donor_state / f"{donor.state_prefix}_task_state.json"
+    retained_state.write_text("{}\n")
+    retained_state.chmod(0o600)
+    from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import BoundedArtifactStore
+    donor_store = donor_state / "dependency-preflight-artifacts"
+    with BoundedArtifactStore(donor_store):
+        pass
+    adopted = multi_runner_module.reassign_fenced_plan_bound_child(
+        donor=donor, recipient=recipient, donor_process=process, repo_root=repo,
+    )
+    assert multi_runner_module._current_plan_bound_child(donor, repo_root=repo) == adopted
+    adapter = ProductionParallelPlanAdapter(PlanRevisionStore(repo / adopted.plan_revision_store_path))
+    bindings = adapter.recovery_runtime_bindings(
+        revision_cid=adopted.revision_cid, slice_manifest_cid=adopted.slice_manifest_cid,
+    )
+    common = dict(runtime_bindings=bindings, slice_id=adopted.slice_id, lane_id=adopted.lane_id,
+                  state_root=(repo / adopted.state_dir).parent, state_dir=repo / adopted.state_dir)
+    selected = multi_runner_module._plan_bound_selected_runtime_binding(
+        **common, state_prefix=adopted.state_prefix,
+    )
+    assert selected["task_cids"] == list(adopted.task_cids)
+    for wrong_prefix in (recipient.state_prefix, adopted.state_prefix + "f", adopted.state_prefix.replace("-steal-1-", "-steal-2-")):
+        with pytest.raises(ValueError):
+            multi_runner_module._plan_bound_selected_runtime_binding(**common, state_prefix=wrong_prefix)
+
+    roots = tuple(_board.path(_board.runtime_paths[key]) for key in ("state", "worktrees", "merge_queue"))
+    for directory in roots:
+        directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+        directory.chmod(0o700)
+    state = repo / adopted.state_dir
+    state.mkdir(mode=0o700, exist_ok=True)
+    status = state / f"{adopted.state_prefix}_status.json"
+    status.write_text("{}\n")
+    status.chmod(0o600)
+    owner_paths = (state / "implementation.lock",)
+    capture = dict(root=repo, runtime_roots=roots, owner_bound_artifacts=owner_paths,
+                   runtime_bindings=bindings, slice_id=adopted.slice_id, lane_id=adopted.lane_id,
+                   state_dir=state, state_prefix=adopted.state_prefix)
+    evidence = multi_runner_module._snapshot_plan_bound_recovery_artifacts(**capture)
+    assert retained_state.relative_to(repo).as_posix() not in {item["path"] for item in evidence}
+    assert status.relative_to(repo).as_posix() in {item["path"] for item in evidence}
+    pin = llm_router.AgentImplementationControlPlanePin(
+        schema="fixture", runner_path="fixture", runner_sha256="a" * 64,
+        capsule_root="fixture", capsule_id="fixture", source_head=adopted.source_head,
+        source_tree=adopted.source_tree, archive_sha256="a" * 64,
+    )
+    birth = dict(accepted_tree_root=repo, source_head=adopted.source_head, source_tree=adopted.source_tree,
+                 control_plane_pin=pin, recovery_repository_head=_git(repo, "rev-parse", "HEAD").stdout.strip(),
+                 recovery_repository_tree=_git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(),
+                 recovery_runtime_roots=roots, recovery_owner_bound_artifacts=owner_paths,
+                 recovery_artifacts=evidence, recovery_runtime_bindings=bindings,
+                 recovery_slice_id=adopted.slice_id, recovery_lane_id=adopted.lane_id,
+                 recovery_state_dir=state, recovery_state_prefix=adopted.state_prefix)
+    multi_runner_module._validate_plan_bound_accepted_tree(**birth)
+    foreign = donor_state / "unowned.json"
+    foreign.write_text("{}\n")
+    foreign.chmod(0o600)
+    with pytest.raises(ValueError, match="noncanonical runtime projection"):
+        multi_runner_module._validate_plan_bound_accepted_tree(**birth)
+    foreign.unlink()
+    foreign_blob = donor_store / "unowned.py"
+    foreign_blob.write_text("foreign = True\n")
+    foreign_blob.chmod(0o600)
+    with pytest.raises(ValueError, match="noncanonical runtime projection"):
+        multi_runner_module._validate_plan_bound_accepted_tree(**birth)
+    foreign_blob.unlink()
+    retained_state.chmod(0o666)
+    with pytest.raises(ValueError, match="custody"):
+        multi_runner_module._validate_plan_bound_accepted_tree(**birth)
+    retained_state.chmod(0o600)
+    status.write_text('{"changed": true}\n')
+    with pytest.raises(ValueError):
+        multi_runner_module._validate_plan_bound_accepted_tree(**birth)

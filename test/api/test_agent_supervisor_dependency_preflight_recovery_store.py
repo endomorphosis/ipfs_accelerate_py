@@ -370,7 +370,7 @@ def test_store_scan_validates_empty_shards_and_empty_projections(
 ) -> None:
     state_root, store_root, _blob_path = _seed_store(tmp_path)
     canonical_empty_shard = store_root / "blobs" / "sha256" / "aa"
-    canonical_empty_shard.mkdir(mode=0o700)
+    canonical_empty_shard.mkdir(mode=0o700, exist_ok=True)
     assert _validate_store(state_root, store_root)
 
     foreign_empty_shard = store_root / "blobs" / "sha256" / "zz"
@@ -486,7 +486,7 @@ def test_snapshot_expands_exact_ignored_run_and_rejects_foreign_runtime(
     scan_receipt.chmod(0o600)
     attempt_root = portal_root / ("a" * 24)
     attempt_root.mkdir(mode=0o700)
-    task_projection = attempt_root / "task-projection.md"
+    task_projection = attempt_root / "task-projection.runtime.todo.md"
     task_projection.write_text("# sealed Portal projection\n", encoding="utf-8")
     task_projection.chmod(0o600)
     implementation_logs = attempt_root / "implementation-logs"
@@ -691,7 +691,9 @@ def test_snapshot_locks_only_the_selected_lane_dependency_store(
 def test_reassigned_lane_snapshot_uses_supplied_state_scope(tmp_path: Path) -> None:
     repo, state_root, worktree_root, merge_root = _ignored_runtime_repo(tmp_path)
     lane_id = "recovery-1-0123456789ab"
-    state_prefix = "recovery_1_0123456789ab"
+    state_prefix = multi_runner_module._plan_bound_reassigned_state_prefix(
+        {"slice_id": "slice-0", "lane_id": lane_id}
+    )
     state_dir = state_root / lane_id
     store_root = state_dir / "dependency-preflight-artifacts"
     _seed_store_at(store_root, tmp_path / "reassigned")

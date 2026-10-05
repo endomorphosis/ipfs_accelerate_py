@@ -242,7 +242,7 @@ def _stable_authority_json(path: Path) -> dict[str, Any]:
     if not 0 <= int(before.st_size) <= MAX_AUTHORITY_JSON_BYTES:
         raise ExecutionPlanError("plan store authority exceeds its read bound")
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         descriptor = os.open(artifact, flags)
     except OSError as exc:
@@ -6120,9 +6120,103 @@ class ProductionParallelPlanAdapter:
                             "workspace_path": workspace_path,
                             "merge_request_id": request_id,
                             "merge_dedupe_key": dedupe_key,
+                            "retained_donor_scopes": (
+                                self._retained_donor_runtime_scopes_locked(reassignment)
+                            ),
                         }
                     )
                 return tuple(result)
+
+    def _retained_donor_runtime_scopes_locked(
+        self,
+        reassignment: tuple[str, PlanSliceReassignment] | None,
+    ) -> list[dict[str, str]]:
+        """Project custody-only scopes from an already verified transfer chain.
+
+        The caller holds the store guard and has validated the complete chain
+        with ``_load_slice_reassignment_locked``. Donor fence and launch profile
+        bytes supply exact state locations; no workspace, claim, task execution,
+        or merge authority is returned for a retired owner.
+        """
+
+        from .lifecycle_orchestrator import LifecycleProfile
+
+        def option(argv: tuple[str, ...], name: str) -> str:
+            values: list[str] = []
+            for index, token in enumerate(argv):
+                if token == name:
+                    if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                        raise ExecutionPlanError("retained donor launch option has no value")
+                    values.append(argv[index + 1])
+                elif token.startswith(name + "="):
+                    values.append(token[len(name) + 1 :])
+            if len(values) != 1 or not values[0] or len(os.fsencode(values[0])) > 4096:
+                raise ExecutionPlanError("retained donor launch option is ambiguous")
+            return values[0]
+
+        scopes: list[dict[str, str]] = []
+        seen: set[str] = set()
+        current = reassignment
+        while current is not None:
+            current_cid, transfer = current
+            if current_cid in seen or len(seen) >= MAX_PLAN_BOUND_WAVE_TRANSFERS:
+                raise ExecutionPlanError("retained donor history exceeds its bound")
+            seen.add(current_cid)
+            process = _secure_store_cas(
+                self.plan_revision_store, transfer.donor_process_birth_cid,
+            )
+            absence = _secure_store_cas(
+                self.plan_revision_store, transfer.attempt_absence_cid,
+            )
+            try:
+                profile = LifecycleProfile.from_dict(process["profile"])
+                launch_cid = process["launch_process_birth_cid"]
+                launch = _secure_store_cas(self.plan_revision_store, launch_cid)
+                raw_state_dir = option(profile.argv, "--state-dir")
+                prefix = option(profile.argv, "--state-prefix")
+                repository_root = Path(profile.repository_root)
+                state_dir = Path(raw_state_dir)
+                if not state_dir.is_absolute():
+                    state_dir = repository_root / state_dir
+                expected_state_dir = (
+                    self.plan_revision_store.root.parent / transfer.donor_lane_id
+                )
+                if (
+                    profile.to_dict() != process["profile"]
+                    or launch.get("profile") != process["profile"]
+                    or process.get("donor_lane_id") != transfer.donor_lane_id
+                    or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", prefix) is None
+                    or ".." in state_dir.parts
+                    or state_dir != expected_state_dir
+                    or state_dir.resolve() != state_dir
+                    or repository_root.resolve(strict=True) != repository_root
+                    or not state_dir.is_relative_to(repository_root)
+                    or absence.get("never_attempted") is not True
+                    or absence.get("state_path") != str(state_dir / f"{prefix}_task_state.json")
+                ):
+                    raise ExecutionPlanError("retained donor state scope is mixed")
+            except (KeyError, TypeError, ValueError, OSError, RuntimeError) as exc:
+                raise ExecutionPlanError("retained donor state scope is invalid") from exc
+            scopes.append({
+                "lane_id": transfer.donor_lane_id,
+                "state_dir": str(state_dir),
+                "state_prefix": prefix,
+                "reassignment_cid": current_cid,
+                "donor_process_birth_cid": transfer.donor_process_birth_cid,
+                "launch_process_birth_cid": launch_cid,
+                "attempt_absence_cid": transfer.attempt_absence_cid,
+            })
+            if not transfer.prior_reassignment_cid:
+                current = None
+            else:
+                prior = _secure_store_cas(
+                    self.plan_revision_store, transfer.prior_reassignment_cid,
+                )
+                previous = PlanSliceReassignment.from_dict(prior)
+                if previous.to_dict() != prior:
+                    raise ExecutionPlanError("retained donor history changed during decode")
+                current = transfer.prior_reassignment_cid, previous
+        return scopes
 
     @staticmethod
     def _wave_diff_barrier_window_locked(

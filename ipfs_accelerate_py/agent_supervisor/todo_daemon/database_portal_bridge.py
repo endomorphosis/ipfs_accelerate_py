@@ -2585,6 +2585,24 @@ class DatabasePortalExecutionBridge:
         """Resolve one prior projection to its exact Portal task identity."""
 
         projection = self._verify_projection(paths, binding)
+        identity = self._projection_task_identity(
+            projection,
+            projection_path=paths.task_projection,
+            task_alias=str(binding["task_alias"]),
+            board_namespace=self.board_namespace,
+        )
+        return {key: identity[key] for key in ("task_id", "canonical_task_cid", "canonical_task_key")}
+
+    @staticmethod
+    def _projection_task_identity(
+        projection: str,
+        *,
+        projection_path: Path,
+        task_alias: str,
+        board_namespace: str = "",
+    ) -> dict[str, Any]:
+        """Reconstruct Portal identity from already verified projection text."""
+
         try:
             from .implementation_daemon import (
                 parse_task_text,
@@ -2593,14 +2611,14 @@ class DatabasePortalExecutionBridge:
 
             tasks = parse_task_text(
                 projection,
-                path=paths.task_projection,
-                task_header_prefix=f"## {binding['task_alias']}",
+                path=projection_path,
+                task_header_prefix=f"## {task_alias}",
             )
         except Exception as exc:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_projection_identity_unavailable"
             ) from exc
-        if len(tasks) != 1 or tasks[0].task_id != binding["task_alias"]:
+        if len(tasks) != 1 or tasks[0].task_id != task_alias:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_projection_identity_ambiguous"
             )
@@ -2618,10 +2636,10 @@ class DatabasePortalExecutionBridge:
             },
             board_namespace=(
                 task.board_namespace
-                or self.board_namespace
-                or paths.task_projection.name
+                or board_namespace
+                or projection_path.name
             ),
-            source_path=paths.task_projection,
+            source_path=projection_path,
         )
         if not canonical.canonical_task_cid or not canonical.canonical_task_key:
             raise DatabasePortalBridgeDeferred(
@@ -2631,6 +2649,7 @@ class DatabasePortalExecutionBridge:
             "task_id": task.task_id,
             "canonical_task_cid": canonical.canonical_task_cid,
             "canonical_task_key": canonical.canonical_task_key,
+            "board_namespace": canonical.board_namespace,
         }
 
     def _prior_declared_output_paths(

@@ -1,0 +1,202 @@
+{
+  "base_ref": "cda8d05433b4c5453e63c54e121b6f49a992294e",
+  "completion_authority": false,
+  "distinct_final_cases": 11,
+  "environment_names": [
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB"
+  ],
+  "fixture_models": [
+    "grok-4.7",
+    "gpt-6.1-sol"
+  ],
+  "fixture_route": "DEFAULT_SCOPED_ROUTE_ID",
+  "qualification_source_unchanged": true,
+  "runs": [
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/red-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/red.xml",
+      "junit_sha256": "3a11de55722b530b8baa5e67ea56fcfff9614bf69210c91577b336efbf69ed07",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope"
+      ],
+      "note": "Fixture rejected legacy route paired with current models; not the intended regression.",
+      "passing_ast_seals": 0,
+      "run_id": "red",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "648d794d85e8114775754c480993e49104ef7e23bfe8518be72bde662d3907c8",
+        "test/api/test_supervisor_retained_donor_scopes.py": "2b4a16b33c41364eefb64f0aa282e484c1e6f0a7b38847b4e8d4bbe75c7c6b6f"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/red-current-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/red-current.xml",
+      "junit_sha256": "1638f6d276db2ededc1bdfeff83bc598998e47b5cfbbe0d1bcc7ac7ff8079ea7",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope"
+      ],
+      "note": "Actual fenced transfer reached binding API; failed on missing retained_donor_scopes.",
+      "passing_ast_seals": 0,
+      "run_id": "red-current",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "648d794d85e8114775754c480993e49104ef7e23bfe8518be72bde662d3907c8",
+        "test/api/test_supervisor_retained_donor_scopes.py": "bc07458e03cc4cbc830d448f7267b6375ca31a4582dffa73f458af22ffce6d79"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 1,
+        "skipped": 0,
+        "tests": 1
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/green-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/green.xml",
+      "junit_sha256": "1d3cf6810108cf1a248be1b8d82e3e1a390f12b83b0add9c4168b57f2b655ddc",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope"
+      ],
+      "note": "First actual fenced transfer API positive after implementation.",
+      "passing_ast_seals": 1,
+      "run_id": "green",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "092589e5bf301d4ec9d7ec88177f37a711398dece5a79674a7187a7963fda924",
+        "test/api/test_supervisor_retained_donor_scopes.py": "bc07458e03cc4cbc830d448f7267b6375ca31a4582dffa73f458af22ffce6d79"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 9,
+        "skipped": 0,
+        "tests": 10
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/final-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/final.xml",
+      "junit_sha256": "404e571306a989c38b97c5e52f662900357d09f4b87b9c8cd15f3133cfa74156",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[duplicate_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[missing_prefix]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[foreign_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[prefix_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[traversal]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[launch_profile_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[attempted]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[absence_path]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_rejects_redirected_retained_donor_state"
+      ],
+      "note": "Nine passes; redirected donor control rejected correctly by earlier existing owner but expected a later error message.",
+      "passing_ast_seals": 9,
+      "run_id": "final",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "092589e5bf301d4ec9d7ec88177f37a711398dece5a79674a7187a7963fda924",
+        "test/api/test_supervisor_retained_donor_scopes.py": "7205e18534cdfa32de1a78b7c8d3eb3685e2213372f9206091e05bcd68642b30"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 10,
+        "skipped": 0,
+        "tests": 10
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/final2-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/final2.xml",
+      "junit_sha256": "fdcabcea41cafe03c786c6b33be14f094582dcb34419da83a1eb79ad961f5b48",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[duplicate_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[missing_prefix]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[foreign_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[prefix_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[traversal]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[launch_profile_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[attempted]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[absence_path]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_rejects_redirected_retained_donor_state"
+      ],
+      "note": "Ten distinct owner cases passed after correcting expected owner error.",
+      "passing_ast_seals": 10,
+      "run_id": "final2",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "092589e5bf301d4ec9d7ec88177f37a711398dece5a79674a7187a7963fda924",
+        "test/api/test_supervisor_retained_donor_scopes.py": "4b659129a52f1430037942072dc354f140e0f5c4f61802bb39628bfad37ecf7e"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/fifo-red-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py::test_retained_donor_authority_reader_cannot_block_on_fifo_swap --junitxml=<artifact-dir>/fifo-red.xml",
+      "junit_sha256": "7f0518dd6f463a900071a6790f82f99ba1cebae57392f60d95d41c0b1e61a29e",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_retained_donor_authority_reader_cannot_block_on_fifo_swap"
+      ],
+      "note": "Regular authority file replaced by FIFO between lstat and open; subprocess exceeded its 20-second bound.",
+      "passing_ast_seals": 0,
+      "run_id": "fifo-red",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "092589e5bf301d4ec9d7ec88177f37a711398dece5a79674a7187a7963fda924",
+        "test/api/test_supervisor_retained_donor_scopes.py": "c6e1d9eae5621efd37674f950e07afc9ac863f7f7dfaff457c4c5c0752e5fddd"
+      }
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 11,
+        "skipped": 0,
+        "tests": 11
+      },
+      "invocation_template": "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=<artifact-dir>/qualified-seal.duckdb python -m pytest -q test/api/test_supervisor_retained_donor_scopes.py --junitxml=<artifact-dir>/qualified.xml",
+      "junit_sha256": "bc5c1323580a9cf5ea49d07643d6b05611074b961c47874ed2ab4904f9d937c5",
+      "nodes": [
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_retains_exact_fenced_donor_scope",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[duplicate_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[missing_prefix]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[foreign_directory]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[prefix_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[traversal]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[launch_profile_mismatch]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[attempted]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_scope_projection_rejects_mixed_profile_and_absence[absence_path]",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_runtime_binding_rejects_redirected_retained_donor_state",
+        "test/api/test_supervisor_retained_donor_scopes.py::test_retained_donor_authority_reader_cannot_block_on_fifo_swap"
+      ],
+      "note": "Eleven distinct cases passed, including nonblocking rejection of FIFO replacement.",
+      "passing_ast_seals": 11,
+      "run_id": "qualified",
+      "source_test_sha256_at_collection": {
+        "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "022f94334442de45d93b8697098ccfc39e69d1a2802b735c3a0db7298b063285",
+        "test/api/test_supervisor_retained_donor_scopes.py": "c6e1d9eae5621efd37674f950e07afc9ac863f7f7dfaff457c4c5c0752e5fddd"
+      }
+    }
+  ],
+  "schema": "supervisor-retained-donor-qualification@1",
+  "scope": [
+    "Existing verified reassignment history supplies custody-only donor paths and provenance; no active donor bindings or workspace/merge grants.",
+    "Positive API uses a real fenced local process; eight malformed scope controls isolate the projection after owner history validation.",
+    "Full snapshot/accepted-tree integration is reported separately by the preflight qualification.",
+    "No model calls, training, uploads, or new benchmark scores."
+  ],
+  "source_test_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": "022f94334442de45d93b8697098ccfc39e69d1a2802b735c3a0db7298b063285",
+    "test/api/test_supervisor_retained_donor_scopes.py": "c6e1d9eae5621efd37674f950e07afc9ac863f7f7dfaff457c4c5c0752e5fddd"
+  }
+}

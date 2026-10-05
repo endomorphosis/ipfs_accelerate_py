@@ -1,0 +1,90 @@
+{
+  "schema": "supervisor-prior-seed-guidance-qualification@1",
+  "accelerate_base": "cda8d05433b4c5453e63c54e121b6f49a992294e",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "run": "seed-green-01",
+  "exit_code": 0,
+  "source_unchanged": true,
+  "passed": 47,
+  "failed": 0,
+  "skipped": 0,
+  "provider_calls": 0,
+  "official_benchmark_score": null,
+  "artifacts": {
+    "command_sha256": "0d61a455aea9194268d4269b6f422eced338a67e5cf0b0973b25ada608e848c5",
+    "log_sha256": "8e49260ddb266b8079a09f6f46f245712bafab0c6f553d4aef38523e9f35261c",
+    "xml_sha256": "6c1c34871c936561147148c4bb2beb135b4cf91ef977929c2b5363434524c9a8"
+  },
+  "tested_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/prior_seed_guidance.py": "de783e104131e19d75ba91c62a9cc577763b1b357e2388a1dfe05cf9dc0eb7c4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "bc215a2ee4774a686ce6e2065a76ce5f1c06cd4aaf1e25694ef6ada4667abe7d",
+    "test/api/test_prior_seed_guidance_replay.py": "3e2ce24bfa808777ade6d9bfacc90a4eefc1c4e6d629807bd7d3b362bc3afa10",
+    "test/api/test_agent_supervisor_prior_attempt_seed.py": "d5f92380a3e9534d73eeaf00414740946571ad49a66bf381bddb499f70c47764",
+    "test/api/test_agent_supervisor_context_delta.py": "fb29065315e410cfb3d4fc463e45c94ad5fc25735eb988d91d0041e923d2feec"
+  },
+  "implemented": [
+    "Resolved candidate-containment check before any recovery note or sidecar write, including symlinked log roots.",
+    "Durable JSON advisory beside external supervisor event state; exact task key/CID/board/attempt/event-source binding chooses one filename.",
+    "Bounded 64 KiB stable regular-file read and closed-schema/hash/non-authority checks; no event history scan on prompt rendering.",
+    "Pending guidance survives prompt-budget refusal; accepted prompt atomically records consumed state for restart.",
+    "Human-readable note layout retained; event discovery identifies note and canonical sidecar."
+  ],
+  "qualification_scope": [
+    "Actual Git ADD seed replay through accepted proposal and baseline/materialized dependency preflights.",
+    "Actual retry context reconstruction and bounded prompt acceptance.",
+    "Restart, foreign/stale attempt, wrong schema, changed guidance, oversized body, symlink, authority-claim and unsafe state-location refusals."
+  ],
+  "original_failures": [
+    {
+      "test": "test_record_prior_attempt_seed_failure_never_writes_inside_candidate",
+      "disposition": "Candidate-write bug fixed."
+    },
+    {
+      "test": "test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate",
+      "disposition": "Stale hardcoded directory expectation replaced by authoritative event-path discovery and external file checks."
+    },
+    {
+      "test": "test_prior_seed_output_attestations_admit_exact_text_modify",
+      "disposition": "Unsupported producer-only expectation replaced by explicit v2 absent-output authority refusal; MODIFY capability not implemented."
+    }
+  ],
+  "remaining_modify_contract": {
+    "status": "unsupported_for_present_scoped_dependency_target",
+    "producer": "_prior_seed_output_attestations intentionally retains ADD-only bindings.",
+    "consumer": "project_dependency_preflight v2 present target requires original baseline_sha256 and never consumes prior_seed_authority; current seeded target authority requires an absent baseline receipt.",
+    "required_before_enabling": [
+      "Versioned present-target transition contract with independently bound before/after source digests and Git blob IDs.",
+      "Exact task revision, selected validation command, accepted current proposal receipt and baseline repository/tree binding.",
+      "Native preflight consumer verifies old target in baseline and new target in replayed candidate without weakening absent-output v2 checks.",
+      "Negative controls for stale baseline/proposal, renamed/binary/symlink target, foreign task/command, and post-attestation drift; positive actual MODIFY patch replay through both preflights."
+    ]
+  },
+  "reproduction": {
+    "cwd": "ACCELERATE_CHECKOUT",
+    "environment": {
+      "PYTHONPATH": "ACCELERATE_CHECKOUT:DATASETS_CHECKOUT",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "fresh external file per run",
+      "DATASETS_CHECKOUT": "datasets dependency checkout at datasets_head"
+    },
+    "umask": "022",
+    "python": "3.12",
+    "argv": [
+      "python",
+      "-B",
+      "-c",
+      "import pathlib,os,tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path(os.environ[\"DATASETS_CHECKOUT\"]) / \"tests/__init__.py\"; import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "test/api/test_prior_seed_guidance_replay.py",
+      "test/api/test_agent_supervisor_prior_attempt_seed.py",
+      "test/api/test_agent_supervisor_context_delta.py::test_implementation_daemon_dispatches_reconstruction_and_reuses_diagnostic"
+    ]
+  }
+}
