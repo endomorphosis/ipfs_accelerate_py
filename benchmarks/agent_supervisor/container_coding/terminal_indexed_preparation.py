@@ -33,8 +33,9 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import (
-    PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
-    task_profile_smoke, task_profile_spec, task_profile_worker_inputs, validate_task_profile,
+    MULTITASK_SCHEMA, PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
+    task_profile_smoke, task_profile_spec, task_profile_specs, task_profile_worker_inputs,
+    validate_task_profile, validate_task_profile_contract,
 )
 from .benchmark_provider_profile import CLI_VERSION
 
@@ -99,6 +100,29 @@ def _constraints(spec, text):
     }
 
 
+def _multitask_constraints(specs, text):
+    """Closed administrative declarations; no provider decomposition is invited."""
+    return {
+        "allowed_paths": sorted({name for spec in specs for name in spec["scope_paths"]}),
+        "validation_commands": [check["argv"] for spec in specs for check in spec["validations"]],
+        "constraint_summaries": [
+            "Public instruction.md (the complete authorized task):\n" + text,
+            "Select only the explicitly reviewed atomic operations. Preserve every independently signed task, output effect, validation, acceptance and dependency. Future task execution and benchmark correctness remain unverified.",
+            "Exact administrative task declarations: " + json.dumps(specs, sort_keys=True),
+            "Use source evidence only as descriptive context. No external domain, proof, execution or completion authority. resource_class cpu-medium; fallback_behavior fail_closed.",
+        ],
+    }
+
+
+def _is_multitask(prepared):
+    return (prepared.get("task_profile") or {}).get("schema") == MULTITASK_SCHEMA
+
+
+def _require_single_task_context(prepared):
+    if _is_multitask(prepared):
+        raise ValueError("reviewed multi-task profile permits administrative planning only; task context is unqualified")
+
+
 def _planning_strategy(contract):
     if contract is None:
         return "direct"
@@ -115,11 +139,30 @@ def _load_prepared(state):
     requirement_contract = (local.decode_intent_requirement_contract(manifest)
                             if manifest["schema"] == local.INTENT_MANIFEST_SCHEMA else None)
     task_profile = prepared.get("task_profile")
+    multitask = False
     if task_profile is not None:
         task_profile = validate_task_profile(task_profile, instruction=prepared["query"])
-        expected_spec = task_profile_spec(task_profile, policy_cid=local.content_identity(local.LOCAL_POLICY))
-        expected_spec["acceptance"][0]["evidence_cids"] = [PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid]
-        if (prepared["task_profile"] != task_profile or prepared["spec"] != expected_spec
+        multitask = task_profile["schema"] == MULTITASK_SCHEMA
+        if multitask:
+            validate_task_profile_contract(task_profile, requirement_contract, instruction=prepared["query"])
+            expected_specs = task_profile_specs(task_profile, policy_cid=local.content_identity(local.LOCAL_POLICY))
+            evidence_cid = PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid
+            for spec in expected_specs:
+                for acceptance in spec["acceptance"]:
+                    acceptance["evidence_cids"] = [evidence_cid]
+            if (prepared.get("schema") != "terminal-indexed-public-preparation@2"
+                    or prepared.get("administrative_only") is not True
+                    or prepared.get("planning_strategy") != "intent_symbolic"
+                    or "spec" in prepared or prepared.get("specs") != expected_specs
+                    or manifest["tasks"] != expected_specs
+                    or prepared["request"]["budget"]["max_tasks"] != len(expected_specs)):
+                raise ValueError("multi-task preparation differs from all exact signed task declarations")
+        else:
+            expected_spec = task_profile_spec(task_profile, policy_cid=local.content_identity(local.LOCAL_POLICY))
+            expected_spec["acceptance"][0]["evidence_cids"] = [PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid]
+            if prepared["spec"] != expected_spec:
+                raise ValueError("public task profile differs from exact signed input declaration")
+        if (prepared["task_profile"] != task_profile
                 or set(manifest["sources"]) != set(task_profile_worker_inputs(task_profile))
                 or (repository / PROFILE).read_bytes() != task_profile_bytes(task_profile)):
             raise ValueError("public task profile differs from exact signed input declaration")
@@ -129,10 +172,12 @@ def _load_prepared(state):
         if PROFILE in manifest["sources"]:
             raise ValueError("signed public task profile cannot be omitted")
         worker_inputs, smoke = [INSTRUCTION, SMOKE, "bottle.py"], PUBLIC_SMOKE
+    expected_constraints = (_multitask_constraints(prepared["specs"], prepared["query"])
+                            if multitask else _constraints(prepared["spec"], prepared["query"]))
     if (prepared["request"] != inputs["request"] or prepared["scan"] != inputs["scan"]
-            or len(manifest["tasks"]) != 1 or prepared["spec"] != manifest["tasks"][0]
+            or (not multitask and (len(manifest["tasks"]) != 1 or prepared["spec"] != manifest["tasks"][0]))
             or prepared["query"] != (repository / INSTRUCTION).read_text()
-            or prepared["constraints"] != _constraints(prepared["spec"], prepared["query"])
+            or prepared["constraints"] != expected_constraints
             or prepared["worker_inputs"] != worker_inputs
             or (repository / SMOKE).read_text() != smoke
             or prepared.get("intent_requirement_contract") != requirement_contract
@@ -184,7 +229,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_intent_logic_families: list[str] | None = None,
             intent_requirement_contract: Path | None = None, resource_profile=None,
             task_profile: dict | None = None) -> dict:
-    """Capture original image bytes, then sign one explicit task before planning.
+    """Capture original image bytes, then sign reviewed tasks before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
@@ -213,6 +258,11 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     if not text.strip() or len(text.encode()) > 32768:
         raise ValueError("public instruction must contain 1 to 32768 bytes")
     requirements = _load_intent_requirement_contract(intent_requirement_contract, text)
+    multitask = task_profile is not None and task_profile["schema"] == MULTITASK_SCHEMA
+    if multitask:
+        # Complete operation/source/dependency checking precedes preprocessing,
+        # signing, state creation and any disposable repository mutation.
+        requirements = validate_task_profile_contract(task_profile, requirements, instruction=text)
     strategy = _planning_strategy(requirements)
     # This optional datasets-owned stage precedes any goal/task declarations.
     # Its output never replaces the raw instruction or independent domain roots.
@@ -330,16 +380,20 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             "cwd": ".", "expected_exit_codes": [0], "policy_cid": policy}],
         "acceptance": [acceptance],
     }
-    if task_profile is not None:
+    if multitask:
+        specs = task_profile_specs(task_profile, policy_cid=policy)
+    elif task_profile is not None:
         spec = task_profile_spec(task_profile, policy_cid=policy)
         acceptance = spec["acceptance"][0]
+    if not multitask:
+        specs = [spec]
     worker_inputs = task_profile_worker_inputs(task_profile) if task_profile is not None else [INSTRUCTION, SMOKE, "bottle.py"]
     domains = local.local_planning_domain_declarations(repository=repository,
-        profile_dir=profile_dir, lifecycle_dir=lifecycle_dir, task_specs=[spec])
+        profile_dir=profile_dir, lifecycle_dir=lifecycle_dir, task_specs=specs)
     allowlist = RepositoryAllowlist.from_roots([repository])
     budget = PromptWorkflowBudget(max_files=256 if task_profile is not None else 8, max_scan_bytes=8388608, max_file_bytes=262144,
         max_symbols=1024, max_prompt_tokens=32768, max_provider_tokens=4096,
-        max_latency_ms=90000, max_goals=2, max_tasks=1, max_evidence=16,
+        max_latency_ms=90000, max_goals=2, max_tasks=len(specs), max_evidence=16,
         max_graph_depth=4, max_serialized_bytes=1048576, max_rescue_actions=1)
     request = PromptWorkflowRequest(
         prompt_source=PromptSource.inline(text, redacted_metadata={
@@ -367,10 +421,16 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist, previous=details)
     config, scan = _config(repository), details.receipt
     evidence = _select_evidence(request, scan, config)
-    acceptance["evidence_cids"] = [evidence[0].evidence_cid]
-    constraints = _constraints(spec, text)
+    if multitask:
+        for task_spec in specs:
+            for criterion in task_spec["acceptance"]:
+                criterion["evidence_cids"] = [evidence[0].evidence_cid]
+        constraints = _multitask_constraints(specs, text)
+    else:
+        acceptance["evidence_cids"] = [evidence[0].evidence_cid]
+        constraints = _constraints(spec, text)
     manifest = local.author_local_benchmark_manifest(repository=repository, profile_dir=profile_dir,
-        lifecycle_dir=lifecycle_dir, task_specs=[spec], planning_roots={
+        lifecycle_dir=lifecycle_dir, task_specs=specs, planning_roots={
             "request_cid": request.request_cid, "scan_cid": scan.scan_cid, "program_root": request.program_root,
         }, planning_inputs={"request": request.to_dict(), "scan": scan.to_dict(),
             "domain_declarations": domains, "selected_evidence": [row.to_dict() for row in evidence]},
@@ -397,6 +457,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     }
     if task_profile is not None:
         prepared["task_profile"] = task_profile
+    if multitask:
+        prepared.update(schema="terminal-indexed-public-preparation@2", specs=specs, administrative_only=True)
+        del prepared["spec"]
     if requirements is not None:
         prepared["intent_requirement_contract"] = requirements
     _write(state / "prepared.json", prepared)
@@ -429,7 +492,9 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
     from .terminal_initial_context import prepare_initial_context
 
     state = state.resolve(strict=True)
-    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+    prepared = _load_prepared(state)
+    _require_single_task_context(prepared)
+    return prepare_initial_context(state=state, prepared=prepared,
         model_snapshot=model_snapshot, model_revision=model_revision,
         required_raw_paths=[INSTRUCTION, SMOKE], train_autoencoder=train_autoencoder,
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
@@ -484,6 +549,8 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repos
         "execution_receipt": None, "model_request_sha256": None, "isolation_verified_here": False,
         "source_semantics_verified": False, "semantic_alignment_verified": False,
         "proof_authority": False, "execution_authority": False, "completion_authority": False}
+    if _is_multitask(prepared):
+        result["administrative_only"] = True
     try:
         current = _load_prepared(state)
         if current != prepared:
@@ -596,6 +663,11 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
 
 def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggregate_started=None, repository_preview=None):
     strategy = _planning_strategy(prepared.get("intent_requirement_contract"))
+    if _is_multitask(prepared):
+        if strategy != "intent_symbolic":
+            raise ValueError("reviewed multi-task preparation requires symbolic planning")
+        if (state / "initial-context-result.json").exists():
+            raise ValueError("reviewed multi-task preparation cannot reuse an unqualified initial task context")
     if repository_preview is not None and strategy != "intent_symbolic":
         raise ValueError("repository preview requires explicit symbolic operation preparation")
     if strategy != "intent_symbolic" and not callable(provider_callable):
@@ -819,6 +891,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
 
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
+    _require_single_task_context(prepared)
     admission = json.loads((state / "admission.json").read_text())
     verified = local.verify_local_benchmark_admission(admission, initial=True)
     if admission["manifest"] != prepared["manifest"]:
