@@ -1,0 +1,20 @@
+{
+  "approved_postimage_left_after_failure": true,
+  "baseline_restored": false,
+  "external_model_calls": 0,
+  "fault_observed": [
+    "approved postimage installed before simulated apply IO failure"
+  ],
+  "provider_calls": [
+    "grok-implement",
+    "codex-independent-review"
+  ],
+  "route_failed": false,
+  "route_reason": "",
+  "schema": "readonly-production-patch-partial-failure-probe@1",
+  "scope": "Native route and checkout lease with authored provider envelopes; git apply is fault-injected to install the approved postimage and then report IO failure.",
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e8583e74fe297e8e7f59914a286867c3797d20dfdd64aeb6c494143160e75039",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "799ec0724d2c9a274d3d456ca266caffbbaca0585fcbb95cabc263c8212facf4"
+  }
+}

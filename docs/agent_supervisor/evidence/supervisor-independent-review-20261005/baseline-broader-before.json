@@ -1,0 +1,15 @@
+{
+  "commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "b9d8d41d5c533e5e8a5585fa6fa1b9df3418a0485f37380d5bd2e442de236fb0",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "1b8626c31249ac2b26c677391b76175375a2976f94078271883dfe1ec6ef68af",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_cli.py": "e67181a26de012098d1ea3fd7e7026cfc63e079e2bd1d3449fc779ab26fc6931",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": "aac3501ce7575a61b187a833eb64dce7f2812e7edc32ef06a33ad65479b30efc",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_attestation.py": "bdf04b7d4f2792249792b216673da42bae77ddc6e4e024d81a790a8f8252efa4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "e7d8780cb72ca8a809e6d5c1039157b4fdd512b7c8fb55185acfa40cb8450997",
+    "test/api/test_agent_supervisor_production_provider_cli.py": "946508bb0ced878edbd0ac9f555f63a8268d63bebb0368bf160e5bd0959394b4",
+    "test/api/test_agent_supervisor_production_reviewed_effect.py": "27be0fa045a249d667e2357cf2a17729c02f5a96a979b83c63cafb5f2a456bc9",
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py": "d7f30f2b402172045ca9c2a07804632ee2765301c72e988eb36ab19f26a89ab1",
+    "test/api/test_agent_supervisor_contract_packet_provider_router.py": "f1d69ae1e367199adaf8764bbe4e705e0a8cd0b18b13cb2b37f1cbc031c4205b"
+  }
+}

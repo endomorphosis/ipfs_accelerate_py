@@ -1,0 +1,95 @@
+{
+  "schema": "supervisor-independent-review-qualification@1",
+  "status": "qualified_local_operator_review_integration",
+  "date_utc": "2026-10-05",
+  "source_base": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "final_local_run": "final-01.qualification.json",
+  "counts": {
+    "passed": 293,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "source_assets_and_datasets_pins_unchanged": true,
+  "ast_sealing": {
+    "records": 293,
+    "closure_files_min": 977,
+    "closure_files_max": 978,
+    "any_completion_authority": false
+  },
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "retained_assets": {
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  },
+  "original_seven_failures": "baseline-optional.xml",
+  "original_seven_failure_pins_unchanged": false,
+  "full_development_diagnostic": "final-core.qualification.json",
+  "explicit_baseline_omissions": [
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff",
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_typed_production_route_rc0_reaches_validation_and_commit_handoff",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_target_branch",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_scope_requires_exact_early_bootstrap",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_adoption_honors_blocked_exact_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_main_verifies_preloaded_native_dependency_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adoption_rejects_unconfigured_validation_workers",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_stale_worktree_cleanup_delegates_protected_dirty_checkout",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_run_portal_implementation_daemon_loop_runs_hooks_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_projection_persistence_failure_aborts_loop",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_daemon_binding",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_bridge_recovery"
+  ],
+  "runner_immutable_baseline_comparison": "baseline-runner-fa51-comparison.json",
+  "retired_security_immutable_baseline": "transport/retired-security-fa51-baseline/qualification.json",
+  "read_only_review": "transport/readonly-review.json",
+  "corrected_native_probes": "transport/final-closed-probes-02.json",
+  "task_contract": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/production-task-contract@2",
+    "workflow_metadata_exclusion": "case/whitespace-normalized status only",
+    "old_raw_status_cids": "fail_closed"
+  },
+  "native_coverage": [
+    "actual checkout mutation lease and quarantine",
+    "bounded isolated Git patch preview, SHA1 and SHA256",
+    "before-image compare-and-swap, deterministic child-only umask, owned effect compensation",
+    "independent provider provenance and approval",
+    "native validation and candidate commit",
+    "Ed25519 effect attestation",
+    "durable merge queue and no-ff integration",
+    "native task-board status commit and cold completion verification",
+    "current selected-target postimage/ancestry and task/policy/key fences",
+    "current DuckDB-to-Portal factory and six operator options"
+  ],
+  "authority": {
+    "completion": false,
+    "proof": false,
+    "whole_repository": false,
+    "catalog_completion": false
+  },
+  "external_paid_provider_calls": 0,
+  "model_training": false,
+  "model_downloads": false,
+  "new_benchmark_score": null,
+  "remaining_gaps": [
+    "authenticated live provider dispatch qualification",
+    "15 independently reproduced baseline test mismatches",
+    "broader symbolic operator/decomposition and behavioral contracts"
+  ]
+}

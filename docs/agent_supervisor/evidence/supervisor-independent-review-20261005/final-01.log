@@ -1,0 +1,39 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 308 items / 15 deselected / 293 selected
+
+test/api/test_agent_supervisor_production_provider_cli.py .............. [  4%]
+.........................                                                [ 13%]
+test/api/test_agent_supervisor_production_reviewed_effect.py ......      [ 15%]
+test/api/test_agent_supervisor_production_provider_security_regressions.py . [ 15%]
+............                                                             [ 19%]
+test/api/test_agent_supervisor_contract_packet_provider_router.py ...... [ 21%]
+.........................                                                [ 30%]
+test/api/test_agent_supervisor_production_context_slice.py ............. [ 34%]
+.......                                                                  [ 37%]
+test/api/test_agent_supervisor_production_policy_transport.py .......... [ 40%]
+..........................................................               [ 60%]
+test/api/test_production_independent_review_contract.py ................ [ 65%]
+..............                                                           [ 70%]
+test/api/test_production_daemon_operator_options.py .................... [ 77%]
+.........                                                                [ 80%]
+test/api/test_production_reviewed_patch_preparation.py ................. [ 86%]
+.....                                                                    [ 88%]
+test/api/test_agent_supervisor_implementation_daemon_runner.py ......... [ 91%]
+..........................                                               [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/final-01.xml -
+============================= slowest 10 durations =============================
+2.56s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.95s call     test/api/test_agent_supervisor_production_provider_cli.py::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding
+1.51s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+1.03s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+0.72s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_manual_completion_authority_revalidation_only_propagates_end_to_end
+0.71s call     test/api/test_agent_supervisor_production_policy_transport.py::test_obsolete_policy_not_adopted_or_signalled
+0.66s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.66s call     test/api/test_agent_supervisor_production_policy_transport.py::test_malformed_quoted_command_never_adopted
+0.65s call     test/api/test_agent_supervisor_production_policy_transport.py::test_disabled_policy_does_not_adopt_policy_bearing_daemon
+0.62s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-context-budget-tokens]
+================ 293 passed, 15 deselected in 129.49s (0:02:09) ================

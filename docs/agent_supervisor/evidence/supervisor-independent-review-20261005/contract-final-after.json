@@ -1,0 +1,16 @@
+{
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "3dacb41b55127f9f15be79dc202cf7e50b6ae7241ca6b5120b95440a7dd96d24",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "43b674990382660f3b86f93912f4de6ae9a6ddd7d1b57d6d957a079a1b621a73",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_cli.py": "e67181a26de012098d1ea3fd7e7026cfc63e079e2bd1d3449fc779ab26fc6931",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": "aac3501ce7575a61b187a833eb64dce7f2812e7edc32ef06a33ad65479b30efc",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_provider_attestation.py": "bdf04b7d4f2792249792b216673da42bae77ddc6e4e024d81a790a8f8252efa4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e",
+    "test/api/test_production_independent_review_contract.py": "43db3bed6e9e69851669e9f8a6bc6e9c8ec054b27af250c1005d49b5d09c7d0c"
+  },
+  "unchanged": false,
+  "changed_files": [
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py"
+  ]
+}

@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 22 items
+
+test/api/test_production_reviewed_patch_preparation.py .........F....... [ 77%]
+.....                                                                    [100%]
+
+=================================== FAILURES ===================================
+_ test_preview_enforces_real_budgets_without_source_mutation[postimage_bytes] __
+test/api/test_production_reviewed_patch_preparation.py:135: in test_preview_enforces_real_budgets_without_source_mutation
+    with pytest.raises(ValueError, match=reason):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'postimage byte bound'
+E     Actual message: 'isolated reviewed patch reconstruction failed: error: patch failed: large.txt:1\nerror: large.txt: patch does not apply\n'
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/patch-preparation-draft09.xml -
+============================= slowest 10 durations =============================
+2.41s call     test/api/test_production_reviewed_patch_preparation.py::test_old_raw_status_contract_cid_is_rejected_by_real_cold_effect_verifier
+0.06s call     test/api/test_production_reviewed_patch_preparation.py::test_private_preview_reconstructs_all_regular_effects_without_source_mutation[sha1]
+0.05s call     test/api/test_production_reviewed_patch_preparation.py::test_private_preview_reconstructs_all_regular_effects_without_source_mutation[sha256]
+0.05s call     test/api/test_production_reviewed_patch_preparation.py::test_preview_enforces_real_budgets_without_source_mutation[postimage_bytes]
+0.03s call     test/api/test_production_reviewed_patch_preparation.py::test_invalid_unsafe_and_symlink_previews_fail_without_source_mutation[diff --git a/link b/link\nnew file mode 120000\n--- /dev/null\n+++ b/link\n@@ -0,0 +1 @@\n+modify.txt\n]
+0.03s call     test/api/test_production_reviewed_patch_preparation.py::test_preview_enforces_real_budgets_without_source_mutation[effect_paths]
+0.03s call     test/api/test_production_reviewed_patch_preparation.py::test_invalid_unsafe_and_symlink_previews_fail_without_source_mutation[this is not a patch\n]
+0.03s call     test/api/test_production_reviewed_patch_preparation.py::test_invalid_unsafe_and_symlink_previews_fail_without_source_mutation[diff --git a/.git/config b/.git/config\nnew file mode 100644\n--- /dev/null\n+++ b/.git/config\n@@ -0,0 +1 @@\n+new\n]
+0.02s call     test/api/test_production_reviewed_patch_preparation.py::test_invalid_unsafe_and_symlink_previews_fail_without_source_mutation[diff --git a/../escape.txt b/../escape.txt\nnew file mode 100644\n--- /dev/null\n+++ b/../escape.txt\n@@ -0,0 +1 @@\n+new\n]
+0.02s call     test/api/test_production_reviewed_patch_preparation.py::test_preview_enforces_real_budgets_without_source_mutation[provider_bytes]
+=========================== short test summary info ============================
+FAILED test/api/test_production_reviewed_patch_preparation.py::test_preview_enforces_real_budgets_without_source_mutation[postimage_bytes]
+======================== 1 failed, 21 passed in 11.25s =========================

@@ -1,0 +1,16 @@
+{
+  "root": "/home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005",
+  "head": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "status": "",
+  "files": {
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py": "4bda730eedab8edb071413483db68a6ce480bc259bbc0730b21482ddf17fd125",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "b9d8d41d5c533e5e8a5585fa6fa1b9df3418a0485f37380d5bd2e442de236fb0",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f98373acc3c3d98a434d4a1c0a764804d6e774ece6048513dc44eedfdd5d812e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": "526c452ffbbd9165d168e78bdff25707ad01ceb19e4a855a5a3b614bd5706537",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "79a5f33b0e70c5e94287b69fcfc3afef9087ea1c876b795c28059d48f3c2a185",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "c694854ef79a957e6124cae47a8219defb6d084f722acf4f373ed1ba72a4ff9e",
+    "ipfs_accelerate_py/llm_router.py": "41fdc56335ec461ec86dbde0767b63d1ca69d4dc02a6feff27de7346bfacb3e9",
+    "pytest.ini": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a"
+  },
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30"
+}

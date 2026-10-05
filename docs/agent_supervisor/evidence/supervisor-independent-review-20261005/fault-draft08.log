@@ -1,0 +1,29 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 30 items / 27 deselected / 3 selected
+
+test/api/test_production_independent_review_contract.py F..              [100%]
+
+=================================== FAILURES ===================================
+_____ test_native_git_apply_failure_after_postimage_restores_owned_effect ______
+test/api/test_production_independent_review_contract.py:388: in test_native_git_apply_failure_after_postimage_restores_owned_effect
+    assert (repo / TARGET).read_text(encoding="utf-8") == BASELINE
+E   assert "VALUE = 'reviewed'\n" == "VALUE = 'baseline'\n"
+E     
+E     - VALUE = 'baseline'
+E     + VALUE = 'reviewed'
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8ba75a32540378750b1e/agent-merge-trains/master-9fade8aa6c51f93071f0/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8ba75a32540378750b1e/agent-merge-trains/master-9fade8aa6c51f93071f0/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/fault-draft08.xml -
+============================= slowest 10 durations =============================
+2.61s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.94s call     test/api/test_production_independent_review_contract.py::test_native_git_apply_failure_after_postimage_restores_owned_effect
+0.49s call     test/api/test_production_independent_review_contract.py::test_lost_durable_lease_stops_remaining_and_compensating_writes
+
+(6 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_native_git_apply_failure_after_postimage_restores_owned_effect
+================= 1 failed, 2 passed, 27 deselected in 14.72s ==================

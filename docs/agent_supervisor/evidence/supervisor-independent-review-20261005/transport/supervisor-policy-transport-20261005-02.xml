@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="0" skipped="0" tests="2" time="3.563" timestamp="2026-10-05T02:49:34.615430+00:00" hostname="spark-b271"><testcase classname="" name="test.api.test_agent_supervisor_production_policy_transport" time="0.000"><error message="collection failure">ImportError while importing test module '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_agent_supervisor_production_policy_transport.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+test/api/test_agent_supervisor_production_policy_transport.py:11: in &lt;module&gt;
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py:886: in __getattr__
+    return _load_implementation_module(name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py:877: in _load_implementation_module
+    module = importlib.import_module(f"{__name__}.{module_name}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:135: in &lt;module&gt;
+    from .implementation_daemon import (
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:291: in &lt;module&gt;
+    from .authoritative_completion import AuthoritativeCompletionMixin
+ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py:36: in &lt;module&gt;
+    from .status import (
+E   ImportError: cannot import name 'build_merged_pending_acceptance_status' from 'ipfs_accelerate_py.agent_supervisor.todo_daemon.status' (/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py)</error></testcase><testcase classname="" name="test.api.test_agent_supervisor_production_provider_cli" time="0.000"><error message="collection failure">ImportError while importing test module '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_agent_supervisor_production_provider_cli.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+test/api/test_agent_supervisor_production_provider_cli.py:37: in &lt;module&gt;
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:291: in &lt;module&gt;
+    from .authoritative_completion import AuthoritativeCompletionMixin
+ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py:36: in &lt;module&gt;
+    from .status import (
+E   ImportError: cannot import name 'build_merged_pending_acceptance_status' from 'ipfs_accelerate_py.agent_supervisor.todo_daemon.status' (/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py)</error></testcase></testsuite></testsuites>

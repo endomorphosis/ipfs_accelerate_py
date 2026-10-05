@@ -1,0 +1,26 @@
+{
+  "base_commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "catalog_files": [],
+  "catalog_is_per_test_AST_evidence": true,
+  "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-policy-transport-20261005-02.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-policy-transport-20261005-02.xml test/api/test_agent_supervisor_production_policy_transport.py test/api/test_agent_supervisor_production_provider_cli.py > /dev/shm/supervisor-policy-transport-20261005-02.log 2>&1",
+  "completion_authority_count": 0,
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-policy-transport-20261005-02.duckdb",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "final_frozen_integrated_qualification": false,
+  "fresh_database_created_by_this_run": true,
+  "inherited_environment": "Inherited shell environment was not captured; no secrets were enumerated.",
+  "outcome": "2 collection errors during concurrent partial daemon imports; no executed tests.",
+  "owned_source_pins_at_handoff": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "de0dcff3ae9b09467338bc67b801e8d3a5eb03bda9f99b28174eb24fb83b4c41",
+    "test/api/test_agent_supervisor_production_policy_transport.py": "d1aa21e820da07960c6535da70c6a95b9ce4b43b412bb2406340a2c5a3eba37e"
+  },
+  "run": "02",
+  "schema": "supervisor-focused-transport-qualification@1",
+  "seal_count": 0,
+  "test_seals": []
+}

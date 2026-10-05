@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+___ ERROR collecting test/api/test_production_independent_review_contract.py ___
+ImportError while importing test module '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_production_independent_review_contract.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+test/api/test_production_independent_review_contract.py:23: in <module>
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:291: in <module>
+    from .authoritative_completion import AuthoritativeCompletionMixin
+ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py:36: in <module>
+    from .status import (
+E   ImportError: cannot import name 'build_merged_pending_acceptance_status' from 'ipfs_accelerate_py.agent_supervisor.todo_daemon.status' (/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py)
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/contract-draft01.xml -
+=========================== short test summary info ============================
+ERROR test/api/test_production_independent_review_contract.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 1.61s ===============================

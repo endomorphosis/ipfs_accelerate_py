@@ -256,6 +256,7 @@ def _run_git_bounded(
     *arguments: str,
     maximum_stdout_bytes: int,
     input_bytes: bytes | None = None,
+    child_umask: int = -1,
 ) -> tuple[int, bytes, bytes]:
     """Execute fixed Git while bounding stdout/stderr during capture."""
 
@@ -263,6 +264,8 @@ def _run_git_bounded(
         _fail("budget_invalid", "Git stdout capture bound is invalid")
     if input_bytes is not None and len(input_bytes) > DEFAULT_MAX_GIT_CAPTURE_BYTES:
         _fail("budget_invalid", "Git stdin exceeds its bounded input limit")
+    if type(child_umask) is not int or not (-1 <= child_umask <= 0o777):
+        _fail("budget_invalid", "Git child file creation mask is invalid")
     scan_budget = _active_evidence_scan_budget()
     timeout_seconds = (
         scan_budget.begin_git_call()
@@ -285,6 +288,7 @@ def _run_git_bounded(
             stdin=(subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            umask=child_umask,
         )
         assert process.stdout is not None and process.stderr is not None
         for stream, label in (

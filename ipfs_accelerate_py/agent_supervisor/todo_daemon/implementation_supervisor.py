@@ -123,6 +123,15 @@ from ..rescue.supervisor_watchdog import (
 )
 from .supervisor_activity import SupervisorMaintenanceWindow
 from .core import ManagedDaemonSpec, terminate_pid_tree
+from .production_provider_attestation import (
+    production_provider_review_key_path,
+)
+from .production_provider_cli import (
+    PRODUCTION_CLI_POLICY_NAME,
+    DEFAULT_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS,
+    ProductionCLIProviderPolicy,
+)
 from .implementation_daemon import (
     DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DEFAULT_TRACKS,
@@ -6658,6 +6667,12 @@ class PortalSupervisorConfig:
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
+    production_provider_policy: str = ""
+    production_provider_context_budget_tokens: int | None = None
+    production_provider_timeout_seconds: float | None = None
+    production_provider_review_authority_key_path: Path | None = None
+    production_provider_launch_authority_receipt_path: Path | None = None
+    production_provider_launch_authority_receipt_content_id: str = ""
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
@@ -6809,6 +6824,63 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if not self.production_provider_policy:
+            if any(
+                value is not None
+                for value in (
+                    self.production_provider_context_budget_tokens,
+                    self.production_provider_timeout_seconds,
+                    self.production_provider_review_authority_key_path,
+                    self.production_provider_launch_authority_receipt_path,
+                    self.production_provider_launch_authority_receipt_content_id
+                    or None,
+                )
+            ):
+                raise ValueError(
+                    "production provider bounds/review authority require a "
+                    "production provider policy"
+                )
+        else:
+            production_policy = ProductionCLIProviderPolicy(
+                name=self.production_provider_policy,
+                context_budget_tokens=(
+                    DEFAULT_CONTEXT_BUDGET_TOKENS
+                    if self.production_provider_context_budget_tokens is None
+                    else self.production_provider_context_budget_tokens
+                ),
+                provider_timeout_seconds=(
+                    DEFAULT_PROVIDER_TIMEOUT_SECONDS
+                    if self.production_provider_timeout_seconds is None
+                    else self.production_provider_timeout_seconds
+                ),
+            )
+            self.production_provider_context_budget_tokens = (
+                production_policy.context_budget_tokens
+            )
+            self.production_provider_timeout_seconds = float(
+                production_policy.provider_timeout_seconds
+            )
+            self.production_provider_review_authority_key_path = (
+                self.production_provider_review_authority_key_path
+                if self.production_provider_review_authority_key_path is not None
+                else production_provider_review_key_path(self.state_path)
+            )
+        if (
+            self.production_provider_launch_authority_receipt_path is not None
+        ) != bool(self.production_provider_launch_authority_receipt_content_id):
+            raise ValueError(
+                "production provider launch authority path/content identity "
+                "are required together"
+            )
+        if self.production_provider_launch_authority_receipt_content_id:
+            if not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                self.production_provider_launch_authority_receipt_content_id,
+            ):
+                raise ValueError(
+                    "production provider launch authority content identity "
+                    "is malformed"
+                )
         if (self.accepted_control_plane_pin is None) != (
             self.accepted_control_plane_descriptor < 3
         ):
@@ -21873,6 +21945,28 @@ class PortalImplementationSupervisor:
                     raise ValueError("task context bundle requires artifact and digest")
                 command.extend(("--task-context-bundle-artifact", self.config.task_context_bundle_artifact,
                                 "--task-context-bundle-sha256", self.config.task_context_bundle_sha256))
+            if self.config.production_provider_policy:
+                command.extend(
+                    [
+                        "--production-provider-policy",
+                        self.config.production_provider_policy,
+                        "--production-provider-context-budget-tokens",
+                        str(self.config.production_provider_context_budget_tokens),
+                        "--production-provider-timeout-seconds",
+                        str(self.config.production_provider_timeout_seconds),
+                        "--production-provider-review-authority-key-path",
+                        str(self.config.production_provider_review_authority_key_path),
+                    ]
+                )
+                if self.config.production_provider_launch_authority_receipt_path is not None:
+                    command.extend(
+                        [
+                            "--production-provider-launch-authority-receipt-path",
+                            str(self.config.production_provider_launch_authority_receipt_path),
+                            "--production-provider-launch-authority-receipt-content-id",
+                            self.config.production_provider_launch_authority_receipt_content_id,
+                        ]
+                    )
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -22262,7 +22356,64 @@ class PortalImplementationSupervisor:
         has_implement_flag = "--implement" in command_line
         if self.config.implement != has_implement_flag:
             return False
-        tokens = command_line.split()
+        try:
+            tokens = shlex.split(command_line)
+        except ValueError:
+            return False
+
+        production_options = {
+            "--production-provider-policy": self.config.production_provider_policy,
+            "--production-provider-context-budget-tokens": str(
+                self.config.production_provider_context_budget_tokens
+            ),
+            "--production-provider-timeout-seconds": str(
+                self.config.production_provider_timeout_seconds
+            ),
+            "--production-provider-review-authority-key-path": str(
+                self.config.production_provider_review_authority_key_path
+            ),
+        }
+        for option, expected in production_options.items():
+            # These four values are one operator policy, including its review
+            # signing authority. Never adopt a partially matching policy or
+            # let argparse's last-value rule hide an earlier different value.
+            if any(token.startswith(option + "=") for token in tokens):
+                return False
+            occurrences = [
+                index for index, token in enumerate(tokens) if token == option
+            ]
+            if not self.config.production_provider_policy:
+                if occurrences:
+                    return False
+                continue
+            if len(occurrences) != 1:
+                return False
+            index = occurrences[0]
+            if index + 1 >= len(tokens) or tokens[index + 1] != expected:
+                return False
+        launch_options = {
+            "--production-provider-launch-authority-receipt-path": str(
+                self.config.production_provider_launch_authority_receipt_path
+            ),
+            "--production-provider-launch-authority-receipt-content-id": (
+                self.config.production_provider_launch_authority_receipt_content_id
+            ),
+        }
+        for option, expected in launch_options.items():
+            if any(token.startswith(option + "=") for token in tokens):
+                return False
+            occurrences = [
+                index for index, token in enumerate(tokens) if token == option
+            ]
+            if self.config.production_provider_launch_authority_receipt_path is None:
+                if occurrences:
+                    return False
+                continue
+            if len(occurrences) != 1:
+                return False
+            index = occurrences[0]
+            if index + 1 >= len(tokens) or tokens[index + 1] != expected:
+                return False
 
         def option_values(option: str) -> set[str]:
             return {
@@ -22332,6 +22483,18 @@ class PortalImplementationSupervisor:
             return max(0.0, now_ts - parsed.timestamp())
         except ValueError:
             return float("inf")
+
+
+class _SingleProductionProviderOption(argparse.Action):
+    """An operator policy option cannot silently override an earlier value."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        seen = getattr(namespace, "_production_provider_options_seen", set())
+        if self.dest in seen:
+            raise argparse.ArgumentError(self, "operator policy option must occur once")
+        seen.add(self.dest)
+        namespace._production_provider_options_seen = seen
+        setattr(namespace, self.dest, values)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -22543,6 +22706,59 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Allow --reconciliation-only passes to invoke the configured LLM merge resolver. "
             "By default reconciliation-only disables this to keep cleanup probes non-interactive."
         ),
+    )
+    parser.add_argument(
+        "--production-provider-policy",
+        action=_SingleProductionProviderOption,
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Operator policy for Grok implementation with independent Codex "
+            "review; task metadata does not select this route."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        action=_SingleProductionProviderOption,
+        type=int,
+        default=None,
+        help=(
+            "Bounded provider context budget; defaults to "
+            f"{DEFAULT_CONTEXT_BUDGET_TOKENS} with an explicit policy."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        action=_SingleProductionProviderOption,
+        type=float,
+        default=None,
+        help=(
+            "Bounded per-provider timeout; defaults to "
+            f"{DEFAULT_PROVIDER_TIMEOUT_SECONDS:g}s with an explicit policy."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        action=_SingleProductionProviderOption,
+        type=Path,
+        default=None,
+        help=(
+            "Shared operator Ed25519 private-key path; defaults beside the "
+            "daemon state file. Bundle lanes pass their shared authority path."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-path",
+        action=_SingleProductionProviderOption,
+        type=Path,
+        default=None,
+        help="Operator-authored launch authority receipt for the production route.",
+    )
+    parser.add_argument(
+        "--production-provider-launch-authority-receipt-content-id",
+        action=_SingleProductionProviderOption,
+        default="",
+        help="Exact sha256 content identity of the launch authority receipt.",
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument(
@@ -23131,7 +23347,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    vars(args).pop("_production_provider_options_seen", None)
+    return args
 
 
 def supervisor_config_from_args(
@@ -23280,6 +23498,22 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
+        production_provider_policy=getattr(args, "production_provider_policy", ""),
+        production_provider_context_budget_tokens=getattr(
+            args, "production_provider_context_budget_tokens", None
+        ),
+        production_provider_timeout_seconds=getattr(
+            args, "production_provider_timeout_seconds", None
+        ),
+        production_provider_review_authority_key_path=getattr(
+            args, "production_provider_review_authority_key_path", None
+        ),
+        production_provider_launch_authority_receipt_path=getattr(
+            args, "production_provider_launch_authority_receipt_path", None
+        ),
+        production_provider_launch_authority_receipt_content_id=getattr(
+            args, "production_provider_launch_authority_receipt_content_id", ""
+        ),
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,

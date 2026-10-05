@@ -1,0 +1,34 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005
+configfile: pytest.ini
+collected 2 items
+
+test/api/test_agent_supervisor_production_provider_security_regressions.py F [ 50%]
+F                                                                        [100%]
+
+=================================== FAILURES ===================================
+_____ test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff ______
+test/api/test_agent_supervisor_production_provider_security_regressions.py:213: in test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_production_provider_security_regressions.py:502: in _daemon_for_ephemeral_handoff
+    daemon = TodoImplementationDaemon(
+E   TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+____ test_typed_production_route_rc0_reaches_validation_and_commit_handoff _____
+test/api/test_agent_supervisor_production_provider_security_regressions.py:554: in test_typed_production_route_rc0_reaches_validation_and_commit_handoff
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_production_provider_security_regressions.py:502: in _daemon_for_ephemeral_handoff
+    daemon = TodoImplementationDaemon(
+E   TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'
+- generated xml file: /dev/shm/supervisor-retired-security-fa51-20261005-01.xml -
+============================= slowest 10 durations =============================
+0.01s call     test/api/test_agent_supervisor_production_provider_security_regressions.py::test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff
+0.01s call     test/api/test_agent_supervisor_production_provider_security_regressions.py::test_typed_production_route_rc0_reaches_validation_and_commit_handoff
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_production_provider_security_regressions.py::test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff
+FAILED test/api/test_agent_supervisor_production_provider_security_regressions.py::test_typed_production_route_rc0_reaches_validation_and_commit_handoff
+============================== 2 failed in 17.72s ==============================

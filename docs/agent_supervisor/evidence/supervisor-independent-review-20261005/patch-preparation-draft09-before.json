@@ -1,0 +1,7 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": "c29bdafe7b3e17bc1d2e96b3049a2442a2962935fe42286b3a6e8628984d8cb8",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "2d69f5db6599ba4ddaf72a5e68f2b903b3ee5fff08c68804c4a5c7ff2084a087",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a58df6ee641fb122ef62f2e4a9597717fdad57e2fa98d697f682d1b0109d77e3",
+  "test/api/test_production_reviewed_patch_preparation.py": "64eb8d7a02e3af2bcd11d4c0402d2c958fa52b7ee69718bdd33a6ea4ec5c85c3",
+  "test/api/test_production_independent_review_contract.py": "7e0191f684a60be96d86d265e3673ce43dfbbb7e168ae251072bb86d2d763f3e"
+}

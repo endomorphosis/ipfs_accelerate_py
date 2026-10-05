@@ -1,0 +1,159 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 13 items
+
+test/api/test_production_independent_review_contract.py FFFFFFFF..FFF    [100%]
+
+=================================== FAILURES ===================================
+__________ test_joined_route_binds_actual_written_and_committed_bytes __________
+test/api/test_production_independent_review_contract.py:171: in test_joined_route_binds_actual_written_and_committed_bytes
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/ab79ecf54029d74df081/agent-merge-trains/master-aa457f4510a378ef7fb4/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/ab79ecf54029d74df081/agent-merge-trains/master-aa457f4510a378ef7fb4/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[source_drift] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8c3a9e1b9db46982bd43/agent-merge-trains/master-684b163b26a51bcd8690/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8c3a9e1b9db46982bd43/agent-merge-trains/master-684b163b26a51bcd8690/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[task_drift] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c80fa9595b6690e8cefa/agent-merge-trains/master-882119e257e64e902289/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c80fa9595b6690e8cefa/agent-merge-trains/master-882119e257e64e902289/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[policy_drift] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/7add897caf13f4f9efd9/agent-merge-trains/master-5867d9b090645506b78c/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/7add897caf13f4f9efd9/agent-merge-trains/master-5867d9b090645506b78c/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[undeclared_path] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/2bd52da4603c86f97940/agent-merge-trains/master-b74a80f28b23531070e3/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/2bd52da4603c86f97940/agent-merge-trains/master-b74a80f28b23531070e3/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_rewrite] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/92a39adafd0c29f79f3a/agent-merge-trains/master-03bd151bf80cd1262b39/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/92a39adafd0c29f79f3a/agent-merge-trains/master-03bd151bf80cd1262b39/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_decline] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/4a6c559dc9f46ed588de/agent-merge-trains/master-e79789ed5d571551c45e/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/4a6c559dc9f46ed588de/agent-merge-trains/master-e79789ed5d571551c45e/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[effective_provider] _
+test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/6f94ea4f6a0036c9190a/agent-merge-trains/master-46a3fe4ebdd5bc65ce17/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/6f94ea4f6a0036c9190a/agent-merge-trains/master-46a3fe4ebdd5bc65ce17/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_native_second_write_failure_restores_the_first_and_removes_temporaries __
+test/api/test_production_independent_review_contract.py:279: in test_native_second_write_failure_restores_the_first_and_removes_temporaries
+    assert failed is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c74a1717ef1bb3cdb2ac/agent-merge-trains/master-f749e10da88bb6803ce6/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c74a1717ef1bb3cdb2ac/agent-merge-trains/master-f749e10da88bb6803ce6/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_______ test_task_metadata_cannot_install_provider_policy_or_signing_key _______
+test/api/test_production_independent_review_contract.py:300: in test_task_metadata_cannot_install_provider_policy_or_signing_key
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/11521f9f92eb962051d1/agent-merge-trains/master-62c90a74e01451b26a3a/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/11521f9f92eb962051d1/agent-merge-trains/master-62c90a74e01451b26a3a/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+____________ test_post_write_mutation_prevents_commit_bound_review _____________
+test/api/test_production_independent_review_contract.py:311: in test_post_write_mutation_prevents_commit_bound_review
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/a907d00e59f2f349c902/agent-merge-trains/master-115fbfcf99693d048acf/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/a907d00e59f2f349c902/agent-merge-trains/master-115fbfcf99693d048acf/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/contract-draft02.xml -
+============================= slowest 10 durations =============================
+1.62s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+0.15s call     test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+0.15s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[undeclared_path]
+0.15s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[source_drift]
+0.14s call     test/api/test_production_independent_review_contract.py::test_role_bound_implementation_cannot_be_installed_as_its_own_reviewer
+0.14s call     test/api/test_production_independent_review_contract.py::test_foreign_policy_pair_is_rejected_before_provider_dispatch
+0.14s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[task_drift]
+0.13s call     test/api/test_production_independent_review_contract.py::test_post_write_mutation_prevents_commit_bound_review
+0.13s call     test/api/test_production_independent_review_contract.py::test_task_metadata_cannot_install_provider_policy_or_signing_key
+0.12s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[policy_drift]
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[source_drift]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[task_drift]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[policy_drift]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[undeclared_path]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_rewrite]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_decline]
+FAILED test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[effective_provider]
+FAILED test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+FAILED test/api/test_production_independent_review_contract.py::test_task_metadata_cannot_install_provider_policy_or_signing_key
+FAILED test/api/test_production_independent_review_contract.py::test_post_write_mutation_prevents_commit_bound_review
+======================== 11 failed, 2 passed in 14.60s =========================

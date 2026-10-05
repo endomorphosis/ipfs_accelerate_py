@@ -1,0 +1,43 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 16 items
+
+test/api/test_production_independent_review_contract.py ............FF.. [100%]
+
+=================================== FAILURES ===================================
+___ test_live_implementation_validates_commits_and_signs_one_reviewed_effect ___
+test/api/test_production_independent_review_contract.py:309: in test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+    assert result["returncode"] == 0, result
+E   AssertionError: {'task_id': 'JOIN-001', 'attempt': 1, 'returncode': 1, 'log_path': '/tmp/pytest-of-barberb/pytest-1213/test_live_implementation_valid0/state/implementation_logs/join-001-attempt-1-536d1bfcc0bd585297191e9208bf8e98.log', ...}
+E   assert 1 == 0
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/cb588554a4c2a70cf165/agent-merge-trains/master-bf37b62b8078942ca645/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/cb588554a4c2a70cf165/agent-merge-trains/master-bf37b62b8078942ca645/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+___ test_live_failed_validation_does_not_commit_or_issue_review_attestation ____
+test/api/test_production_independent_review_contract.py:338: in test_live_failed_validation_does_not_commit_or_issue_review_attestation
+    assert calls == [ProviderRole.GROK_IMPLEMENT.value, ProviderRole.CODEX_REVIEW.value]
+E   AssertionError: assert [] == ['grok-implem...ndent-review']
+E     
+E     Right contains 2 more items, first extra item: 'grok-implement'
+E     Use -v to get more diff
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c4fcf129e2d4e6a15090/agent-merge-trains/master-7eaaabe28729b85769bb/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/c4fcf129e2d4e6a15090/agent-merge-trains/master-7eaaabe28729b85769bb/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/contract-draft03.xml -
+============================= slowest 10 durations =============================
+2.06s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+0.59s call     test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+0.47s call     test/api/test_production_independent_review_contract.py::test_post_write_mutation_prevents_commit_bound_review
+0.45s call     test/api/test_production_independent_review_contract.py::test_task_metadata_cannot_install_provider_policy_or_signing_key
+0.43s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_decline]
+0.42s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+0.38s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.38s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_rewrite]
+0.35s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[undeclared_path]
+0.34s call     test/api/test_production_independent_review_contract.py::test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[effective_provider]
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+FAILED test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+======================== 2 failed, 14 passed in 18.02s =========================

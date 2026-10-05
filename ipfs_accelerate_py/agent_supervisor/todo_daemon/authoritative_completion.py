@@ -33,11 +33,6 @@ from .production_provider_attestation import (
     trusted_public_key_from_private_path,
     verify_production_provider_review_attestation,
 )
-from .status import (
-    build_merged_pending_acceptance_status,
-    build_reopened_acceptance_status,
-    project_authoritative_acceptance_status,
-)
 
 __all__ = [
     name
@@ -1416,6 +1411,10 @@ class AuthoritativeCompletionMixin:
         *,
         promote: bool = True,
     ) -> dict[str, Any]:
+        # Legacy status publication is independent of the reusable receipt
+        # verifier. Resolve its optional owner before any board mutation.
+        from .status import project_authoritative_acceptance_status
+
         try:
             base = (
                 ImplementationReceipt.from_dict(receipt)
@@ -1506,6 +1505,8 @@ class AuthoritativeCompletionMixin:
         receipt: ImplementationReceipt | Mapping[str, Any],
         gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        from .status import build_merged_pending_acceptance_status
+
         receipt_obj = (
             ImplementationReceipt.from_dict(receipt)
             if isinstance(receipt, Mapping)
@@ -1538,6 +1539,8 @@ class AuthoritativeCompletionMixin:
         *,
         stale_reason: str = "post_merge_validation_stale",
     ) -> dict[str, Any]:
+        from .status import build_reopened_acceptance_status
+
         reopened = reopen_acceptance_for_stale_post_merge_validation(
             receipt,
             stale_reason=stale_reason,

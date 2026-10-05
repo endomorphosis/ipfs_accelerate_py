@@ -1277,6 +1277,22 @@ def bind_database_portal_execution_from_args(
             task_header_prefix=f"## {task_alias}",
             implement=True,
             implementation_command=parsed.implementation_command or None,
+            production_provider_policy=getattr(parsed, "production_provider_policy", ""),
+            production_provider_context_budget_tokens=getattr(
+                parsed, "production_provider_context_budget_tokens", None
+            ),
+            production_provider_timeout_seconds=getattr(
+                parsed, "production_provider_timeout_seconds", None
+            ),
+            production_provider_review_authority_key_path=getattr(
+                parsed, "production_provider_review_authority_key_path", None
+            ),
+            production_provider_launch_authority_receipt_path=getattr(
+                parsed, "production_provider_launch_authority_receipt_path", None
+            ),
+            production_provider_launch_authority_receipt_content_id=getattr(
+                parsed, "production_provider_launch_authority_receipt_content_id", ""
+            ),
             implementation_timeout=parsed.implementation_timeout,
             max_task_attempts=parsed.max_task_attempts,
             implementation_log_dir=paths.implementation_logs,

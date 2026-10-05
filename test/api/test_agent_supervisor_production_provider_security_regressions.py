@@ -18,6 +18,8 @@ from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
+    IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+    IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     ImplementationProviderRouter,
     ProviderBounds,
     ProviderReason,
@@ -27,6 +29,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     RouteStatus,
     bind_applied_patch_to_review_chain,
     build_production_contract_packet,
+    _default_token_count,
+    _provider_response_contract,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ImplementationRetryDeferred,
@@ -47,6 +51,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_cli imp
     BoundProductionCLIProvider,
     ProductionCLIProviderPolicy,
     build_production_cli_provider_pair,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_context_slice import (
+    DEFAULT_WHOLE_FILE_BYTES,
+    ProductionContextSliceError,
 )
 
 SNAPSHOT = "git-commit:provider-security-fixture"
@@ -369,8 +377,26 @@ def test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff(
 
 
 def _provider_request(role: ProviderRole) -> ProviderRequest:
+    bounds = ProviderBounds()
+    response_contract = _provider_response_contract(role)
     prompt = json.dumps(
-        {"role": role.value, "task_id": "SEC-001", "provider_input": {}},
+        {
+            "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+            "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+            "role": role.value,
+            "packet_id": "packet:security",
+            "snapshot_id": SNAPSHOT,
+            "task_id": "SEC-001",
+            "provider_input": {},
+            "bounds": bounds.to_dict(),
+            "response_contract": response_contract,
+            "authority": {
+                "provider_output_tier": "proposal",
+                "repository_write_allowed": False,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            },
+        },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -380,9 +406,10 @@ def _provider_request(role: ProviderRole) -> ProviderRequest:
         snapshot_id=SNAPSHOT,
         task_id="SEC-001",
         payload={},
-        bounds=ProviderBounds(),
+        bounds=bounds,
         prompt=prompt,
-        prompt_tokens=16,
+        prompt_tokens=_default_token_count(prompt),
+        response_contract=response_contract,
     )
 
 
@@ -817,17 +844,17 @@ def test_existing_file_without_source_or_ast_binding_fails_before_provider_write
     original = (
         "\n\n".join(
             f"def stable_component_{index:03d}(value: int) -> int:\n    return value + {index}\n"
-            for index in range(256)
+            for index in range(2048)
         )
         + "\n"
     )
-    assert len(original.encode("utf-8")) > 8_192
+    assert len(original.encode("utf-8")) > DEFAULT_WHOLE_FILE_BYTES
     existing.write_text(original, encoding="utf-8")
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "existing implementation")
     head = _git(repo, "rev-parse", "HEAD")
 
-    state_dir = repo / "state"
+    state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -836,6 +863,7 @@ def test_existing_file_without_source_or_ast_binding_fails_before_provider_write
         repo_root=repo,
         task_header_prefix="## SEC-",
         implement=True,
+        production_provider_policy=ProductionCLIProviderPolicy(),
     )
     monkeypatch.delenv(
         "IPFS_ACCELERATE_AGENT_ALLOW_RAW_MODEL_COMMAND",
@@ -861,36 +889,23 @@ def test_existing_file_without_source_or_ast_binding_fails_before_provider_write
     )
     calls: list[str] = []
 
-    def grok(_request: ProviderRequest) -> dict[str, Any]:
-        calls.append("grok")
-        return _grok_proposal(content="def hallucinated():\n    return None\n")
+    def forbidden_invoker(_prompt: str, config: Any):
+        calls.append(config.provider)
+        raise AssertionError("unqualified source must not reach a provider")
 
-    def codex(_request: ProviderRequest) -> dict[str, Any]:
-        calls.append("codex")
-        return {"decision": "approve", "findings": []}
-
-    outcome: dict[str, Any] | None = None
-    deferred: Exception | None = None
-    try:
-        outcome = daemon.run_production_model_assisted_route(
+    daemon._production_grok_provider, daemon._production_codex_provider = (
+        build_production_cli_provider_pair(
+            daemon.production_provider_policy, invoker=forbidden_invoker
+        )
+    )
+    with pytest.raises(ProductionContextSliceError) as failure:
+        daemon.run_production_model_assisted_route(
             task,
             attempt=1,
             workspace_path=repo,
-            snapshot_id=f"git-commit:{head}",
+            baseline_ref=head,
             apply=True,
-            grok_provider=grok,
-            codex_provider=codex,
-            admission_gate=_admit,
         )
-    except (ImplementationRetryDeferred, ProviderRoutingError) as exc:
-        deferred = exc
-
-    if isinstance(deferred, ProviderRoutingError):
-        assert deferred.reason_code == "symbol_scope_required"
-
-    fail_closed = deferred is not None or bool(
-        outcome and outcome.get("returncode") != 0 and outcome.get("pending") is True
-    )
-    assert fail_closed is True
+    assert failure.value.reason_code == "symbol_scope_required"
     assert calls == []
     assert existing.read_text(encoding="utf-8") == original

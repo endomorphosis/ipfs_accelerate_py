@@ -1,0 +1,15 @@
+{
+  "approved_postimage_left": true,
+  "baseline_restored": false,
+  "external_model_calls": 0,
+  "fault_injected": true,
+  "provider_calls": [
+    "grok-implement",
+    "codex-independent-review"
+  ],
+  "reviewed_effect_captured": false,
+  "schema": "readonly-production-patch-partial-failure-status-probe@1",
+  "scope": "Fault injection models git apply reporting IO failure after a partial or complete approved file write; no completion sink invoked.",
+  "status": "rejected",
+  "write_performed": false
+}

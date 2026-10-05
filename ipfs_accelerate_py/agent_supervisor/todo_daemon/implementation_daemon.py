@@ -288,6 +288,16 @@ from .task_execution_policy import (
     TypedLocalOperation,
 )
 from .worktrees import WorktreeLease, WorktreePool
+from .authoritative_completion import AuthoritativeCompletionMixin
+from .production_provider_cli import (
+    PRODUCTION_CLI_POLICY_NAME, DEFAULT_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS, ProductionCLIProviderPolicy,
+    build_production_cli_provider_pair,
+)
+from .production_provider_attestation import (
+    ProductionProviderReviewAuthority, production_provider_review_key_path,
+    trusted_public_key_from_private_path,
+)
 from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 REPO_ROOT = Path.cwd()
@@ -4908,7 +4918,7 @@ def _mirror_implementation_failure_context(receipt: Any) -> Any:
     return receipt
 
 
-class PortalImplementationDaemon:
+class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
 
@@ -4929,6 +4939,12 @@ class PortalImplementationDaemon:
         task_header_prefix: str = TASK_HEADER_PREFIX,
         implement: bool = False,
         implementation_command: str | None = None,
+        production_provider_policy: str | ProductionCLIProviderPolicy = "",
+        production_provider_context_budget_tokens: int | None = None,
+        production_provider_timeout_seconds: float | None = None,
+        production_provider_review_authority_key_path: Path | None = None,
+        production_provider_launch_authority_receipt_path: Path | None = None,
+        production_provider_launch_authority_receipt_content_id: str = "",
         implementation_timeout: float = DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
         max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
@@ -5021,6 +5037,74 @@ class PortalImplementationDaemon:
         self._dependency_preflight_artifact_store = None
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
+        if not production_provider_policy and any((
+            production_provider_context_budget_tokens is not None,
+            production_provider_timeout_seconds is not None,
+            production_provider_review_authority_key_path is not None,
+            production_provider_launch_authority_receipt_path is not None,
+            production_provider_launch_authority_receipt_content_id,
+        )):
+            raise ValueError("production provider options require a production provider policy")
+        if (isinstance(production_provider_context_budget_tokens, bool)
+                or isinstance(production_provider_timeout_seconds, bool)):
+            raise ValueError("production provider bounds cannot be booleans")
+        if isinstance(production_provider_policy, ProductionCLIProviderPolicy):
+            if production_provider_context_budget_tokens is not None or production_provider_timeout_seconds is not None:
+                raise ValueError("production policy object cannot have separate bound overrides")
+            selected_policy = production_provider_policy
+        elif production_provider_policy:
+            selected_policy = ProductionCLIProviderPolicy(
+                name=production_provider_policy,
+                context_budget_tokens=(DEFAULT_CONTEXT_BUDGET_TOKENS
+                                       if production_provider_context_budget_tokens is None
+                                       else production_provider_context_budget_tokens),
+                provider_timeout_seconds=(DEFAULT_PROVIDER_TIMEOUT_SECONDS
+                                          if production_provider_timeout_seconds is None
+                                          else production_provider_timeout_seconds),
+            )
+        else:
+            selected_policy = None
+        if bool(production_provider_launch_authority_receipt_path) != bool(
+            production_provider_launch_authority_receipt_content_id
+        ):
+            raise ValueError("production launch receipt path and content ID are both required")
+        if production_provider_launch_authority_receipt_content_id and not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", production_provider_launch_authority_receipt_content_id
+        ):
+            raise ValueError("production launch receipt content ID must be exact sha256")
+        self.production_provider_policy = selected_policy
+        self.production_provider_launch_authority_receipt_path = production_provider_launch_authority_receipt_path
+        self.production_provider_launch_authority_receipt_content_id = production_provider_launch_authority_receipt_content_id
+        self.production_provider_review_key_path = (
+            Path(production_provider_review_authority_key_path)
+            if production_provider_review_authority_key_path is not None
+            else production_provider_review_key_path(state_path)
+        )
+        self._production_provider_review_authority = None
+        self.production_provider_review_trusted_public_keys: dict[str, bytes] = {}
+        self.production_provider_review_allowed_policy_ids = (
+            (selected_policy.policy_id,) if selected_policy is not None else ()
+        )
+        self._production_grok_provider = self._production_codex_provider = None
+        self._production_routes: dict[tuple[str, int], dict[str, Any]] = {}
+        self._production_reviewed_evidence: dict[str, dict[str, Any]] = {}
+        if selected_policy is not None:
+            if implement:
+                authority = ProductionProviderReviewAuthority.load_or_create(
+                    self.production_provider_review_key_path
+                )
+                self._production_provider_review_authority = authority
+                self.production_provider_review_trusted_public_keys = {
+                    authority.issuer_key_id: authority.public_key_bytes
+                }
+            elif self.production_provider_review_key_path.exists():
+                key_id, public_key = trusted_public_key_from_private_path(
+                    self.production_provider_review_key_path
+                )
+                self.production_provider_review_trusted_public_keys = {key_id: public_key}
+            self._production_grok_provider, self._production_codex_provider = (
+                build_production_cli_provider_pair(selected_policy)
+            )
         self._scoped_recovery_attempts: dict[str, int] = {}
         self._scoped_control_plane = None
         self._scoped_control_plane_launch = None
@@ -5801,6 +5885,9 @@ class PortalImplementationDaemon:
     ) -> Any:
         """Admit completion only from a fresh merged-tree decision."""
 
+        evidence = self._production_completion_evidence(
+            task, merged_tree_id=merged_tree_id, evidence=evidence,
+        )
         previous = getattr(self._last_runtime_decision, "receipt", None)
         observation = self._last_runtime_effect_observation
         return self._decision_runtime_route(
@@ -5829,6 +5916,9 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Capture restart-stable inputs for terminal completion publication."""
 
+        evidence = self._production_completion_evidence(
+            task, merged_tree_id=merged_tree_id, evidence=evidence,
+        )
         previous = getattr(self._last_runtime_decision, "receipt", None)
         observation = self._last_runtime_effect_observation
         completion_payload = {
@@ -6082,6 +6172,16 @@ class PortalImplementationDaemon:
         task_cid = str(normalized.get("queue_task_cid") or "")
         if not isinstance(payload, Mapping) or not task_cid:
             raise ValueError("completion publication intent is incomplete")
+        if self.production_provider_policy is not None:
+            matches = [task for task in self._load_tasks()
+                       if task.task_id == payload.get("task_id")
+                       and self._canonical_ref(task) == task_cid]
+            if len(matches) != 1:
+                raise ValueError("production completion replay has no exact current task")
+            self._production_completion_evidence(
+                matches[0], merged_tree_id=str(payload.get("merged_tree_id") or ""),
+                evidence=payload.get("post_merge_evidence") or {},
+            )
         sink = self._validated_completion_publication_sink(intent)
         record_path = self._completion_publication_record_path(
             sink,
@@ -20373,6 +20473,7 @@ class PortalImplementationDaemon:
         )
         retry_probe_eligible = bool(
             not deterministic_only
+            and self.production_provider_policy is None
             and self.use_ephemeral_worktree
             and self._retry_no_change_pre_dispatch_scope(task, state)
             is not None
@@ -20645,6 +20746,10 @@ class PortalImplementationDaemon:
                         "implementation dispatch cancelled"
                     )
                 prompt = ""
+            elif self.production_provider_policy is not None:
+                # This operator route builds its own bounded native packet.
+                # Generic prompt generation also selects legacy provider routes.
+                prompt = ""
             else:
                 self._require_primary_provider_readiness(task)
                 prompt = self._build_implementation_prompt(task, attempt)
@@ -20837,7 +20942,7 @@ class PortalImplementationDaemon:
             checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
             timeout_policy = self._implementation_timeout_policy(task)
             if self.use_ephemeral_worktree:
-                if not retry_probe_eligible:
+                if not retry_probe_eligible and self.production_provider_policy is None:
                     context_receipt_path = (
                         self._persist_implementation_context_receipt(
                             task,
@@ -21018,10 +21123,11 @@ class PortalImplementationDaemon:
                 )
             # A no-change authority is valid for one direct-checkout attempt.
             self._implementation_no_change_policy_gates.clear()
-            context_receipt_path = self._persist_implementation_context_receipt(
-                task,
-                attempt,
-            )
+            if self.production_provider_policy is None:
+                context_receipt_path = self._persist_implementation_context_receipt(
+                    task,
+                    attempt,
+                )
             try:
                 dependency_preflight = (
                     self._require_validation_project_dependency_preflight(
@@ -21095,7 +21201,7 @@ class PortalImplementationDaemon:
                 baseline_branch = ""
             command = (
                 []
-                if deterministic_only
+                if deterministic_only or self.production_provider_policy is not None
                 else self._build_implementation_command(
                     workspace_path,
                     task=task,
@@ -21162,6 +21268,15 @@ class PortalImplementationDaemon:
                             attempt=attempt,
                             workspace_path=workspace_path,
                         )
+                        if self.production_provider_policy is not None:
+                            route = self.run_production_model_assisted_route(
+                                task, attempt=attempt, workspace_path=workspace_path,
+                                baseline_ref=baseline_ref, apply=True,
+                            )
+                            log_fh.write(json.dumps(route["event"], sort_keys=True) + "\n")
+                            return subprocess.CompletedProcess(
+                                args=(), returncode=0 if route["route_result"].write_performed else 1,
+                            )
                         birth_callback = (
                             self._provider_runner_started_callback(
                                 state,
@@ -21372,7 +21487,9 @@ class PortalImplementationDaemon:
                         validation_result
                     )
                 )
-                if validation_result.get("passed", False) and deterministic_only:
+                if validation_result.get("passed", False) and (
+                    deterministic_only or self.production_provider_policy is not None
+                ):
                     # The typed local plan may materialize a proposal-authorized
                     # output.  In the direct checkout that candidate must cross
                     # the same durable commit gate used by the isolated path
@@ -21385,6 +21502,14 @@ class PortalImplementationDaemon:
                             baseline_ref=baseline_ref,
                         )
                     )
+                    if self.production_provider_policy is not None and not deterministic_only:
+                        commit = str(deterministic_commit_result.get("commit") or "")
+                        if not commit:
+                            raise ValueError("production provider candidate was not committed")
+                        self._finalize_production_model_assisted_route(
+                            task, attempt=attempt, workspace_path=workspace_path,
+                            implementation_commit=commit,
+                        )
                     if not (
                         deterministic_commit_result.get("committed") is True
                         or deterministic_commit_result.get("reason")
@@ -26238,6 +26363,19 @@ class PortalImplementationDaemon:
                 self._manual_completion_authority_revocation_generation
             ),
         }
+        if self.production_provider_policy is not None and not self._task_uses_typed_local_execution(task):
+            reviewed = self._production_reviewed_evidence.get(self._canonical_ref(task), {})
+            self._production_completion_evidence(
+                task, merged_tree_id=implementation_commit, evidence=reviewed,
+                require_current_target=False,
+            )
+            metadata["production_provider_policy_id"] = self.production_provider_policy.policy_id
+            metadata["production_reviewed_evidence"] = json.loads(json.dumps(
+                {key: reviewed[key] for key in (
+                    "provider_execution_receipt", "admitted_review_chain_binding",
+                    "production_reviewed_effect_binding", "provider_review_attestation",
+                )}, allow_nan=False,
+            ))
         if changed_submodule_paths is not None:
             metadata["changed_submodule_paths"] = sorted(
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
@@ -26697,6 +26835,7 @@ class PortalImplementationDaemon:
             merge_queue=self.merge_queue,
             merge_queue_dir=self.merge_queue_dir,
             decision_runtime=self.decision_runtime,
+            **self._production_operator_kwargs(),
         )
 
     def _completed_task_binding_error(
@@ -28137,6 +28276,22 @@ class PortalImplementationDaemon:
         implementation_commit = str(
             request.commit_sha or metadata.get("implementation_commit") or ""
         )
+        queued_policy = str(metadata.get("production_provider_policy_id") or "")
+        if (queued_policy or completion_daemon.production_provider_policy is not None) and not completion_daemon._task_uses_typed_local_execution(task):
+            active_policy = completion_daemon.production_provider_policy
+            if (active_policy is None or queued_policy != active_policy.policy_id
+                    or not isinstance(metadata.get("production_reviewed_evidence"), Mapping)):
+                return {"attempted": False, "merged": False, "returncode": 2,
+                        "reason": "production_provider_review_pending"}
+            try:
+                completion_daemon._production_completion_evidence(
+                    task, merged_tree_id=implementation_commit,
+                    evidence=metadata["production_reviewed_evidence"],
+                    require_current_target=False,
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                return {"attempted": False, "merged": False, "returncode": 2,
+                        "reason": "production_provider_review_pending"}
         authority_candidate_tree = self._candidate_repository_tree(
             implementation_commit
         )
@@ -28870,6 +29025,7 @@ class PortalImplementationDaemon:
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
                         decision_runtime=self.decision_runtime,
+                        **self._production_operator_kwargs(),
                     )
                     completion_daemon._completion_publications = (
                         self._completion_publications
@@ -28880,6 +29036,7 @@ class PortalImplementationDaemon:
                     or implementation_commit
                 )
                 completion_evidence = {
+                    **dict(metadata.get("production_reviewed_evidence") or {}),
                     "passed": True,
                     "completion_authoritative": True,
                     "repository_tree_id": completion_tree_id,
@@ -30548,7 +30705,7 @@ class PortalImplementationDaemon:
             ] = dependency_preflight
             command = (
                 []
-                if deterministic_only or retry_no_change_probe_only
+                if deterministic_only or retry_no_change_probe_only or self.production_provider_policy is not None
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
@@ -30784,6 +30941,16 @@ class PortalImplementationDaemon:
                                 attempt=attempt,
                                 workspace_path=worktree_path,
                             )
+                            if self.production_provider_policy is not None:
+                                provider_dispatched = True
+                                route = self.run_production_model_assisted_route(
+                                    task, attempt=attempt, workspace_path=worktree_path,
+                                    baseline_ref=baseline_ref, apply=True,
+                                )
+                                log_fh.write(json.dumps(route["event"], sort_keys=True) + "\n")
+                                return subprocess.CompletedProcess(
+                                    args=(), returncode=0 if route["route_result"].write_performed else 1,
+                                )
                             birth_callback = (
                                 self._provider_runner_started_callback(
                                     state,
@@ -31350,6 +31517,11 @@ class PortalImplementationDaemon:
                         implementation_commit = str(
                             commit_result.get("commit", "")
                         )
+                        if implementation_commit and self.production_provider_policy is not None:
+                            self._finalize_production_model_assisted_route(
+                                task, attempt=attempt, workspace_path=worktree_path,
+                                implementation_commit=implementation_commit,
+                            )
                         if (
                             implementation_commit
                             or commit_result.get("reason") == "no_changes"
@@ -44618,6 +44790,8 @@ class PortalImplementationDaemon:
     ) -> bool:
         """True when task metadata requires independent Codex review."""
 
+        if getattr(self, "production_provider_policy", None) is not None:
+            return True
         if task is None:
             return False
         raw_role = self._task_metadata_value(task, "provider role")
@@ -44641,6 +44815,8 @@ class PortalImplementationDaemon:
     ) -> tuple[str, ...]:
         """Return ordered implement/review roles for model-assisted work."""
 
+        if getattr(self, "production_provider_policy", None) is not None:
+            return (ProviderRole.GROK_IMPLEMENT.value, ProviderRole.CODEX_REVIEW.value)
         if task is None:
             return ()
         raw_role = self._task_metadata_value(task, "provider role")
@@ -44802,6 +44978,135 @@ class PortalImplementationDaemon:
     def assert_no_logic_repair_write_bypass(self, **kw):
         from . import live_logic_repair_controller as lpr
         return lpr.daemon_assert_no_logic_repair_write_bypass(**kw)
+
+    def run_production_model_assisted_route(
+        self, task: PortalTask, *, attempt: int, workspace_path: Path,
+        baseline_ref: str = "HEAD", apply: bool = False,
+    ) -> dict[str, Any]:
+        from .production_daemon_route import run_production_model_assisted_route
+
+        route = run_production_model_assisted_route(
+            self, task, attempt=attempt, workspace_path=workspace_path,
+            baseline_ref=baseline_ref, apply=apply,
+        )
+        self._production_routes[(self._canonical_ref(task), attempt)] = route
+        return route
+
+    def _production_operator_kwargs(self) -> dict[str, Any]:
+        if self.production_provider_policy is None:
+            return {}
+        return {
+            "production_provider_policy": self.production_provider_policy,
+            "production_provider_review_authority_key_path": self.production_provider_review_key_path,
+            "production_provider_launch_authority_receipt_path": self.production_provider_launch_authority_receipt_path,
+            "production_provider_launch_authority_receipt_content_id": self.production_provider_launch_authority_receipt_content_id,
+        }
+
+    def _finalize_production_model_assisted_route(
+        self, task: PortalTask, *, attempt: int, workspace_path: Path,
+        implementation_commit: str,
+    ) -> dict[str, Any]:
+        from .contract_packet_provider_router import bind_applied_patch_to_review_chain
+        from .production_reviewed_effect import finalize_production_reviewed_effect
+
+        route = self._production_routes.get((self._canonical_ref(task), attempt))
+        if route is None or route.get("reviewed_effect_binding") is None:
+            raise ValueError("production commit has no supervisor-observed reviewed effect")
+        authority = self._production_provider_review_authority
+        if authority is None:
+            raise ValueError("production commit has no operator review authority")
+        finalized = finalize_production_reviewed_effect(
+            route["reviewed_effect_binding"], repo_root=workspace_path, task=task,
+            task_identity=self._identity_for_task(task),
+            implementation_commit=implementation_commit,
+        )
+        result = route["route_result"]
+        binding = bind_applied_patch_to_review_chain(
+            result, implementation_commit=implementation_commit,
+        )
+        if binding is None:
+            raise ValueError("production commit has no admitted independent review chain")
+        tree = "git-tree:" + self._run_git(
+            ["rev-parse", implementation_commit + "^{tree}"], cwd=workspace_path,
+        ).stdout.strip()
+        attestation = authority.issue(
+            provider_receipt=result.provider_receipt, review_chain_binding=binding,
+            provider_policy_id=self.production_provider_policy.policy_id,
+            implementation_commit=implementation_commit, implementation_tree_id=tree,
+            reviewed_effect_binding=finalized, repo_root=workspace_path, task=task,
+            task_identity=self._identity_for_task(task),
+        )
+        evidence = {
+            "provider_execution_receipt": result.provider_receipt.to_dict(),
+            "admitted_review_chain_binding": binding.to_dict(),
+            "production_reviewed_effect_binding": finalized.to_dict(),
+            "provider_review_attestation": attestation.to_dict(),
+            "implementation_commit": implementation_commit,
+            "implementation_tree_id": tree,
+        }
+        self._production_reviewed_evidence[self._canonical_ref(task)] = evidence
+        self._record_event("production_provider_review_attested", {
+            "task_id": task.task_id, "attempt": attempt, **evidence,
+            "completion_authoritative": False,
+        })
+        return evidence
+
+    def _production_completion_evidence(
+        self, task: PortalTask, *, merged_tree_id: str,
+        evidence: Mapping[str, Any],
+        require_current_target: bool = True,
+    ) -> dict[str, Any]:
+        if getattr(self, "production_provider_policy", None) is None or self._task_uses_typed_local_execution(task):
+            return dict(evidence)
+        if not isinstance(evidence, Mapping):
+            raise ValueError("production completion evidence must be a mapping")
+        retained = self._production_reviewed_evidence.get(self._canonical_ref(task), {})
+        supplied = {key: value for key, value in evidence.items() if key in {
+            "provider_execution_receipt", "admitted_review_chain_binding",
+            "production_reviewed_effect_binding", "provider_review_attestation",
+        }}
+        material = supplied or retained
+        reviewed = material.get("production_reviewed_effect_binding", {})
+        if not isinstance(reviewed, Mapping):
+            raise ValueError("production completion reviewed effect must be a mapping")
+        implementation_commit = str(reviewed.get("implementation_commit") or "")
+        merge_commit = merged_tree_id.removeprefix("git-commit:")
+        tree = "git-tree:" + self._run_git(
+            ["rev-parse", merge_commit + "^{tree}"], cwd=self.repo_root,
+        ).stdout.strip()
+        _commit, _tree, exact = self._verified_acceptance_binding(
+            implementation_commit, merge_commit, tree,
+        )
+        if not exact:
+            raise ValueError("production reviewed implementation has not landed at completion target")
+        current_target = merge_commit
+        if require_current_target:
+            current_target = self._resolved_commit_ref(
+                self.repo_root, self.resolved_merge_target_branch or "HEAD",
+            )
+            if not current_target or not self._git_ref_is_ancestor(merge_commit, current_target):
+                raise ValueError("production completion target is not on the current selected branch")
+        from .production_reviewed_effect import ProductionReviewedEffectBinding, _tree_blob
+        captured = ProductionReviewedEffectBinding.from_dict(reviewed)
+        for effect in captured.path_effects:
+            blob = _tree_blob(self.repo_root, current_target, effect.path)
+            if effect.status == "deleted":
+                preserved = blob is None
+            else:
+                preserved = bool(blob is not None
+                    and blob[0] == effect.applied_git_mode
+                    and blob[1] == effect.applied_blob_oid
+                    and len(blob[2]) == effect.applied_bytes
+                    and "sha256:" + hashlib.sha256(blob[2]).hexdigest() == effect.applied_sha256)
+            if not preserved:
+                raise ValueError("production reviewed effect changed at completion target")
+        gate = self._verified_provider_review_gate_evidence(
+            task=task, implementation_commit=implementation_commit,
+            merge_commit=merge_commit, repository_tree_id=tree, evidence=material,
+        )
+        if gate is None:
+            raise ValueError("operator production policy requires verified independent review")
+        return {**dict(evidence), **material, "provider_review": gate}
 
     def route_model_assisted_contract_packet(
         self,
@@ -76582,8 +76887,30 @@ def open_database_implementation_daemon(
     return DatabaseImplementationDaemon(database_path=database_path, **kwargs).open()
 
 
+class _UniqueProductionOption(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        seen = getattr(namespace, "_production_options_seen", set())
+        if self.dest in seen:
+            raise argparse.ArgumentError(self, "duplicate production operator option")
+        seen.add(self.dest)
+        setattr(namespace, "_production_options_seen", seen)
+        setattr(namespace, self.dest, values)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the portal implementation backlog daemon")
+    parser.add_argument("--production-provider-policy", default="",
+                        choices=("", PRODUCTION_CLI_POLICY_NAME), action=_UniqueProductionOption)
+    parser.add_argument("--production-provider-context-budget-tokens", type=int,
+                        default=None, action=_UniqueProductionOption)
+    parser.add_argument("--production-provider-timeout-seconds", type=float,
+                        default=None, action=_UniqueProductionOption)
+    parser.add_argument("--production-provider-review-authority-key-path", type=Path,
+                        default=None, action=_UniqueProductionOption)
+    parser.add_argument("--production-provider-launch-authority-receipt-path", type=Path,
+                        default=None, action=_UniqueProductionOption)
+    parser.add_argument("--production-provider-launch-authority-receipt-content-id",
+                        default="", action=_UniqueProductionOption)
     parser.add_argument("--state-owner-bootstrap-fd", type=int, default=-1,
                         help="Inherited private listener for a native PID-bound owner grant")
     parser.add_argument("--state-owner-client-id", default="",
@@ -77089,7 +77416,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if hasattr(args, "_production_options_seen"):
+        del args._production_options_seen
+    return args
 
 
 TodoTask = PortalTask
@@ -77234,6 +77564,12 @@ def main(argv: list[str] | None = None) -> None:
             task_header_prefix=args.task_prefix,
             implement=args.implement,
             implementation_command=args.implementation_command or None,
+            production_provider_policy=args.production_provider_policy,
+            production_provider_context_budget_tokens=args.production_provider_context_budget_tokens,
+            production_provider_timeout_seconds=args.production_provider_timeout_seconds,
+            production_provider_review_authority_key_path=args.production_provider_review_authority_key_path,
+            production_provider_launch_authority_receipt_path=args.production_provider_launch_authority_receipt_path,
+            production_provider_launch_authority_receipt_content_id=args.production_provider_launch_authority_receipt_content_id,
             implementation_timeout=args.implementation_timeout,
             max_task_attempts=args.max_task_attempts,
             use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,

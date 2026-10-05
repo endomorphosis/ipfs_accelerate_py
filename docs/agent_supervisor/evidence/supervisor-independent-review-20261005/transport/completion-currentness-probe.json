@@ -1,0 +1,17 @@
+{
+  "changed_current_head": "aadfcb7fdf59784bae702b3cc7f5b0817a99579c",
+  "external_model_calls": 0,
+  "initial_review_gate_satisfied": true,
+  "provider_calls": [
+    "grok-implement",
+    "codex-independent-review"
+  ],
+  "requested_current_target": {
+    "denied": true,
+    "reason": "production reviewed effect changed at completion target"
+  },
+  "requested_historical_target_gate_satisfied": true,
+  "reviewed_commit": "162e088376e845009e4ff061e9f6de080e5ea310",
+  "schema": "readonly-production-completion-currentness-probe@1",
+  "scope": "The production completion helper alone; no queue/completion sink invoked."
+}

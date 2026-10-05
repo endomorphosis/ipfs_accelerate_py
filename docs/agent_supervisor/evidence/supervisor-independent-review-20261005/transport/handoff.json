@@ -1,0 +1,35 @@
+{
+  "authority_baseline": "/home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/transport/retired-authority-forwarding-baseline",
+  "base_commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "checkpoint_model_embedding_changes": false,
+  "database_binaries_copied": false,
+  "final_combined_frozen_run_required": true,
+  "handoff_branch": "agent/supervisor-independent-review-20261005",
+  "handoff_head": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "owned_files_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "de0dcff3ae9b09467338bc67b801e8d3a5eb03bda9f99b28174eb24fb83b4c41",
+    "test/api/test_agent_supervisor_production_policy_transport.py": "d1aa21e820da07960c6535da70c6a95b9ce4b43b412bb2406340a2c5a3eba37e"
+  },
+  "pinned_datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "runs": [
+    {
+      "catalog_files": 976,
+      "completion_authority": 0,
+      "run": "01",
+      "seals": 49
+    },
+    {
+      "catalog_files": 0,
+      "completion_authority": 0,
+      "run": "02",
+      "seals": 0
+    },
+    {
+      "catalog_files": 979,
+      "completion_authority": 0,
+      "run": "03",
+      "seals": 107
+    }
+  ],
+  "schema": "supervisor-transport-evidence-handoff@1"
+}

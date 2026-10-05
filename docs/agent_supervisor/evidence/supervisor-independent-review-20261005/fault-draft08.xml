@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="14.702" timestamp="2026-10-05T03:12:21.600701+00:00" hostname="spark-b271"><testcase classname="test.api.test_production_independent_review_contract" name="test_native_git_apply_failure_after_postimage_restores_owned_effect" time="1.940"><failure message="assert &quot;VALUE = 'reviewed'\n&quot; == &quot;VALUE = 'baseline'\n&quot;&#10;  &#10;  - VALUE = 'baseline'&#10;  + VALUE = 'reviewed'">test/api/test_production_independent_review_contract.py:388: in test_native_git_apply_failure_after_postimage_restores_owned_effect
+    assert (repo / TARGET).read_text(encoding="utf-8") == BASELINE
+E   assert "VALUE = 'reviewed'\n" == "VALUE = 'baseline'\n"
+E     
+E     - VALUE = 'baseline'
+E     + VALUE = 'reviewed'</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_lost_durable_lease_stops_remaining_and_compensating_writes" time="0.495" /><testcase classname="test.api.test_production_independent_review_contract" name="test_live_implementation_validates_commits_and_signs_one_reviewed_effect" time="2.613" /></testsuite></testsuites>
