@@ -1,0 +1,36 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "evidence": {
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md": {
+      "bytes": 11471,
+      "sha256": "7f0f8f03415796b51fe629721db117a211ca6f11ed0615de73ef065ed05f8633"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-provenance.json": {
+      "bytes": 7681,
+      "sha256": "242554c68b5d41159b2564ad146b199a5197a3bf232f9153aa6900a723ee43ee"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-qualification.json": {
+      "bytes": 8175,
+      "sha256": "4445f38ed6bb7830ceccae0bf915ed0f2beb58a17d7036072815e43b7a65dafa"
+    },
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": {
+      "bytes": 63913,
+      "sha256": "ee6388ec1a29cbff88927a250e9685526f3bbafee72e9ea865f135b1bc276b1d"
+    }
+  },
+  "exit_code": 0,
+  "extra_relative_link_errors": [],
+  "fresh_native_planning_qualified": true,
+  "own_production_source_changed": false,
+  "provider_calls": 0,
+  "recorded_at_utc": "2026-10-05T16:04:03.197324+00:00",
+  "schema": "largest-eigenval-post-merge-documentation-gates@1",
+  "source_head": "f3a6394854ec8538526680cbb735681ed0ac48a8",
+  "source_readback_pins_verified": 17,
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n",
+  "upstream_production_source_changed": true
+}

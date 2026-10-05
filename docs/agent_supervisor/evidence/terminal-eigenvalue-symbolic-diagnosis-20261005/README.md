@@ -60,6 +60,13 @@ manifests remain in ignored local artifacts. The benchmark is excluded from
 training and weight publication. Source and invocation provenance are retained
 in [qualification provenance](symbolic-planning-provenance.json).
 
+After incorporating the concurrently published multi-task preparation/admission
+changes, the [fresh native qualification](post-merge-symbolic-planning-qualification.json)
+again covered eight atoms and stored one task with zero providers, in about
+1.56 planning seconds. Its [source provenance](post-merge-symbolic-planning-provenance.json)
+binds the merged implementation. The earlier qualification remains retained;
+these administrative runs are not additional official benchmark trials.
+
 ## What the call saving means
 
 The [historical phase accounting](historical-phase-accounting.json) binds the
@@ -159,3 +166,10 @@ finite samples do not identify the hidden timing mechanism, prove universal
 behavior or revise its reward. Initial Docker reference and import-path
 plumbing failures are retained separately; there was one measured replay and
 no candidate optimization.
+
+Published replay producer files are snapshots of the executed scripts and
+retain their original local artifact paths and filenames. They require the
+retained private candidate and original artifact layout; this evidence folder
+is not a standalone numerical replay bundle. The parameterized native planning
+producer can create a fresh scratch qualification from the separately retained
+public task checkout.

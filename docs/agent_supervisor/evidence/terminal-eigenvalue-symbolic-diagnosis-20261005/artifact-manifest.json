@@ -1,8 +1,8 @@
 {
   "files": {
     "README.md": {
-      "bytes": 10573,
-      "sha256": "82884df36fc4123a83c6236dbaeaed63f814c4af7b14d55d2b5650cbda555b62"
+      "bytes": 11471,
+      "sha256": "7f0f8f03415796b51fe629721db117a211ca6f11ed0615de73ef065ed05f8633"
     },
     "documentation-gates.json": {
       "bytes": 1949,
@@ -19,6 +19,22 @@
     "native-runtime-diagnosis.json": {
       "bytes": 17122,
       "sha256": "b5c30f90ad44ceefb2d516e4b57a65302f6ec1160e01e006cd689642e9799a33"
+    },
+    "post-merge-documentation-gates.json": {
+      "bytes": 1679,
+      "sha256": "2a50e470d999a24b39f66f35964d046e21bb32448f28ce4b61ded62a51d735d8"
+    },
+    "post-merge-symbolic-independent-review.json": {
+      "bytes": 23360,
+      "sha256": "734f9d7633b4c5d40ba602c263a4bba312dae64c47bc0ebf5c0d2fddad71e25f"
+    },
+    "post-merge-symbolic-planning-provenance.json": {
+      "bytes": 7681,
+      "sha256": "242554c68b5d41159b2564ad146b199a5197a3bf232f9153aa6900a723ee43ee"
+    },
+    "post-merge-symbolic-planning-qualification.json": {
+      "bytes": 8175,
+      "sha256": "4445f38ed6bb7830ceccae0bf915ed0f2beb58a17d7036072815e43b7a65dafa"
     },
     "public-replay-frozen-inputs.json": {
       "bytes": 2898,
