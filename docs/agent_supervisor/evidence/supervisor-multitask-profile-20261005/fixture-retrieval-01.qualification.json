@@ -1,0 +1,86 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/fixture-retrieval-01.xml",
+    "--basetemp=/tmp/ordinary-supervisor-fixture-retrieval-01-cd76265736424e10aae312de5731e43b",
+    "test/api/test_terminal_doctor_dispatch.py",
+    "test/api/semantic_state/test_published_empty_task_context.py"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-fixture-retrieval-01-0de502476d934ed8ba8724925e93a137.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 0,
+  "elapsed_seconds": 50.109065958007704,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 26,
+    "closure_files_min": 1019,
+    "closure_files_max": 1039,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 26,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "test.api.test_terminal_doctor_dispatch::test_real_automatic_dispatch_publishes_only_candidate_handoff": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[unsupported]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[missing_prover]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_secret_guard_unavailability_retains_existing_signed_router_advisory": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[symlink]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[writable]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[digest]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[no-index-model_router-False]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[False-unchanged]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[False-support]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-unchanged]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-comment]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-support]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-value]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-symbol]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_publication_policy_is_closed_and_retains_historical_scope": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_container_empty_policy_ignores_unused_selected_snapshot_and_rejects_stale_scope": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_normal_vector_predecessor_keeps_native_snapshot_result_union": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_activity_is_distinct_closed_zero_model_observation": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]": "passed",
+    "test.api.semantic_state.test_published_empty_task_context::test_admitted_owner_registers_empty_policy_without_vector_artifacts": "passed"
+  },
+  "evidence_files": {
+    "fixture-retrieval-01.xml": {
+      "bytes": 4675,
+      "sha256": "68a7a6641dce8ffe8d8b8caf5e893b03fbc6ef7844fa10c856d1ad2c094ea8cf"
+    },
+    "fixture-retrieval-01.log": {
+      "bytes": 2230,
+      "sha256": "cfec89a023bb1d6d50470d15f10832324d235760265896c9990bf06ce3c29cf9"
+    }
+  }
+}

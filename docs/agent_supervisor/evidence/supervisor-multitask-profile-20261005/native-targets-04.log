@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 6 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 16%]
+.....                                                                    [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-native-20261005/native-targets-04.xml -
+============================= slowest 10 durations =============================
+2.49s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_task_insert_rolls_back_native_transaction
+0.88s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_graph_compilation_refuses_admission
+0.51s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[malformed]
+0.51s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[duplicate_schema]
+0.49s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[legacy_downgrade]
+0.40s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[unknown_schema]
+0.02s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_task_insert_rolls_back_native_transaction
+0.02s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[duplicate_schema]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[legacy_downgrade]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[malformed]
+============================== 6 passed in 15.93s ==============================

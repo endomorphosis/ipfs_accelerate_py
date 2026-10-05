@@ -1,0 +1,32 @@
+{
+  "schema": "supervisor-multitask-publication-independent-review@1",
+  "reviewers": [
+    "/root/multitask_profile_contract",
+    "/root/multitask_preparation",
+    "/root/multitask_native_review"
+  ],
+  "source_bindings": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+  },
+  "blocking_findings_remaining": [],
+  "corrected_findings": [
+    "Native manifest/admission/materialization/Quack observation accepted substituted requirement CID relative to immutable profile; native owner now reconstructs profile join.",
+    "Reserved profile malformed/ambiguous JSON and schema downgrade could bypass reviewed lane; exact parsing and known singleton task population now refuse.",
+    "Native runtime generic launch path could start new administrative profile without context/candidate runner; signed profile now refuses all launch constructions.",
+    "Source could change after actual compiler replay before admission; reviewed profile now gets final source reobservation, with native transaction check retained.",
+    "Missing external requirement object leaked AttributeError; runtime helper now refuses missing/wrong contract types explicitly."
+  ],
+  "review_limit": "Independent source review complements frozen tests. Interpreted meanings and requirement operations are explicitly authored candidate inputs; no semantic-fidelity, execution, or completion authority is conferred.",
+  "paid_provider_calls": 0,
+  "source_edits_by_reviewers_during_readonly_review": false,
+  "completion_authority": false,
+  "reviewed_commit": "6ce047f0bf75ad4ca6969784ed79ec4f2a3cd5ca",
+  "final_readonly_reviewer": "/root/multitask_profile_contract",
+  "documentation_scope_correction": "Name AdmittedBenchmarkRuntime.create as the tested observation/implementation construction refusal owner; do not generalize to unrelated entrypoints."
+}

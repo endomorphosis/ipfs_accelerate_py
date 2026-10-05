@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-multitask-baseline-20261005
+configfile: pytest.ini
+collected 183 items
+
+test/api/test_intent_requirement_adapter.py ............................ [ 15%]
+......                                                                   [ 18%]
+test/api/test_intent_symbolic_planning.py ...................            [ 28%]
+test/api/test_intent_symbolic_planning_ordered.py ....                   [ 31%]
+test/api/test_intent_requirement_admission.py .......................... [ 45%]
+...........                                                              [ 51%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 51%]
+........................................................................ [ 91%]
+                                                                         [ 91%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 91%]
+...............                                                          [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/baseline-01.xml -
+============================= slowest 10 durations =============================
+14.83s call     test/api/test_intent_symbolic_planning.py::test_real_native_publication_replays_symbolic_selection_against_original_baseline
+3.98s call     test/api/test_intent_symbolic_planning_ordered.py::test_ordered_outputs_require_both_real_public_checks
+3.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_selection_admits_unchanged_initial_context
+2.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[provider]
+2.61s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[world]
+2.59s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[symbolic]
+2.58s call     test/api/test_intent_symbolic_planning.py::test_symbolic_selection_still_requires_real_passing_public_check_and_created_output
+2.55s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[descriptor]
+2.52s call     test/api/test_intent_requirement_admission.py::test_v4_publication_requires_real_observation_then_allows_typed_completion
+2.23s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_selects_and_materializes_without_planner_provider
+======================= 183 passed in 157.34s (0:02:37) ========================

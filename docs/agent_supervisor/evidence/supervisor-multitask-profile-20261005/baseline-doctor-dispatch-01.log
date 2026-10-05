@@ -1,0 +1,42 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-multitask-baseline-20261005
+configfile: pytest.ini
+collected 11 items
+
+test/api/test_terminal_doctor_dispatch.py .......FF.F                    [100%]
+
+=================================== FAILURES ===================================
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/baseline-doctor-dispatch-01.xml -
+============================= slowest 10 durations =============================
+3.65s call     test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+1.46s call     test/api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+0.94s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.92s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.54s setup    test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.52s setup    test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+0.51s setup    test/api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+0.50s setup    test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.47s call     test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]
+========================= 3 failed, 8 passed in 29.97s =========================

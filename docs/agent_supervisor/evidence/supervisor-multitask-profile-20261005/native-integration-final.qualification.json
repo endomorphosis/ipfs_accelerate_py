@@ -1,0 +1,23 @@
+{
+  "returncode": 0,
+  "counts": {
+    "passed": 41,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "elapsed_seconds": 41.18945059701218,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 41,
+    "closure_files_min": 977,
+    "closure_files_max": 977,
+    "any_completion_authority": false
+  },
+  "seal_path": "/dev/shm/multitask-native-final-6bba992c101c477494785f12d11e1dab.duckdb",
+  "native_root": "/tmp/multitask-native-final-66bc4790b1954b4f9c821af0a2eac944",
+  "source_semantics_verified": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "controlled_race_note": "Two tests preserve actual compiler/insert results and inject real source edits at reviewed observation points."
+}

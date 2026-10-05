@@ -1,0 +1,54 @@
+{
+  "candidate_modified": false,
+  "frozen_at_utc": "2026-10-05T15:52:09.827447+00:00",
+  "generated_matrix_plan_frozen_before_run": true,
+  "harness_import_path_correction": {
+    "prior_failed_harness_sha256": "48cb1604ff1d4487ffff207aebd7862b74db19c6bc10ce2aedcc1de8fcf57766",
+    "prior_failed_runtime_receipt_path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-01/runtime-receipt.json",
+    "prior_failed_runtime_receipt_sha256": "219246affb7fff86d159864ff409d33ded94769bc00aa8ba3d84e3c486b679bc",
+    "reason": "First container stopped before importing candidate; executing /diagnostic/replay.py requires explicit /app in sys.path. No candidate compilation or numerical evaluation occurred. Matrix plan and candidate remain unchanged."
+  },
+  "hidden_inputs_read": false,
+  "inputs": [
+    {
+      "bytes": 12297,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/replay.py",
+      "sha256": "6a1618acbd6d7f8b446da7207df0d5e0c897274bb85872cfd42844d4c0ceeee1"
+    },
+    {
+      "bytes": 1401,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/plan.json",
+      "sha256": "d0ab020a9384ef57da8a06e92b9512235119edadbb9311f4260e9a33317fc4b0"
+    },
+    {
+      "bytes": 282,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/Dockerfile",
+      "sha256": "cf92dfa075000d7a4810066bf58820d6c36ef09891918aad773d2b1c9aea4fc9"
+    },
+    {
+      "bytes": 7886,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/.private/native-eigen-final.py",
+      "sha256": "d9caf44bb241e0f256538b98192c1d87b8f2578ad7e0d7e7a0bb90615c672022"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "producer_reference_correction": {
+    "prior_manifest_sha256": "29cd110bfc2329ae7d717bac813ff4320656137296f5fef158d8ad7121487e44",
+    "reason": "Docker FROM raw sha256 parsed as a repository name; use the inspected cached python repository digest. Failed build did not execute candidate or evaluator."
+  },
+  "reviewer_notes": [
+    "Match the public reference wrapper and individual-call medians.",
+    "Separate candidate compilation/import from warmed timing.",
+    "Check nonzero vectors, modulus rather than real-part ordering, complex conjugate partners, and strides."
+  ],
+  "schema": "public-eigenvalue-replay-frozen-inputs@1"
+}

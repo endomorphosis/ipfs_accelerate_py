@@ -1,0 +1,410 @@
+{
+  "actions": {
+    "benchmark_calls": 0,
+    "checkout_edits": 0,
+    "full_sources_private_task_bodies_keys_credentials_exported": false,
+    "hidden_verifier_reference_or_model_private_thought_bodies_read": false,
+    "numerical_replays": 0,
+    "only_created_file": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-independent-review.json",
+    "providers": 0,
+    "qualification_reruns_by_reviewer": 0,
+    "tests": 0
+  },
+  "all_post_merge_provenance_source_pin_readbacks": [
+    {
+      "bytes": 23323,
+      "matches_post_merge_provenance": true,
+      "module": "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+    },
+    {
+      "bytes": 65562,
+      "matches_post_merge_provenance": true,
+      "module": "benchmarks.agent_supervisor.container_coding.terminal_indexed_preparation",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da"
+    },
+    {
+      "bytes": 682,
+      "matches_post_merge_provenance": true,
+      "module": "benchmarks.agent_supervisor.container_coding.terminal_task_profile",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+      "sha256": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8"
+    },
+    {
+      "bytes": 95240,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846"
+    },
+    {
+      "bytes": 160096,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      "sha256": "9c0505757b56c52ccc4937cafe56f95e6eb255ef5acc5a3402d11526fc25909d"
+    },
+    {
+      "bytes": 131911,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      "sha256": "a87cb299e6e77a182a2dd1941100b4f8b080824db7d7575fc6063efcb70a2023"
+    },
+    {
+      "bytes": 27522,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.intent_requirement_adapter",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    {
+      "bytes": 15697,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    {
+      "bytes": 135680,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+    },
+    {
+      "bytes": 104897,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.plan_critic",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "sha256": "6f566deb7e3d23a32789a42799a896fa60c8ed6cca4a7854c082b02a5c3f0ff2"
+    },
+    {
+      "bytes": 77845,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.symbolic_candidate_planner",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "sha256": "4a51d33888c34a24cd0a8733bcb5272c7927f1b3f61186f8322445ba72b7e7ee"
+    },
+    {
+      "bytes": 23035,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    {
+      "bytes": 94089,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+    },
+    {
+      "bytes": 17723,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.terminal_task_profile",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "sha256": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc"
+    },
+    {
+      "bytes": 433395,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository",
+      "owner": "accelerate",
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    {
+      "bytes": 29936,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_datasets_py.logic.intent_ir.formalize.requirements",
+      "owner": "datasets",
+      "path": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "relative_path": "ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+    },
+    {
+      "bytes": 27163,
+      "matches_post_merge_provenance": true,
+      "module": "ipfs_datasets_py.logic.intent_ir.schema",
+      "owner": "datasets",
+      "path": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/intent_ir/schema.py",
+      "relative_path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+    }
+  ],
+  "checkout_head": "f3a6394854ec8538526680cbb735681ed0ac48a8",
+  "current_runtime_source_bindings": [
+    {
+      "bytes": 65562,
+      "changed_from_symbolic_02_review": true,
+      "git_blob_sha1": "b42cdb7738d6fa7792cde70a55bded575ba5e717",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da"
+    },
+    {
+      "bytes": 23323,
+      "changed_from_symbolic_02_review": false,
+      "git_blob_sha1": "78cbe940d2fc066bb40ac27f92bfebbc8c78f406",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+    },
+    {
+      "bytes": 23035,
+      "changed_from_symbolic_02_review": false,
+      "git_blob_sha1": "7fce4583d25b37b26391044b50f0d59af6e20346",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    {
+      "bytes": 27522,
+      "changed_from_symbolic_02_review": false,
+      "git_blob_sha1": "b9d8a4816f54277b58692f068a492f8675e7ff5c",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    {
+      "bytes": 15697,
+      "changed_from_symbolic_02_review": false,
+      "git_blob_sha1": "b3410cc3af9c759f79cbbe5e610f1ca99caf360c",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    {
+      "bytes": 94089,
+      "changed_from_symbolic_02_review": true,
+      "git_blob_sha1": "ee416bac7b65682e09c2756bc6c4eae8557da12b",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+    },
+    {
+      "bytes": 433395,
+      "changed_from_symbolic_02_review": false,
+      "git_blob_sha1": "b2ba7cbde2557becf9e51df4217f38676d89daef",
+      "matches_committed_head_bytes": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    }
+  ],
+  "document_review": {
+    "correct_scope": "Exact-real scalar syntax, dot multiplication and gradient-update projection; binary64 refinement, actual objective/gradient, full loop, complex eigendecomposition, DGEEV and timing certificate remain unestablished.",
+    "current_readme_hash_rebound_after_public_03_metadata_copy": true,
+    "incoming_numeric_proof_paragraph_reviewed": true,
+    "material_overclaims_found_in_reviewed_paragraph": false,
+    "material_overclaims_found_in_reviewed_paragraphs": false,
+    "numerical_diagnosis_measurements_independently_reverified_by_this_review": false,
+    "post_merge_fresh_qualification_paragraph_reviewed": true,
+    "post_merge_paragraph_counts_and_administrative_only_scope_match_receipt": true
+  },
+  "file_bindings": {
+    "admission": {
+      "bytes": 157222,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/state/admission.json",
+      "sha256": "9e53c011cbdeedb5eb3f3d591e442949b0eb3cf93e030ba2d6c9e31ca9fad81b"
+    },
+    "instruction": {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    "native_task_database": {
+      "bytes": 28323840,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/state/intent.duckdb",
+      "sha256": "93a1bfeb3d600eb69a7eedc55545c145cd9159eeb7735bdeb2128fff946c971e"
+    },
+    "prepared": {
+      "bytes": 127089,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/state/prepared.json",
+      "sha256": "6a18c491baec8a4afe8a46b39f902b1f20f7fff8e093858627e53537cc4e870c"
+    },
+    "private_contract": {
+      "bytes": 36020,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/private-contract.json",
+      "sha256": "3802af85bb0e3382ca9e15ed73995e82ccbf233596087592d25a30d84a1ec983"
+    },
+    "private_planning_result": {
+      "bytes": 7165,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/private-planning-result.json",
+      "sha256": "f4371122b8350844ea57386e3e907ce073219cb88766d55f69237fb977953979"
+    },
+    "producer": {
+      "bytes": 13129,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+      "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+    },
+    "public_post_merge_provenance": {
+      "bytes": 7681,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-provenance.json",
+      "sha256": "242554c68b5d41159b2564ad146b199a5197a3bf232f9153aa6900a723ee43ee"
+    },
+    "public_post_merge_qualification": {
+      "bytes": 8175,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-qualification.json",
+      "sha256": "4445f38ed6bb7830ceccae0bf915ed0f2beb58a17d7036072815e43b7a65dafa"
+    },
+    "qualification": {
+      "bytes": 8175,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/qualification.json",
+      "sha256": "4445f38ed6bb7830ceccae0bf915ed0f2beb58a17d7036072815e43b7a65dafa"
+    },
+    "readme": {
+      "bytes": 11471,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md",
+      "sha256": "7f0f8f03415796b51fe629721db117a211ca6f11ed0615de73ef065ed05f8633"
+    },
+    "shared_diagnosis_document": {
+      "bytes": 63913,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "ee6388ec1a29cbff88927a250e9685526f3bbafee72e9ea865f135b1bc276b1d"
+    }
+  },
+  "findings": [],
+  "independent_native_database_read": {
+    "canonical_encoding": "UTF-8 JSON; sort_keys=True, separators=(comma,colon), ensure_ascii=True, allow_nan=False",
+    "library": "duckdb",
+    "library_version": "1.5.5",
+    "matches_qualification": true,
+    "method": "SELECT-only reconstruction of current IntentRepository.get_task projection from tasks/dependencies/outputs/acceptance/validations; no mutation or migration",
+    "read_only": true,
+    "status": "ready",
+    "stored_tasks_sha256": "58f9678f49b6ab10c9923cbdfc219f2a02e0a7e334994227b3cda8e95f198490",
+    "task_alias": "TB-CODE-TASK",
+    "task_bodies_exported": false,
+    "task_cid": "baguqeeratn456qz3kaxc3mey5hocf3olipz34qs5w2t3g5gwamyabqi2uc2a",
+    "tasks": 1
+  },
+  "limits": [
+    "This fresh single-task qualification does not qualify all newly upstream multi-task admission/preparation transport behaviors.",
+    "Administrative coverage and signed storage do not establish source semantics, numerical correctness, speed or completion.",
+    "No fresh router coding arm or end-to-end savings/reward measurement is supplied."
+  ],
+  "native_administrative_qualification": {
+    "admission_readback_hash_matches_qualification": true,
+    "allowed_output": "modify eigen.py; text/x-python",
+    "authoring": "agent-authored interpretation candidate; no human semantic review",
+    "benchmark_success": null,
+    "coding_executed": false,
+    "completion_authority": false,
+    "contract_cid": "baguqeera24c5kvfweqygpt4j6k6wpcgt7hykotsxtqtfvdpwsitneabagofq",
+    "deterministic_replay_verified_by_actual_native_producer": true,
+    "execution_authority": false,
+    "goals": 2,
+    "ledger_sha256": "82323232ebba0dcc1fafb84fac80cd3f5b7084059f56d5afc9be7fe8f34a6a53",
+    "model_selection_disabled": true,
+    "only_validation": "public-structural-smoke",
+    "planning_and_admission_coverage_receipts_exactly_match_qualification": true,
+    "planning_and_admission_symbolic_receipts_exactly_match_qualification": true,
+    "planning_seconds": 1.5617670709907543,
+    "planning_strategy": "intent_symbolic",
+    "prepare_seconds": 0.4054105969844386,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "provider_request_absent": true,
+    "requirement_atoms": 8,
+    "semantic_alignment_verified": false,
+    "semantic_support_complete": false,
+    "signed_admission_verified_by_actual_native_producer": true,
+    "source_accounting_complete": true,
+    "source_semantics_verified": false,
+    "tasks": 1,
+    "training_exclusion": true
+  },
+  "post_merge_provenance_verified": {
+    "all_source_pin_count": 17,
+    "all_source_pins_match_current_readbacks": true,
+    "exit_code": 0,
+    "official_trial_launched": false,
+    "own_production_source_changed": false,
+    "qualification_matches_private_run_bytes": true,
+    "source_change_scope_unambiguous": true,
+    "source_heads_match": true,
+    "upstream_production_source_changed": true
+  },
+  "preserved_upstream_accelerate_commit": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "prior_symbolic_02_review_retained": {
+    "bytes": 12353,
+    "not_rebound_to_changed_runtime_sources": true,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-independent-review.json",
+    "sha256": "a4967450b1bb39af41f909dbca78a759304d024046c897749d21678558a94199"
+  },
+  "producer_and_contract_unchanged_from_symbolic_02": true,
+  "public_program_hash_bindings": {
+    "eigen.py": {
+      "content_review": "hash-only; no evaluator/reference program body inspection",
+      "original": {
+        "bytes": 642,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+        "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "qualification_copy": {
+        "bytes": 642,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/app/eigen.py",
+        "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      }
+    },
+    "eval.py": {
+      "content_review": "hash-only; no evaluator/reference program body inspection",
+      "original": {
+        "bytes": 2246,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "qualification_copy": {
+        "bytes": 2246,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/app/eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      }
+    }
+  },
+  "recorded_at_utc": "2026-10-05T16:03:28.000399+00:00",
+  "reviewer": "/root/staged_patch_review",
+  "run": "symbolic-03-post-merge",
+  "schema": "largest-eigenval-post-merge-symbolic-independent-review@1",
+  "scope": "Read-only independently corroborated fresh native single-task administrative symbolic planning after merge. No numerical replay, native proof requalification, coding or official benchmark trial.",
+  "status": "pass"
+}

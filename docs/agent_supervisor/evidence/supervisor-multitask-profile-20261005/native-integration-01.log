@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 31 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [  3%]
+.........F............F.......                                           [100%]
+
+=================================== FAILURES ===================================
+________ test_multitask_profile_requires_the_external_reviewed_contract ________
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py:276: in test_multitask_profile_requires_the_external_reviewed_contract
+    prep.prepare(repository=case["repository"], instruction=case["instruction"], state=case["state"],
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:265: in prepare
+    requirements = validate_task_profile_contract(task_profile, requirements, instruction=text)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py:186: in validate_task_profile_contract
+    canonical = validate_intent_requirement_contract(contract, source_text=instruction)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py:163: in validate_intent_requirement_contract
+    if value.get("schema") in {INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
+       ^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'get'
+________ test_revoked_actual_owner_profile_cannot_admit_prepared_tasks _________
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py:326: in test_revoked_actual_owner_profile_cannot_admit_prepared_tasks
+    revoke_local_profile(repository_cid=payload["repository_cid"], profile_dir=Path(payload["profile_dir"]),
+ipfs_accelerate_py/agent_supervisor/control/profile_authority.py:990: in wrapped
+    return function(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: revoke_local_profile() got an unexpected keyword argument 'repository_cid'
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-native-20261005/native-integration-01.xml -
+============================= slowest 10 durations =============================
+4.57s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+3.19s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[False]
+3.14s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[True]
+0.65s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_administrative_profile_refuses_unqualified_task_context_paths[initial_context]
+0.54s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_genuinely_resigned_contract_cannot_substitute_signed_profile_identity
+0.46s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_real_per_task_checks_do_not_require_later_join_output
+0.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_dropping_intent_contract_from_resigned_manifest_cannot_erase_profile_join
+0.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_mutated_preparation_cannot_enter_planning_or_native_storage[budget]
+0.42s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_mutated_preparation_cannot_enter_planning_or_native_storage[profile_omitted]
+0.42s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_mutated_preparation_cannot_enter_planning_or_native_storage[spec_extra]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_multitask_profile_requires_the_external_reviewed_contract
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_revoked_actual_owner_profile_cannot_admit_prepared_tasks
+======================== 2 failed, 29 passed in 28.74s =========================

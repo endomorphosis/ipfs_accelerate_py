@@ -8,6 +8,8 @@ import re
 
 SCHEMA = "terminal-public-task-profile@1"
 DATA_SCHEMA = "terminal-public-task-profile@2"
+MULTITASK_SCHEMA = "terminal-public-task-profile@3"
+MAX_TASKS = 16
 PROFILE = ".supervisor-task-profile.json"
 INSTRUCTION = ".supervisor-instruction.md"
 SMOKE = ".supervisor-public-smoke.py"
@@ -107,7 +109,7 @@ def _path(value):
     return value
 
 
-def validate_task_profile(profile: dict, *, instruction: str | None = None) -> dict:
+def _validate_single_task_profile(profile: dict, *, instruction: str | None = None) -> dict:
     schema = profile.get("schema") if type(profile) is dict else None
     keys = {"schema", "instruction_sha256", "input_paths", "outputs"}
     if schema == DATA_SCHEMA:
@@ -183,6 +185,132 @@ def validate_task_profile(profile: dict, *, instruction: str | None = None) -> d
     return canonical
 
 
+def _identifier(value, noun: str) -> str:
+    if type(value) is not str or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value) is None:
+        raise ValueError(f"public task requires a bounded exact {noun}")
+    return value
+
+
+def validate_task_profile(profile: dict, *, instruction: str | None = None) -> dict:
+    """Canonicalize a closed declaration without granting execution authority."""
+    if type(profile) is not dict or profile.get("schema") != MULTITASK_SCHEMA:
+        return _validate_single_task_profile(profile, instruction=instruction)
+    if set(profile) != {"schema", "instruction_sha256", "input_paths", "outputs",
+                        "intent_requirement_contract_cid", "tasks"}:
+        raise ValueError("unsupported public multi-task profile")
+    base = _validate_single_task_profile(
+        {name: SCHEMA if name == "schema" else profile[name]
+         for name in ("schema", "instruction_sha256", "input_paths", "outputs")},
+        instruction=instruction,
+    )
+    from ..core.multiformats_identity import validate_cid
+    try:
+        validate_cid(profile["intent_requirement_contract_cid"], codecs=("dag-json",))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("public multi-task profile requires a canonical requirement-contract CID") from exc
+    if type(profile["tasks"]) is not list or not 2 <= len(profile["tasks"]) <= MAX_TASKS:
+        raise ValueError("public multi-task profile requires 2 to 16 reviewed tasks")
+    tasks, owned_outputs = [], []
+    for item in profile["tasks"]:
+        if type(item) is not dict or set(item) != {
+            "task_key", "operation_id", "output_paths", "dependencies", "validation_key", "criterion_key",
+        }:
+            raise ValueError("public multi-task binding fields differ")
+        task = {name: _identifier(item[name], name)
+                for name in ("task_key", "operation_id", "validation_key", "criterion_key")}
+        if type(item["output_paths"]) is not list or not 1 <= len(item["output_paths"]) <= 64:
+            raise ValueError("public multi-task binding needs bounded nonempty output ownership")
+        output_paths = [_path(name) for name in item["output_paths"]]
+        if len(output_paths) != len(set(output_paths)):
+            raise ValueError("public multi-task output ownership must be unique")
+        if type(item["dependencies"]) is not list or len(item["dependencies"]) > MAX_TASKS - 1:
+            raise ValueError("public multi-task dependencies exceed their bound")
+        dependencies = [_identifier(name, "dependency task key") for name in item["dependencies"]]
+        if len(dependencies) != len(set(dependencies)):
+            raise ValueError("public multi-task dependencies must be unique")
+        task.update(output_paths=sorted(output_paths), dependencies=sorted(dependencies))
+        tasks.append(task)
+        owned_outputs.extend(output_paths)
+    for name in ("task_key", "operation_id", "validation_key", "criterion_key"):
+        if len({task[name] for task in tasks}) != len(tasks):
+            raise ValueError(f"public multi-task {name} must be globally unique")
+    if (len(owned_outputs) != len(set(owned_outputs))
+            or set(owned_outputs) != {item["path"] for item in base["outputs"]}):
+        raise ValueError("public multi-task output ownership must be disjoint and cover exactly all outputs")
+    by_key = {task["task_key"]: task for task in tasks}
+    for task in tasks:
+        if task["task_key"] in task["dependencies"] or not set(task["dependencies"]) <= set(by_key):
+            raise ValueError("public multi-task dependency is unknown or self-referential")
+    active, visited = set(), set()
+
+    def visit(key):
+        if key in active:
+            raise ValueError("public multi-task dependency cycle")
+        if key not in visited:
+            active.add(key)
+            for dependency in by_key[key]["dependencies"]:
+                visit(dependency)
+            active.remove(key)
+            visited.add(key)
+
+    for key in by_key:
+        visit(key)
+    canonical = {**base, "schema": MULTITASK_SCHEMA,
+                 "intent_requirement_contract_cid": profile["intent_requirement_contract_cid"],
+                 "tasks": sorted(tasks, key=lambda item: item["task_key"])}
+    if len(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")) + 1 > 65536:
+        raise ValueError("public task profile exceeds its 65536-byte bound")
+    return canonical
+
+
+def validate_task_profile_contract(profile: dict, contract: dict, *, instruction: str | None = None) -> dict:
+    """Join reviewed atomic requirements to exact administrative task ownership.
+
+    This checks authored declarations, not the semantic fidelity of the source
+    interpretation or successful execution of any task.
+    """
+    profile = validate_task_profile(profile, instruction=instruction)
+    if profile["schema"] != MULTITASK_SCHEMA:
+        raise ValueError("reviewed multi-task contract requires the explicit multi-task profile")
+    if type(contract) is not dict:
+        raise ValueError("public multi-task profile requires its reviewed requirement contract")
+    from ..core.multiformats_identity import cid_for_dag_json
+    from ..prompt.intent_plan_coverage import (
+        INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, validate_intent_requirement_contract,
+    )
+    canonical = validate_intent_requirement_contract(contract, source_text=instruction)
+    if (canonical["schema"] != INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA
+            or canonical["source_path"] != INSTRUCTION
+            or cid_for_dag_json(canonical) != profile["intent_requirement_contract_cid"]):
+        raise ValueError("public multi-task requirement contract schema, source or identity differs")
+    source = "".join(unit["text"] for unit in canonical["ledger"]["source_units"])
+    if instruction_sha256(source) != profile["instruction_sha256"]:
+        raise ValueError("public multi-task requirement contract instruction digest differs")
+    operations = {item["operation_id"]: item for item in canonical["symbolic_operations"]["operations"]}
+    tasks = {item["operation_id"]: item for item in profile["tasks"]}
+    if set(operations) != set(tasks):
+        raise ValueError("public multi-task bindings must cover exactly the reviewed operations")
+    req_operations = {matcher["requirement_id"]: op["operation_id"]
+                      for op in operations.values() for matcher in op["matchers"]}
+    groundings = {item["requirement_id"]: item for item in canonical["requirements"]}
+    outputs = {item["path"]: item for item in profile["outputs"]}
+    for op_id, task in tasks.items():
+        operation = operations[op_id]
+        required_dependencies = {req_operations[dependency]
+            for matcher in operation["matchers"]
+            for dependency in groundings[matcher["requirement_id"]]["dependency_requirement_ids"]}
+        if set(operation["dependency_operation_ids"]) != required_dependencies:
+            raise ValueError("public multi-task operation dependencies must equal reviewed requirement ordering")
+        expected_dependencies = sorted(operations[dependency]["task_key"]
+                                       for dependency in operation["dependency_operation_ids"])
+        if (task["task_key"] != operation["task_key"]
+                or [outputs[name] for name in task["output_paths"]] != operation["outputs"]
+                or [task["validation_key"]] != operation["validation_keys"]
+                or task["dependencies"] != expected_dependencies):
+            raise ValueError("public multi-task binding differs from its exact reviewed operation")
+    return canonical
+
+
 def task_profile_bytes(profile: dict) -> bytes:
     return (json.dumps(validate_task_profile(profile), sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
 
@@ -202,6 +330,8 @@ def task_profile_index_paths(profile: dict) -> list[str]:
 
 def task_profile_spec(profile: dict, *, policy_cid: str) -> dict:
     profile = validate_task_profile(profile)
+    if profile["schema"] == MULTITASK_SCHEMA:
+        raise ValueError("singleton public task specification requires version 1 or 2")
     return {"task_key": "TB-CODE-TASK", "scope_paths": list(dict.fromkeys([
         *task_profile_worker_inputs(profile), *(item["path"] for item in profile["outputs"])])),
         "dependencies": [], "outputs": profile["outputs"],
@@ -214,10 +344,28 @@ def task_profile_spec(profile: dict, *, policy_cid: str) -> dict:
             "evidence_cids": [], "validation_keys": ["public-structural-smoke"]}]}
 
 
+def task_profile_specs(profile: dict, *, policy_cid: str) -> list[dict]:
+    """Produce deterministic native declarations; callers must join the contract."""
+    profile = validate_task_profile(profile)
+    if profile["schema"] != MULTITASK_SCHEMA:
+        return [task_profile_spec(profile, policy_cid=policy_cid)]
+    outputs = {item["path"]: item for item in profile["outputs"]}
+    return [{"task_key": task["task_key"], "scope_paths": list(dict.fromkeys([
+        *task_profile_worker_inputs(profile), *task["output_paths"]])),
+        "dependencies": task["dependencies"], "outputs": [outputs[name] for name in task["output_paths"]],
+        "validations": [{"validation_key": task["validation_key"],
+            "argv": ["python3", "-I", "-B", SMOKE, "--task", task["task_key"]],
+            "cwd": ".", "expected_exit_codes": [0], "policy_cid": policy_cid}],
+        "acceptance": [{"criterion_key": task["criterion_key"],
+            "criterion": "Declared task output files satisfy byte bounds and Python outputs parse; benchmark correctness remains unverified",
+            "evidence_cids": [], "validation_keys": [task["validation_key"]]}]}
+        for task in profile["tasks"]]
+
+
 def task_profile_smoke(profile: dict) -> str:
     profile = validate_task_profile(profile)
     outputs = profile["outputs"]
-    smoke = '''"""Fixed structural output check; no candidate execution or semantic proof."""
+    script = '''"""Fixed structural output check; no candidate execution or semantic proof."""
 import ast
 import json
 import os
@@ -247,8 +395,19 @@ for output in outputs:
         ast.parse(raw, filename=output["path"])
 '''
     if profile["schema"] == DATA_SCHEMA:
-        smoke = smoke.replace("root = Path.cwd()", DATA_VALIDATOR + "\nroot = Path.cwd()")
-        smoke += '''    if output["media_type"] in ("application/json", "application/x-ndjson", "application/xml", "text/calendar"):
+        script = script.replace("root = Path.cwd()", DATA_VALIDATOR + "\nroot = Path.cwd()")
+        script += '''    if output["media_type"] in ("application/json", "application/x-ndjson", "application/xml", "text/calendar"):
         _data_format(raw, output["media_type"])
 '''
-    return smoke
+    if profile["schema"] != MULTITASK_SCHEMA:
+        return script
+    by_path = {item["path"]: item for item in outputs}
+    task_outputs = {task["task_key"]: [by_path[name] for name in task["output_paths"]]
+                    for task in profile["tasks"]}
+    selector = '''import sys
+task_outputs = json.loads(''' + repr(json.dumps(task_outputs, sort_keys=True, separators=(",", ":"))) + ''')
+assert len(sys.argv) == 3 and sys.argv[1] == "--task", "exact task selector required"
+assert sys.argv[2] in task_outputs, "unknown declared task selector"
+outputs = task_outputs[sys.argv[2]]
+'''
+    return script.replace("root = Path.cwd().resolve(strict=True)\n", selector + "root = Path.cwd().resolve(strict=True)\n", 1)

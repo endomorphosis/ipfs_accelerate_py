@@ -586,85 +586,7 @@ def _manifest(envelope: Mapping, *, initial=False, source_transition=None) -> tu
         _verify_planning_inputs(payload)
     if payload["schema"] == INTENT_MANIFEST_SCHEMA:
         _verify_intent_requirements(payload)
-    _verify_multitask_profile_sources(payload)
     return payload, profile, current
-
-
-def _verify_multitask_profile_sources(manifest: Mapping) -> dict | None:
-    """Replay the reviewed multi-task declaration at the actual owner boundary.
-
-    Preparation metadata is not an authority input. Every native admission and
-    materialization must bind the immutable profile to its exact requirements,
-    generated task contracts and structural checks, including after re-signing.
-    """
-    from .terminal_task_profile import (
-        INSTRUCTION, MULTITASK_SCHEMA, PROFILE, SCHEMA, SMOKE, normalized_instruction,
-        task_profile_bytes, task_profile_smoke, task_profile_specs,
-        task_profile_worker_inputs, validate_task_profile_contract,
-    )
-
-    if PROFILE not in manifest["sources"]:
-        return None
-    root = Path(manifest["repository"])
-    # Retain the generic source bound while identifying the opt-in schema.
-    # The stricter canonical support and task checks belong only to @3.
-    path = root / PROFILE
-    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
-        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-            raise LocalPlanningError("public task profile must be a regular signed input")
-        raw = stream.read(1_000_001)
-    if len(raw) > 1_000_000 or hashlib.sha256(raw).hexdigest() != manifest["sources"][PROFILE]["sha256"]:
-        raise LocalPlanningError("public task profile differs from signed input")
-    from .terminal_source_partition import _read, _unique_pairs
-    try:
-        declaration = json.loads(raw, object_pairs_hook=_unique_pairs)
-    except (ValueError, UnicodeError, RecursionError) as exc:
-        raise LocalPlanningError("reserved public task profile must be unambiguous JSON") from exc
-    if type(declaration) is not dict:
-        raise LocalPlanningError("reserved public task profile must be a declaration object")
-    if declaration.get("schema") != MULTITASK_SCHEMA:
-        from . import terminal_task_profile as profile_owner
-        known_singleton_schemas = {SCHEMA}
-        data_schema = getattr(profile_owner, "DATA_SCHEMA", None)
-        if type(data_schema) is str:
-            known_singleton_schemas.add(data_schema)
-        if (type(declaration.get("schema")) is not str
-                or declaration["schema"] not in known_singleton_schemas
-                or len(manifest["tasks"]) != 1):
-            raise LocalPlanningError("reserved public multi-task profile requires its reviewed schema")
-        return None
-    from ..prompt.prompt_workflow import LocalFallbackPolicy, PromptWorkflowRequest
-
-    try:
-        sources = manifest["sources"]
-        raw = _read(root, PROFILE, sources, 65536)
-        declaration = json.loads(raw, object_pairs_hook=_unique_pairs)
-        instruction = _read(root, INSTRUCTION, sources, 32768).decode("utf-8")
-        if not instruction.strip() or normalized_instruction(instruction) != instruction:
-            raise ValueError("canonical nonempty multi-task instruction required")
-        contract = decode_intent_requirement_contract(manifest)
-        validate_task_profile_contract(declaration, contract, instruction=instruction)
-        if raw != task_profile_bytes(declaration) or set(sources) != set(task_profile_worker_inputs(declaration)):
-            raise ValueError("multi-task profile or signed input population differs")
-        if _read(root, SMOKE, sources, 262144).decode("utf-8") != task_profile_smoke(declaration):
-            raise ValueError("multi-task structural check differs from the canonical producer")
-        if manifest["schema"] != INTENT_MANIFEST_SCHEMA or "planning_inputs" not in manifest:
-            raise ValueError("multi-task profile requires independently signed symbolic planning inputs")
-        _, evidence = _verify_planning_inputs(manifest)
-        if not evidence:
-            raise ValueError("multi-task profile requires native selected evidence")
-        specs = task_profile_specs(declaration, policy_cid=content_identity(LOCAL_POLICY))
-        for spec in specs:
-            for criterion in spec["acceptance"]:
-                criterion["evidence_cids"] = [evidence[0].evidence_cid]
-        request = PromptWorkflowRequest.from_dict(manifest["planning_inputs"]["request"])
-        if (manifest["tasks"] != specs or request.budget.max_tasks != len(specs)
-                or request.planning_policy.allow_model is not False
-                or request.planning_policy.fallback_policy is not LocalFallbackPolicy.DISABLED):
-            raise ValueError("multi-task specs, task budget or symbolic-only policy differs")
-    except (ValueError, TypeError, KeyError, IndexError, OSError, RecursionError) as exc:
-        raise LocalPlanningError("invalid signed multi-task profile binding: " + str(exc)) from exc
-    return declaration
 
 
 def decode_intent_requirement_contract(manifest: Mapping) -> dict:
@@ -1114,16 +1036,12 @@ def _header_nomination(payload):
 
 
 def _post_header_manifest(envelope, declared, before, **mode):
-    header = _has_header_contract(declared)
-    multitask = _verify_multitask_profile_sources(declared) is not None
-    if header or multitask:
+    if _has_header_contract(declared):
         after, _, current = _manifest(envelope, **mode)
         if after != declared or _tree(current) != _tree(before):
-            raise LocalPlanningError("source changed during external header applicability replay"
-                if header else "source changed during reviewed multi-task planning replay")
-        if header:
-            from .header_intent_applicability import require_applicability_budget
-            require_applicability_budget()
+            raise LocalPlanningError("source changed during external header applicability replay")
+        from .header_intent_applicability import require_applicability_budget
+        require_applicability_budget()
 
 
 def _require_admission_fields(admission: Mapping) -> None:

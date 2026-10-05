@@ -223,7 +223,7 @@ START or new Terminal-Bench score were produced by this qualification.
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
-| P0 | Symbolic decomposition in generic benchmark profiles | The shared requirement adapter, obligation compiler, symbolic planner, critic and formal-plan validator already handle reviewed multiple operations. Generic preparation and several execution wrappers still require one task. Add the bounded reviewed profile, then per-task context and explicit native execution scope described below. |
+| P0 | Symbolic decomposition in generic benchmark profiles | Reviewed bounded multi-task preparation now reuses the shared compiler, planner, critic, signed admission and native storage. Per-task source/context bindings and an explicit execution scope remain pending; the new profile refuses native launches until those joins are qualified. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
 | P1 | Authenticated live-provider qualification of optional independent review | Operator policy transport and the native reviewed-effect, merge, and restart path are connected below. Qualify authenticated Grok implementation and independent Codex review with real provider usage receipts; the local qualification uses authored responses and adds no live provider or benchmark score claim. |
 | P1 | Source/data and language coverage | `analysis/program_ast_adapters.py`, exhaustive corpus inventory, scoped Doctor diagnostics. Preserve all hashes and unresolved frontiers. Parsing, tokenization and vector hits do not establish executable semantics. |
@@ -751,17 +751,17 @@ replay. Ten related context, dispatch, execution or indexed-qualification guards
 also retain singleton requirements. Increasing the budget alone would leave
 those joins incomplete.
 
-The next planning increment is a separately versioned multi-task public profile
-with at most 16 reviewed task/operation bindings. The current public profile `@2`
-adds declared data formats and retains the single-task contract. Bind the original instruction
-hash and requirement-contract CID, unique task identities, disjoint output
-ownership with exact union coverage, operation and requirement dependencies,
-and each task's validation and acceptance keys. Preserve the current profile
-bytes and default path. Preparation must sign all canonical specifications and
-reconstruct them exactly during replay before using the existing symbolic
-selection, signed admission and transactional materialization. This increment
-would qualify administrative scheduling; context and execution refusals remain
-until their own joins are qualified.
+The reviewed planning increment now uses `terminal-public-task-profile@3`
+with 2–16 reviewed task/operation bindings. Version 2 supports structured-data
+declarations and retains the single-task contract, so the multi-task schema
+has its own version. Preparation binds the original instruction hash and exact
+requirement-contract CID, unique task identities, disjoint output ownership
+with exact union coverage, operation and requirement dependencies, and each
+task's validation and acceptance keys. It signs all canonical specifications
+and reconstructs them during replay before existing symbolic selection,
+signed admission and transactional materialization. The existing version 1
+profile, specification and smoke bytes keep their default path. The native
+qualification and remaining execution boundary are recorded below.
 
 The following increment binds each task to its source revision, dependency wave
 and native world context, including verified source successors after earlier
@@ -775,8 +775,85 @@ increment then uses an explicit multi-task native scope, isolated worktrees and
 leases, independent
 validation/review, merge currentness and durable completion. Its controls must
 cover parallel independent tasks, dependency-aware readiness and cold restart
-before claiming parallel execution. These profile and execution increments
-remain planned; this child-ownership change does not implement them.
+before claiming parallel execution. These context and execution increments
+remain planned; reviewed preparation alone does not implement them.
+
+## Reviewed multi-task preparation and native binding (2026-10-05)
+
+The [multi-task qualification](evidence/supervisor-multitask-profile-20261005/qualification.json)
+records the exact profile, preparation, admission and native owner checks.
+The final offline run passed 510 checks with zero failures or skips, including
+93 new profile/native controls and all 183 selected unchanged-baseline nodes.
+All 510 cases have fresh local AST seals without completion authority; 63
+manual source/test bindings, the pinned datasets checkout and four retained
+embedding/decoder assets stayed unchanged during the run. The focused and
+baseline runs overlap this final selection and are not added to its total.
+
+Call `prepare(..., task_profile=profile, intent_requirement_contract=path)`
+with an explicitly authored profile and complete
+`intent-plan-requirement-contract@2`. Each profile task contains only its task
+and operation IDs, owned output paths, dependency task IDs, validation key and
+acceptance key. The producer supplies the scope, fixed structural validation
+command, policy identity and selected source evidence. Arbitrary commands or
+authority fields cannot be injected through the profile.
+
+The join requires atomic mandatory requirements with exact native matchers;
+unresolved source units and unsupported compounds refuse. Task dependencies
+equal the operation ordering induced by requirement dependencies. Every
+declared output, including modified files, has one task owner. Preparation
+records a versioned list of all specifications and the exact task-count
+budget, then uses the existing symbolic planner, critic, formal compiler,
+signed admission and native owner transaction. It makes no provider call.
+
+The initial diagnostic showed a real owner-binding gap: a separately signed
+requirement contract with a changed review reference could differ from the
+immutable profile CID, enter storage as three tasks and pass native Quack
+observation. Native manifest verification now independently reconstructs the
+profile, original instruction, requirement CID, complete task specifications,
+selected evidence and generated smoke bytes. Reserved profile JSON must be
+unambiguous; malformed declarations and downgrading a multi-task declaration
+to a singleton schema refuse. Admission rechecks source currentness after
+planning replay, and materialization rechecks it before the native transaction
+commits.
+
+The native fixture has two independent root tasks and a third task depending
+on both. The typed owner exposes only the roots as initially ready and retains
+both dependency edges. These observations qualify administrative scheduling,
+not task execution or source interpretation quality. Initial/context
+preparation refuses this profile. `AdmittedBenchmarkRuntime.create` refuses
+both observation and implementation launches before allocating runtime state;
+unsigned preparation metadata cannot lift that boundary. Existing generic
+multi-task admissions keep their separate execution rules.
+
+Each fixed smoke selector checks only its task's owned outputs, bounded to
+1 MB per file and 4 MB per selected task. It parses Python output syntax and
+never executes candidate code. Semantic correctness and an aggregate
+multi-task completion bound still need separate validators. Existing manifest,
+scan and serialized-input ceilings remain in force, so structural validity of
+a 16-task profile does not guarantee admission of an oversized declaration.
+The remaining per-task context work must retain separate IR family,
+schema/version, decoder task, 8D/384D/768D selection, token/span budget,
+DuckDB/DuckLake inventory and pinned embedding/checkpoint identities.
+
+The next context increment has three acceptance gates:
+
+- Key each context by repository/source revision, task CID, requirement CID,
+  dependency wave and verified predecessor publications. Also bind its IR family,
+  schema/version, decoder task, dimension, token/span budget, inventory database
+  identity and immutable Hugging Face/checkpoint revision. Resolve that full
+  identity through ModelManager; keep cached embeddings and decoder assets
+  bound to their original hashes.
+- Build contexts for ready tasks from the native owner. Independent roots may
+  have separate contexts for the same source revision. A dependent task must
+  use verified source successors after its prerequisites publish. Missing
+  assets, a mismatched family/decoder or stale source/dependency receipts must
+  refuse context admission; an unavailable selection cannot silently choose a
+  different IR or dimension.
+- Qualify parallel ready roots, dependency waves, source changes, cache reuse
+  and cold restart with actual native contexts. Then qualify isolated worktree
+  leases, validation/review, merge currentness and durable completion before
+  enabling the reviewed profile's execution path. Autoformalized candidates
+  remain distinct from checked proofs in the proof index.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 
@@ -868,3 +945,24 @@ and cache treatment differ. Serialized retry-list order also differs while both
 policies disable retries; the strict control mismatch remains visible. This
 one-trial observation does not establish an efficiency or reliability advantage
 or change the full-suite coverage denominator.
+
+## Eigenvalue failure and symbolic planning reduction (2026-10-05)
+
+The [follow-up diagnosis and native symbolic qualification](evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md)
+identify regular Codex's sole observed failure as the size-9 speed inequality:
+18.86 microseconds versus 15.76, about 19.64% too slow. Its official eigenpair
+and dominance families passed. A custom size-9 probe had already reported a
+speed win; the exact timing mechanism remains unresolved. The public evaluator
+itself covers only even sizes, which is a validation limitation rather than a
+complete explanation of the failure.
+
+An agent-authored, source-bound version-2 requirement contract selects the
+existing native symbolic planner with zero planning-provider calls. Eight
+candidate atoms are covered, replayed, admitted and stored as one coding task.
+This is administrative coverage; source semantics, numerical proof and
+completion authority remain false. It projects the historical supervisor's
+two router sessions to one, eliminating a 23,766-token planning component
+(8.15% of the historical total), without measuring a new coding outcome or
+official reward. Regular Codex already has one session. Further call reduction
+needs a reviewed general numeric operator, compatible float/complex semantics
+and independently measured public correctness and timing gates.

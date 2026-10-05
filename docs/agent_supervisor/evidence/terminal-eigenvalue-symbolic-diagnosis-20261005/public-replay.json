@@ -1,0 +1,644 @@
+{
+  "billing_total_verified": false,
+  "candidate_modifications": 0,
+  "checks": {
+    "all_50_seed_groups_and_350_rounds_present": true,
+    "all_observed_round_medians_faster": true,
+    "both_owned_containers_removed": true,
+    "candidate_same_as_native_recovered_source": true,
+    "candidate_unmodified_and_not_optimized": true,
+    "completed_exit_zero": true,
+    "correctness_count_exact": true,
+    "correctness_zero_observed_failures": true,
+    "five_cpu_16gib_ram_32gib_combined_swap": true,
+    "frozen_source_and_public_inputs_unchanged": true,
+    "network_none_and_readonly_rootfs": true,
+    "no_model_or_official_verifier_calls": true,
+    "no_oom_or_watchdog": true,
+    "python_3_13_numpy_2_3": true
+  },
+  "checks_failed": 0,
+  "checks_passed": 14,
+  "cleanup": {
+    "both_owned_containers_removed": true,
+    "independent_named_container_query_empty": true,
+    "independent_named_container_query_returncode": 0,
+    "private_candidate_retained_without_public_source_export": true,
+    "rebuilt_image_retained_for_review": true
+  },
+  "conclusion": "The official size-9 speed failure did not reproduce in this one warmed public diagnostic. Size 9 was faster in all 35 paired rounds across five seeds, with candidate seed medians 9.088\u20139.232 microseconds versus NumPy 15.281\u201315.489 microseconds. This does not revise the official reward or establish the cause of its slower measurement.",
+  "container_launch_attempts": 2,
+  "dollar_cost": null,
+  "evidence_bindings": [
+    {
+      "bytes": 17122,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/native-runtime-diagnosis.json",
+      "sha256": "b5c30f90ad44ceefb2d516e4b57a65302f6ec1160e01e006cd689642e9799a33"
+    },
+    {
+      "bytes": 16005,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/native-runtime-diagnosis.before-coverage-correction.json",
+      "sha256": "f4357942d583abb30271c81846d5e2e6552b5d144158f1229ce904d9636a0675"
+    },
+    {
+      "bytes": 1401,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/plan.json",
+      "sha256": "d0ab020a9384ef57da8a06e92b9512235119edadbb9311f4260e9a33317fc4b0"
+    },
+    {
+      "bytes": 282,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/Dockerfile",
+      "sha256": "cf92dfa075000d7a4810066bf58820d6c36ef09891918aad773d2b1c9aea4fc9"
+    },
+    {
+      "bytes": 2898,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/frozen-inputs.json",
+      "sha256": "485a7037ec858b90b9d99124e91b4acd38e913379c02fb2591eca1034eb75f00"
+    },
+    {
+      "bytes": 12297,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/replay.py",
+      "sha256": "6a1618acbd6d7f8b446da7207df0d5e0c897274bb85872cfd42844d4c0ceeee1"
+    },
+    {
+      "bytes": 6517,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/run-diagnostic.py",
+      "sha256": "21831ae28781330ec9fa49ac9d706163ab170233b7a2943f1f08eea691d2045b"
+    },
+    {
+      "bytes": 11101,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/make-bounded-review.py",
+      "sha256": "7b69007407866f2486f1cd9dfbefb081442305649933512e1bd5c6654d28d416"
+    },
+    {
+      "bytes": 8993,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/runtime-receipt.json",
+      "sha256": "ef580670c2a6e2c3dbec82bcb220e9b76238f72f0ccf55b0900183bff5230d6b"
+    },
+    {
+      "bytes": 99950,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-02/output/result.json",
+      "sha256": "37c9f985452fa7a1f3b5896eed067f48e4a6c2115eac61280f31dbfe8616f7f1"
+    },
+    {
+      "bytes": 8992,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-01/runtime-receipt.json",
+      "sha256": "219246affb7fff86d159864ff409d33ded94769bc00aa8ba3d84e3c486b679bc"
+    },
+    {
+      "bytes": 91,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-01/output/failure.json",
+      "sha256": "5d2882f5dee3b9cd8c03a285f8f1ed7f408d10c83d7319def3e65346c207ab7f"
+    },
+    {
+      "bytes": 1290,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-01/build.log",
+      "sha256": "18327e8939590d3d6a251f0285ded8506f23ca167acc0d348da0bb223ecf7bd4"
+    },
+    {
+      "bytes": 19960,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/replay-01/build-repository-digest.log",
+      "sha256": "cdd0a96712199fb8dd0df988e618584b99145692a95c89147c3b4dad672c1489"
+    }
+  ],
+  "hidden_test_or_reference_source_read": false,
+  "historical_public_coverage_correction": {
+    "all_observed_timing_sizes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "completed_command_count": 11,
+    "custom_probe_size9": {
+      "candidate_microseconds": 9.3,
+      "numpy_microseconds": 15.66,
+      "reported_speedup": 1.69
+    },
+    "custom_probe_timing_sizes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "interpretation": "The supplied evaluator covers even sizes. A separate candidate-authored public probe also timed sizes 1 through 9, including size 9 at 9.30 microseconds versus 15.66 microseconds for NumPy. These observed checks did not establish the later official size-9 timing gate. Data, layout, warming, and timing noise remain unisolated.",
+    "native_candidate_write_count": 1,
+    "supplied_evaluator_omits_size9": true,
+    "supplied_evaluator_timing_sizes": [
+      2,
+      4,
+      6,
+      8,
+      10
+    ]
+  },
+  "interpretation_limits": [
+    "Rebuilt image shares inspected cached Python base and pinned NumPy version but differs from deleted official full image; exact reproduction is unavailable.",
+    "One process and one host interval; repeated warmed rounds are not independent process or machine replications.",
+    "Random paired timing order and identical generated matrices reduce within-run asymmetry; hidden verifier input, setup, warming, and timing methodology were not inspected or replicated.",
+    "Tiny-scaled matrix checks include absolute tolerance floors; do not describe those acceptance gates as stringent scale-invariant validation. The maximum scaled residual is reported separately.",
+    "Candidate and NumPy reference use the same installed LAPACK ecosystem. Residual and dominance sampling are numerical checks, not a universal formal proof.",
+    "Direct access to NumPy private DGEEV symbols, integer ABI, compiler availability, and runtime compilation remain portability and operational risks.",
+    "Runtime compilation/import is excluded from warmed call timing and recorded separately.",
+    "Existing workspace-4096 versus NumPy workspace differences remain a hypothesis; no workspace manipulation, source optimization, or causal experiment was performed."
+  ],
+  "measured_replay_attempts": 1,
+  "model_calls": 0,
+  "next_action": "Keep official native reward 0 and speed-gate diagnosis unchanged. Use the frozen public all-size/paired harness to qualify a reviewed deterministic operator and route recognized tasks without a planner call; any new algorithm must be assessed prospectively, without hidden-feedback optimization.",
+  "observed_at_utc": "2026-10-05T15:55:51.782547+00:00",
+  "official_benchmark_reruns": 0,
+  "optimization_iterations": 0,
+  "original_official_observation": {
+    "candidate_seconds_per_call": 1.8856488168239594e-05,
+    "excess_percent_above_required_bound": 19.64389587222797,
+    "failed_case": "test_speedup[9]",
+    "observed_correctness_gate_failed": false,
+    "observed_dominant_modulus_gate_failed": false,
+    "official_reward": {
+      "reward": 0.0
+    },
+    "required_strict_upper_bound_seconds_per_call": 1.5760509995743632e-05,
+    "root_cause_beyond_timing_inequality": "unknown"
+  },
+  "plumbing_failures": [
+    {
+      "candidate_executed": false,
+      "cause": "Docker FROM raw sha256 was interpreted as a repository name; corrected to the inspected cached python repository digest.",
+      "stage": "image_build"
+    },
+    {
+      "candidate_executed": false,
+      "cause": "Harness script directory omitted /app from module search path; stopped before candidate import. Added /app to sys.path in a new preserved attempt.",
+      "numerical_checks": 0,
+      "stage": "first_container_launch"
+    }
+  ],
+  "public_replay": {
+    "all_sizes_candidate_faster_rounds": 350,
+    "all_sizes_total_rounds": 350,
+    "candidate_import_seconds_separate_from_warmed_call_timings": 0.1956012769951485,
+    "correctness": {
+      "checked": 13245,
+      "failures": [],
+      "family_counts": {
+        "complex_dominant_pair": 45,
+        "identity": 50,
+        "jordan": 50,
+        "large_scaled": 50,
+        "negative_dominant": 50,
+        "random": 12800,
+        "rank_one": 50,
+        "tiny_scaled": 50,
+        "triangular": 50,
+        "zero": 50
+      },
+      "max_scaled_residual": 1.4962699014067407e-15
+    },
+    "elapsed_seconds": 2.3626497490040492,
+    "legacy_supplied_even_only_evaluator": {
+      "calls_per_function_size": 100,
+      "elapsed_seconds": 0.02229530698969029,
+      "sizes": [
+        2,
+        4,
+        6,
+        8,
+        10
+      ],
+      "speed_assertion_in_public_producer": false,
+      "stdout": "Median time for 2x2: 0.000001 seconds\nMedian time for 2x2 (ref): 0.000007 seconds\nMedian time for 4x4: 0.000003 seconds\nMedian time for 4x4 (ref): 0.000009 seconds\nMedian time for 6x6: 0.000005 seconds\nMedian time for 6x6 (ref): 0.000011 seconds\nMedian time for 8x8: 0.000008 seconds\nMedian time for 8x8 (ref): 0.000014 seconds\nMedian time for 10x10: 0.000011 seconds\nMedian time for 10x10 (ref): 0.000018 seconds\n",
+      "unchanged_public_producer": {
+        "bytes": 2246,
+        "path": "/app/eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "unpaired_different_random_inputs": true
+    },
+    "outer_seconds": 2.671505567996064,
+    "per_size": [
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          0.176,
+          0.176
+        ],
+        "ratio_min_median_max": [
+          0.026252983293556086,
+          0.02631578947368421,
+          0.026442307692307692
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          6.656,
+          6.704
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 1
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          0.944,
+          0.96
+        ],
+        "ratio_min_median_max": [
+          0.13169642857142858,
+          0.13258426966292136,
+          0.1342281879194631
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          7.089,
+          7.168
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 2
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          1.712,
+          1.744
+        ],
+        "ratio_min_median_max": [
+          0.21747967479674796,
+          0.21951219512195122,
+          0.2210953346855984
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          7.872,
+          7.888
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 3
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          2.528,
+          2.544
+        ],
+        "ratio_min_median_max": [
+          0.28990825688073396,
+          0.29094257106686616,
+          0.292817679558011
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          8.6725,
+          8.72
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 4
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          3.504,
+          3.6
+        ],
+        "ratio_min_median_max": [
+          0.3643926788685524,
+          0.36650082918739635,
+          0.37006578947368424
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          9.616,
+          9.728
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 5
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          4.624,
+          4.736
+        ],
+        "ratio_min_median_max": [
+          0.4275147928994083,
+          0.43151693667157587,
+          0.434654919236417
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          10.816,
+          10.896
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 6
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          6.0,
+          6.08
+        ],
+        "ratio_min_median_max": [
+          0.49407114624505927,
+          0.4960322355166317,
+          0.4980340760157274
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          12.144,
+          12.208
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 7
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          7.408,
+          7.472
+        ],
+        "ratio_min_median_max": [
+          0.544650069765734,
+          0.5453474676089517,
+          0.5469483568075117
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          13.584,
+          13.68
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 8
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          9.088,
+          9.232
+        ],
+        "ratio_min_median_max": [
+          0.5947254760814082,
+          0.596875,
+          0.5980820666710157
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          15.281,
+          15.489
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 9
+      },
+      {
+        "candidate_faster_rounds": 35,
+        "candidate_faster_seeds": 5,
+        "candidate_seed_median_microseconds_min_max": [
+          10.944,
+          11.056
+        ],
+        "ratio_min_median_max": [
+          0.6381024359048892,
+          0.6396648044692738,
+          0.6421746580315395
+        ],
+        "reference_seed_median_microseconds_min_max": [
+          17.12,
+          17.2165
+        ],
+        "round_count": 35,
+        "seed_count": 5,
+        "size": 10
+      }
+    ],
+    "size9_median_ratio": 0.596875,
+    "size9_median_speedup": 1.6753926701570678,
+    "size9_seed_results": [
+      {
+        "candidate_divided_by_reference": 0.596875,
+        "candidate_faster_rounds": 7,
+        "candidate_median_ns": 9168.0,
+        "candidate_p10_p90_ns": [
+          8592.0,
+          10048.0
+        ],
+        "matrix_bytes_sha256": "078dc1c469bc6392e864d6a836ecc1e2e996a2b71d9b3bb6b9c07fa527576e0d",
+        "reference_median_ns": 15360.0,
+        "reference_p10_p90_ns": [
+          14720.0,
+          16224.0
+        ],
+        "seed": 17
+      },
+      {
+        "candidate_divided_by_reference": 0.5972944849115505,
+        "candidate_faster_rounds": 7,
+        "candidate_median_ns": 9184.0,
+        "candidate_p10_p90_ns": [
+          8512.0,
+          9984.0
+        ],
+        "matrix_bytes_sha256": "a6cca5d8c7c31abcac3a760c5451ccbdce2d8c4e7d1e061d7ee234ddb3046296",
+        "reference_median_ns": 15376.0,
+        "reference_p10_p90_ns": [
+          14720.1,
+          16192.0
+        ],
+        "seed": 104
+      },
+      {
+        "candidate_divided_by_reference": 0.5947254760814082,
+        "candidate_faster_rounds": 7,
+        "candidate_median_ns": 9088.0,
+        "candidate_p10_p90_ns": [
+          8448.0,
+          9952.9
+        ],
+        "matrix_bytes_sha256": "24e9dcfb8db2c65d39d28c7e86fc483ef08287bf170fe5dcf9cfb9d141489cb0",
+        "reference_median_ns": 15281.0,
+        "reference_p10_p90_ns": [
+          14625.0,
+          16158.500000000002
+        ],
+        "seed": 829
+      },
+      {
+        "candidate_divided_by_reference": 0.5980820666710157,
+        "candidate_faster_rounds": 7,
+        "candidate_median_ns": 9168.0,
+        "candidate_p10_p90_ns": [
+          8528.0,
+          9966.500000000002
+        ],
+        "matrix_bytes_sha256": "af7c337729dc11f4a5b5e5fd39dec9fc65202cff5c657b31983a0975410bc2bf",
+        "reference_median_ns": 15329.0,
+        "reference_p10_p90_ns": [
+          14704.1,
+          16208.0
+        ],
+        "seed": 20261
+      },
+      {
+        "candidate_divided_by_reference": 0.5960358964426367,
+        "candidate_faster_rounds": 7,
+        "candidate_median_ns": 9232.0,
+        "candidate_p10_p90_ns": [
+          8528.0,
+          10048.9
+        ],
+        "matrix_bytes_sha256": "da9518a38932a73c9aa69af3347d922c8fb19a0446df025e6ce2e943c93adb02",
+        "reference_median_ns": 15489.0,
+        "reference_p10_p90_ns": [
+          14800.0,
+          17990.500000000007
+        ],
+        "seed": 98176
+      }
+    ],
+    "timing_plan": {
+      "matrices_per_seed_size": 256,
+      "performance_oracle": "Original public numpy.linalg.eig then argmax(abs(eigenvalues)).",
+      "rounds": 7,
+      "seeds": [
+        17,
+        104,
+        829,
+        20261,
+        98176
+      ],
+      "sizes": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "warmup_pairs": 64
+    }
+  },
+  "runtime_environment": {
+    "actual_docker_bounds": {
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpusetCpus": "",
+      "Memory": 17179869184,
+      "MemorySwap": 34359738368,
+      "NanoCpus": 5000000000,
+      "NetworkMode": "none",
+      "ReadonlyRootfs": true,
+      "Tmpfs": {
+        "/tmp": "rw,exec,nosuid,size=512m"
+      }
+    },
+    "cached_base_id": "sha256:5024f48ba9441d4b13a95d3945abc6365538e3a31109833367a1923523c6efed",
+    "compiler_calls": [
+      {
+        "argv": [
+          "gcc",
+          "-O3",
+          "-std=c99",
+          "-shared",
+          "-fPIC",
+          "-DLAPACK_ILP64",
+          "-I/usr/local/include/python3.13",
+          "-I/usr/local/lib/python3.13/site-packages/numpy/_core/include",
+          "-x",
+          "c",
+          "-",
+          "-o",
+          "/tmp/dominant_eigen_native/tmpzoc21ai4/aeae1435ae22c0b56877.cpython-313-aarch64-linux-gnu.so",
+          "-lm"
+        ],
+        "returncode": 0,
+        "seconds": 0.18890229100361466,
+        "source_body_recorded": false
+      }
+    ],
+    "cpu_pressure_after": "some avg10=25.95 avg60=26.01 avg300=25.26 total=67703181101\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+    "exact_official_environment_reproduced": false,
+    "original_image_id": "sha256:33ed3a0dc1a62386afe6e55bbd0da58da69a65a33522ca7c10fcd35bd4030063",
+    "original_image_unavailable_at_review": true,
+    "python_numpy_compiler_lapack": {
+      "architecture": "aarch64",
+      "cpu_max": "500000 100000",
+      "cpu_pressure_before": "some avg10=27.71 avg60=26.28 avg300=25.31 total=67702723254\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "gcc_version": "gcc (Debian 12.2.0-14+deb12u1) 12.2.0",
+      "integer_abi": "ILP64",
+      "lapack_symbol": "scipy_dgeev_64_",
+      "memory_max": "17179869184",
+      "memory_swap_max": "17179869184",
+      "numpy_build_dependencies": {
+        "blas": {
+          "detection method": "pkgconfig",
+          "found": true,
+          "include directory": "/opt/_internal/cpython-3.13.3/lib/python3.13/site-packages/scipy_openblas64/include",
+          "lib directory": "/opt/_internal/cpython-3.13.3/lib/python3.13/site-packages/scipy_openblas64/lib",
+          "name": "scipy-openblas",
+          "openblas configuration": "OpenBLAS 0.3.29  USE64BITINT DYNAMIC_ARCH NO_AFFINITY neoversen2 MAX_THREADS=64",
+          "pc file directory": "/project/.openblas",
+          "version": "0.3.29"
+        },
+        "lapack": {
+          "detection method": "pkgconfig",
+          "found": true,
+          "include directory": "/opt/_internal/cpython-3.13.3/lib/python3.13/site-packages/scipy_openblas64/include",
+          "lib directory": "/opt/_internal/cpython-3.13.3/lib/python3.13/site-packages/scipy_openblas64/lib",
+          "name": "scipy-openblas",
+          "openblas configuration": "OpenBLAS 0.3.29  USE64BITINT DYNAMIC_ARCH NO_AFFINITY neoversen2 MAX_THREADS=64",
+          "pc file directory": "/project/.openblas",
+          "version": "0.3.29"
+        }
+      },
+      "numpy_linalg_binary": {
+        "bytes": 395769,
+        "path": "/usr/local/lib/python3.13/site-packages/numpy/linalg/_umath_linalg.cpython-313-aarch64-linux-gnu.so",
+        "sha256": "d208908893f00002868a4e42e2778eff1614050a4021dee5fbef0b55c546fe64"
+      },
+      "numpy_version": "2.3.0",
+      "python": "3.13.16 (main, Oct  1 2026, 21:46:49) [GCC 12.2.0]",
+      "sysconfig_cc": "gcc",
+      "thread_environment": {
+        "BLIS_NUM_THREADS": null,
+        "MKL_NUM_THREADS": null,
+        "NUMEXPR_NUM_THREADS": null,
+        "OMP_NUM_THREADS": null,
+        "OPENBLAS_NUM_THREADS": null
+      }
+    },
+    "replacement_image": {
+      "Architecture": "arm64",
+      "Created": "2026-10-05T15:49:32.533960526Z",
+      "Id": "sha256:46f6a6c27bf634304f6c2cfb4768a34e0e3dfc05b683731c735315e2400b544b",
+      "Os": "linux",
+      "RepoDigests": [
+        "ipfs-eigen-diagnostic@sha256:46f6a6c27bf634304f6c2cfb4768a34e0e3dfc05b683731c735315e2400b544b"
+      ]
+    },
+    "replacement_rootfs_extends_inspected_cached_base": true
+  },
+  "schema": "public-eigenvalue-diagnostic-completed-review@1",
+  "source_provenance_limit": "Candidate reconstructed byte-for-byte from the successful visible command write; deleted native final container was not available for direct filesystem recovery.",
+  "status": "completed_public_diagnostic"
+}

@@ -1,0 +1,241 @@
+{
+  "checkout_head": "689642234aad95cd13518f5c193288b06a5f8abd",
+  "document_review": {
+    "candidate_atoms_distinguished_from_automatic_extraction_and_human_review": true,
+    "material_overclaims_found": false,
+    "numeric_operator_proposal_distinguished_from_implemented_qualified_operator": true,
+    "numerical_diagnosis_measurements_independently_verified_by_this_review": false,
+    "official_speed_failure_retained_and_exact_cause_not_established": true,
+    "planned_two_to_one_provider_session_reduction_is_projection_not_measured_fresh_trial": true,
+    "public_replay_distinguished_from_official_reward_and_original_image_reproduction": true,
+    "size_9_custom_probe_distinguished_from_even_only_public_evaluator": true
+  },
+  "failed_attempt_retention": {
+    "classification": "Planning/admission succeeded, bounded export failed on mappingproxy serialization. Retained as failed; not counted as qualified success.",
+    "fix_scope": "Producer exports dict(mappingproxy); successful fresh native run symbolic-02.",
+    "run": "symbolic-01"
+  },
+  "file_bindings": {
+    "admission": {
+      "bytes": 157123,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/state/admission.json",
+      "sha256": "d436c4775b7cc27bced103b7e7ce03a09075a851a8b0a3a3ee6f3e41a31ca481"
+    },
+    "native_task_database": {
+      "bytes": 28323840,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/state/intent.duckdb",
+      "sha256": "2088c9a74796edad7a505c31cbc597b2f515b80cb4512463fe4dd9d54e60e1e2"
+    },
+    "original_public_instruction": {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    "prepared": {
+      "bytes": 126902,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/state/prepared.json",
+      "sha256": "a203cc18b5d353a31445cb5b14c3fa0cfeeec79848b67b6273ca7ca18bee32e0"
+    },
+    "private_contract": {
+      "bytes": 36020,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/private-contract.json",
+      "sha256": "3802af85bb0e3382ca9e15ed73995e82ccbf233596087592d25a30d84a1ec983"
+    },
+    "private_planning_result": {
+      "bytes": 7165,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/private-planning-result.json",
+      "sha256": "afcee7a3187641acfaf0e4c6ee8b0d60176bed33317e7440f8da6716d2cbdee3"
+    },
+    "producer": {
+      "bytes": 13129,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+      "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+    },
+    "qualification": {
+      "bytes": 8176,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/qualification.json",
+      "sha256": "f3eacad2e7a91f765ee9b637d5d6c43a5ab8dc29404c1aff21382378efd77e4c"
+    },
+    "qualification_instruction": {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    "readme": {
+      "bytes": 10034,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md",
+      "sha256": "e102d084833a972e313c8b59f44023a073a987638f627c81777210f2360a6544"
+    },
+    "shared_diagnosis_document": {
+      "bytes": 58951,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "04146bdefad8a9fac5205eaa2a351f83aa40229e27ca9b85caff86f17e4ef898"
+    }
+  },
+  "findings": [],
+  "independent_native_database_read": {
+    "canonical_encoding": "UTF-8 JSON; sort_keys=True, separators=(comma,colon), ensure_ascii=True, allow_nan=False",
+    "completed_during_this_independent_review": true,
+    "library": "duckdb",
+    "library_version": "1.5.5",
+    "matches_qualification": true,
+    "method": "SELECT-only reconstruction of IntentRepository.get_task projection using tasks, task_dependencies, task_outputs, task_acceptance and task_validations; no repository mutation or migration",
+    "read_only": true,
+    "reexecuted_for_record_creation": false,
+    "status": "ready",
+    "stored_tasks_sha256": "2505a6e931af193d26d8287b44255bf02816bbd32874efe9a7f262dad0990183",
+    "task_alias": "TB-CODE-TASK",
+    "task_bodies_exported": false,
+    "task_cid": "baguqeeraz6wlfjfezekkhhlwhdikq6biklgrhrr6eeq7enkwselqqueitooq",
+    "tasks": 1
+  },
+  "limits": [
+    "Administrative source accounting and exact matcher coverage do not establish source semantics, numerical correctness, dominant-eigenpair behavior or speed.",
+    "No coding execution or new official symbolic arm outcome has been measured by this qualification.",
+    "Finite numerical sampling and timing evidence are separate from universal floating-point/complex proofs."
+  ],
+  "native_qualification": {
+    "admission_verified": true,
+    "benchmark_success": null,
+    "coding_executed": false,
+    "contract_cid": "baguqeera24c5kvfweqygpt4j6k6wpcgt7hykotsxtqtfvdpwsitneabagofq",
+    "deterministic_replay_verified": true,
+    "false_authority_fields": {
+      "completion_authority": false,
+      "execution_authority": false,
+      "proof_authority": false,
+      "semantic_alignment_verified": false,
+      "source_semantics_verified": false
+    },
+    "goals": 2,
+    "model_selection_disabled": true,
+    "native_storage_verified": true,
+    "planning_seconds": 1.5409817160107195,
+    "prepare_seconds": 0.42896682300488465,
+    "private_contract_and_admission_readback_verified": true,
+    "producer_hash_matches_qualification": true,
+    "provider_calls": 0,
+    "provider_request_absent": true,
+    "requirement_atoms": 8,
+    "requirement_ledger_sha256": "82323232ebba0dcc1fafb84fac80cd3f5b7084059f56d5afc9be7fe8f34a6a53",
+    "run": "symbolic-02",
+    "semantic_support_complete": false,
+    "source_accounting_complete": true,
+    "strategy": "intent_symbolic",
+    "tasks": 1,
+    "training_exclusion": true
+  },
+  "privacy_and_actions": {
+    "checkout_edits": 0,
+    "full_sources_ledgers_private_task_bodies_signing_keys_credentials_model_prompt_bodies_exported": false,
+    "hidden_verifier_or_reference_source_bodies_read": false,
+    "only_created_file": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-independent-review.json",
+    "provider_or_benchmark_calls": 0,
+    "qualification_reruns": 0,
+    "record_exports_only_bounded_metadata_paths_sizes_hashes_and_findings": true,
+    "test_runs": 0
+  },
+  "public_program_hash_bindings": {
+    "eigen.py": {
+      "content_review": "hash-only; evaluator/reference program body not inspected",
+      "original": {
+        "bytes": 642,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+        "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      },
+      "qualification_copy": {
+        "bytes": 642,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/app/eigen.py",
+        "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+      }
+    },
+    "eval.py": {
+      "content_review": "hash-only; evaluator/reference program body not inspected",
+      "original": {
+        "bytes": 2246,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "qualification_copy": {
+        "bytes": 2246,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02/app/eval.py",
+        "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      }
+    }
+  },
+  "public_source_and_requirement_review": {
+    "all_eight_exact_matchers_bound_to_one_task": true,
+    "all_instruction_bytes_accounted_for": true,
+    "allowed_output": "modify eigen.py; text/x-python",
+    "authorship": "agent-authored interpretation candidate; no human semantic review",
+    "legacy_reviewed_candidate_labels_do_not_establish_human_review_or_semantic_authority": true,
+    "native_classification": {
+      "confidence": 0,
+      "grounding": "INFERRED",
+      "intent_kind": "DECLARATIVE",
+      "modality": "REQUIRED",
+      "review_status": "MACHINE_EXTRACTED",
+      "statement_kind": "GOAL"
+    },
+    "only_validation": "public-structural-smoke",
+    "optional_evaluator_suggestion_disposition": "non_requirement",
+    "optional_language_package_permission_preserved_without_installation_requirement": true,
+    "requirement_atoms": [
+      "implement_entrypoint",
+      "dominant_modulus",
+      "input_domain",
+      "general_complex_eigenpair",
+      "faster_than_public_reference",
+      "public_residual",
+      "median_call_timing",
+      "python_entrypoint_retained"
+    ],
+    "single_operation": "operation:implement-eigenpair",
+    "source_units": 7,
+    "structural_smoke_does_not_check_numeric_behavior_or_speed": true,
+    "task_alias": "TB-CODE-TASK",
+    "unit_digest_and_contiguous_span_checks": true
+  },
+  "recorded_at_utc": "2026-10-05T15:53:32.998519+00:00",
+  "reviewed_runtime_source_bindings": [
+    {
+      "bytes": 61291,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c"
+    },
+    {
+      "bytes": 23323,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+    },
+    {
+      "bytes": 23035,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    {
+      "bytes": 27522,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    {
+      "bytes": 15697,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    {
+      "bytes": 89042,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    },
+    {
+      "bytes": 433395,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    }
+  ],
+  "reviewer": "/root/staged_patch_review",
+  "schema": "largest-eigenval-symbolic-planning-independent-review@1",
+  "scope": "Independent producer code, public instruction accounting, native administrative planning/admission/storage evidence, and bounded diagnosis wording review. No numerical correctness or benchmark-result qualification.",
+  "status": "pass"
+}

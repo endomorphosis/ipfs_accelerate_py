@@ -1,0 +1,50 @@
+{
+  "candidate_sha256": "d9caf44bb241e0f256538b98192c1d87b8f2578ad7e0d7e7a0bb90615c672022",
+  "created_at_utc": "2026-10-05T15:41:23.846314+00:00",
+  "hidden_speed_threshold_not_used_as_replay_acceptance_gate": true,
+  "interpretation": "Public diagnostic replay in a rebuilt runtime, not an exact reproduction of the deleted official environment.",
+  "limits": {
+    "cpu_quota": 5,
+    "host_watchdog_seconds": 360,
+    "memory_bytes": 17179869184,
+    "memory_swap_combined_bytes": 34359738368,
+    "network": "none",
+    "runtime_seconds": 300
+  },
+  "matrices_per_seed_size": 256,
+  "model_calls": 0,
+  "numpy_version": "2.3.0",
+  "official_verifier_calls": 0,
+  "optimization_iterations": 0,
+  "original_image_available": false,
+  "original_image_id": "sha256:33ed3a0dc1a62386afe6e55bbd0da58da69a65a33522ca7c10fcd35bd4030063",
+  "performance_oracle": "Original public numpy.linalg.eig then argmax(abs(eigenvalues)).",
+  "python_expected_major_minor": "3.13",
+  "read_only_public_inputs": [
+    "instruction.md",
+    "environment/src/eval.py"
+  ],
+  "replacement_base_image_id": "sha256:5024f48ba9441d4b13a95d3945abc6365538e3a31109833367a1923523c6efed",
+  "rounds": 7,
+  "schema": "public-eigenvalue-diagnostic-plan@1",
+  "seeds": [
+    17,
+    104,
+    829,
+    20261,
+    98176
+  ],
+  "sizes": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "warmup_pairs": 64
+}

@@ -1,0 +1,70 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/baseline-doctor-dispatch-01.xml",
+    "--basetemp=/tmp/ordinary-supervisor-baseline-doctor-dispatch-01-73353deb620040af9e21bb28bae456b8",
+    "test/api/test_terminal_doctor_dispatch.py"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-multitask-baseline-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-baseline-doctor-dispatch-01-6e3a675f6ed44165b34d3eb8fcc88450.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 1,
+  "elapsed_seconds": 30.808920574985677,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 8,
+    "closure_files_min": 1019,
+    "closure_files_max": 1019,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 8,
+    "failure": 3,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "test.api.test_terminal_doctor_dispatch::test_real_automatic_dispatch_publishes_only_candidate_handoff": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[unsupported]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[missing_prover]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_secret_guard_unavailability_retains_existing_signed_router_advisory": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[symlink]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[writable]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[digest]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]": "failure",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]": "failure",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[no-index-model_router-False]": "passed",
+    "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]": "failure"
+  },
+  "evidence_files": {
+    "baseline-doctor-dispatch-01.xml": {
+      "bytes": 3550,
+      "sha256": "eeef8a3b9e67db592819e5d4d614e0de9c8409c0e169bea5af65b248eedc9aaa"
+    },
+    "baseline-doctor-dispatch-01.log": {
+      "bytes": 3731,
+      "sha256": "abcdf1233eb358202cd50143d980fcde01eb6195d446d92092cadd1f3adb07c3"
+    }
+  }
+}

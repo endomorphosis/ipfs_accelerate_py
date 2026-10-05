@@ -1,0 +1,156 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+    "--task",
+    "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval",
+    "--artifact",
+    "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge"
+  ],
+  "earlier_local_attempt": {
+    "artifact": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-01",
+    "export_error": "mappingproxy task export was not JSON serializable; corrected using dict(task), then rerun in a fresh scratch repository",
+    "export_exit_code": 1,
+    "planning_qualified": true,
+    "provider_calls": 0
+  },
+  "earlier_qualified_attempt": "symbolic-02 retained separately, not counted as another benchmark trial",
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "duckdb": "1.5.5",
+    "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+  },
+  "exit_code": 0,
+  "merged_upstream_main": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "official_trial_launched": false,
+  "own_production_source_changed": false,
+  "producer": {
+    "bytes": 13129,
+    "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+  },
+  "qualification": {
+    "bytes": 8175,
+    "sha256": "4445f38ed6bb7830ceccae0bf915ed0f2beb58a17d7036072815e43b7a65dafa"
+  },
+  "qualification_reason": "Upstream main advanced to 5ab1a2ce1 with multi-task preparation and signed admission changes; fresh identical native qualification after merge.",
+  "recorded_at_utc": "2026-10-05T15:59:59.044313+00:00",
+  "schema": "largest-eigenval-post-merge-planning-provenance@1",
+  "scope": "Fresh native administrative planner replay/admission/storage on merged source; autoencoder preprocessing disabled, no coding or official trial.",
+  "source_bindings": {
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark": {
+      "bytes": 23323,
+      "owner": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+    },
+    "benchmarks.agent_supervisor.container_coding.terminal_indexed_preparation": {
+      "bytes": 65562,
+      "owner": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da"
+    },
+    "benchmarks.agent_supervisor.container_coding.terminal_task_profile": {
+      "bytes": 682,
+      "owner": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+      "sha256": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8"
+    },
+    "ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime": {
+      "bytes": 95240,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler": {
+      "bytes": 160096,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      "sha256": "9c0505757b56c52ccc4937cafe56f95e6eb255ef5acc5a3402d11526fc25909d"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator": {
+      "bytes": 131911,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      "sha256": "a87cb299e6e77a182a2dd1941100b4f8b080824db7d7575fc6063efcb70a2023"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.intent_requirement_adapter": {
+      "bytes": 27522,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning": {
+      "bytes": 15697,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler": {
+      "bytes": 135680,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.plan_critic": {
+      "bytes": 104897,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "sha256": "6f566deb7e3d23a32789a42799a896fa60c8ed6cca4a7854c082b02a5c3f0ff2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.symbolic_candidate_planner": {
+      "bytes": 77845,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "sha256": "4a51d33888c34a24cd0a8733bcb5272c7927f1b3f61186f8322445ba72b7e7ee"
+    },
+    "ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage": {
+      "bytes": 23035,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission": {
+      "bytes": 94089,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.terminal_task_profile": {
+      "bytes": 17723,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "sha256": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc"
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository": {
+      "bytes": 433395,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    "ipfs_datasets_py.logic.intent_ir.formalize.requirements": {
+      "bytes": 29936,
+      "owner": "datasets",
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+    },
+    "ipfs_datasets_py.logic.intent_ir.schema": {
+      "bytes": 27163,
+      "owner": "datasets",
+      "path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+    }
+  },
+  "source_heads": {
+    "accelerate": "f3a6394854ec8538526680cbb735681ed0ac48a8",
+    "datasets": "987cf856b2b902aa68c4587bb492b19b932b5d30"
+  },
+  "stdout": {
+    "planning_seconds": 1.5617670709907543,
+    "planning_strategy": "intent_symbolic",
+    "provider_calls": 0,
+    "requirements": 8,
+    "status": "qualified",
+    "tasks": 1
+  },
+  "upstream_production_source_changed": true
+}
