@@ -1,0 +1,68 @@
+{
+  "schema": "ordinary-supervisor-publication-integration@1",
+  "original_published_owned_commit": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+  "qualified_current_main": "e804005fcb12e95e8fea87100fcaba46aadb7727",
+  "current_main_contains_owned_publication": true,
+  "original_final_qualification": "final-02.qualification.json",
+  "original_final_passed": 649,
+  "only_changed_prior_source_binding": [
+    "ipfs_accelerate_py/llm_router.py"
+  ],
+  "ordinary_owner_and_native_test_bytes_unchanged": true,
+  "integration_selection": "publication-integration-selection.json",
+  "integration_distinct_passing_cases": 199,
+  "runs": [
+    {
+      "qualification": "publication-integration-01.qualification.json",
+      "counts": {
+        "passed": 148,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "ast_sealing": {
+        "records": 148,
+        "closure_files_min": 979,
+        "closure_files_max": 980,
+        "any_completion_authority": false
+      },
+      "native_process_audit": "publication-integration-01.native-process-audit.json"
+    },
+    {
+      "qualification": "publication-integration-contracts-01.qualification.json",
+      "counts": {
+        "passed": 51,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "ast_sealing": {
+        "records": 51,
+        "closure_files_min": 979,
+        "closure_files_max": 980,
+        "any_completion_authority": false
+      },
+      "native_process_audit": "publication-integration-contracts-01.native-process-audit.json"
+    }
+  ],
+  "count_scope": "The two integration selections have disjoint cases, but overlap the original 649-case qualification. Do not add these counts to the original run.",
+  "source_assets_and_datasets_pins_unchanged_during_each_run": true,
+  "retained_assets_match_original_final_run": true,
+  "independent_review": "publication-independent-review.json",
+  "hosted_documentation_gate": {
+    "commit": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+    "run_id": 37275617738,
+    "check_run_id": 111651872837,
+    "url": "https://github.com/endomorphosis/ipfs_accelerate_py/actions/runs/37275617738",
+    "job_started": false,
+    "observed_failure_annotations": [
+      "The job was not started because your account is locked due to a billing issue."
+    ],
+    "local_gate_qualification": "publication-documentation-gates.json"
+  },
+  "paid_provider_calls": 0,
+  "training_or_downloads": false,
+  "new_model_weights": false,
+  "new_benchmark_score": false,
+  "completion_authority": false
+}

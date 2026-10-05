@@ -1,0 +1,25 @@
+{
+  "source_main": "e804005fcb12e95e8fea87100fcaba46aadb7727",
+  "published_owned_commit": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+  "qualified_owner_and_test_bytes_unchanged": true,
+  "changed_in_prior_50_bindings": [
+    "ipfs_accelerate_py/llm_router.py"
+  ],
+  "selections": [
+    "test/api/test_router_provider_failure_diagnostics.py",
+    "test/api/test_semantic_router_integration.py",
+    "test/api/test_supervisor_codex_command_owner.py",
+    "test/api/test_llm_router_exact_provider_fallback.py",
+    "test/api/test_supervisor_current_model_route.py",
+    "test/api/test_production_independent_review_contract.py",
+    "test/api/test_ordinary_supervisor_child_identity.py",
+    "test/api/test_ordinary_supervisor_child_fence.py",
+    "test/api/test_ordinary_supervisor_shutdown_reconcile.py"
+  ],
+  "count_scope": "Additional source-frozen current-main integration; overlaps649-case qualification and must not be added to it.",
+  "supplementary_selections": [
+    "test/api/test_semantic_router_translation.py",
+    "test/api/test_router_implementation_runner.py",
+    "test/api/test_supervisor_router_execution_contract.py"
+  ]
+}

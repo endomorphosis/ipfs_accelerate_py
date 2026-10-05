@@ -1,0 +1,8 @@
+{
+  "fixture_root": "/tmp/ordinary-supervisor-publication-integration-01-3fa953a16ad14a09b543c7a7a3d3c820",
+  "worker_marker_count": 8,
+  "matching_live_processes": [],
+  "unavailable_worker_observations": [],
+  "signal_calls": 0,
+  "scope": "Native argv containing this run root, plus its recorded worker PIDs; zombies excluded."
+}

@@ -695,6 +695,17 @@ forced, and the existing process fence does not provide cgroup containment
 for workers that escaped before its first census. No executable test-owned
 process was observed in the final audited fixture roots.
 
+After publication, another session integrated closed router failure diagnostics
+while retaining the ordinary ownership and native test bytes. The
+[current-main integration](evidence/supervisor-ordinary-identity-20261005/publication-integration.json)
+records **199 passing checks** across two disjoint selections on `e804005fc`,
+with fresh AST seals, unchanged run pins and retained assets, and empty native
+process audits. These checks overlap the earlier 649-case qualification and
+are recorded separately. Independent review found no remaining blocker in the
+three incoming router changes. GitHub's documentation job for the original
+publication did not start because the account was locked for a billing issue;
+the local documentation gates passed.
+
 The [decomposition survey](evidence/supervisor-ordinary-identity-20261005/decomposition-survey.json)
 qualified 127 existing checks on the unchanged `39f88fee` baseline: 38 shared
 requirement/ordered-planner checks and 89 generic wrapper checks. Those counts

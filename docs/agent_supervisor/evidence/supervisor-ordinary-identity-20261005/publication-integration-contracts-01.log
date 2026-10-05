@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 51 items
+
+test/api/test_semantic_router_translation.py ..........................  [ 50%]
+test/api/test_router_implementation_runner.py ....................       [ 90%]
+test/api/test_supervisor_router_execution_contract.py .....              [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/publication-integration-contracts-01.xml -
+============================= slowest 10 durations =============================
+0.78s call     test/api/test_semantic_router_translation.py::test_explicit_program_translation_round_trips_real_subset_and_support[program1]
+0.75s setup    test/api/test_semantic_router_translation.py::test_real_capsules_round_trip_source_literals_and_immutable_core
+0.68s setup    test/api/test_semantic_router_translation.py::test_stale_sources_refuse_dispatch_and_structured_decode_but_allow_historical_audit
+0.64s setup    test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[core]
+0.64s setup    test/api/test_semantic_router_translation.py::test_structured_symbol_reply_enters_existing_native_candidate_grammar
+0.63s setup    test/api/test_semantic_router_translation.py::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[foreign_manifest_source]
+0.62s setup    test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[foreign_task]
+0.61s setup    test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[untyped_authority]
+0.61s setup    test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[unknown]
+0.61s call     test/api/test_semantic_router_translation.py::test_mixed_public_source_inventory_with_selected_capsules_round_trips
+============================= 51 passed in 48.15s ==============================

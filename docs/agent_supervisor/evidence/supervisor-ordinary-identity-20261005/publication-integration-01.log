@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 148 items
+
+test/api/test_router_provider_failure_diagnostics.py .................   [ 11%]
+test/api/test_semantic_router_integration.py ............                [ 19%]
+test/api/test_supervisor_codex_command_owner.py ..................       [ 31%]
+test/api/test_llm_router_exact_provider_fallback.py ........             [ 37%]
+test/api/test_supervisor_current_model_route.py ........                 [ 42%]
+test/api/test_production_independent_review_contract.py ................ [ 53%]
+..............                                                           [ 62%]
+test/api/test_ordinary_supervisor_child_identity.py .................... [ 76%]
+..........                                                               [ 83%]
+test/api/test_ordinary_supervisor_child_fence.py ....................... [ 98%]
+                                                                         [ 98%]
+test/api/test_ordinary_supervisor_shutdown_reconcile.py ..               [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/publication-integration-01.xml -
+============================= slowest 10 durations =============================
+2.54s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.98s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+1.53s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+1.20s call     test/api/test_llm_router_exact_provider_fallback.py::test_exact_provider_does_not_consume_cross_provider_cached_response
+1.16s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]
+0.94s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+0.88s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_keeps_worker_observations_until_native_quiescence[]
+0.87s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]
+0.82s setup    test/api/test_semantic_router_integration.py::test_actual_router_transports_capsules_and_expands_native_candidate
+0.81s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+======================= 148 passed in 136.13s (0:02:16) ========================
