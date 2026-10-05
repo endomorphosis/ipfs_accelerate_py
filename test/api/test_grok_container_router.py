@@ -121,7 +121,8 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
     def generate(prompt, **kwargs):
         assert kwargs["provider"] == "grok_cli"
         assert kwargs["allow_local_fallback"] is kwargs["allow_cross_provider_fallback"] is False
-        assert kwargs["grok_max_turns"] == (1 if purpose == "planning" else 128)
+        assert kwargs["grok_max_turns"] == (2 if purpose == "planning" else 128)
+        assert kwargs["timeout"] == 180
         assert kwargs["grok_disallowed_tools"] == "search_tool,use_tool"
         assert ("run_terminal_cmd" in kwargs["grok_tools"]) is (purpose == "coding")
         assert kwargs["grok_permission_mode"] == ("dontAsk" if purpose == "planning" else "bypassPermissions")
@@ -129,17 +130,18 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
         return "done"
     monkeypatch.setattr(routed_workspace, "generate_text", generate)
     _, receipt = runner.run(prompt="instruction", provider="grok_cli", model="grok-4.7",
-        timeout=1, max_output_tokens=10, purpose=purpose,
+        timeout=180, max_output_tokens=10, purpose=purpose,
         **({"container_boundary": Path("/fixture/boundary"), "container_boundary_sha256": "a"*64} if purpose == "coding" else {}))
     assert receipt["native_rollout_usage"]["schema"] == "native-grok-final-usage@1"
     assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 33
     assert receipt["completion_authority"] is False
     assert receipt["provider_invocation_policy"] == {
-        "max_turns": 1 if purpose == "planning" else 128,
+        "max_turns": 2 if purpose == "planning" else 128,
         "tools_profile": "none" if purpose == "planning" else "isolated_coding",
         "permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
         "disallowed_tools": ["search_tool", "use_tool"],
     }
+    assert receipt["timeout_seconds"] == 180
 
 
 def test_grok_coding_requires_container_boundary_before_provider_call(routed_workspace, monkeypatch):

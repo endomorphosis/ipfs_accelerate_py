@@ -67,7 +67,7 @@ the message, model response, reasoning or debug log. These observations do not
 grant completion authority or automatically change retry budgets.
 
 `provider_invocation_policy` records the requested native settings: planning
-uses one round, tools profile `none` and permission mode `dontAsk`; coding uses
+uses at most two rounds, tools profile `none` and permission mode `dontAsk`; coding uses
 at most 128 rounds, tools profile `isolated_coding` and `bypassPermissions` inside
 the verified worker boundary. The `none` profile names the empty built-in tool
 allowlist. Both purposes explicitly deny Grok's otherwise retained MCP dispatch
@@ -77,3 +77,7 @@ deny list. This deployment transfers no host MCP configuration. The generic
 router retains its previous behavior when this option is omitted.
 `provider_output_token_cap_enforced` remains false:
 the router's requested output-token count is not an enforced native CLI limit.
+
+The two-round planning cap is a bounded experiment under the selected planning
+deadline; it does not extend that deadline. Native `cancelled` observations from
+earlier one-round attempts do not establish that the turn cap caused the failure.

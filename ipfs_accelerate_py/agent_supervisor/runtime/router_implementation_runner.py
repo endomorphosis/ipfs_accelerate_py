@@ -210,7 +210,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "read_file,search_replace,grep,list_dir,todo_write,run_terminal_cmd",
             "grok_disallowed_tools": "search_tool,use_tool",
             "grok_permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
-            "grok_max_turns": 1 if purpose == "planning" else 128}
+            "grok_max_turns": 2 if purpose == "planning" else 128}
         receipt["provider_invocation_policy"] = {
             "max_turns": provider_options["grok_max_turns"],
             "tools_profile": "none" if purpose == "planning" else "isolated_coding",
