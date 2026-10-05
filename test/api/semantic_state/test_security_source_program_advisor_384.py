@@ -11,7 +11,8 @@ from ipfs_datasets_py.logic.formalization.autoencoder import source_program_runt
 from ipfs_datasets_py.logic.software_verification.program import ProgramExpression
 
 TEXT = "def assess(capacity: int, threshold: int) -> bool:\n    return capacity < threshold\n"
-PIN = "a" * 64
+CHECKPOINT_BYTES = b'{"fixture":"explicitly simulated numerical checkpoint"}'
+PIN = hashlib.sha256(CHECKPOINT_BYTES).hexdigest()
 
 
 def config(**updates):
@@ -31,6 +32,14 @@ def candidate(operator="<"):
 
 def install_runtime(monkeypatch, *, operator="<", change_hash=False, on_inference=None):
     calls = []
+    original_read = subject._read
+
+    def read(path, limit):
+        if str(path) == "/models/security.json":
+            return CHECKPOINT_BYTES
+        return original_read(path, limit)
+
+    monkeypatch.setattr(subject, "_read", read)
 
     def infer(source_rows, **options):
         return dict(domain_id="security_ir", rows=[dict(id=row["id"], source_sha256=

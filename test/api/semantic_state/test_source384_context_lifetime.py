@@ -24,7 +24,8 @@ def context_case(tmp_path, monkeypatch):
     output=tmp_path/'state'; output.mkdir()
     config_path=tmp_path/'config.json'; config_path.write_text('{}')
     checkpoint='c'*64
-    config={'checkpoint_sha256':checkpoint,'embedding_snapshot':'declared-test-snapshot'}
+    config={'schema':'terminal-source384-config@1',
+        'checkpoint_sha256':checkpoint,'embedding_snapshot':'declared-test-snapshot'}
     cid=cid_for_structured({'declared_fixture':True})
     head=CodebaseHead('fixture',1,cid,cid,f'rev:fixture:snapshot:{cid}',cid).to_dict()
     inference={'report':{'key':{'source_head':head,'version_id':'fixture-parent',

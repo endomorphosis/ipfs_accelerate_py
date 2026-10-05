@@ -1,0 +1,234 @@
+{
+  "base_refs": {
+    "accelerate": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+    "datasets": "987cf856b2b902aa68c4587bb492b19b932b5d30"
+  },
+  "changes": [
+    "Release and close the accepted run lease when isolated runtime construction fails before child launch.",
+    "Retain custody and refuse an unproven cleanup when initialization has launched a child.",
+    "Record unlaunched cleanup separately from native STOP; cleanup does not grant completion authority."
+  ],
+  "component": "lifecycle",
+  "date": "2026-10-05",
+  "final_distinct_counts": {
+    "failed": 0,
+    "passed": 13,
+    "skipped": 0
+  },
+  "final_passed_nodes_by_run": {
+    "constructor-native-green-02": [
+      "test/integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop",
+      "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[adapter]",
+      "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[orchestrator]",
+      "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[service]",
+      "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_retains_custody_if_initialization_launched_a_child",
+      "test/integration/test_native_launch_witness_cleanup.py::test_close_refuses_hidden_live_owned_child_before_releasing_lease",
+      "test/integration/test_native_launch_witness_cleanup.py::test_failed_start_fences_launch_witness_when_environment_becomes_private",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_is_visible_but_never_substitutes_for_child_bootstrap",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_witness_rejects_identity_drift[argv]",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_witness_rejects_identity_drift[birth]",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_witness_rejects_identity_drift[group]",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_witness_rejects_identity_drift[parent]",
+      "test/integration/test_native_launch_witness_cleanup.py::test_private_launch_witness_rejects_identity_drift[session]"
+    ]
+  },
+  "final_qualification_runs": [
+    "constructor-native-green-02"
+  ],
+  "latest_qualified_source_and_test_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "8fa69a87e4d99fc7f942506e5ab7840b73ed7ca5d41dd0f58716e07489fc16b9",
+    "test/integration/test_isolated_benchmark_runtime.py": "e55fff9a868d574ef5c2fa4834f8437d2d86186b2cfb6acd8926eecd7e721f22",
+    "test/integration/test_isolated_constructor_cleanup.py": "268bcbc1cf075e8d7d1e7e1a266adc33ab19028ab43a52eb539c661e2cd949a7",
+    "test/integration/test_native_launch_witness_cleanup.py": "d5a298360184dd49032d50e488a9d5c7d118f6092f8d13bbcbec1bb02421ad97"
+  },
+  "observations": [
+    "Three pre-fix constructor controls exposed unreleased run leases.",
+    "Final controls verify actual coordinator lease release and refuse cleanup if a real child remains owned.",
+    "Native signed START/observe/STOP and private launch-witness drift controls passed."
+  ],
+  "qualification_claims": {
+    "benchmark_result": false,
+    "downloads_performed": false,
+    "general_semantic_correctness": false,
+    "provider_calls": 0,
+    "training_performed": false
+  },
+  "reproduction": {
+    "bootstrap_note": "Import the datasets tests package first and verify its owner to avoid package shadowing. DATASETS_ROOT and OUTPUT are caller-selected reproduction placeholders, not recorded machine paths.",
+    "common_environment_names": [
+      "PYTHONPATH",
+      "DATASETS_ROOT",
+      "OUTPUT",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+      "PYTHONDONTWRITEBYTECODE",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB"
+    ],
+    "dependencies": "Recorded datasets base ref plus locally installed Python dependencies; AST-seal pytest plugin is mandatory.",
+    "operational_preconditions": [
+      "Use fresh per-run AST-seal DuckDB state.",
+      "Use umask 022 for native runtime fixture directories.",
+      "Require available Quack and native Linux process dependencies."
+    ],
+    "python_environment": "Base Python with accelerate, datasets and Harbor environment site-packages on PYTHONPATH.",
+    "working_directory": "accelerate repository root at the recorded source hashes"
+  },
+  "result_aggregation": "Final counts use the latest native run, deduplicated by exact pytest node identity. Earlier red and green control runs are retained separately.",
+  "runs": [
+    {
+      "base_module_hash_provenance": "Derived from recorded base commit; the baseline runner explicitly hashed changed files and test targets, so this unmodified module is absent from its before/after hash map.",
+      "command_record_sha256": "a807587b240d6e224a2e2da219881106fdaa2d85b0dadb0f1d5ce18341bf7daf",
+      "counts": {
+        "failed": 3,
+        "passed": 0,
+        "skipped": 0
+      },
+      "exit_code": 1,
+      "exit_record_sha256": "8a1ee72de5a4835b0bf78c2f2f1691e7b1f205021958e5252416c707b96f5f22",
+      "failed_nodes": [
+        "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[adapter]",
+        "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[orchestrator]",
+        "test/integration/test_isolated_constructor_cleanup.py::test_refused_isolated_constructor_releases_actual_unlaunched_run_lease[service]"
+      ],
+      "id": "constructor-red-01",
+      "log_sha256": "04b08cd19a2bd2bf653acd89e1b5120ce95ac3179d509d25396c6969dbc058aa",
+      "recorded_environment_names": [
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPATH"
+      ],
+      "recorded_source_set_unchanged": true,
+      "reproducible_invocation_template": [
+        "python",
+        "-B",
+        "-c",
+        "import os,pathlib,tests,pytest,sys; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path(os.environ[\"DATASETS_ROOT\"])/\"tests\"/\"__init__.py\"; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=${OUTPUT}/constructor-red-01.xml",
+        "test/integration/test_isolated_constructor_cleanup.py"
+      ],
+      "scoped_after_sha256": {
+        "test/integration/test_isolated_constructor_cleanup.py": "34083439e2573d46005903777fcec142841efa89d0b60e8490af6735f95e575c"
+      },
+      "scoped_before_sha256": {
+        "test/integration/test_isolated_constructor_cleanup.py": "34083439e2573d46005903777fcec142841efa89d0b60e8490af6735f95e575c"
+      },
+      "scoped_recorded_hashes_unchanged": true,
+      "seconds": 18.033,
+      "skipped_nodes": [],
+      "test_report_sha256": "78fac2d8f58b26aa5cf5b6df2886bcf7a8e06df59f3e4326cefaa988468370bc",
+      "unmodified_base_module_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "75d36803c81b9397047aa34f8b5a7a9b04cedb0923a52c0affbb21b320bc391f"
+      }
+    },
+    {
+      "command_record_sha256": "5f7fa96135e7c9fc2ded9116fcc28d436b3afd38cf513a4ba3c2c6e8283c29e6",
+      "counts": {
+        "failed": 0,
+        "passed": 3,
+        "skipped": 0
+      },
+      "exit_code": 0,
+      "exit_record_sha256": "300f2c7a1ff6756e2483d7f0d97ab2c941fbb8d8f3f48a780b189aa248f3a763",
+      "failed_nodes": [],
+      "id": "constructor-green-01",
+      "log_sha256": "319940a56fb94303a354cf177f79eb7e46151517acc0d77d15cb2d799f7b5211",
+      "recorded_environment_names": [
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPATH"
+      ],
+      "recorded_source_set_unchanged": true,
+      "reproducible_invocation_template": [
+        "python",
+        "-B",
+        "-c",
+        "import os,pathlib,tests,pytest,sys; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path(os.environ[\"DATASETS_ROOT\"])/\"tests\"/\"__init__.py\"; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=${OUTPUT}/constructor-green-01.xml",
+        "test/integration/test_isolated_constructor_cleanup.py"
+      ],
+      "scoped_after_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "99c3199af30211b65609b592b0ca3b84510ccf2e659337ec90fa9f3107cbcd00",
+        "test/integration/test_isolated_constructor_cleanup.py": "34083439e2573d46005903777fcec142841efa89d0b60e8490af6735f95e575c"
+      },
+      "scoped_before_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "99c3199af30211b65609b592b0ca3b84510ccf2e659337ec90fa9f3107cbcd00",
+        "test/integration/test_isolated_constructor_cleanup.py": "34083439e2573d46005903777fcec142841efa89d0b60e8490af6735f95e575c"
+      },
+      "scoped_recorded_hashes_unchanged": true,
+      "seconds": 19.164,
+      "skipped_nodes": [],
+      "test_report_sha256": "2267ed4e46ab9e7a7e880b3b96e4f2896a6661b85dc0877a0fd97d1bf94714f3"
+    },
+    {
+      "command_record_sha256": "dc77a1ca2d068f466e6d38b9669bb947d0bb21d3504afc9b6c4b131de7134bd2",
+      "counts": {
+        "failed": 0,
+        "passed": 13,
+        "skipped": 0
+      },
+      "exit_code": 0,
+      "exit_record_sha256": "31ba39246c8a78771cc379fb9ca25974a2afa004c35cd524f7213987a4bd8e8a",
+      "failed_nodes": [],
+      "id": "constructor-native-green-02",
+      "log_sha256": "1e031d5a39982a96e0d05284720a621fe1e9668fa68edb8099c5a407817c8145",
+      "recorded_environment_names": [
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPATH"
+      ],
+      "recorded_source_set_unchanged": false,
+      "reproducible_invocation_template": [
+        "python",
+        "-B",
+        "-c",
+        "import os,pathlib,tests,pytest,sys; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path(os.environ[\"DATASETS_ROOT\"])/\"tests\"/\"__init__.py\"; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=${OUTPUT}/constructor-native-green-02.xml",
+        "test/integration/test_isolated_constructor_cleanup.py",
+        "test/integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop",
+        "test/integration/test_native_launch_witness_cleanup.py"
+      ],
+      "scoped_after_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "8fa69a87e4d99fc7f942506e5ab7840b73ed7ca5d41dd0f58716e07489fc16b9",
+        "test/integration/test_isolated_benchmark_runtime.py": "e55fff9a868d574ef5c2fa4834f8437d2d86186b2cfb6acd8926eecd7e721f22",
+        "test/integration/test_isolated_constructor_cleanup.py": "268bcbc1cf075e8d7d1e7e1a266adc33ab19028ab43a52eb539c661e2cd949a7",
+        "test/integration/test_native_launch_witness_cleanup.py": "d5a298360184dd49032d50e488a9d5c7d118f6092f8d13bbcbec1bb02421ad97"
+      },
+      "scoped_before_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "8fa69a87e4d99fc7f942506e5ab7840b73ed7ca5d41dd0f58716e07489fc16b9",
+        "test/integration/test_isolated_benchmark_runtime.py": "e55fff9a868d574ef5c2fa4834f8437d2d86186b2cfb6acd8926eecd7e721f22",
+        "test/integration/test_isolated_constructor_cleanup.py": "268bcbc1cf075e8d7d1e7e1a266adc33ab19028ab43a52eb539c661e2cd949a7",
+        "test/integration/test_native_launch_witness_cleanup.py": "d5a298360184dd49032d50e488a9d5c7d118f6092f8d13bbcbec1bb02421ad97"
+      },
+      "scoped_recorded_hashes_unchanged": true,
+      "seconds": 43.671,
+      "skipped_nodes": [],
+      "test_report_sha256": "7839ca58a3bb7502519e24680d1ad5adeed4166a04cef73cf6dc74e2512659d4"
+    }
+  ],
+  "schema": "supervisor-router-lifecycle-focused-evidence/v1",
+  "scope": "Constructor lease cleanup, owned-child custody and native signed START/observe/STOP. The latest focused run observed unrelated source changes; it is not a frozen whole-graph qualification.",
+  "source_stability_limitation": "constructor-native-green-02 recorded source_unchanged=false because other concurrently edited files entered its broad snapshot. Its lifecycle production file and all three target test files are individually identical before/after. No full transitive source-graph immutability claim is made."
+}

@@ -178,6 +178,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             allow_local_fallback=False, allow_cross_provider_fallback=False,
             timeout=timeout, max_tokens=max_output_tokens, max_new_tokens=max_output_tokens,
             reasoning_effort=reasoning_effort,
+            # Both purposes launch a workspace-capable agent and require a fresh
+            # native receipt. Cached response text cannot replay those effects.
+            side_effecting=True,
             task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
         )
         observation = get_last_cli_observation(provider)

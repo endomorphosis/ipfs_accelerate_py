@@ -215,6 +215,24 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
         else:
             result.update(status="fail_open_unavailable", failure_stage=stage,
                 error_type=type(error).__name__, inference=None, lake=None)
+    if result["inference"] is not None:
+        # Numerical loading binds the original artifact. Recheck its current
+        # bytes after all optional native work, including an unavailable Lake
+        # build, before publishing advice for a checkpoint selected by path.
+        try:
+            from ipfs_datasets_py.logic.formalization.autoencoder.structured_source_384 import MAX_BYTES
+            if _sha(_read(selection["checkpoint_path"], MAX_BYTES)) != selection["checkpoint_sha256"]:
+                raise ValueError("selected checkpoint changed during source advice")
+        except Exception as error:
+            result.update(status="fail_open_unavailable", failure_stage="checkpoint_currentness",
+                error_type=type(error).__name__, inference=None, lake=None)
+    if result["inference"] is None:
+        # Optional state models and candidate counts cannot outlive a discarded
+        # inference (including serialization and checkpoint-currentness errors).
+        if "source_state" in result:
+            result["source_state"] = None
+        result.pop("qualified_candidate_count", None)
+        result.pop("source_count", None)
     result["elapsed_seconds"] = time.monotonic() - started
     return result
 

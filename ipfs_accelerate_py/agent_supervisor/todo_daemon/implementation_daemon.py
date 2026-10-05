@@ -14748,7 +14748,10 @@ class PortalImplementationDaemon:
             coordinator.close()
         artifact_store = self._dependency_preflight_artifact_store
         if artifact_store is not None:
-            artifact_store.close()
+            if not artifact_store.close():
+                # Keep custody so shutdown can be retried after the writer
+                # releases its lock; do not report a completed checkpoint.
+                raise TimeoutError("dependency preflight checkpoint close deadline elapsed")
             self._dependency_preflight_artifact_store = None
 
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
@@ -39163,7 +39166,7 @@ class PortalImplementationDaemon:
         entries: Sequence[Any],
         path_prefix: str = "",
     ) -> list[str]:
-        """Render diffs for untracked additions when no tracked path changed."""
+        """Render byte-preserving diffs for exact untracked additions."""
 
         prefix = path_prefix.strip("/")
         raw_untracked = subprocess.run(
@@ -39191,7 +39194,10 @@ class PortalImplementationDaemon:
             relative = str(getattr(entry, "new_path", "") or "")
             if not relative or relative not in untracked_paths:
                 continue
-            command = ["git", "diff", "--no-index", "--no-color"]
+            command = [
+                "git", "diff", "--no-index", "--no-ext-diff",
+                "--no-textconv", "--no-color",
+            ]
             if prefix:
                 command.extend(
                     [
@@ -39203,9 +39209,6 @@ class PortalImplementationDaemon:
             untracked = subprocess.run(
                 command,
                 cwd=repo_root,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
@@ -39213,7 +39216,9 @@ class PortalImplementationDaemon:
             if untracked.returncode not in (0, 1):
                 raise RuntimeError("unable to render untracked candidate patch")
             if untracked.stdout:
-                sections.append(untracked.stdout)
+                # Universal newline conversion changes CRLF source bytes and
+                # makes a patch fail replay or silently reconstruct LF bytes.
+                sections.append(untracked.stdout.decode("utf-8"))
         return sections
 
     @staticmethod
@@ -39232,6 +39237,7 @@ class PortalImplementationDaemon:
             "git",
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--no-color",
             "--find-renames",
             "--find-copies",
@@ -39257,7 +39263,7 @@ class PortalImplementationDaemon:
                 if path and path not in tracked_paths:
                     tracked_paths.append(path)
         if tracked_paths:
-            tracked_command.extend(tracked_paths)
+            tracked_command.extend(f":(literal){path}" for path in tracked_paths)
         elif excluded_paths:
             tracked_command.append(".")
             tracked_command.extend(
@@ -39275,16 +39281,13 @@ class PortalImplementationDaemon:
         tracked = subprocess.run(
             tracked_command,
             cwd=repo_root,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
         )
         if tracked.returncode != 0:
             raise RuntimeError("unable to render tracked candidate patch")
-        tracked_patch = tracked.stdout
+        tracked_patch = tracked.stdout.decode("utf-8")
         if prefix:
             tracked_patch = (
                 PortalImplementationDaemon._prefix_proposal_patch_extended_paths(
@@ -39293,59 +39296,11 @@ class PortalImplementationDaemon:
                 )
             )
         sections = [tracked_patch]
-        raw_untracked = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
-            cwd=repo_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if raw_untracked.returncode != 0:
-            raise RuntimeError("unable to enumerate untracked candidate paths")
-        untracked_paths = {
-            item.decode("utf-8", errors="surrogateescape")
-            for item in raw_untracked.stdout.split(b"\0")
-            if item
-        }
-        for entry in entries:
-            if (
-                str(getattr(getattr(entry, "change_kind", ""), "value", ""))
-                != "add"
-                or getattr(entry, "old_path", "")
-            ):
-                continue
-            relative = str(getattr(entry, "new_path", "") or "")
-            if not relative or relative not in untracked_paths:
-                continue
-            command = [
-                "git",
-                "diff",
-                "--no-index",
-                "--no-color",
-            ]
-            if prefix:
-                command.extend(
-                    [
-                        f"--src-prefix=a/{prefix}/",
-                        f"--dst-prefix=b/{prefix}/",
-                    ]
-                )
-            command.extend(["--", "/dev/null", relative])
-            untracked = subprocess.run(
-                command,
-                cwd=repo_root,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
+        sections.extend(
+            PortalImplementationDaemon._proposal_untracked_add_sections(
+                repo_root, entries=entries, path_prefix=prefix,
             )
-            # --no-index uses 1 for an ordinary difference.
-            if untracked.returncode not in (0, 1):
-                raise RuntimeError("unable to render untracked candidate patch")
-            if untracked.stdout:
-                sections.append(untracked.stdout)
+        )
         return "".join(sections)
 
     def _proposal_patch_text(
