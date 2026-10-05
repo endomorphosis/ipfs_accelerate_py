@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "created_utc": "2026-10-05T07:33:01.458018+00:00",
+  "evidence": [
+    {
+      "bytes": 55935,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "5e561aab8e37b95f6f78874b92cb25c9f412ffc07f1ee670ed1d92043840ee10"
+    },
+    {
+      "bytes": 6214,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/completed-assessment.json",
+      "sha256": "f4f3fae33cca01e92d2dad8b1232558ded6eb9f9a98e5a0d56ab00f41be79ccb"
+    },
+    {
+      "bytes": 15734,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/completed-trial-review.json",
+      "sha256": "e756395c4704053ceb09f2beb1aefc0b9c971887359943c697aa230a2507b2b1"
+    }
+  ],
+  "exit_code": 0,
+  "only_documentation_and_bounded_evidence_changed": true,
+  "runtime_revision": "c106a8fc4e7fc21f1dc9f10c6a74eacde3851800",
+  "schema": "terminal-bench-completed-documentation-gates@1",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+}

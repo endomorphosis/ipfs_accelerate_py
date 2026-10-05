@@ -734,7 +734,7 @@ remain planned; this child-ownership change does not implement them.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 
-The [current readiness assessment](evidence/terminal-bench-finish-readiness-20261005/assessment.json)
+The [initial readiness assessment](evidence/terminal-bench-finish-readiness-20261005/assessment.json)
 records **160 passing tests**, zero failures or skips, and unchanged source
 bindings. This includes native empty-program owner/context cases and the shared
 router's closed failure diagnostics. The earlier 156-pass/four-failure run is
@@ -750,14 +750,14 @@ reward remains zero. Two earlier Codex CLI 0.158 health checks failed while a
 0.160 host check succeeded; this observation does not prove version causality or
 establish health inside the task container. Canonical production calls continue
 through llm_router. The reviewed semantic-response diagnostics commit is
-integrated here; actively changing provider-upgrade work remains separate until
-it is frozen and qualified.
+integrated here. The subsequently frozen provider and cache upgrade is also
+integrated; its completed recovery result is recorded below.
 
-The next trial requires a qualified provider profile, a fresh immutable runtime
-archive containing the lifecycle/checkpoint and patch fixes, fresh signed trial
-preparation, and provider accounting inside the original disposable container.
-Changing a CLI pin also requires rebuilding or requalifying its setup cache.
-Earlier prepared archives and trials cannot establish execution of these changes.
+Trial 03 satisfies the selected-task provider and immutable-runtime gates with
+a fresh archive, signed preparation, rebuilt CLI/cache policy and provider
+accounting inside the original disposable container. Future trials must preserve
+these bindings. Earlier prepared archives and trials cannot establish execution
+of the new lifecycle/checkpoint, staged-patch or provider changes.
 
 The eight documented default-host validation failures do not explain this
 planning failure. The full container arm installs its own signed,
@@ -778,14 +778,15 @@ evaluation needs a pinned per-task resource/time policy and matched fresh arms.
 Grok container transport, the inactive Leanstral service and broader symbolic
 operator coverage remain improvements; the selected Codex container arm does
 not depend on their completion. GitHub's account billing lock prevents hosted
-CI from starting but does not prevent local Harbor execution. This assessment
-makes no new provider calls and records no new official task success.
+CI from starting but does not prevent local Harbor execution. This readiness
+audit made no provider calls or container launches; trial 03 was run by its
+existing independent owner.
 
 The [merged qualification](evidence/terminal-bench-finish-readiness-20261005/merged-qualification.json)
 records **215 passing tests**, zero failures or skips, after incorporating the
 independently qualified ordinary-supervisor custody changes. All 2,870 source
-bindings match the tested commit and remain unchanged. Earlier selections
-overlap this run and are not added to its count. A separate owner started
+bindings match that tested commit and remained unchanged during qualification.
+Earlier selections overlap this run and are not added to its count. A separate owner started
 fresh eigenvalue trial 03 with CLI 0.160.0 and a new archive; the retained
 [observation](evidence/terminal-bench-finish-readiness-20261005/trial-03-observation.json)
 was captured before a completed receipt or official reward was available.
@@ -793,3 +794,17 @@ The later [completed recovery evidence](evidence/terminal-supervisor-blockers-20
 records reward 1.0, native completion and clean shutdown, actual Source384
 inference, and 291432 observed tokens. The CLI/cache upgrade is now frozen and
 qualified in that Docker trial; the remaining suite gates above still apply.
+
+The [completed assessment](evidence/terminal-bench-finish-readiness-20261005/completed-assessment.json)
+records the remaining implementation and evaluation priorities. The
+[completed-trial review](evidence/terminal-bench-finish-readiness-20261005/completed-trial-review.json)
+independently binds the canonical receipt and official result: reward **1.0**,
+supervisor completion, zero remaining processes and cleanup exit code zero.
+Planning and coding both returned through llm_router with `gpt-6.1-sol`, high
+reasoning and CLI `0.160.0`. The published runtime matches the successful
+archive, and its later qualification records **560 passed and seven skipped**,
+with no failures. These selections overlap and their counts are not summed.
+The historical pending observation and failed trial 02 remain retained; the
+new pass closes those selected-task readiness gates, while 85 untried task names,
+conditional empty-population decoder abstention and matched native-budget
+coverage still prevent a complete suite result.

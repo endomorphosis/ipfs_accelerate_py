@@ -1,0 +1,143 @@
+{
+  "accounting": {
+    "benchmark_advantage_claimed": false,
+    "billing_total_verified": false,
+    "cache_included_in_input": true,
+    "cached_input_tokens": 244992,
+    "dollar_cost": null,
+    "full_suite_complete": false,
+    "historical_untried_task_names": 85,
+    "observed_total_tokens": 291432,
+    "original_input_unchanged_is_receipt_declaration": true,
+    "total_tasks": 89
+  },
+  "audit_scope": {
+    "containers_launched": 0,
+    "new_tests_started": 0,
+    "private_prompt_or_rollout_bodies_read": false,
+    "provider_calls": 0,
+    "training_runs_started": 0
+  },
+  "canonical_llm_router": true,
+  "closed_gates": [
+    {
+      "basis": "Both canonical router sessions returned successfully inside the disposable task container.",
+      "id": "planning-provider",
+      "scope": "selected trial03"
+    },
+    {
+      "basis": "Independent byte-hash review binds the fresh archive, manifest, signed preparation, provider pins and official result.",
+      "id": "immutable-runtime",
+      "scope": "selected trial03"
+    }
+  ],
+  "content_sha256": "57f0b1db711e6e30b83974168a10d8e30c6c40c8ef1f7f25c300d31e174b80ea",
+  "created_utc": "2026-10-05T07:31:55.726933+00:00",
+  "evidence": [
+    {
+      "bytes": 8430,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/assessment.json",
+      "sha256": "3ea651df6a70cb8070757f67c2fceb6877a440ba384d86671f0160a791237543"
+    },
+    {
+      "bytes": 2276,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/merged-qualification.json",
+      "sha256": "a03906f0bddab595bde31e32968eb27056c4fb109c76a89a12cd5dbd92d1038b"
+    },
+    {
+      "bytes": 15734,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/completed-trial-review.json",
+      "sha256": "e756395c4704053ceb09f2beb1aefc0b9c971887359943c697aa230a2507b2b1"
+    },
+    {
+      "bytes": 30305,
+      "path": "docs/agent_supervisor/evidence/terminal-bench-finish-readiness-20261005/public-budget-inventory.json",
+      "sha256": "3710bf3f36d0e987f5951ac7dcde923929d38ab78f44ac231b98d12023a560ba"
+    },
+    {
+      "bytes": 6799,
+      "path": "docs/agent_supervisor/evidence/terminal-supervisor-blockers-20261005/trial-03-summary.json",
+      "sha256": "46239eeda2c9deeaddaba49c5d576af52603873e19e2b7fbb9567ad8d6fc90e4"
+    },
+    {
+      "bytes": 22383,
+      "path": "docs/agent_supervisor/evidence/terminal-supervisor-blockers-20261005/final-qualification.json",
+      "sha256": "c51c9e2d5c9554202ac3c581e485f65c097d26540efcbe3ec4142408382c5ffa"
+    },
+    {
+      "bytes": 320,
+      "path": "docs/agent_supervisor/evidence/terminal-supervisor-blockers-20261005/publication-source-equivalence.json",
+      "sha256": "dc9f3a4ac329321c6359487bc5734ff58b7bc7e0185c1ed3e3d8d206e7b9b263"
+    }
+  ],
+  "nonblocking_for_selected_codex_arm": [
+    "Grok container transport",
+    "inactive Leanstral service",
+    "broad symbolic-only planning coverage",
+    "GitHub hosted CI billing lock"
+  ],
+  "qualification": {
+    "current_recorded_source_pins_match": true,
+    "earlier_readiness_passed": 215,
+    "earlier_revision": "88baab1af20d75ca94c47022b67fc8940cb58365",
+    "failed": 0,
+    "host_python_environment_hermetic": false,
+    "overlapping_counts_not_summed": true,
+    "passed": 560,
+    "recorded_source_pin_count": 57,
+    "skipped": 7,
+    "source_revision": "8dab684ef69f87a88c3dac1585eea07a5bf29a24"
+  },
+  "remaining_priorities": [
+    {
+      "acceptance": "Each attempted task binds unchanged original public inputs, supported effects, immutable runtime and an official verifier receipt.",
+      "id": "suite-task-profiles",
+      "next_action": "Qualify public task input/output/effect profiles for build, install, language, generated-artifact, service, VM, Git-state and other-root tasks; report refusals separately from verifier failures.",
+      "order": 1,
+      "scope": "all89tasks",
+      "status": "partial"
+    },
+    {
+      "acceptance": "Signed empty retrieval continues to pass; selected decoder abstention is separately bound and reports zero inference without lowering admission requirements.",
+      "id": "selected-decoder-empty-population",
+      "next_action": "Qualify independently source-bound empty-population decoder abstention; retain a distinct model-off arm where deliberately selected.",
+      "order": 2,
+      "scope": "Source384/security/training selection with empty indexed program population",
+      "status": "conditional_open"
+    },
+    {
+      "acceptance": "Publish comparable attempted-task denominators, official rewards, cleanup receipts, elapsed times and observed usage; preserve development-profile trials separately.",
+      "id": "evaluation-budgets",
+      "next_action": "Pin per-task resource/time policy and apply identical public inputs, provider profiles and accounting rules to fresh full, native and no-index arms.",
+      "order": 3,
+      "scope": "complete suite and matched baseline comparisons",
+      "status": "methodology_not_qualified"
+    },
+    {
+      "acceptance": "A complete cohort contains89 uniquely identified task outcomes; never pool older different-model pilots or count a repeat as a newly covered task.",
+      "id": "suite-campaign",
+      "next_action": "Attempt the remaining tasks under qualified profiles; keep unsupported outcomes and unknown rewards visible.",
+      "order": 4,
+      "scope": "85 historically untried task names",
+      "status": "not_complete"
+    }
+  ],
+  "runtime_revision": "c106a8fc4e7fc21f1dc9f10c6a74eacde3851800",
+  "schema": "terminal-bench-readiness-completed-followup@1",
+  "selected_trial": {
+    "cli_version": "0.160.0",
+    "completed": true,
+    "model": "gpt-6.1-sol",
+    "name": "largest-eigenval-03",
+    "official_reward": 1.0,
+    "planning_strategy": "direct",
+    "reasoning_effort": "high",
+    "remaining_processes": 0,
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "source384_inference_observed": true,
+    "source384_training_steps": 0,
+    "worker_cleanup_returncode": 0
+  },
+  "status": "selected_trial_passed_full_suite_incomplete",
+  "successful_archive_source_revision": "8dab684ef69f87a88c3dac1585eea07a5bf29a24"
+}
