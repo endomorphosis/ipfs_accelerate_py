@@ -1,0 +1,503 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-05 01:24:45 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-05 01:24:45 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-05 01:24:45 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-05 01:24:45 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-05 01:24:45 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-05 01:24:45 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-05 01:24:45 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+test/api/test_semantic_router_translation.py::test_real_capsules_round_trip_source_literals_and_immutable_core PASSED [  2%]
+test/api/test_semantic_router_translation.py::test_plain_response_is_literal_even_when_alias_text_is_present PASSED [  4%]
+test/api/test_semantic_router_translation.py::test_structured_symbol_reply_enters_existing_native_candidate_grammar PASSED [  6%]
+test/api/test_semantic_router_translation.py::test_duplicate_reserved_reply_keys_are_not_treated_as_plain_text PASSED [  9%]
+test/api/test_semantic_router_translation.py::test_mapping_alias_to_non_symbol_cannot_become_a_symbol_proposal PASSED [ 11%]
+test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[unknown_alias] PASSED [ 13%]
+test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[foreign_task] PASSED [ 15%]
+test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[foreign_root] PASSED [ 18%]
+test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[authority] PASSED [ 20%]
+test/api/test_semantic_router_translation.py::test_structured_alias_or_authority_tampering_is_rejected[untyped_authority] PASSED [ 22%]
+test/api/test_semantic_router_translation.py::test_stale_sources_refuse_dispatch_and_structured_decode_but_allow_historical_audit PASSED [ 25%]
+test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[map] PASSED [ 27%]
+test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[literal] PASSED [ 29%]
+test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[core] PASSED [ 31%]
+test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[unknown] PASSED [ 34%]
+test/api/test_semantic_router_translation.py::test_transport_round_trip_rejects_tampering[table] PASSED [ 36%]
+test/api/test_semantic_router_translation.py::test_tampered_producer_block_and_symlink_artifact_are_refused PASSED [ 38%]
+test/api/test_semantic_router_translation.py::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[scope] PASSED [ 40%]
+test/api/test_semantic_router_translation.py::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[omitted_source] PASSED [ 43%]
+test/api/test_semantic_router_translation.py::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[foreign_manifest_source] PASSED [ 45%]
+test/api/test_semantic_router_translation.py::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[unknown_raw_source] PASSED [ 47%]
+test/api/test_semantic_router_translation.py::test_mixed_public_source_inventory_with_selected_capsules_round_trips PASSED [ 50%]
+test/api/test_semantic_router_translation.py::test_explicit_program_translation_round_trips_real_subset_and_support[program0] PASSED [ 52%]
+test/api/test_semantic_router_translation.py::test_explicit_program_translation_round_trips_real_subset_and_support[program1] PASSED [ 54%]
+test/api/test_semantic_router_translation.py::test_explicit_program_historical_replay_rejects_rehashed_nominations[subset] PASSED [ 56%]
+test/api/test_semantic_router_translation.py::test_explicit_program_historical_replay_rejects_rehashed_nominations[dropped_capsule] PASSED [ 59%]
+test/api/test_doctor_repair_eligibility.py::test_inert_source_still_abstains_without_reviewed_inputs 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:40 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_inert_source_still_abstai0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 61%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[import os\n\ndef target():\n    pass\n] PASSED [ 63%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[class Target:\n    pass\n] PASSED [ 65%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[@decorator\ndef target():\n    pass\n] PASSED [ 68%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[target = lambda: None\n] PASSED [ 70%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[findings] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:41 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_eligibility_rejects_unbou0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 72%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[scope] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:42 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_eligibility_rejects_unbou1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 75%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[manifest] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:43 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_eligibility_rejects_unbou2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 77%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[source] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:44 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_eligibility_rejects_unbou3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 79%]
+test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[False] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:45 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 81%]
+test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[True] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 84%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:46 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 86%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 88%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 90%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:50 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 93%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:51 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re4/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 95%]
+test/api/test_doctor_repair_eligibility.py::test_signing_arbitrary_smoke_does_not_grant_program_partition 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:52 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signing_arbitrary_smoke_d0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [ 97%]
+test/api/test_doctor_repair_eligibility.py::test_explicit_subset_without_signed_profile_cannot_hide_source 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:25:53 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_explicit_subset_without_s0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+=================================== FAILURES ===================================
+_ test_signed_program_subset_replays_native_doctor_without_support_code[False] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep0/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d7d8173b90>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep0')
+empty = False
+
+    @pytest.mark.parametrize('empty', [False, True])
+    def test_signed_program_subset_replays_native_doctor_without_support_code(scenario, tmp_path, empty):
+>       inputs, prepared = _signed_program_context(scenario, tmp_path, empty=empty)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:45,034 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_signed_program_subset_replays_native_doctor_without_support_code[True] __
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep1/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d593ae2ba0>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep1')
+empty = True
+
+    @pytest.mark.parametrize('empty', [False, True])
+    def test_signed_program_subset_replays_native_doctor_without_support_code(scenario, tmp_path, empty):
+>       inputs, prepared = _signed_program_context(scenario, tmp_path, empty=empty)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:66: in _signed_program_context
+    admission = local.admit_local_benchmark_plan(graph=graph, manifest=manifest)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:921: in admit_local_benchmark_plan
+    return _admit_local_benchmark_plan(graph=graph, manifest=manifest,
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:931: in _admit_local_benchmark_plan
+    payload = _planning_payload(graph, manifest, declared, profile, current, requirement_bindings,
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:948: in _planning_payload
+    compiled, validation, pending = _graph_contract(graph, declared, _tree(sources))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+graph = PromptGoalGraph(request_cid='baguqeerawygxipxoc5mowrwddtnjdaibls6cbmjzp3usmbfrodrx7gr4p4sa', scan_cid='baguqeerau5xejf...solved_questions=(), uncertainty_debt=(), status=<RecordStatus.PROPOSED: 'proposed'>, created_at_ms=0, updated_at_ms=0)
+manifest = {'baseline_commit': '36ef53656faa48b75ac84f209431ef52cb607795', 'created_outputs': ['new.py'], 'lifecycle_dir': '/tmp/...njdaibls6cbmjzp3usmbfrodrx7gr4p4sa', 'scan_cid': 'baguqeerau5xejfdvzbuasgd6conhx66ov7leciqmnl2rnelv5wdamhtmmzea'}, ...}
+tree_id = 'baguqeeraia4ta7amonlg2dlrpnmeqlqhisecprjgzcm5wrf3dzaql4uvla7a'
+
+    def _graph_contract(graph: PromptGoalGraph, manifest: dict, tree_id: str) -> tuple[Any, dict, list]:
+        policy_roots = (content_identity(LOCAL_POLICY),)
+        allowed_evidence = ()
+        if "planning_inputs" in manifest:
+            policy_roots, allowed_evidence = _verify_planning_inputs(manifest)
+        if (graph.unresolved_questions or graph.uncertainty_debt
+                or [item.to_dict() for item in graph.evidence] != [item.to_dict() for item in allowed_evidence]):
+            raise LocalPlanningError("unresolved or externally evidenced graph unsupported")
+        if any(getattr(graph, key) != value for key, value in manifest["planning_roots"].items()):
+            raise LocalPlanningError("planning roots differ from signed inputs")
+        if graph.policy_roots != policy_roots:
+            raise LocalPlanningError("external policy or proof obligations unsupported")
+        specs = {item["task_key"]: item for item in manifest["tasks"]}
+        tasks = {task.task_key: task for task in graph.tasks}
+        if set(specs) != set(tasks):
+            raise LocalPlanningError("proposal changed required task population")
+        all_acceptance = []
+        for key, task in tasks.items():
+            spec = specs[key]
+            observed = {
+                "task_key": key,
+                "scope_paths": list(task.scope_paths),
+                "outputs": [
+                    {name: getattr(row, name) for name in ("path", "effect", "media_type")}
+                    for row in task.outputs
+                ],
+                "validations": [
+                    {
+                        name: _plain(getattr(row, name))
+                        for name in (
+                            "validation_key",
+                            "argv",
+                            "cwd",
+                            "expected_exit_codes",
+                            "policy_cid",
+                        )
+                    }
+                    for row in task.validations
+                ],
+                "acceptance": [
+                    {
+                        name: _plain(getattr(row, name))
+                        for name in ("criterion_key", "criterion", "evidence_cids", "validation_keys")
+                    }
+                    for row in task.acceptance
+                ],
+                "dependencies": sorted(
+                    next(k for k, t in tasks.items() if t.task_cid == dep)
+                    for dep in task.dependency_task_cids
+                ),
+            }
+    
+            def ordered(value):
+                return {
+                    name: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True))
+                    if isinstance(rows, list)
+                    else rows
+                    for name, rows in value.items()
+                }
+    
+            spec_differs = (_receipt_bytes(ordered(observed)) != _receipt_bytes(ordered(spec))
+                if manifest["schema"] in INVENTORY_MANIFEST_SCHEMAS else ordered(observed) != ordered(spec))
+            if (
+                spec_differs
+                or task.assumptions
+                or not set(task.evidence_cids) <= {item.evidence_cid for item in allowed_evidence}
+                or task.policy_roots != policy_roots
+            ):
+                raise LocalPlanningError(
+                    "proposal changed signed scope, acceptance, dependency or command"
+                )
+            if not set(task.predicted_files) <= set(spec["scope_paths"]):
+>               raise LocalPlanningError("predicted change escaped permitted scope")
+E               ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: predicted change escaped permitted scope
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:871: LocalPlanningError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:46,029 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signed_program_subset_rep1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re0/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d593bdd070>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re0')
+tamper = 'empty_subset'
+
+    @pytest.mark.parametrize('tamper', ['empty_subset', 'include_smoke', 'partial_capture', 'support_drift', 'diagnostic'])
+    def test_doctor_explicit_subset_requires_signed_population_and_full_preimages(scenario, tmp_path, tamper):
+>       inputs, _ = _signed_program_context(scenario, tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:46,957 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re1/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d5794bdc70>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re1')
+tamper = 'include_smoke'
+
+    @pytest.mark.parametrize('tamper', ['empty_subset', 'include_smoke', 'partial_capture', 'support_drift', 'diagnostic'])
+    def test_doctor_explicit_subset_requires_signed_population_and_full_preimages(scenario, tmp_path, tamper):
+>       inputs, _ = _signed_program_context(scenario, tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:48,036 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re2/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d56953c3b0>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re2')
+tamper = 'partial_capture'
+
+    @pytest.mark.parametrize('tamper', ['empty_subset', 'include_smoke', 'partial_capture', 'support_drift', 'diagnostic'])
+    def test_doctor_explicit_subset_requires_signed_population_and_full_preimages(scenario, tmp_path, tamper):
+>       inputs, _ = _signed_program_context(scenario, tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:49,034 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re3/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d5a01720f0>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re3')
+tamper = 'support_drift'
+
+    @pytest.mark.parametrize('tamper', ['empty_subset', 'include_smoke', 'partial_capture', 'support_drift', 'diagnostic'])
+    def test_doctor_explicit_subset_requires_signed_population_and_full_preimages(scenario, tmp_path, tamper):
+>       inputs, _ = _signed_program_context(scenario, tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:50,149 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic] _
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re4/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d593bcaf60>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re4')
+tamper = 'diagnostic'
+
+    @pytest.mark.parametrize('tamper', ['empty_subset', 'include_smoke', 'partial_capture', 'support_drift', 'diagnostic'])
+    def test_doctor_explicit_subset_requires_signed_population_and_full_preimages(scenario, tmp_path, tamper):
+>       inputs, _ = _signed_program_context(scenario, tmp_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:51,152 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re4/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_doctor_explicit_subset_re4/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+________ test_signing_arbitrary_smoke_does_not_grant_program_partition _________
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signing_arbitrary_smoke_d0/isolated'), 'manifest': {...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf5d5787dff20>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1174/test_signing_arbitrary_smoke_d0')
+
+    def test_signing_arbitrary_smoke_does_not_grant_program_partition(scenario, tmp_path):
+>       inputs, _ = _signed_program_context(scenario, tmp_path, noncanonical_smoke=True)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:185: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:68: in _signed_program_context
+    prepared = prepare_semantic_context(repository=root, paths=names,
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:314: in prepare_semantic_context
+    payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:103: in _worker_payload
+    packed = packed_context()
+             ^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py:97: in packed_context
+    return pack_context(objective=base["objective"],
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:863: in pack_context
+    return packer.pack(
+ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py:444: in pack
+    objective_text = _text(objective, "objective")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = 'Inspect the existing answer.\n', name = 'objective'
+
+    def _text(value: Any, name: str) -> str:
+        if type(value) is not str or not value or value != value.strip():
+>           raise HarnessError(f"{name} must be a nonempty trimmed string")
+E           ipfs_accelerate_py.agent_supervisor.semantic_state.contracts.HarnessError: objective must be a nonempty trimmed string
+
+ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py:73: HarnessError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-05 01:25:52,301 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signing_arbitrary_smoke_d0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1174/test_signing_arbitrary_smoke_d0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/semantic-program-scope/translation-doctor-01.xml -
+=========================== short test summary info ============================
+FAILED test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[False]
+FAILED test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[True]
+FAILED test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset]
+FAILED test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke]
+FAILED test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture]
+FAILED test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift]
+FAILED test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic]
+FAILED test/api/test_doctor_repair_eligibility.py::test_signing_arbitrary_smoke_does_not_grant_program_partition
+=================== 8 failed, 36 passed in 69.41s (0:01:09) ====================

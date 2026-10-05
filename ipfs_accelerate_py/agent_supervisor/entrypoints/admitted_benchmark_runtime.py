@@ -325,7 +325,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     or inventory_execution_scope is not None))):
             raise ValueError("Source384 refresh requires an explicit local work scope and ordinary context refresh")
         if published_retrieval_policy is not None and (
-                published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1"}
+                published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1",
+                    "native-empty-program-scope@1"}
                 or not refresh_context_on_completion):
             raise ValueError("published retrieval requires an explicit admitted refresh policy")
         if (published_learned_artifacts is not None) != (published_retrieval_policy == "local-safetensors-symbols@1"):
@@ -456,6 +457,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     retrieval_binding = bind_published_learned_retrieval_policy(repository=repository,
                         bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key,
                         artifacts=published_learned_artifacts)
+                elif published_retrieval_policy == "native-empty-program-scope@1":
+                    from ..runtime.published_task_context import bind_published_empty_retrieval_policy
+                    retrieval_binding = bind_published_empty_retrieval_policy(repository=repository,
+                        bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key)
                 else:
                     from ..runtime.published_retrieval import bind_published_retrieval_policy
                     retrieval_binding = bind_published_retrieval_policy(repository=repository,
@@ -1361,6 +1366,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                             from ..runtime.published_learned_retrieval import published_learned_retrieval_rebuilder
                             rebuilder = published_learned_retrieval_rebuilder(repository=self.repository,
                                 bundle=self.context_bundle, binding=binding)
+                        elif binding.get("policy") == "native-empty-program-scope@1":
+                            from ..runtime.published_task_context import validate_published_empty_retrieval_policy
+                            validate_published_empty_retrieval_policy(repository=self.repository,
+                                bundle=self.context_bundle, binding=binding)
                         else:
                             from ..runtime.published_retrieval import published_retrieval_rebuilder
                             rebuilder = published_retrieval_rebuilder(repository=self.repository,
@@ -1382,6 +1391,14 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     "retrieval_status": context["retrieval"]["status"],
                     "source_scope": context["source_scope"],
                     "task_revision": context["task_revision"], "completion_authority": False})
+                if "previous_source_population_cid" in context["retrieval"]:
+                    empty = context["retrieval"]
+                    refreshed[-1]["empty_retrieval_observation"] = {
+                        "schema": "supervisor-published-empty-retrieval-observation@1",
+                        "status": empty["status"], "source_population_cid": empty["source_population_cid"],
+                        "previous_source_population_cid": empty["previous_source_population_cid"],
+                        "embedding_calls": empty["embedding_calls"], "model_loading_calls": empty["model_loading_calls"],
+                        "execution_authority": False, "completion_authority": False}
                 embedding_receipt = (context["retrieval"].get("policy_lineage") or {}).get("embedding_receipt")
                 if embedding_receipt is None:
                     embedding_receipt = context["retrieval"].get("embedding_receipt")

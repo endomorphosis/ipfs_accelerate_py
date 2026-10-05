@@ -34,6 +34,8 @@ from .task_context_bundle import (
 
 
 SCHEMA = "supervisor-published-task-context@1"
+EMPTY_RETRIEVAL_POLICY = "native-empty-program-scope@1"
+EMPTY_RETRIEVAL_POLICY_SCHEMA = "supervisor-published-empty-retrieval-policy@1"
 
 
 @dataclass(frozen=True)
@@ -215,7 +217,21 @@ def _verify_predecessor(*, root, result):
             or world["semantic_root_cid"] != semantic["semantic_root_cid"]
             or world["world_snapshot_cid"] != result["predecessor_world_snapshot_cid"]):
         raise ValueError("predecessor context lineage differs")
-    _previous_retrieval(root, metadata, result["task_id"])
+    previous_retrieval = _previous_retrieval(root, metadata, result["task_id"])
+    if previous_retrieval is not None and previous_retrieval[1] is None:
+        payload = previous_retrieval[2]
+        observed = result["retrieval"]
+        expected = {"previous_source_population_cid": payload["source_population_cid"],
+            "preserved_program_paths": payload["program_paths"],
+            "preserved_support_roles": {name: row["role"] for name, row in payload["support_hashes"].items()},
+            "index_id": None, "embedding_calls": 0, "model_loading_calls": 0,
+            "execution_authority": False, "completion_authority": False}
+        if any(_json(observed.get(key)) != _json(value) for key, value in expected.items()):
+            raise ValueError("empty retrieval predecessor scope or identity differs")
+        if observed.get("status") not in {"current", "unavailable"}:
+            raise ValueError("empty retrieval successor disposition differs")
+        if (observed["status"] == "current") != ("Code retrieval artifact" in result["metadata"]):
+            raise ValueError("empty retrieval successor artifact availability differs")
 
 
 def _owner_state(*, server, admission, task_cid):
@@ -313,6 +329,13 @@ def _previous_retrieval(root, metadata, task_id):
     if hashlib.sha256(raw).hexdigest() != metadata["code retrieval sha256"]:
         raise ValueError("retrieval nomination changed during refresh")
     payload = json.loads(raw)
+    from .empty_code_retrieval import SCHEMA as EMPTY_SCHEMA, read_empty_code_retrieval_artifact
+    if payload.get("schema") == EMPTY_SCHEMA:
+        checked_payload, checked_context = read_empty_code_retrieval_artifact(repository=root,
+            artifact=artifact, expected_sha256=metadata["code retrieval sha256"], task_id=task_id)
+        if checked_payload != payload or checked_context != context:
+            raise ValueError("empty retrieval nomination changed during refresh")
+        return context, None, payload
     if "snapshot_ref" in payload:
         ref = payload["snapshot_ref"]
         raw = retrieval_context._read(retrieval_context._path(root, ref["path"]), ref["bytes"])
@@ -324,6 +347,97 @@ def _previous_retrieval(root, metadata, task_id):
     result = CodeVectorSearchResult.from_dict(payload["result"])
     retrieval_context._replay(snapshot, result)
     return context, snapshot, result
+
+
+def _empty_retrieval_binding(*, metadata, context, payload, task_cid, task_id):
+    return {"schema": EMPTY_RETRIEVAL_POLICY_SCHEMA, "policy": EMPTY_RETRIEVAL_POLICY,
+        "task_cid": task_cid, "task_id": task_id,
+        "artifact": metadata["code retrieval artifact"], "sha256": metadata["code retrieval sha256"],
+        "index_id": None, "source_population_cid": payload["source_population_cid"],
+        "query_id": payload["query_id"], "result_id": payload["result_id"],
+        "query_sha256": hashlib.sha256(context["query_text"].encode()).hexdigest(),
+        "program_paths": payload["program_paths"],
+        "support_roles": {name: row["role"] for name, row in payload["support_hashes"].items()},
+        "embedding_calls": 0, "execution_authority": False, "completion_authority": False}
+
+
+def bind_published_empty_retrieval_policy(*, repository, bundle, task_cid, task_id):
+    """Admit a source-bound absence lane without selecting a vector producer."""
+    metadata = load_task_context_nomination(repository=repository, artifact=bundle["artifact"],
+        expected_sha256=bundle["sha256"], task_cid=task_cid, task_id=task_id)
+    previous = _previous_retrieval(repository, metadata, task_id)
+    if previous is None or previous[1] is not None or previous[0]["status"] != "current":
+        raise ValueError("published empty policy requires current native empty retrieval")
+    return _empty_retrieval_binding(metadata=metadata, context=previous[0], payload=previous[2],
+        task_cid=task_cid, task_id=task_id)
+
+
+def validate_published_empty_retrieval_policy(*, repository, bundle, binding):
+    """Keep immutable absence scope pins after an accepted publication changes bytes."""
+    from .published_retrieval import _historical_retrieval_metadata
+    if (type(binding) is not dict or binding.get("schema") != EMPTY_RETRIEVAL_POLICY_SCHEMA
+            or binding.get("policy") != EMPTY_RETRIEVAL_POLICY):
+        raise ValueError("closed published empty retrieval policy required")
+    metadata = _historical_retrieval_metadata(repository=repository, bundle=bundle,
+        task_cid=binding["task_cid"], task_id=binding["task_id"])
+    previous = _previous_retrieval(repository, metadata, binding["task_id"])
+    if previous is None or previous[1] is not None:
+        raise ValueError("published empty predecessor disappeared or changed lane")
+    expected = _empty_retrieval_binding(metadata=metadata, context=previous[0], payload=previous[2],
+        task_cid=binding["task_cid"], task_id=binding["task_id"])
+    if _json(binding) != _json(expected):
+        raise ValueError("published empty predecessor binding changed")
+    return binding
+
+
+def _current_empty_scope(root, payload):
+    program_paths = payload["program_paths"]
+    hashes = retrieval_context._sources(root, program_paths)[1] if program_paths else {}
+    support_paths = sorted(payload["support_hashes"])
+    support = retrieval_context._sources(root, support_paths)[1] if support_paths else {}
+    return hashes, {name: {"role": payload["support_hashes"][name]["role"], "sha256": sha}
+        for name, sha in support.items()}
+
+
+def _refresh_empty_retrieval(*, root, metadata, context, payload, task_id, output, declared_outputs):
+    from .empty_code_retrieval import (
+        observe_empty_program_population, prepare_empty_code_retrieval_context,
+        read_empty_code_retrieval_artifact,
+    )
+    scope = set(payload["program_paths"]) | set(payload["support_hashes"])
+    retrieval = {"status": "current", "index_id": None,
+        "previous_source_population_cid": payload["source_population_cid"],
+        "preserved_program_paths": payload["program_paths"],
+        "preserved_support_roles": {name: row["role"] for name, row in payload["support_hashes"].items()},
+        "declared_outputs_outside_index_scope": sorted(set(declared_outputs) - scope),
+        "embedding_calls": 0, "model_loading_calls": 0,
+        "execution_authority": False, "completion_authority": False}
+    successor = {}
+    if context["status"] == "current":
+        successor.update({"Code retrieval artifact": metadata["code retrieval artifact"],
+            "Code retrieval sha256": metadata["code retrieval sha256"]})
+        current = payload
+        retrieval["reason"] = "verified_unchanged_empty_source_scope"
+    else:
+        hashes, support_hashes = _current_empty_scope(root, payload)
+        observed = observe_empty_program_population(repository=root,
+            program_paths=payload["program_paths"], support_hashes=support_hashes)
+        if observed is None:
+            retrieval.update(status="unavailable", reason="qualified_symbols_require_independent_vector_policy",
+                source_sha256=hashes, support_hashes=support_hashes,
+                source_population_cid=None)
+            return successor, retrieval
+        produced = prepare_empty_code_retrieval_context(repository=root, task_id=task_id,
+            query_text=context["query_text"], program_paths=payload["program_paths"],
+            support_hashes=support_hashes, output=output / "empty-code-retrieval.json")
+        successor.update(produced["metadata"])
+        current, _ = read_empty_code_retrieval_artifact(repository=root,
+            artifact=successor["Code retrieval artifact"],
+            expected_sha256=successor["Code retrieval sha256"], task_id=task_id)
+        retrieval["reason"] = "reobserved_empty_source_scope"
+    retrieval.update(source_population_cid=current["source_population_cid"],
+        query_id=current["query_id"], result_id=current["result_id"], disposition=current["disposition"])
+    return successor, retrieval
 
 
 def refresh_published_task_context(*, server, admission, predecessor_bundle,
@@ -427,12 +541,14 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         worker_query=projection.get("query", ""),
         worker_capsule_limit=projection.get("max_capsules", 8),
         worker_max_bytes=projection.get("max_bytes", 32768),
+        **({"program_paths": previous["program_paths"]} if "program_paths" in previous else {}),
         _refresh_lineage={
             "schema": "supervisor-semantic-context-refresh@1",
             "previous_payload_sha256": metadata["semantic context sha256"],
             "previous_scope_cid": previous["scope_cid"],
             "previous_semantic_root_cid": previous["semantic_root_cid"],
             "previous_manifest": previous["manifest"],
+            **({"previous_program_paths": previous["program_paths"]} if "program_paths" in previous else {}),
             "attempt_id": binding["attempt_id"], "cause": "owner_validated_publication_completed",
         },
     )
@@ -444,7 +560,18 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     }
     old_retrieval = _previous_retrieval(root, metadata, binding["task_id"])
     retrieval = {"status": "unavailable", "reason": "predecessor_has_no_retrieval"}
-    if old_retrieval is not None:
+    if old_retrieval is not None and old_retrieval[1] is None:
+        context, _, population = old_retrieval
+        if retrieval_rebuilder is not None:
+            raise ValueError("empty retrieval cannot select a vector producer without independent admission")
+        if (previous.get("program_paths") != population["program_paths"]
+                or (set(population["program_paths"]) | set(population["support_hashes"])) != set(previous["manifest"])):
+            raise ValueError("predecessor empty retrieval partition differs from semantic source scope")
+        empty_metadata, retrieval = _refresh_empty_retrieval(root=root, metadata=metadata,
+            context=context, payload=population, task_id=binding["task_id"], output=output,
+            declared_outputs=[item["path"] for item in task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["outputs"]])
+        successor.update(empty_metadata)
+    elif old_retrieval is not None:
         context, snapshot, query_result = old_retrieval
         if not set(snapshot.included_paths) <= set(previous["manifest"]):
             raise ValueError("predecessor retrieval scope exceeds semantic scope")
@@ -584,7 +711,7 @@ def _verify_current(*, server, admission, root, result, source384_timeout_second
         if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
             raise TimeoutError("published context verification deadline expired")
     checkpoint()
-    current_root, binding, _ = _owner_state(server=server, admission=admission, task_cid=result["task_cid"])
+    current_root, binding, task = _owner_state(server=server, admission=admission, task_cid=result["task_cid"])
     checkpoint()
     if current_root != root or any(result.get(key) != value for key, value in binding.items()):
         raise ValueError("published context no longer matches current owner/source/task")
@@ -619,6 +746,33 @@ def _verify_current(*, server, admission, root, result, source384_timeout_second
             task_id=binding["task_id"]))
         if retrieved["status"] != "current" or retrieved["index_id"] != result["retrieval"]["index_id"]:
             raise ValueError("refreshed retrieval is not source-current")
+        if retrieved["index_id"] is None:
+            from .empty_code_retrieval import SCHEMA as EMPTY_SCHEMA
+            keys = ("source_population_cid", "query_id", "result_id", "disposition", "embedding_calls")
+            if (retrieved.get("retrieval_schema") != EMPTY_SCHEMA
+                    or any(_json(retrieved.get(key)) != _json(result["retrieval"].get(key)) for key in keys)
+                    or retrieved["program_paths"] != result["retrieval"]["preserved_program_paths"]
+                    or {name: row["role"] for name, row in retrieved["support_hashes"].items()}
+                        != result["retrieval"]["preserved_support_roles"]):
+                raise ValueError("refreshed empty retrieval population identity differs")
+    if "previous_source_population_cid" in result["retrieval"]:
+        from .empty_code_retrieval import observe_empty_program_population
+        observed = result["retrieval"]
+        roles = observed["preserved_support_roles"]
+        scope = set(observed["preserved_program_paths"]) | set(roles)
+        outputs = task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["outputs"]
+        if observed["declared_outputs_outside_index_scope"] != sorted({item["path"] for item in outputs} - scope):
+            raise ValueError("empty retrieval successor expanded its admitted source scope")
+        if observed["status"] == "unavailable":
+            program_hashes, support = _current_empty_scope(root, {
+                "program_paths": observed["preserved_program_paths"],
+                "support_hashes": {name: {"role": role} for name, role in roles.items()}})
+            if (observed.get("reason") != "qualified_symbols_require_independent_vector_policy"
+                    or observed.get("source_population_cid") is not None
+                    or program_hashes != observed.get("source_sha256") or support != observed.get("support_hashes")
+                    or observe_empty_program_population(repository=root,
+                        program_paths=observed["preserved_program_paths"], support_hashes=support) is not None):
+                raise ValueError("unavailable empty retrieval source transition differs")
     if "source384_context" in result:
         from .source384_repository_context import validate_source384_context, SUCCESSOR_SCHEMA
         receipt = result["source384_context"]

@@ -178,6 +178,7 @@ def assess_doctor_repair_eligibility(
     admission: Mapping[str, Any],
     diagnostic_artifact: Path,
     paths: Sequence[str],
+    program_paths: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Assess the closed repair operator against real, independently bound input.
 
@@ -206,6 +207,19 @@ def assess_doctor_repair_eligibility(
     if (not selected or len(selected) > 256 or len(set(selected)) != len(selected)
             or not set(selected).issubset(manifest["sources"])):
         raise DoctorCompositionError("repair eligibility source scope differs from signed inputs")
+    program = None
+    partition = None
+    if program_paths is not None:
+        from .semantic_context_runtime import _program_paths
+        from .terminal_source_partition import terminal_profile_partition
+        try:
+            program = _program_paths(program_paths, selected)
+            partition = terminal_profile_partition(repository=root, manifest=manifest)
+        except (ValueError, TypeError, KeyError) as error:
+            raise DoctorCompositionError("repair eligibility program partition does not replay") from error
+        if (partition is None or set(selected) != set(manifest["sources"])
+                or program != partition.program_paths):
+            raise DoctorCompositionError("repair eligibility program subset differs from signed partition")
     sources = {}
     for name in selected:
         relative = PurePosixPath(name)
@@ -221,17 +235,21 @@ def assess_doctor_repair_eligibility(
         name: {"sha256": hashlib.sha256(raw).hexdigest(), "source_cid": cid_for_bytes(raw)}
         for name, raw in sources.items()
     }
-    scope_cid = cid_for_payload({"schema": "supervisor-source-scope@1", "sources": scope_sources})
+    from .semantic_context_runtime import _source_scope_payload
+    scope_cid = cid_for_payload(_source_scope_payload(scope_sources, program))
     repository_id = cid_for_payload({"repository": str(root)})
+    config = {"paths": selected}
+    if program is not None:
+        config["program_paths"] = list(program)
     roots = DiagnosticRoots(
         repository_id=repository_id, forest_id=scope_cid, tree_id=scope_cid,
         overlay_id=scope_cid, file_root_id=scope_cid, blob_root_id=scope_cid,
-        config_id=content_identity({"paths": selected}),
+        config_id=content_identity(config),
         policy_id=content_identity({"mode": "context_preparation_only"}),
     )
     diagnostic = diagnose_repository([
         DoctorSourceUnit(path=name, source_bytes=raw, blob_identity=scope_sources[name]["source_cid"])
-        for name, raw in sources.items()
+        for name, raw in sources.items() if program is None or name in program
     ], authority_roots=roots)
     snapshot, findings, bridge_cid = materialize_runtime_diagnostics(
         diagnostic, require_repository_id=repository_id,
@@ -268,7 +286,7 @@ def assess_doctor_repair_eligibility(
         reasons = []
         if output["effect"] != "modify":
             reasons.append("operator_requires_existing_source_modification")
-        elif name not in sources:
+        elif name not in sources or (program is not None and name not in program):
             reasons.append("output_not_in_verified_diagnostic_scope")
         elif PurePosixPath(name).suffix != ".py":
             reasons.append("operator_requires_python_source")
@@ -287,6 +305,13 @@ def assess_doctor_repair_eligibility(
     current = verify_local_benchmark_admission(admission, initial=True)
     if current["current_source_tree_id"] != verified["current_source_tree_id"]:
         raise DoctorCompositionError("repair eligibility source tree changed during assessment")
+    if program is not None:
+        try:
+            current_partition = terminal_profile_partition(repository=root, manifest=current["manifest"])
+        except (ValueError, TypeError, KeyError) as error:
+            raise DoctorCompositionError("repair eligibility program partition changed during assessment") from error
+        if current_partition != partition:
+            raise DoctorCompositionError("repair eligibility program partition changed during assessment")
     report = {
         "schema": "supervisor-doctor-repair-eligibility@1", "status": "abstained",
         "automatic_repair_eligible": False, "diagnostics_replayed": True,
@@ -304,6 +329,10 @@ def assess_doctor_repair_eligibility(
         "source_edits": 0, "provider_calls": 0, "execution_authority": False,
         "completion_authority": False,
     }
+    if program is not None:
+        report.update(program_paths=list(program), diagnostic_source_paths=list(program),
+            captured_source_count=len(sources), program_source_count=len(program),
+            support_source_count=len(sources) - len(program))
     return {**report, "report_cid": content_identity(report)}
 
 

@@ -38,6 +38,50 @@ def _write(path: Path, value):
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n")
 
 
+def _published_retrieval_options(*, repository, bundle, task, model_snapshot):
+    """Select a successor lane from the authenticated retrieval population."""
+    if bundle is None:
+        return dict(published_retrieval_policy=None, published_learned_artifacts=None)
+    from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_nomination
+    from ipfs_accelerate_py.agent_supervisor.runtime.published_task_context import (
+        _previous_retrieval, EMPTY_RETRIEVAL_POLICY,
+    )
+    metadata = load_task_context_nomination(repository=repository, artifact=bundle["artifact"],
+        expected_sha256=bundle["sha256"], task_cid=task.task_cid, task_id=task.task_key)
+    previous = _previous_retrieval(repository, metadata, task.task_key)
+    if previous is None or previous[0]["status"] != "current":
+        raise ValueError("publication retrieval policy requires authenticated current initial retrieval")
+    if previous[1] is None:
+        return dict(published_retrieval_policy=EMPTY_RETRIEVAL_POLICY, published_learned_artifacts=None)
+    if model_snapshot is None:
+        return dict(published_retrieval_policy="lexical-tfidf-symbols@1", published_learned_artifacts=None)
+    return dict(published_retrieval_policy="local-safetensors-symbols@1", published_learned_artifacts={
+        "result": ".runtime/terminal-vectors/result.json",
+        "manifest": ".runtime/terminal-vectors/model-manifest.json",
+        "model_snapshot": str(model_snapshot.resolve(strict=True)),
+    })
+
+
+def _empty_retrieval_activity(value):
+    """Recognize the native absence observation separately from learned receipts."""
+    fields = {"schema", "status", "source_population_cid", "previous_source_population_cid",
+        "embedding_calls", "model_loading_calls", "execution_authority", "completion_authority"}
+    if (type(value) is not dict or set(value) != fields
+            or value["schema"] != "supervisor-published-empty-retrieval-observation@1"
+            or type(value["status"]) is not str or value["status"] not in {"current", "unavailable"}
+            or any(type(value[key]) is not int or value[key] != 0
+                for key in ("embedding_calls", "model_loading_calls"))
+            or any(value[key] is not False for key in ("execution_authority", "completion_authority"))
+            or type(value["previous_source_population_cid"]) is not str
+            or re.fullmatch(r"baguqeera[a-z2-7]{52}", value["previous_source_population_cid"]) is None
+            or (value["status"] == "unavailable" and value["source_population_cid"] is not None)
+            or (value["status"] == "current" and (type(value["source_population_cid"]) is not str
+                or re.fullmatch(r"baguqeera[a-z2-7]{52}", value["source_population_cid"]) is None))):
+        return None
+    return dict(local_embedding_calls=0, local_embedding_texts=0,
+        remote_embedding_calls=0, text_generation_calls=0)
+
+
 def _arm_cleanup_deadline(deadline: float) -> None:
     """Replace the work alarm with the bounded cleanup window.
 
@@ -294,8 +338,11 @@ def _refresh_completed_context(runtime, report: dict, *, deadline: float,
         valid = [receipt for receipt in receipts if isinstance(receipt, dict)
             and receipt.get("schema") == "supervisor-published-learned-embedding-receipt@1"
             and all(type(receipt.get(key)) is int and receipt[key] >= 0 for key in counters)]
+        valid.extend(activity for row in results if row.get("embedding_receipt") is None
+            and (activity := _empty_retrieval_activity(row.get("empty_retrieval_observation"))) is not None)
         complete = bool(receipts) and len(valid) == len(receipts)
         observation["embedding_accounting"] = {
+            "scope": "retrieval_refresh",
             "all_refreshes_receipted": complete,
             "totals": {key: sum(row[key] for row in valid) if complete else None for key in counters},
             "known_subtotals": {key: sum(row[key] for row in valid) if valid else None for key in counters}}
@@ -642,13 +689,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 refresh_context_on_completion=bundle is not None,
                 refresh_source384_on_completion=(source384_config is not None
                     and selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1"),
-                published_retrieval_policy=("local-safetensors-symbols@1" if model_snapshot is not None
-                    else "lexical-tfidf-symbols@1") if bundle is not None else None,
-                published_learned_artifacts=({
-                    "result": ".runtime/terminal-vectors/result.json",
-                    "manifest": ".runtime/terminal-vectors/model-manifest.json",
-                    "model_snapshot": str(model_snapshot.resolve(strict=True)),
-                } if bundle is not None and model_snapshot is not None else None),
+                **_published_retrieval_options(repository=Path("/app"), bundle=bundle, task=task,
+                    model_snapshot=model_snapshot),
             )
             try:
                 report["coding_dispatch_possible"] = True

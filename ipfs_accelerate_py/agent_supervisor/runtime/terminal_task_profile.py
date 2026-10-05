@@ -99,8 +99,6 @@ def task_profile_worker_inputs(profile: dict) -> list[str]:
 
 def task_profile_index_paths(profile: dict) -> list[str]:
     paths = validate_task_profile(profile)["input_paths"]
-    if not paths:
-        raise ValueError("full indexed public task requires actual source inputs; instruction-only indexing is unavailable")
     if len(paths) > 64:
         raise ValueError("full indexed public task exceeds native 64-file vector bound")
     return paths

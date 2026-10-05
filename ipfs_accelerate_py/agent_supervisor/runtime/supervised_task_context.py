@@ -32,7 +32,9 @@ def prepare_supervised_task_context(
     coordinator=None,
     code_vector_snapshot=None,
     code_vector_result=None,
+    code_empty_population=None,
     code_query_text: str = "",
+    semantic_program_paths: Sequence[str] | None = None,
     semantic_max_symbols: int = 256,
     semantic_context_input_tokens: int = 8192,
     semantic_worker_query: str = "",
@@ -53,8 +55,17 @@ def prepare_supervised_task_context(
     if intent.uses_bound_connection:
         raise ValueError("task context preparation requires a file-backed intent owner")
     root = Path(repository).resolve(strict=True)
-    retrieval_requested = any(value is not None for value in (code_vector_snapshot, code_vector_result)) or bool(code_query_text)
-    if retrieval_requested:
+    retrieval_requested = any(value is not None for value in (code_vector_snapshot, code_vector_result, code_empty_population)) or bool(code_query_text)
+    if code_empty_population is not None:
+        if (not isinstance(code_empty_population, dict)
+                or set(code_empty_population) != {"program_paths", "support_hashes"}
+                or code_vector_snapshot is not None or code_vector_result is not None
+                or not code_query_text
+                or semantic_program_paths is None
+                or list(semantic_program_paths) != code_empty_population["program_paths"]
+                or set(paths) != set(code_empty_population["program_paths"]) | set(code_empty_population["support_hashes"])):
+            raise ValueError("empty retrieval requires the same explicit complete program/support scope")
+    elif retrieval_requested:
         from ..analysis.code_symbol_vector_index import CodeVectorIndexSnapshot, CodeVectorSearchResult
 
         if (not isinstance(code_vector_snapshot, CodeVectorIndexSnapshot)
@@ -99,6 +110,7 @@ def prepare_supervised_task_context(
         context_input_tokens=semantic_context_input_tokens,
         worker_query=semantic_worker_query,
         worker_max_bytes=semantic_worker_max_bytes,
+        program_paths=semantic_program_paths,
     )
     blocks = output / "semantic/blocks"
 
@@ -150,11 +162,18 @@ def prepare_supervised_task_context(
     if retrieval_requested:
         from .code_retrieval_context import prepare_code_retrieval_context
 
-        retrieval = prepare_code_retrieval_context(
-            repository=root, task_id=alias, query_text=code_query_text,
-            snapshot=code_vector_snapshot, result=code_vector_result,
-            output=output / "code-retrieval.json",
-        )
+        if code_empty_population is not None:
+            from .empty_code_retrieval import prepare_empty_code_retrieval_context
+            retrieval = prepare_empty_code_retrieval_context(
+                repository=root, task_id=alias, query_text=code_query_text,
+                **code_empty_population, output=output / "code-retrieval.json",
+            )
+        else:
+            retrieval = prepare_code_retrieval_context(
+                repository=root, task_id=alias, query_text=code_query_text,
+                snapshot=code_vector_snapshot, result=code_vector_result,
+                output=output / "code-retrieval.json",
+            )
         load_semantic_worker_context(
             repository=root, artifact=semantic_artifact,
             expected_sha256=semantic["worker_payload_sha256"], task_id=alias,
@@ -219,5 +238,13 @@ def prepare_supervised_task_context(
             expected_sha256=semantic["worker_payload_sha256"], task_id=alias)
         if intent.event_watermark() != watermark:
             raise ValueError("task intent changed during optional Intent/code contract check")
+    if retrieval is not None:
+        from .code_retrieval_context import load_code_retrieval_context
+        metadata = retrieval["metadata"]
+        current = json.loads(load_code_retrieval_context(repository=root,
+            artifact=metadata["Code retrieval artifact"],
+            expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
+        if current["status"] != "current":
+            raise ValueError("source population changed during context preparation")
     (output / "result.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
     return result

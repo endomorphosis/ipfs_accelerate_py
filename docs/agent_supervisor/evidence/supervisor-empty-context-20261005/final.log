@@ -1,0 +1,89 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 464 items
+
+test/api/semantic_state/test_empty_code_retrieval.py ................... [  4%]
+............................                                             [ 10%]
+test/api/semantic_state/test_code_retrieval_context.py ....              [ 10%]
+test/api/semantic_state/test_semantic_context_runtime.py ............... [ 14%]
+........                                                                 [ 15%]
+test/api/semantic_state/test_semantic_context_refresh.py .............   [ 18%]
+test/api/semantic_state/test_semantic_capsule_selection.py ............. [ 21%]
+.........                                                                [ 23%]
+test/api/semantic_state/test_semantic_context_retry.py ...               [ 24%]
+test/api/semantic_state/test_supervised_task_context.py ..........       [ 26%]
+test/api/test_semantic_router_translation.py ..........................  [ 31%]
+test/api/test_semantic_router_integration.py .......                     [ 33%]
+test/api/test_doctor_repair_eligibility.py ..................            [ 37%]
+test/api/test_agent_supervisor_doctor_repair_composition.py F.......F    [ 39%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 41%]
+....                                                                     [ 42%]
+test/api/semantic_state/test_published_task_context.py ....              [ 43%]
+test/api/semantic_state/test_published_retrieval.py ..                   [ 43%]
+test/api/semantic_state/test_published_learned_retrieval.py ...........  [ 46%]
+test/api/semantic_state/test_source384_published_retrieval.py .......... [ 48%]
+..                                                                       [ 48%]
+test/api/test_published_context_failure_phase.py .......                 [ 50%]
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py . [ 50%]
+..........                                                               [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 52%]
+........................................................................ [ 68%]
+                                                                         [ 68%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 68%]
+......                                                                   [ 69%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 70%]
+...........                                                              [ 72%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 72%]
+................                                                         [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 76%]
+..                                                                       [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 76%]
+..................                                                       [ 80%]
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py . [ 81%]
+...                                                                      [ 81%]
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py . [ 81%]
+........................................................................ [ 97%]
+.........                                                                [ 99%]
+benchmarks/agent_supervisor/container_coding/test_terminal_legacy_profile_context_reuse.py . [ 99%]
+..                                                                       [100%]
+
+=================================== FAILURES ===================================
+_________ test_real_provers_synthesis_impact_and_validated_ref_commit __________
+test/api/test_agent_supervisor_doctor_repair_composition.py:45: in test_real_provers_synthesis_impact_and_validated_ref_commit
+    runtime, inputs = smoke.run(tmp_path / "real")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/doctor_composition_smoke.py:282: in run
+    return run_prepared(runtime, inputs, out)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/doctor_composition_smoke.py:375: in run_prepared
+    raise RuntimeError("native composition did not admit its fixture repair")
+E   RuntimeError: native composition did not admit its fixture repair
+__________ test_failed_candidate_validator_rolls_back_before_ref_cas ___________
+test/api/test_agent_supervisor_doctor_repair_composition.py:118: in test_failed_candidate_validator_rolls_back_before_ref_cas
+    assert composed.admitted
+E   AssertionError: assert False
+E    +  where False = DoctorCompositionResult(inputs=DoctorCompositionInputs(evidence_id='baguqeera5yypmmpnhd5pc7z4cpg5hcwu32rrqkkzsaf7kwghn...selected keyword becomes amount and retains its integer value. No whole-program theorem.', 'mutation_capable': False}}).admitted
+=============================== warnings summary ===============================
+test/api/semantic_state/test_semantic_context_retry.py::test_daemon_preserves_semantic_capsules_through_verified_retry_delta
+  test/api/semantic_state/test_semantic_context_retry.py:102: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_daemon_preserves_semantic_capsules_through_verified_retry_delta(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-empty-context-20261005/final.xml -
+============================= slowest 10 durations =============================
+8.10s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+5.91s call     benchmarks/agent_supervisor/container_coding/test_terminal_legacy_profile_context_reuse.py::test_retained_generic_v1_assets_reuse_through_native_owner_and_worker
+5.41s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]
+5.33s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]
+5.14s call     test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]
+5.10s call     benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve
+5.06s call     benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-True]
+4.97s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]
+4.94s call     benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-False]
+4.94s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_doctor_repair_composition.py::test_real_provers_synthesis_impact_and_validated_ref_commit
+FAILED test/api/test_agent_supervisor_doctor_repair_composition.py::test_failed_candidate_validator_rolls_back_before_ref_cas
+============= 2 failed, 462 passed, 1 warning in 563.01s (0:09:23) =============

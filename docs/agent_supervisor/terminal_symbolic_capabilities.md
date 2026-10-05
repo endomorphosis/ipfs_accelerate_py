@@ -190,7 +190,6 @@ START or new Terminal-Bench score were produced by this qualification.
 | --- | --- | --- |
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
 | P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
-| P1 | Honest empty-source and zero-symbol context | Reuse the signed source partition, corpus inventory and native empty-intent-world capture. The complete contract and acceptance path below cover initial context, replay, audits and successor refresh together. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
 | P1 | Optional independent model review through the live daemon | Add explicit policy initialization and CLI transport in `todo_daemon/implementation_daemon.py`, then qualify the joined reviewed-effect path against its native effect owner. The seven retained optional integration failures remain open; current provider authorization does not supply review evidence. |
 | P1 | Source/data and language coverage | `analysis/program_ast_adapters.py`, exhaustive corpus inventory, scoped Doctor diagnostics. Preserve all hashes and unresolved frontiers. Parsing, tokenization and vector hits do not establish executable semantics. |
@@ -223,24 +222,27 @@ Successor inference reuses the immutable support declaration while binding the
 new program bytes; it does not pretend the original program hashes are still
 current. Newly created outputs remain outside that old scope pending independent
 successor admission. Empty or non-Python program populations explicitly abstain
-before checkpoint consumption. A general source-empty context remains unfinished.
+before checkpoint consumption. General empty retrieval is supported by the
+separate native contract below. Selecting Source384 or legacy decoder training
+on that retrieval lane explicitly abstains before checkpoint consumption;
+independent decoder abstention transport remains future work.
 
-## Empty-source and zero-symbol implementation contract
+## Empty-source and zero-symbol context (2026-10-05)
 
-The 2026-10-05 audit of `26812b9267e765ed5792552befea2710bc04b3c6`
-distinguishes a repository with no declared program inputs from a successfully
-parsed program file containing no qualified symbols. Both remain implementation
-gaps. Preparation already permits the first case, but indexing refuses it;
-lexical and learned preflight also refuse the second. Removing those guards
-alone would admit incomplete scans or classify generated smoke as task code.
+The native empty-retrieval lane distinguishes no declared program inputs from
+successfully parsed inputs with zero qualified code symbols. It authenticates
+the signed public task partition through initial capture, saved replay,
+planning, admitted preparation, warm owner rebind, worker context, historical
+input audit and publication refresh. Existing lexical and learned vector
+producers retain their positive-population contracts.
 
-The implementation must preserve these bindings:
+The implementation preserves these bindings:
 
 1. Reuse `runtime/terminal_source_partition.py` to independently reproduce the
    signed instruction, profile and generated smoke. Keep their exact bytes in
    the complete manifest. Its explicit `program_paths` alone drive semantic
    scans and code retrieval; the three support files retain their support roles.
-2. Add a separate retrieval artifact with explicit `no_program_inputs` or
+2. `supervisor-empty-code-retrieval@1` records explicit `no_program_inputs` or
    `zero_qualified_symbols` disposition. The latter requires a complete,
    successful native scan of every declared program input. Unsupported language,
    parser failure, truncation or missing coverage remains unavailable.
@@ -252,8 +254,15 @@ The implementation must preserve these bindings:
    Proof, execution, completion, omission and equivalence authority remain false.
 4. Capture an actual cold native semantic root using only the program subset.
    Retain required raw support text and freshness of the entire signed manifest.
-   Empty program input produces zero program symbols and fact capsules, rather
-   than semantic claims derived from the harness.
+   No program inputs produces zero semantic symbols and capsules. A comment-only
+   Python file retains its genuine native module fact/capsule, while qualified
+   retrieval symbols remain zero. In the explicit subset route, support files
+   never become task-program facts.
+   Explicit semantic subsets use schema `@2`; the default `@1` route retains
+   its existing behavior. Verified positive-population generic `@1` contexts
+   remain reusable with their original vector and semantic bytes; only empty
+   retrieval requires the explicit `@2` partition. Doctor independently reproduces
+   the signed partition before accepting an explicit subset for repair eligibility.
 5. Authenticate the same artifact union throughout creation, saved replay,
    planner admission, admitted reuse, warm rebind, worker context, final audit
    and successor publication. Keep the existing `code-retrieval-context`
@@ -262,25 +271,39 @@ The implementation must preserve these bindings:
    remain explicitly outside that scope until a separate authenticated scope
    transition admits them. An empty observation cannot authorize output effects,
    declare task completion or justify skipping verification.
+   A newly introduced qualified symbol makes retrieval unavailable until an
+   independently admitted vector-policy transition; refresh neither manufactures
+   vectors nor silently changes embedding models. Native STOP-triggered refresh
+   and cache reload preserve this behavior and record zero retrieval model use.
 
-| Existing owner | Required change |
+| Owner | Implemented responsibility |
 | --- | --- |
 | `terminal_task_profile.py`, `terminal_initial_context.py`, `terminal_indexed_preparation.py` | Admit an explicit empty program population after signed partition replay; preserve complete support/source inventories in both initial and direct admitted preparation. |
 | `runtime/semantic_context_runtime.py` | Capture, replay and refresh an explicit program subset while retaining the full manifest and required raw support. |
-| `runtime/code_retrieval_context.py` | Validate the closed empty/vector artifact union, exact query/task/partition identity, complete native scan and current source bytes. Reject an empty marker over code containing qualified symbols. |
+| `runtime/code_retrieval_context.py`, `runtime/empty_code_retrieval.py` | Validate the closed empty/vector artifact union, exact query/task/partition identity, complete native scan and current source bytes. Reject an empty marker over code containing qualified symbols; pure historical validation authenticates original population IDs without claiming fresh source access. |
 | `terminal_context_rebind.py`, `terminal_context_audit.py` | Bind the population CID when vector identity is null; authenticate the empty schema before accepting null identity. |
 | `terminal_container_supervisor.py`, `entrypoints/admitted_benchmark_runtime.py` | Select an explicit empty publication policy rather than a lexical or learned vector policy. |
 | `runtime/published_task_context.py` | Refresh empty observations without assuming a native vector snapshot/query; retain the original scope and independently bind successor source changes. |
 
-Acceptance requires both a signed create-only task with zero program inputs and
-a parsed comment-only Python input to traverse native initial capture, planning,
-admitted world capture, warm rebind, actual worker-prompt reconstruction, final
-audit and successor refresh. Tests must reject changed support or source bytes,
-forged empty markers, unexpected hits, true authority flags and incomplete scans.
-They must record zero model calls, zero fabricated symbols and no automatic task
-completion. Ordinary symbol-bearing lexical and pinned learned routes must retain
-their current replay and asset selection. This plan creates no decoder checkpoint
-and does not merge the separate IR families, schemas, tasks or 8D/384D/768D paths.
+Both signed create-only tasks with zero program inputs and comment-only Python
+inputs traverse native preparation, authored planning fixtures, admitted world
+capture, warm rebind, worker prompt reconstruction and historical audits. Tests
+also cover real native publication/STOP/refresh, empty-to-symbol transitions,
+support drift, rehashed scope/identity/count/type tampering and false authority.
+No model output is relabeled as proof or benchmark correctness. This change
+creates no decoder checkpoint and preserves separate IR families, schemas,
+tasks and 8D/384D/768D paths.
+
+The [empty-context qualification](evidence/supervisor-empty-context-20261005/qualification.json)
+records 464 distinct passing cases with zero skips, fresh AST seals and unchanged
+production/test source pins across the combined run and native Lean correction.
+The combined run passed 462 cases and failed two after selecting Lake for a
+fixture that invokes Lean directly; all nine cases in that file pass with the
+installed native Lean 4.33.1 executable. Both logs and XML remain retained.
+Eleven existing cached MiniLM learned-retrieval regressions pass offline; they
+qualify the ordinary vector lane and do not establish GTE decoder quality.
+Retained MiniLM, GTE-small and Intent384 weights have identical before/after
+hashes. The qualification produces no training, downloads or benchmark score.
 
 
 ## Runtime contract repairs and current model defaults (2026-10-04)
@@ -362,5 +385,5 @@ Those six checks pass after selecting the installed native Lean 4.33.1/Lake
 binary; both runs and the exact refusal diagnostic remain in the evidence.
 AST sealing stayed enabled with fresh private catalogs and no completion
 authority. No decoder training, downloads or new benchmark score were produced.
-The general empty-source contract and optional independent-review wiring remain
-pending as described above.
+That qualification preceded the empty-source implementation above. Optional
+independent-review wiring remains pending.

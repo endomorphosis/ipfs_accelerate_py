@@ -1,0 +1,632 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-05 01:25:39 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-05 01:25:39 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-05 01:25:39 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-05 01:25:39 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-05 01:25:39 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-05 01:25:39 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-05 01:25:39 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 82 items / 48 deselected / 34 selected
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-qualified] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  2%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-authority] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:43 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:43 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:43 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:44 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  5%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-model_consumed] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  8%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-embedding_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:48 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:48 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:48 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 11%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-scan_count] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:49 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:50 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:50 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:50 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 14%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-qualified] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:52 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:52 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:52 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:52 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 17%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-authority] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:54 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:54 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:54 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 20%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-model_consumed] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-embedding_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:25:58 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:58 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:59 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:25:59 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 26%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-scan_count] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:00 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:00 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:01 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_packet_cannot_use_p9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 29%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-provider_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 32%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-world_task_count] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 35%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-indexed_symbols] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 38%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-full_capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:08 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 41%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-learned_embeddings] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:09 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 44%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-embedding_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 47%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-provider_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl6/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-world_task_count] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl7/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 52%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-indexed_symbols] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:18 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:18 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:18 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl8/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 55%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-full_capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:20 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:20 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:20 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl9/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 58%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-learned_embeddings] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:21 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl10/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:22 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl10/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:22 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl10/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:22 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl10/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 61%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-embedding_calls] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl11/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl11/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl11/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:24 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_typed_receipt_cannot_repl11/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [ 64%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:26 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:26 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:26 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:26 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:26 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 67%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-worker_capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:28 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:28 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:28 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:28 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:28 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 70%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-doctor_findings] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:30 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:30 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:30 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:30 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 73%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:31 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:32 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:32 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:32 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:32 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-worker_capsules] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:33 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 79%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-doctor_findings] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-05 01:26:35 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:36 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:36 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:26:36 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-05 01:26:36 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 82%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-training] [31mFAILED[0m[31m [ 85%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-legacy_security] [31mFAILED[0m[31m [ 88%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-source384] [31mFAILED[0m[31m [ 91%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-training] [31mFAILED[0m[31m [ 94%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-legacy_security] [31mFAILED[0m[31m [ 97%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-source384] [31mFAILED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-capsules] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'capsules'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno0/state', 'original_head': '3fb2828905025ab94b94682e419b0c84d8096d5f', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-worker_capsules] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'worker_capsules'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno1/state', 'original_head': 'd3bcde2e5746499740888743978451598e505b8b', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-doctor_findings] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'doctor_findings'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno2/state', 'original_head': '6e5d7603bd5dfe2b247e38c189903bec1b82ff99', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-capsules] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'capsules'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno3/state', 'original_head': 'd067c25f054cc75bf662868ce84746f89b818135', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-worker_capsules] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'worker_capsules'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno4/state', 'original_head': '0e43ba7b66eb2507bb81334762d48c24ae466127', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-doctor_findings] _[0m
+
+captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'doctor_findings'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mchange[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworker_capsules[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdoctor_findings[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[39;49;00m(captured, change):[90m[39;49;00m
+        root, state, prepared, receipt, descriptor = captured[90m[39;49;00m
+        descriptor[[33m"[39;49;00m[33msemantic[39;49;00m[33m"[39;49;00m][change] = [94m99[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m change == [33m"[39;49;00m[33mcapsules[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [90m# Matching the loose result-side field must not hide an invented native[39;49;00m[90m[39;49;00m
+            [90m# capsule count; replay must bind the complete producer index itself.[39;49;00m[90m[39;49;00m
+            receipt[[33m"[39;49;00m[33mfull_capsules[39;49;00m[33m"[39;49;00m] = [94m99[39;49;00m[90m[39;49;00m
+        _persist_descriptor(root, state, receipt, descriptor)[90m[39;49;00m
+>       _reject_before_dispatch(root, state, prepared)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno5/state', 'original_head': '2561c728bbcda45e76a64239289e7f8fd5541bab', ...}
+
+    [0m[94mdef[39;49;00m [92m_reject_before_dispatch[39;49;00m(root, state, prepared):[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92munexpected_provider[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33mtampered initial context reached the planner provider[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m):[90m[39;49;00m
+[1m[31mE       Failed: DID NOT RAISE ValueError[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:63: Failed
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-training] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain0/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain0/state', 'original_head': '83dd759f2060ca17c0f0f4128f65c0eec12bcbb7', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d386900>
+decoder = 'training'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-legacy_security] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain1/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain1/state', 'original_head': '83dd759f2060ca17c0f0f4128f65c0eec12bcbb7', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2ebef0>
+decoder = 'legacy_security'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-source384] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain2/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain2/state', 'original_head': 'a7685d973ef29dbe42f04a09d55d752d7aebf2d4', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2eaed0>
+decoder = 'source384'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-training] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain3/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain3/state', 'original_head': '60a8da455d99741ad65c4cbfda716d5bbc74405b', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d32b4d0>
+decoder = 'training'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-legacy_security] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain4/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain4/state', 'original_head': '54b2a20693909bf5337c7c9e6c1c22828c5fdd53', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2b7cb0>
+decoder = 'legacy_security'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+[31m[1m_ test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-source384] _[0m
+
+prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain5/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain5/state', 'original_head': '54b2a20693909bf5337c7c9e6c1c22828c5fdd53', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2b4380>
+decoder = 'source384'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mdecoder[39;49;00m[33m"[39;49;00m, [[33m"[39;49;00m[33mtraining[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mlegacy_security[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource384[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[39;49;00m(prepared_only, monkeypatch, decoder):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m security_autoencoder_advisor [94mas[39;49;00m legacy[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m source384_repository_context [94mas[39;49;00m source384[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96mformalization[39;49;00m[04m[96m.[39;49;00m[04m[96mautoencoder[39;49;00m[04m[96m.[39;49;00m[04m[96msecurity[39;49;00m [94mimport[39;49;00m codebase_autoencoder [94mas[39;49;00m training[90m[39;49;00m
+    [90m[39;49;00m
+        root, state, _ = prepared_only[90m[39;49;00m
+        calls = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mforbidden[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            calls.append([94mTrue[39;49;00m)[90m[39;49;00m
+            pytest.fail([33m"[39;49;00m[33man unavailable empty-scope decoder consumed weights or source[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        monkeypatch.setattr(legacy, [33m"[39;49;00m[33mprepare_security_advice[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+        monkeypatch.setattr(source384, [33m"[39;49;00m[33mprepare_source384_context[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+>       monkeypatch.setattr(source384, [33m"[39;49;00m[33mregister_shared_parent[39;49;00m[33m"[39;49;00m, forbidden)[90m[39;49;00m
+[1m[31mE       AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'> has no attribute 'register_shared_parent'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py[0m:189: AttributeError
+--- generated xml file: /tmp/supervisor-empty-initial-replay-20261005-v2.xml ---
+============================= slowest 10 durations =============================
+2.09s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-qualified]
+2.08s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-scan_count]
+2.07s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-qualified]
+2.07s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-model_consumed]
+2.04s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-embedding_calls]
+2.02s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-authority]
+1.98s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-learned_embeddings]
+1.94s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-embedding_calls]
+1.92s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-full_capsules]
+1.91s setup    benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-authority]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-capsules][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-worker_capsules][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-doctor_findings][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-capsules][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-worker_capsules][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-doctor_findings][0m - Failed: DID NOT RAISE ValueError
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-training][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-legacy_security][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-source384][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-training][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-legacy_security][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::[1mtest_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-source384][0m - AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.source...
+[31m================ [31m[1m12 failed[0m, [32m22 passed[0m, [33m48 deselected[0m[31m in 59.63s[0m[31m =================[0m

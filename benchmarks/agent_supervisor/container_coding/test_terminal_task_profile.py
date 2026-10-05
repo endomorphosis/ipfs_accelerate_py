@@ -257,13 +257,16 @@ def test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs(tmp_path,
     assert smoke(tmp_path, declared).returncode != 0
 
 
-def test_empty_task_prepares_but_cannot_claim_source_indexes(tmp_path):
+def test_empty_task_prepares_native_absence_without_source_vectors(tmp_path):
     args = original(tmp_path, empty=True)
     prepare(args)
-    with pytest.raises(ValueError, match="actual source inputs"):
-        prep.initial_context(state=args[2])
-    assert not (args[0] / ".runtime/terminal-vectors").exists()
-    assert not (args[2] / "initial-context-result.json").exists()
+    result = prep.initial_context(state=args[2])
+    assert result["disposition"] == "no_program_inputs"
+    assert result["index_id"] is None
+    assert result["indexed_symbols"] == result["full_capsules"] == result["embedding_calls"] == 0
+    assert result["learned_embeddings"] is result["completion_authority"] is False
+    assert not (args[0] / ".runtime/terminal-vectors/vectors.duckdb").exists()
+    assert (args[2] / "initial-context-result.json").exists()
 
 
 def test_native_modify_only_profile_remains_exact(tmp_path):

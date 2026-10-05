@@ -14,6 +14,8 @@ from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import
     resolve_semantic_worker_context,
 )
 
+from test.api.semantic_state.test_semantic_context_runtime import _program_context
+
 
 @pytest.fixture
 def nomination(tmp_path):
@@ -95,6 +97,38 @@ def test_fresh_nomination_does_not_write_refresh_artifacts(nomination):
     assert result["refreshed"] is False
     assert result["artifact"] == nomination["artifact"]
     assert not nomination["refresh_output"].exists()
+
+
+@pytest.mark.parametrize("program,changed", [((), "smoke.py"), (("target.py",), "smoke.py"),
+    (("target.py",), "target.py")])
+def test_explicit_program_refresh_preserves_population_and_full_source_lineage(tmp_path, program, changed):
+    root, output, prepared = _program_context(tmp_path, program=program)
+    original = (output / "worker-context.json").read_bytes()
+    old = json.loads(original)
+    (root / changed).write_text((root / changed).read_text() + "# changed scoped bytes\n")
+    (root / "new-unselected.py").write_text("def unrelated(): return 9\n")
+    resolved = resolve_semantic_worker_context(repository=root, artifact=".semantic/initial/worker-context.json",
+        expected_sha256=prepared["worker_payload_sha256"], task_id="PROGRAM-001",
+        refresh_output=root / ".semantic/retries", attempt_id="program-refresh:2")
+    new = json.loads(resolved["text"])
+    assert resolved["refreshed"] is True
+    assert new["schema"] == "supervisor-semantic-worker-context@2"
+    assert new["program_paths"] == old["program_paths"] == list(program)
+    assert set(new["manifest"]) == set(old["manifest"])
+    assert new["refresh_lineage"]["program_paths"] == list(program)
+    assert set(new["refresh_lineage"]["source_delta"]) == {changed}
+    assert new["scope_cid"] != old["scope_cid"]
+    if changed == "smoke.py":
+        assert new["semantic_root_cid"] == old["semantic_root_cid"]
+    else:
+        assert new["semantic_root_cid"] != old["semantic_root_cid"]
+    if not program:
+        assert new["capsules"] == new["admissions"] == []
+        assert new["reconstruction"]["semantic_symbol_count"] == 0
+    assert "harness_only_symbol" not in json.dumps(new["capsules"])
+    assert (output / "worker-context.json").read_bytes() == original
+    assert load_semantic_worker_context(repository=root, artifact=resolved["artifact"],
+        expected_sha256=resolved["sha256"], task_id="PROGRAM-001") == resolved["text"]
 
 
 @pytest.mark.parametrize("defect", ["digest", "task", "deleted", "symlink", "output_escape"])

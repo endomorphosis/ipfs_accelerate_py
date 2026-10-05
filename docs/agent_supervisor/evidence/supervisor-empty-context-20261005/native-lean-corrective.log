@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 9 items
+
+test/api/test_agent_supervisor_doctor_repair_composition.py .........    [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-empty-context-20261005/native-lean-corrective.xml -
+============================= slowest 10 durations =============================
+2.11s call     test/api/test_agent_supervisor_doctor_repair_composition.py::test_real_provers_synthesis_impact_and_validated_ref_commit
+1.51s call     test/api/test_agent_supervisor_doctor_repair_composition.py::test_failed_candidate_validator_rolls_back_before_ref_cas
+0.22s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_source_drift_rejected_before_prover_or_mutation
+0.21s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_cross_bound_or_self_asserted_inputs_rejected[impact_subject]
+0.21s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_cross_bound_or_self_asserted_inputs_rejected[proof_assertion]
+0.21s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_omitted_or_opaque_inventory_rejected
+0.20s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_cross_bound_or_self_asserted_inputs_rejected[snapshot]
+0.20s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_cross_bound_or_self_asserted_inputs_rejected[consequence]
+0.20s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_failed_candidate_validator_rolls_back_before_ref_cas
+0.20s setup    test/api/test_agent_supervisor_doctor_repair_composition.py::test_truncated_diagnostic_scope_cannot_close_impact
+============================== 9 passed in 14.64s ==============================

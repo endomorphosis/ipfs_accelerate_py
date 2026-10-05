@@ -303,6 +303,9 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
         contexts[kind] = _json(text.encode())
         chunks[kind] = {"count": len(refs), "bytes": len(text.encode()), "sha256": _sha(text.encode())}
     semantic, retrieval, world = (contexts[kind] for kind in KINDS)
+    if semantic.get("schema") == "supervisor-semantic-worker-context@2":
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _validate_program_payload
+        _validate_program_payload(semantic)
     query = prepared["query"]
     if not isinstance(query, str) or len(query.encode()) > 32768:
         raise ValueError("invalid public query")
@@ -318,6 +321,24 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
         expected_paths = set(task_profile_index_paths(profile))
     if not isinstance(source_hashes, dict) or set(source_hashes) != expected_paths:
         raise ValueError("unexpected retrieval source scope")
+    empty = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
+    if empty:
+        from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import validate_empty_worker_context
+        from .terminal_task_profile import INSTRUCTION, PROFILE, SMOKE
+        validate_empty_worker_context(retrieval)
+        support = {name: {"role": role, "sha256": sources[name]["sha256"]} for name, role in (
+            (INSTRUCTION, "instruction"), (PROFILE, "task_profile"), (SMOKE, "structural_smoke"))}
+        if (prepared.get("task_profile") is None
+                or retrieval["program_paths"] != sorted(expected_paths)
+                or retrieval["original_support_hashes"] != support
+                or semantic.get("schema") != "supervisor-semantic-worker-context@2"
+                or semantic.get("program_paths") != sorted(expected_paths)
+                or set(sources) != expected_paths | set(support)
+                or any(retrieval[key] != expected.get(key) for key in (
+                    "retrieval_schema", "source_population_cid", "disposition", "embedding_calls"))):
+            raise ValueError("historical empty population differs from signed task source roles")
+    elif retrieval["index_id"] is None or expected.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+        raise ValueError("historical retrieval lane differs from captured source population")
     tasks = [row for row in world.get("tasks", []) if row.get("task_cid") == expected["task_cid"]]
     checks = {
         "task_alias": semantic["task_id"] == retrieval["task_id"] == wire["objective_id"] == prepared["spec"]["task_key"],
@@ -328,6 +349,10 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
         "source_hashes": all(_digest(digest) == sources[path]["sha256"] for path, digest in source_hashes.items()),
         "semantic_source_hashes": all(semantic["manifest"][path]["sha256"] == digest for path, digest in source_hashes.items()),
         "semantic_input_scope": set(semantic["manifest"]) == set(prepared["worker_inputs"]),
+        "semantic_captured_hashes": all(binding["sha256"] == sources[path]["sha256"]
+            for path, binding in semantic["manifest"].items()),
+        "semantic_program_scope": (semantic.get("program_paths") == sorted(expected_paths)
+            if semantic.get("schema") == "supervisor-semantic-worker-context@2" else "program_paths" not in semantic),
         "current_retrieval_at_capture": retrieval["status"] == "current",
         "nomination_only": retrieval.get("nomination_only") is True,
         "no_retrieval_authority": all(retrieval.get(k) is False for k in ("semantic_authority", "execution_authority", "completion_authority")),
@@ -339,13 +364,17 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
         "native_prompt_sha256": _sha(rendered.encode()), "native_prompt_bytes": len(rendered.encode()),
         "context_chunks": chunks, "checks": checks, "all_context_checks_passed": all(checks.values()),
         "semantic_root_cid": _identity(semantic["semantic_root_cid"]),
-        "index_id": _identity(retrieval["index_id"]), "retrieval_result_id": _identity(retrieval["result_id"]),
+        "index_id": None if empty else _identity(retrieval["index_id"]), "retrieval_result_id": _identity(retrieval["result_id"]),
         "retrieval_query_id": _identity(retrieval["query_id"]),
         "world_snapshot_cid": _identity(world["world_snapshot_cid"]),
         "plan_projection_cid": _identity(world["plan_projection_cid"]),
         "task_cid": _identity(expected["task_cid"]), "public_query_sha256": _sha(query.encode()),
         "source_sha256": {key: _digest(value) for key, value in source_hashes.items()},
         "intent_freshness_checked": world.get("intent_freshness_checked") is True}
+    if empty:
+        result.update(retrieval_schema=retrieval["retrieval_schema"],
+            source_population_cid=_identity(retrieval["source_population_cid"]),
+            disposition=retrieval["disposition"], embedding_calls=0)
     if len(tasks) == 1:
         result["local_contract_cid"] = _identity(tasks[0].get("body", {}).get("local_planning_contract_cid"))
     return result, rendered

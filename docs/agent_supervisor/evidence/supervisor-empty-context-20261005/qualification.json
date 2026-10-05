@@ -1,0 +1,1959 @@
+{
+  "actual_model_regression": "11 existing cached MiniLM learned-retrieval cases pass offline with a private regular-file snapshot copy; this qualifies the existing normal vector lane, not a new GTE decoder contract.",
+  "ast_sealing": {
+    "combined": {
+      "any_completion_authority": false,
+      "closure_files_max": 1031,
+      "closure_files_min": 2,
+      "records": 462
+    },
+    "completion_authority": false,
+    "corrective": {
+      "any_completion_authority": false,
+      "closure_files_max": 999,
+      "closure_files_min": 999,
+      "records": 9
+    },
+    "enabled": true,
+    "fresh_private_catalogs": true
+  },
+  "authority": {
+    "benchmark_correctness": false,
+    "completion": false,
+    "execution": false,
+    "omission": false,
+    "proof": false,
+    "whole_repository": false
+  },
+  "base_commit": "4d8f1ffc440ee1231c7b3775ce92be9b7d5995f1",
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_expired_work_does_not_borrow_available_cleanup_time": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_finalization_reserve_and_current_retrieval_are_required": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_original_work_cutoff_bounds_refresh_without_shortening_cleanup": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_refresh_deadline_escapes_optional_exception_handlers_and_restores_outer_alarm": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_unsettled_or_unrequested_work_never_rebuilds[change0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_unsettled_or_unrequested_work_never_rebuilds[change1]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_unsettled_or_unrequested_work_never_rebuilds[change2]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget::test_unsettled_or_unrequested_work_never_rebuilds[change3]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_actual_bounded_child_process_roundtrip": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_directory_replaced_after_inventory_is_not_followed": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_exact_native_and_model_bytes_survive_worker_exit": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_finalization_keeps_usage_and_completion_on_audit_failure": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_finalization_without_remaining_budget_does_not_spawn": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_generic_retrieval_scope_must_match_instruction_bound_signed_profile": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_inventory_bound_abstains": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_missing_capsule_stays_unknown": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[fifo]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[oversized]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_owner_child_does_not_import_from_task_working_directory": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_persisted_capsule_tampering_rejected": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_same_native_bytes_do_not_override_prepared_input_binding[query]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_same_native_bytes_do_not_override_prepared_input_binding[source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_state_parent_symlink_refused": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_timeout_is_unknown_and_does_not_modify_receipts": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_unmatched_retry_is_not_promoted_by_one_exact_match": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit::test_wrong_receipt_workspace_cannot_match_model_input": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_rebind::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_rebind::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_context_rebind::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_context::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[False-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_context::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[False-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_context::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_context::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-canonical_tasks_created]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-completion_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-execution_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-full_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-indexed_symbols]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-learned_embeddings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-provider_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-schema]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-semantic_root_cid]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-world_snapshot_cid]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[comment-only-program-world_task_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-canonical_tasks_created]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-completion_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-execution_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-full_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-indexed_symbols]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-learned_embeddings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-provider_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-schema]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-semantic_root_cid]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-world_snapshot_cid]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_receipt_cannot_claim_authority_or_unobserved_roots_and_counts[no-program-inputs-world_task_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-doctor_findings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-worker_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-doctor_findings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-worker_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-schema]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-support_role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[comment-only-program-symbol_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-schema]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-support_role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_index_packet_cannot_change_qualified_empty_lane[no-program-inputs-symbol_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-hits]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-support_role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[comment-only-program-support_scope]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-hits]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-index_id]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-support_role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_rehashed_retrieval_cannot_change_signed_empty_population[no-program-inputs-support_scope]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-legacy_security]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-source384]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-training]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-legacy_security]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-source384]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-training]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-embedding_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-model_consumed]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-qualified]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-scan_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-embedding_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-model_consumed]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-qualified]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-scan_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-embedding_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-full_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-indexed_symbols]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-learned_embeddings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-provider_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-world_task_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-embedding_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-full_capsules]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-indexed_symbols]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-learned_embeddings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-provider_calls]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay::test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-world_task_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_accepted_fixture_admission_survives_native_storage_failure": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_authored_fixture_context_uses_real_native_admission_and_full_index": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_intent_ablation_overrides_source_unit_intent_checkpoint_selection": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[None]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[replay]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[summary_budget]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[tamper]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_planner_requires_external_worker_isolation_before_any_call": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_prepare_preserves_original_dirty_bytes_and_signs_absent_report": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[preseed]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[untracked]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_public_smoke_is_structural_and_not_an_oracle": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_signed_task_cannot_omit_create_or_change_public_check": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation::test_tampered_public_query_cannot_reach_planner": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_actual_semantic_producer_normalizes_only_objective_not_public_multiline_query": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_canonical_native_cid_is_data_but_instruction_text_is_still_rejected": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[descriptor]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[retrieval]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[world]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_admitted_construction_releases_native_view_before_fresh_gate[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_admitted_construction_releases_native_view_before_fresh_gate[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_fresh_replay_failure_still_prevents_success_marker": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[indexed]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[retrieval]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_payload]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_summary]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_view]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[serialized_snapshot]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[snapshot]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_native_construction_releases_finished_objects_before_fresh_replay[world_capture]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime::test_selected_source384_manifest_temporary_released_before_final_replay": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_legacy_profile_context_reuse::test_null_index_empty_lane_cannot_reuse_unscoped_legacy_v1[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_legacy_profile_context_reuse::test_null_index_empty_lane_cannot_reuse_unscoped_legacy_v1[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_legacy_profile_context_reuse::test_retained_generic_v1_assets_reuse_through_native_owner_and_worker": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_actual_generic_source_indexes_and_world_bind_task_inputs": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_empty_task_prepares_native_absence_without_source_vectors": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_excess_creations_rejected_before_advice_or_workspace_mutation[created_population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_excess_creations_rejected_before_advice_or_workspace_mutation[published_sources]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_modify_only_profile_retains_native_source_bound[125-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_modify_only_profile_retains_native_source_bound[126-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_native_modify_only_profile_remains_exact": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_native_prepare_accepts_exactly_32_created_outputs": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[True-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_oversize_planner_source_is_rejected_without_partial_scan": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[ignored]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[input_symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[inventory]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[output_parent_symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[untracked]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[absent_modify]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[bad_media]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[directory_overlap]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[duplicate_input]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[duplicate_output]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[instruction]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[present_create]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[too_many_sources]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[unknown]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_counts_support_and_future_creations_in_source_bound[221-32-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_counts_support_and_future_creations_in_source_bound[222-32-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_counts_support_and_future_creations_in_source_bound[252-1-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_counts_support_and_future_creations_in_source_bound[252-2-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_normalizes_line_endings_without_rewording": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_preserves_native_output_population_boundaries[0-64]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_preserves_native_output_population_boundaries[32-0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_preserves_native_output_population_boundaries[32-32]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_created_population_above_native_bound[33-0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_created_population_above_native_bound[33-31]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_created_population_above_native_bound[64-0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[../x.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[./x.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.git/config]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.runtime/a]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.supervisor-any]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[/app/x.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a/../x.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a/.git/config]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a//x.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a\\\\b.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a\\nb.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[x/*.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[x?.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_source_change_during_domain_declaration_cannot_replace_original_inventory": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-ast.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-ast/__init__.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-json.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-pathlib.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-sitecustomize.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-ast.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-ast/__init__.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-json.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-pathlib.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-sitecustomize.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_parses_without_executing_candidate": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[fifo]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[missing]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[oversize]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[parent_symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[syntax]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[profile]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[remove_profile]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[smoke]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[spec]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[worker_inputs]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_code_retrieval_context::test_foreign_task_and_modified_artifact_are_rejected": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_code_retrieval_context::test_large_index_uses_exact_bounded_persistence_reference": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_code_retrieval_context::test_real_index_nominations_reach_native_prompt_and_disappear_when_source_changes": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_code_retrieval_context::test_rehashed_forged_hit_does_not_replay": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_actual_scoped_empty_population_replays_without_harness_symbols[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_actual_scoped_empty_population_replays_without_harness_symbols[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[extra]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[original_hash]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[stale_paths]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_historical_worker_validator_rejects_forged_projection_without_live_files[status]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_native_scan_cannot_change_captured_source_or_support[empty.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_native_scan_cannot_change_captured_source_or_support[smoke.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[absolute]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[dot]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[duplicate]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[escape]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[overlap]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[role]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[support_digest]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_noncanonical_or_unbound_scope_is_rejected_before_scan[support_extra]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_parse_failure_or_unsupported_language_cannot_be_relabeled_empty[bad.py-def broken(:\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_parse_failure_or_unsupported_language_cannot_be_relabeled_empty[unknown.zzz-opaque data\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_program_drift_is_stale_without_reusing_historical_absence[None]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_program_drift_is_stale_without_reusing_historical_absence[\\xff\\x00]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_program_drift_is_stale_without_reusing_historical_absence[def new_function():\\n    return 1\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[dimensions]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[hits]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[index]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[population]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[query]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[scan_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_empty_artifact_cannot_forge_identity_or_authority[task]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_rehashed_marker_over_current_real_symbols_fails_native_replay": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_replay_closing_fence_rejects_artifact_or_caller_mutation[artifact]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_replay_closing_fence_rejects_artifact_or_caller_mutation[caller]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-instruction.md-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-instruction.md-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-smoke.py-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-smoke.py-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-task.json-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[False-task.json-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-instruction.md-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-instruction.md-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-smoke.py-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-smoke.py-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-task.json-False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_support_drift_returns_stale_without_reclassifying_harness[True-task.json-True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_empty_code_retrieval::test_symbol_bearing_native_scan_is_not_an_empty_observation": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_admitted_owner_registers_empty_policy_without_vector_artifacts": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_container_empty_policy_ignores_unused_selected_snapshot_and_rejects_stale_scope": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_activity_is_distinct_closed_zero_model_observation": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_publication_policy_is_closed_and_retains_historical_scope": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[False-support]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[False-unchanged]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-comment]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-support]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-symbol]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-unchanged]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_empty_successor_reobserves_same_scope_without_model[True-value]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_empty_task_context::test_normal_vector_predecessor_keeps_native_snapshot_result_union": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_actual_local_model_rebuild_rebinds_only_source_roots": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_actual_model_canary_failure_keeps_observed_local_embedding_cost": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_owner_model_refuses_replaceable_ancestor": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_owner_model_refuses_worker_writable_or_symlink_assets": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[manifest]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[policy]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[query]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[result]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[runtime]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[source_fifo]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_learned_retrieval::test_pin_or_source_drift_abstains_before_loading_model[source_symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_retrieval::test_lexical_policy_never_relabels_another_model": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_retrieval::test_native_lexical_descriptor_rebuild_and_tamper_refusal": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_task_context::test_actual_completed_publication_refreshes_roots_and_keeps_authority[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_task_context::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_task_context::test_foreign_owner_is_never_a_publication_refresh_authority": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_published_task_context::test_native_pinned_embedding_policy_allows_only_root_rebinding": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_admission_byte_boundary_matches_previous_policy": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[-0-8192]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-0-32768]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-2-65536]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-16384]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-32768]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-8192]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_exact_native_payload_admission_order_and_budget_parity[raw_required \\u03bb-8-32768]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_fitting_candidate_still_requires_native_freshness": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_full_worker_payload_pack_and_roots_match_old_selection": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_index_verified_once_and_each_capsule_matches_native_view": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[missing-capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[missing-index]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[noncanonical-capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[noncanonical-index]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[wrong_bytes-capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_missing_or_tampered_native_blocks_are_rejected[wrong_bytes-index]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_new_generation_gets_new_capsule_and_native_freshness": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_oversized_first_candidate_skips_only_its_freshness_and_keeps_later_small": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_reader_refuses_foreign_root_mutable_or_injected_bundle": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_valid_cid_with_wrong_indexed_identity_is_rejected[wrong_kind]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_capsule_selection::test_valid_cid_with_wrong_indexed_identity_is_rejected[wrong_symbol]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_cold_reconstruction_disagreement_is_not_persisted": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program0-smoke.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program1-smoke.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program2-target.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_fresh_nomination_does_not_write_refresh_artifacts": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_native_scanner_exclusions_cannot_hide_explicit_scope": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_cannot_bypass_nomination_and_scope_checks[deleted]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_cannot_bypass_nomination_and_scope_checks[digest]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_cannot_bypass_nomination_and_scope_checks[output_escape]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_cannot_bypass_nomination_and_scope_checks[symlink]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_cannot_bypass_nomination_and_scope_checks[task]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_detects_second_edit_after_preparation": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_refresh::test_refresh_reconstructs_changed_source_and_keeps_prior_nomination": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_retry::test_daemon_preserves_semantic_capsules_through_verified_retry_delta": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_retry::test_dirty_source_retry_refreshes_capsules_and_preserves_failure": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_retry::test_dirty_source_retry_requires_explicit_refresh": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_default_program_scope_preserves_legacy_wire_bytes": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[# A genuine comment-only module.\\n-program1-1]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[def target(value): return value + 1\\n-program0-0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[def target(value): return value + 1\\n-program2-2]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_subset_requires_canonical_population[program0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_subset_requires_canonical_population[program1]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_subset_requires_canonical_population[program2]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_subset_requires_canonical_population[program3]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_explicit_program_subset_requires_canonical_population[target.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_input_scope_cannot_escape_repository[../escape.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_input_scope_cannot_escape_repository[/tmp/escape.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_input_scope_cannot_escape_repository[a/../b.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_live_capsules_reach_native_daemon_and_stale_sources_are_refused": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_program_and_support_drift_both_refuse_saved_dispatch[smoke.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_program_and_support_drift_both_refuse_saved_dispatch[target.py]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[downgrade]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[drop_capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[drop_projected_capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[extra_path]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[subset]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[support_raw]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[symbol_count]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_semantic_context_runtime::test_saved_explicit_program_replays_subset_native_capsules_and_support[untyped_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[bundle]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[config]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[header_consumer]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[inference]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[producer]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[query]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[receipt]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[scope]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_lexical_refresh_refuses_changed_identity_or_assets[task]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_historical_source384_allows_current_lexical_reconstruction": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_learned_refresh_historical_selection_precedes_model_loading[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_source384_published_retrieval::test_learned_refresh_historical_selection_precedes_model_loading[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_launch_bundle_feeds_context_without_self_referential_native_task_mutation": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_native_retrieval_joins_the_same_task_capsules_and_world": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_optional_security_missing_checkpoint_does_not_block_task_context": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_optional_security_source_program_runs_in_existing_task_context": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_preparation_refuses_output_outside_repository": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_preparation_refuses_owner_drift_before_publishing_nominations[intent]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_preparation_refuses_owner_drift_before_publishing_nominations[source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_prepare_task_context_feeds_matching_native_semantic_and_world_roots": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_refresh_marks_captured_world_semantics_stale_and_rejects_nomination_tampering": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.semantic_state.test_supervised_task_context::test_worker_world_projection_omits_internal_contract_without_mutating_capture": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[consequence]": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[impact_subject]": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[proof_assertion]": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[snapshot]": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_failed_candidate_validator_rolls_back_before_ref_cas": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_omitted_or_opaque_inventory_rejected": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_real_provers_synthesis_impact_and_validated_ref_commit": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_source_drift_rejected_before_prover_or_mutation": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_agent_supervisor_doctor_repair_composition::test_truncated_diagnostic_scope_cannot_close_impact": {
+      "evidence": "native-lean-corrective.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_eligibility_rejects_unbound_diagnostics_and_signed_source[findings]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_eligibility_rejects_unbound_diagnostics_and_signed_source[manifest]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_eligibility_rejects_unbound_diagnostics_and_signed_source[scope]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_eligibility_rejects_unbound_diagnostics_and_signed_source[source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_explicit_subset_without_signed_profile_cannot_hide_source": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_inert_source_still_abstains_without_reviewed_inputs": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_live_operator_and_assessment_share_inert_module_gate[@decorator\\ndef target():\\n    pass\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_live_operator_and_assessment_share_inert_module_gate[class Target:\\n    pass\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_live_operator_and_assessment_share_inert_module_gate[import os\\n\\ndef target():\\n    pass\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_live_operator_and_assessment_share_inert_module_gate[target = lambda: None\\n]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_signed_program_subset_replays_native_doctor_without_support_code[False]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_signed_program_subset_replays_native_doctor_without_support_code[True]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_doctor_repair_eligibility::test_signing_arbitrary_smoke_does_not_grant_program_partition": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_nonordinary_cancellation_is_not_turned_into_unavailable": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_refresh_failure_preserves_closed_phase_and_original_class[cache_reload-None-TimeoutError]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_refresh_failure_preserves_closed_phase_and_original_class[rebuilder_selection-lexical-tfidf-symbols@1-ValueError]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_refresh_failure_preserves_closed_phase_and_original_class[rebuilder_selection-local-safetensors-symbols@1-RuntimeError]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_refresh_failure_preserves_closed_phase_and_original_class[successor_refresh-None-ValueError]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_unfinished_or_unstopped_work_does_not_enter_derivative_boundary[completed-False-pending_native_stop]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_published_context_failure_phase::test_unfinished_or_unstopped_work_does_not_enter_derivative_boundary[in_progress-True-pending_completion]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_actual_router_transports_capsules_and_expands_native_candidate": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_decode_refusal_retains_observed_provider_usage": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_dispatch_refuses_stale_or_unrelated_semantic_repository[canonical_workspace]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_dispatch_refuses_stale_or_unrelated_semantic_repository[foreign]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_dispatch_refuses_stale_or_unrelated_semantic_repository[stale]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_plain_summary_remains_literal_after_actual_translated_dispatch": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_integration::test_structured_reply_refuses_source_change_during_provider_call": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_duplicate_reserved_reply_keys_are_not_treated_as_plain_text": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_explicit_program_historical_replay_rejects_rehashed_nominations[dropped_capsule]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_explicit_program_historical_replay_rejects_rehashed_nominations[subset]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_explicit_program_translation_round_trips_real_subset_and_support[program0]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_explicit_program_translation_round_trips_real_subset_and_support[program1]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_mapping_alias_to_non_symbol_cannot_become_a_symbol_proposal": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_mixed_public_source_inventory_with_selected_capsules_round_trips": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_plain_response_is_literal_even_when_alias_text_is_present": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_real_capsules_round_trip_source_literals_and_immutable_core": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[foreign_manifest_source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[omitted_source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[scope]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_rebound_prompt_cannot_narrow_or_substitute_producer_source_inventory[unknown_raw_source]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_stale_sources_refuse_dispatch_and_structured_decode_but_allow_historical_audit": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_alias_or_authority_tampering_is_rejected[authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_alias_or_authority_tampering_is_rejected[foreign_root]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_alias_or_authority_tampering_is_rejected[foreign_task]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_alias_or_authority_tampering_is_rejected[unknown_alias]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_alias_or_authority_tampering_is_rejected[untyped_authority]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_structured_symbol_reply_enters_existing_native_candidate_grammar": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_tampered_producer_block_and_symlink_artifact_are_refused": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_transport_round_trip_rejects_tampering[core]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_transport_round_trip_rejects_tampering[literal]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_transport_round_trip_rejects_tampering[map]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_transport_round_trip_rejects_tampering[table]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    },
+    "test.api.test_semantic_router_translation::test_transport_round_trip_rejects_tampering[unknown]": {
+      "evidence": "final.xml",
+      "status": "passed"
+    }
+  },
+  "combined_run": "final-run.json",
+  "corrective_native_lean_run": "native-lean-corrective-run.json",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "distinct_latest_cases": 464,
+  "documentation_gates": "documentation-gates.log",
+  "downloads": 0,
+  "ir_families_merged": false,
+  "latest_outcomes": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 464,
+    "skipped": 0
+  },
+  "native_contracts": {
+    "comment_only_python": {
+      "embedding_calls": 0,
+      "index_id": null,
+      "qualified_retrieval_symbols": 0,
+      "semantic_capsules": 1,
+      "semantic_module_facts": 1
+    },
+    "created_outputs": "Excluded from original program/retrieval scope until authenticated independent transition.",
+    "decoder_abstention": "Selected Source384/legacy Security/training on empty initial retrieval explicitly raises before checkpoint registration or inference; unused embedding model selection is retained consumed=false.",
+    "empty_retrieval_schema": "supervisor-empty-code-retrieval@1",
+    "explicit_semantic_schema": "supervisor-semantic-worker-context@2",
+    "first_qualified_symbol": "Retrieval explicitly unavailable pending independently admitted vector policy; native semantic state still refreshes the preserved scope.",
+    "historical_audit": "Pure metadata/ID/original source-role checks and exact native/model input reconstruction; no claim to have cold-scanned current files after worker exit.",
+    "legacy_compatibility": "Verified positive-population generic @1 native semantic and vector files remain byte-identical during admitted/warm reuse; no cold builder/model is allowed in the regression.",
+    "no_program_inputs": {
+      "embedding_calls": 0,
+      "index_id": null,
+      "qualified_retrieval_symbols": 0,
+      "semantic_capsules": 0,
+      "semantic_symbols": 0
+    },
+    "publication_policy": "native-empty-program-scope@1",
+    "source_scope": "The signed public profile independently separates actual program inputs from exact instruction, canonical profile and generated structural smoke. Full manifest/support/raw source hashes remain bound."
+  },
+  "new_decoder_checkpoints": 0,
+  "official_terminal_bench_score": null,
+  "preliminary_history": "preliminary/ retains focused passing runs and fixture failures: absent capsule persistence in first end-to-end fixture, objective/predicted-path Doctor fixture errors, missing monkeypatch target and pre-count-fix initial cases. Final full suite covers all corrected fixtures. interrupted-pre-compatibility-final-run.json records intentional collection interruption before any tests to preserve legacy warm reuse and tighten observations.",
+  "remaining_gaps": [
+    "Broad operator dispatch and behavioral source lowering beyond the closed repairs",
+    "Generic symbolic task decomposition",
+    "Independent behavioral contracts for newly created code",
+    "Optional independent review policy/CLI and joined effect owner",
+    "Independent decoder-abstention transport for empty populations",
+    "Additional source/data language coverage"
+  ],
+  "retained_assets_unchanged": {
+    "retained_gte_small": {
+      "bytes": 66746168,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "retained_intent384": {
+      "bytes": 384106,
+      "path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "retained_minilm": {
+      "bytes": 90868376,
+      "path": "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors",
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    }
+  },
+  "run_history": "Combined run passed462 and failed2 because DOCTOR_COMPOSITION_LEAN selected Lake instead of the Lean executable expected by that fixture. Targeted rerun of all9 cases in that file passed with installed native Lean4.33.1, unchanged production/test source pins and a fresh seal catalog. Both complete logs/XML retained.",
+  "schema": "supervisor-empty-context-qualification@1",
+  "scope": "Native empty/zero-qualified-symbol retrieval, explicit semantic program subsets, initial/direct preparation, replay, admission, warm owner rebind, worker/audit and owner-accepted publication/STOP refresh.",
+  "sources_identical_across_runs": true,
+  "status": "qualified",
+  "training_steps": 0
+}

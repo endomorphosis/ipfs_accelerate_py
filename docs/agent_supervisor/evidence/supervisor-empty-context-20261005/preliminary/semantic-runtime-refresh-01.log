@@ -1,0 +1,75 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-05 01:21:36 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-05 01:21:36 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-05 01:21:36 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-05 01:21:36 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-05 01:21:36 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-05 01:21:36 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-05 01:21:36 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+test/api/semantic_state/test_semantic_context_runtime.py::test_live_capsules_reach_native_daemon_and_stale_sources_are_refused 
+-------------------------------- live log call ---------------------------------
+2026-10-05 01:22:11 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1169/test_live_capsules_reach_nativ0/agent-orchestration/523f6f50f669ad0280b2/agent-merge-trains/master-7bf4e16af19b04c1b00d/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-05 01:22:11 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1169/test_live_capsules_reach_nativ0/agent-orchestration/523f6f50f669ad0280b2/agent-merge-trains/master-7bf4e16af19b04c1b00d/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  1%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_input_scope_cannot_escape_repository[../escape.py] PASSED [  3%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_input_scope_cannot_escape_repository[/tmp/escape.py] PASSED [  5%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_input_scope_cannot_escape_repository[a/../b.py] PASSED [  6%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[def target(value): return value + 1\n-program0-0] PASSED [  8%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[# A genuine comment-only module.\n-program1-1] PASSED [ 10%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_scope_keeps_native_facts_and_full_support_binding[def target(value): return value + 1\n-program2-2] PASSED [ 12%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_default_program_scope_preserves_legacy_wire_bytes PASSED [ 13%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_subset_requires_canonical_population[program0] PASSED [ 15%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_subset_requires_canonical_population[program1] PASSED [ 17%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_subset_requires_canonical_population[program2] PASSED [ 18%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_subset_requires_canonical_population[program3] PASSED [ 20%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_explicit_program_subset_requires_canonical_population[target.py] PASSED [ 22%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[subset] PASSED [ 24%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[extra_path] PASSED [ 25%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[drop_capsule] PASSED [ 27%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[drop_projected_capsule] PASSED [ 29%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[support_raw] PASSED [ 31%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[downgrade] PASSED [ 32%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[untyped_authority] PASSED [ 34%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_saved_explicit_program_replays_subset_native_capsules_and_support[symbol_count] PASSED [ 36%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_program_and_support_drift_both_refuse_saved_dispatch[target.py] PASSED [ 37%]
+test/api/semantic_state/test_semantic_context_runtime.py::test_program_and_support_drift_both_refuse_saved_dispatch[smoke.py] PASSED [ 39%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_reconstructs_changed_source_and_keeps_prior_nomination PASSED [ 41%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_fresh_nomination_does_not_write_refresh_artifacts PASSED [ 43%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program0-smoke.py] PASSED [ 44%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program1-smoke.py] PASSED [ 46%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_explicit_program_refresh_preserves_population_and_full_source_lineage[program2-target.py] PASSED [ 48%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_cannot_bypass_nomination_and_scope_checks[digest] PASSED [ 50%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_cannot_bypass_nomination_and_scope_checks[task] PASSED [ 51%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_cannot_bypass_nomination_and_scope_checks[deleted] PASSED [ 53%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_cannot_bypass_nomination_and_scope_checks[symlink] PASSED [ 55%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_cannot_bypass_nomination_and_scope_checks[output_escape] PASSED [ 56%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_refresh_detects_second_edit_after_preparation PASSED [ 58%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_cold_reconstruction_disagreement_is_not_persisted PASSED [ 60%]
+test/api/semantic_state/test_semantic_context_refresh.py::test_native_scanner_exclusions_cannot_hide_explicit_scope PASSED [ 62%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-0-32768] PASSED [ 63%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-8192] PASSED [ 65%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-16384] PASSED [ 67%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-8-32768] PASSED [ 68%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[alpha_large zeta code-2-65536] PASSED [ 70%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[raw_required \u03bb-8-32768] PASSED [ 72%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_native_payload_admission_order_and_budget_parity[-0-8192] PASSED [ 74%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_oversized_first_candidate_skips_only_its_freshness_and_keeps_later_small PASSED [ 75%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_fitting_candidate_still_requires_native_freshness PASSED [ 77%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_exact_admission_byte_boundary_matches_previous_policy PASSED [ 79%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_index_verified_once_and_each_capsule_matches_native_view PASSED [ 81%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[missing-index] PASSED [ 82%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[missing-capsule] PASSED [ 84%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[wrong_bytes-index] PASSED [ 86%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[wrong_bytes-capsule] PASSED [ 87%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[noncanonical-index] PASSED [ 89%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_missing_or_tampered_native_blocks_are_rejected[noncanonical-capsule] PASSED [ 91%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_valid_cid_with_wrong_indexed_identity_is_rejected[wrong_symbol] PASSED [ 93%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_valid_cid_with_wrong_indexed_identity_is_rejected[wrong_kind] PASSED [ 94%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_reader_refuses_foreign_root_mutable_or_injected_bundle PASSED [ 96%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_new_generation_gets_new_capsule_and_native_freshness PASSED [ 98%]
+test/api/semantic_state/test_semantic_capsule_selection.py::test_full_worker_payload_pack_and_roots_match_old_selection PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/semantic-program-scope/runtime-refresh-01.xml -
+======================== 58 passed in 66.92s (0:01:06) =========================

@@ -1,0 +1,26 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 37 items
+
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 29%]
+....                                                                     [ 40%]
+test/api/semantic_state/test_published_task_context.py ....              [ 51%]
+test/api/test_published_context_failure_phase.py .......                 [ 70%]
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py . [ 72%]
+..........                                                               [100%]
+
+- generated xml file: /tmp/published-empty-verified-20261005-axrco4cd/tests.xml -
+============================= slowest 10 durations =============================
+11.78s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+7.35s call     test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[False]
+7.06s call     test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]
+6.53s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]
+6.16s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]
+5.10s call     benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve
+3.56s call     test/api/semantic_state/test_published_empty_task_context.py::test_admitted_owner_registers_empty_policy_without_vector_artifacts
+0.82s setup    test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[False]
+0.78s setup    test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]
+0.77s setup    test/api/semantic_state/test_published_empty_task_context.py::test_admitted_owner_registers_empty_policy_without_vector_artifacts
+======================== 37 passed in 75.58s (0:01:15) =========================

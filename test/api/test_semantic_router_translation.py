@@ -281,3 +281,73 @@ def test_mixed_public_source_inventory_with_selected_capsules_round_trips(native
     assert translated["raw_sources"] == {path: (root / path).read_text() for path in paths}
     assert codec.restore_semantic_router_prompt(provider_prompt=encoded.provider_prompt,
         table=encoded.table, repository=root) == mixed_prompt
+
+
+def _program_prompt(native, *, program):
+    root, _, prompt, _ = native
+    (root / "harness.py").write_text("def excluded_harness_symbol(): return unresolved_dependency()\n")
+    output = root / ".runtime/program-context"
+    prepare_semantic_context(repository=root, paths=["mod.py", "harness.py"],
+        required_raw_paths=["harness.py"], program_paths=program,
+        objective="Inspect the exact program.", task_id="TASK-1", output=output)
+    artifact = output / "worker-context.json"
+    wire, end = json.JSONDecoder().raw_decode(prompt)
+    wire["evidence"] = [reference.to_dict() for reference in build_text_context_references(
+        artifact.read_text(), reference_prefix="semantic-context", kind="semantic-context",
+        path=artifact.relative_to(root).as_posix(), repository_id="repo:test", tree_id="tree:test",
+        required=True, chunk_bytes=1201)]
+    return root, artifact, codec._json(wire) + prompt[end:]
+
+
+@pytest.mark.parametrize("program", [[], ["mod.py"]])
+def test_explicit_program_translation_round_trips_real_subset_and_support(native, program):
+    root, artifact, prompt = _program_prompt(native, program=program)
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+    assert codec.restore_semantic_router_prompt(provider_prompt=encoded.provider_prompt,
+        table=encoded.table, repository=root) == prompt
+    translated = json.loads(encoded.provider_prompt)["translated_semantic"]
+    assert translated["schema"] == "supervisor-semantic-worker-context@2"
+    assert translated["program_paths"] == program
+    assert translated["raw_sources"]["harness.py"] == (root / "harness.py").read_text()
+    assert set(encoded.table.to_dict()["source_manifest"]) == {"harness.py", "mod.py"}
+    assert "excluded_harness_symbol" not in json.dumps(translated["capsules"])
+    if not program:
+        assert encoded.table.to_dict()["symbol_ids"] == []
+        assert translated["capsules"] == translated["admissions"] == []
+    else:
+        reply, symbol = _reply(encoded)
+        decoded = codec.decode_semantic_router_response(response=json.dumps(reply), encoded=encoded, repository=root)
+        assert json.loads(decoded.text)["structured_payload"]["symbol_ids"] == [symbol]
+    assert encoded.receipt["completion_authority"] is False
+    (root / "harness.py").write_text("# support changed after nomination\n")
+    with pytest.raises(ValueError, match="stale"):
+        codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+    replay = codec.replay_semantic_router_prompt_for_audit(prompt=prompt, repository=root)
+    assert replay.provider_prompt == encoded.provider_prompt
+    assert replay.receipt["freshness_checked"] is False
+
+
+@pytest.mark.parametrize("mutation", ["subset", "dropped_capsule"])
+def test_explicit_program_historical_replay_rejects_rehashed_nominations(native, mutation):
+    root, artifact, prompt = _program_prompt(native, program=["mod.py"])
+    payload = json.loads(artifact.read_text())
+    if mutation == "subset":
+        payload["program_paths"] = []
+        payload["scope_cid"] = codec.cid_for_payload({"schema": "supervisor-source-scope@2",
+            "sources": payload["manifest"], "program_paths": []})
+        payload["reconstruction"].update(scope_cid=payload["scope_cid"], program_paths=[],
+            doctor_source_paths=[], program_source_count=0, support_source_count=2)
+        payload["raw_sources"]["mod.py"] = (root / "mod.py").read_text()
+    else:
+        payload["capsules"].pop()
+        payload["admissions"].pop()
+    artifact.write_text(codec._json(payload))
+    wire, end = json.JSONDecoder().raw_decode(prompt)
+    wire["evidence"] = [reference.to_dict() for reference in build_text_context_references(
+        artifact.read_text(), reference_prefix="semantic-context", kind="semantic-context",
+        path=artifact.relative_to(root).as_posix(), repository_id="repo:test", tree_id="tree:test",
+        required=True, chunk_bytes=1201)]
+    rebound = codec._json(wire) + prompt[end:]
+    for translate in (codec.encode_semantic_router_prompt, codec.replay_semantic_router_prompt_for_audit):
+        with pytest.raises(codec.SemanticTranslationError):
+            translate(prompt=rebound, repository=root)

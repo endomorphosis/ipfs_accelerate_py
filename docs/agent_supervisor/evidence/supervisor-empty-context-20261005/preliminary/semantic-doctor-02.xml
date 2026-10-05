@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="18" time="36.882" timestamp="2026-10-05T01:26:42.169030+00:00" hostname="spark-b271"><testcase classname="api.test_doctor_repair_eligibility" name="test_inert_source_still_abstains_without_reviewed_inputs" time="0.888" /><testcase classname="api.test_doctor_repair_eligibility" name="test_live_operator_and_assessment_share_inert_module_gate[import os\n\ndef target():\n    pass\n]" time="0.001" /><testcase classname="api.test_doctor_repair_eligibility" name="test_live_operator_and_assessment_share_inert_module_gate[class Target:\n    pass\n]" time="0.001" /><testcase classname="api.test_doctor_repair_eligibility" name="test_live_operator_and_assessment_share_inert_module_gate[@decorator\ndef target():\n    pass\n]" time="0.001" /><testcase classname="api.test_doctor_repair_eligibility" name="test_live_operator_and_assessment_share_inert_module_gate[target = lambda: None\n]" time="0.001" /><testcase classname="api.test_doctor_repair_eligibility" name="test_eligibility_rejects_unbound_diagnostics_and_signed_source[findings]" time="0.760" /><testcase classname="api.test_doctor_repair_eligibility" name="test_eligibility_rejects_unbound_diagnostics_and_signed_source[scope]" time="0.806" /><testcase classname="api.test_doctor_repair_eligibility" name="test_eligibility_rejects_unbound_diagnostics_and_signed_source[manifest]" time="0.757" /><testcase classname="api.test_doctor_repair_eligibility" name="test_eligibility_rejects_unbound_diagnostics_and_signed_source[source]" time="0.966" /><testcase classname="api.test_doctor_repair_eligibility" name="test_signed_program_subset_replays_native_doctor_without_support_code[False]" time="1.886" /><testcase classname="api.test_doctor_repair_eligibility" name="test_signed_program_subset_replays_native_doctor_without_support_code[True]" time="1.018"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: predicted change escaped permitted scope">scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1177/test_signed_program_subset_rep1/isolated'), 'manifest': {...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xf2a805defc80&gt;, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-1177/test_signed_program_subset_rep1')
+empty = True
+
+    @pytest.mark.parametrize('empty', [False, True])
+    def test_signed_program_subset_replays_native_doctor_without_support_code(scenario, tmp_path, empty):
+&gt;       inputs, prepared = _signed_program_context(scenario, tmp_path, empty=empty)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/test_doctor_repair_eligibility.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test/api/test_doctor_repair_eligibility.py:66: in _signed_program_context
+    admission = local.admit_local_benchmark_plan(graph=graph, manifest=manifest)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:921: in admit_local_benchmark_plan
+    return _admit_local_benchmark_plan(graph=graph, manifest=manifest,
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:931: in _admit_local_benchmark_plan
+    payload = _planning_payload(graph, manifest, declared, profile, current, requirement_bindings,
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:948: in _planning_payload
+    compiled, validation, pending = _graph_contract(graph, declared, _tree(sources))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+graph = PromptGoalGraph(request_cid='baguqeerawygxipxoc5mowrwddtnjdaibls6cbmjzp3usmbfrodrx7gr4p4sa', scan_cid='baguqeerau5xejf...solved_questions=(), uncertainty_debt=(), status=&lt;RecordStatus.PROPOSED: 'proposed'&gt;, created_at_ms=0, updated_at_ms=0)
+manifest = {'baseline_commit': 'b5bd74073d00b8c461815cda137104004d6a09dd', 'created_outputs': ['new.py'], 'lifecycle_dir': '/tmp/...njdaibls6cbmjzp3usmbfrodrx7gr4p4sa', 'scan_cid': 'baguqeerau5xejfdvzbuasgd6conhx66ov7leciqmnl2rnelv5wdamhtmmzea'}, ...}
+tree_id = 'baguqeeraia4ta7amonlg2dlrpnmeqlqhisecprjgzcm5wrf3dzaql4uvla7a'
+
+    def _graph_contract(graph: PromptGoalGraph, manifest: dict, tree_id: str) -&gt; tuple[Any, dict, list]:
+        policy_roots = (content_identity(LOCAL_POLICY),)
+        allowed_evidence = ()
+        if "planning_inputs" in manifest:
+            policy_roots, allowed_evidence = _verify_planning_inputs(manifest)
+        if (graph.unresolved_questions or graph.uncertainty_debt
+                or [item.to_dict() for item in graph.evidence] != [item.to_dict() for item in allowed_evidence]):
+            raise LocalPlanningError("unresolved or externally evidenced graph unsupported")
+        if any(getattr(graph, key) != value for key, value in manifest["planning_roots"].items()):
+            raise LocalPlanningError("planning roots differ from signed inputs")
+        if graph.policy_roots != policy_roots:
+            raise LocalPlanningError("external policy or proof obligations unsupported")
+        specs = {item["task_key"]: item for item in manifest["tasks"]}
+        tasks = {task.task_key: task for task in graph.tasks}
+        if set(specs) != set(tasks):
+            raise LocalPlanningError("proposal changed required task population")
+        all_acceptance = []
+        for key, task in tasks.items():
+            spec = specs[key]
+            observed = {
+                "task_key": key,
+                "scope_paths": list(task.scope_paths),
+                "outputs": [
+                    {name: getattr(row, name) for name in ("path", "effect", "media_type")}
+                    for row in task.outputs
+                ],
+                "validations": [
+                    {
+                        name: _plain(getattr(row, name))
+                        for name in (
+                            "validation_key",
+                            "argv",
+                            "cwd",
+                            "expected_exit_codes",
+                            "policy_cid",
+                        )
+                    }
+                    for row in task.validations
+                ],
+                "acceptance": [
+                    {
+                        name: _plain(getattr(row, name))
+                        for name in ("criterion_key", "criterion", "evidence_cids", "validation_keys")
+                    }
+                    for row in task.acceptance
+                ],
+                "dependencies": sorted(
+                    next(k for k, t in tasks.items() if t.task_cid == dep)
+                    for dep in task.dependency_task_cids
+                ),
+            }
+    
+            def ordered(value):
+                return {
+                    name: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True))
+                    if isinstance(rows, list)
+                    else rows
+                    for name, rows in value.items()
+                }
+    
+            spec_differs = (_receipt_bytes(ordered(observed)) != _receipt_bytes(ordered(spec))
+                if manifest["schema"] in INVENTORY_MANIFEST_SCHEMAS else ordered(observed) != ordered(spec))
+            if (
+                spec_differs
+                or task.assumptions
+                or not set(task.evidence_cids) &lt;= {item.evidence_cid for item in allowed_evidence}
+                or task.policy_roots != policy_roots
+            ):
+                raise LocalPlanningError(
+                    "proposal changed signed scope, acceptance, dependency or command"
+                )
+            if not set(task.predicted_files) &lt;= set(spec["scope_paths"]):
+&gt;               raise LocalPlanningError("predicted change escaped permitted scope")
+E               ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: predicted change escaped permitted scope
+
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:871: LocalPlanningError</failure></testcase><testcase classname="api.test_doctor_repair_eligibility" name="test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset]" time="1.703" /><testcase classname="api.test_doctor_repair_eligibility" name="test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke]" time="1.715" /><testcase classname="api.test_doctor_repair_eligibility" name="test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture]" time="1.666" /><testcase classname="api.test_doctor_repair_eligibility" name="test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift]" time="1.648" /><testcase classname="api.test_doctor_repair_eligibility" name="test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic]" time="1.614" /><testcase classname="api.test_doctor_repair_eligibility" name="test_signing_arbitrary_smoke_does_not_grant_program_partition" time="1.705" /><testcase classname="api.test_doctor_repair_eligibility" name="test_explicit_subset_without_signed_profile_cannot_hide_source" time="0.779" /></testsuite></testsuites>

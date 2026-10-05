@@ -806,11 +806,7 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
 
 
 def context(*, state: Path, model_snapshot: Path | None = None, model_revision: str = "") -> dict:
-    """Hydrate real native vectors, capsules, Doctor and world for an admitted task.
-
-    Omit the local model only for the explicitly labelled lexical ablation.
-    The complete Bottle file is indexed; the worker gets a bounded projection.
-    """
+    """Hydrate authenticated source population, capsules, Doctor and task world."""
     entered = time.monotonic()
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
@@ -818,6 +814,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     )
     from ipfs_accelerate_py.agent_supervisor.runtime.supervised_task_context import prepare_supervised_task_context
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import write_task_context_bundle
+    from .terminal_program_population import EMPTY_INDEX_SCHEMA, qualify_terminal_population
 
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
@@ -849,18 +846,17 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         stage_seconds["verified_initial_index_reuse_and_admitted_world_capture"] = time.monotonic() - stage_started
     else:
         vector_paths = task_profile_index_paths(prepared["task_profile"]) if prepared.get("task_profile") is not None else ["bottle.py"]
-        if model_snapshot:
-            from benchmarks.agent_supervisor.container_coding.learned_vector_preflight import qualify
-            indexed = qualify(repository, vectors, vector_paths, prepared["query"], model_snapshot, model_revision)
-        else:
-            from benchmarks.agent_supervisor.container_coding.vector_index_preflight import qualify
-            indexed = qualify(repository, vectors, vector_paths, prepared["query"])
+        indexed, partition = qualify_terminal_population(prepared=prepared, output=vectors,
+            paths=vector_paths, model_snapshot=model_snapshot, model_revision=model_revision)
+        empty_population = indexed.get("schema") == EMPTY_INDEX_SCHEMA
         stage_finished = time.monotonic()
         stage_seconds["vector_qualification"] = stage_finished - stage_started
         stage_started = stage_finished
-        with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
-            row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
-            snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
+        snapshot = None
+        if not empty_population:
+            with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
+                row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
+                snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
         stage_finished = time.monotonic()
         stage_seconds["persisted_snapshot_reopen"] = stage_finished - stage_started
         stage_started = stage_finished
@@ -869,7 +865,9 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
                 repository=repository, intent=intent, task_cid=task_cids[0],
                 paths=prepared["worker_inputs"], required_raw_paths=[INSTRUCTION, SMOKE],
                 output=output, code_vector_snapshot=snapshot,
-                code_vector_result=CodeVectorSearchResult.from_dict(indexed["hits"]),
+                code_vector_result=(None if empty_population else CodeVectorSearchResult.from_dict(indexed["hits"])),
+                code_empty_population=partition if empty_population else None,
+                semantic_program_paths=(partition["program_paths"] if partition is not None else None),
                 code_query_text=prepared["query"], semantic_max_symbols=1024,
                 semantic_worker_query=prepared["query"], semantic_worker_max_bytes=32768,
             )
@@ -887,6 +885,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     doctor = assess_doctor_repair_eligibility(
         repository=repository, admission=admission,
         diagnostic_artifact=diagnostic_artifact, paths=prepared["worker_inputs"],
+        program_paths=prepared_context["semantic"].get("program_paths"),
     )
     stage_finished = time.monotonic()
     stage_seconds["doctor_eligibility"] = stage_finished - stage_started
@@ -895,7 +894,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     stage_seconds["doctor_report_persistence"] = time.monotonic() - stage_started
     result = {
         "schema": "terminal-indexed-context-preparation@1", "task_cid": task_cids[0],
-        "context_bundle": bundle, "learned_embeddings": bool(model_snapshot),
+        "context_bundle": bundle, "learned_embeddings": bool(model_snapshot) and indexed.get("schema") != EMPTY_INDEX_SCHEMA,
         "index_id": indexed["index_id"], "indexed_symbols": indexed["symbols"],
         "native_fact_rows_replayed": indexed["native_fact_rows_replayed"],
         "semantic_root_cid": prepared_context["semantic_root_cid"],
@@ -905,7 +904,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         "worker_semantic_bytes": prepared_context["semantic"]["compact_bytes"],
         "doctor_repair": doctor,
         "initial_indexes_reused": reused,
-        "new_embedding_calls": 0 if reused else None,
+        "new_embedding_calls": 0 if reused or indexed.get("schema") == EMPTY_INDEX_SCHEMA else None,
         "initial_context_descriptor": prepared_context.get("initial_context_descriptor"),
         "timings": {
             "schema": "terminal-context-stage-timings@1", "clock": "monotonic",
@@ -921,6 +920,9 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         "official_verifier_in_context": False, "benchmark_success": None,
         "nomination_only": True, "semantic_equivalence_claimed": False,
     }
+    if indexed.get("schema") == EMPTY_INDEX_SCHEMA:
+        result.update({key: prepared_context["retrieval"][key] for key in (
+            "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
     if prepared_context.get("codebase_autoencoder") is not None:
         result["codebase_autoencoder"] = prepared_context["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = prepared_context["codebase_autoencoder_catalog"]

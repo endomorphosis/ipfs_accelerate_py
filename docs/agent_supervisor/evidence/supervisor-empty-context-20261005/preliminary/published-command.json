@@ -1,0 +1,30 @@
+{
+  "command": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/tmp/published-empty-verified-20261005-axrco4cd/tests.xml",
+    "test/api/semantic_state/test_published_empty_task_context.py",
+    "test/api/semantic_state/test_published_task_context.py",
+    "test/api/test_published_context_failure_phase.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py"
+  ],
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/published-empty-verified-seal-sdij6xe4/ast-seal.duckdb",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  }
+}

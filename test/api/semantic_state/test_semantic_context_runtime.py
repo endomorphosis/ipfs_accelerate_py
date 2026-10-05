@@ -1,5 +1,6 @@
 """Live producer-to-supervisor context integration (optional datasets checkout)."""
 
+import hashlib
 import json
 import subprocess
 
@@ -135,3 +136,118 @@ def test_input_scope_cannot_escape_repository(tmp_path, path):
             output=tmp_path / "out",
         )
     assert not (tmp_path / "out").exists()
+
+
+def _program_context(tmp_path, *, source="def target(value): return value + 1\n", program=("target.py",), query=""):
+    root = tmp_path / "program-repository"
+    root.mkdir()
+    (root / "instruction.md").write_text("Inspect the real program without inferring proof authority.\n")
+    (root / "smoke.py").write_text("def harness_only_symbol():\n    return unknown_harness_dependency()\n")
+    (root / "target.py").write_text(source)
+    output = root / ".semantic/initial"
+    prepared = prepare_semantic_context(repository=root,
+        paths=["instruction.md", "smoke.py", "target.py"], required_raw_paths=["instruction.md"],
+        program_paths=program, objective="Inspect the program.", task_id="PROGRAM-001",
+        output=output, worker_query=query)
+    return root, output, prepared
+
+
+@pytest.mark.parametrize("source,program,count", [
+    ("def target(value): return value + 1\n", (), 0),
+    ("# A genuine comment-only module.\n", ("target.py",), 1),
+    ("def target(value): return value + 1\n", ("target.py",), 2),
+])
+def test_explicit_program_scope_keeps_native_facts_and_full_support_binding(tmp_path, source, program, count):
+    root, output, prepared = _program_context(tmp_path, source=source, program=program)
+    payload = json.loads((output / "worker-context.json").read_bytes())
+    assert prepared["schema"] == "supervisor-semantic-context-preparation@2"
+    assert payload["schema"] == "supervisor-semantic-worker-context@2"
+    assert prepared["program_paths"] == payload["program_paths"] == list(program)
+    assert prepared["capsules"] == len(payload["capsules"]) == count
+    assert payload["reconstruction"]["semantic_symbol_count"] == count
+    assert payload["reconstruction"]["doctor_source_paths"] == list(program)
+    assert payload["reconstruction"]["captured_source_count"] == 3
+    assert payload["reconstruction"]["support_source_count"] == 3 - len(program)
+    assert set(payload["manifest"]) == {"instruction.md", "smoke.py", "target.py"}
+    assert payload["raw_sources"]["smoke.py"] == (root / "smoke.py").read_text()
+    assert "harness_only_symbol" not in json.dumps(payload["capsules"])
+    assert "smoke.py" not in (output / "doctor.json").read_text()
+    assert payload["completion_authority"] is False
+    assert payload["reconstruction"]["semantic_acceptance_authority"] is False
+    assert load_semantic_worker_context(repository=root, artifact=".semantic/initial/worker-context.json",
+        expected_sha256=prepared["worker_payload_sha256"], task_id="PROGRAM-001") == (
+        output / "worker-context.json").read_text()
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _scan_scoped_sources
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.wire import cid_for_payload
+    state = _scan_scoped_sources({name: (root / name).read_bytes() for name in program},
+        repository_id=cid_for_payload({"repository": str(root)}), max_symbols=256)
+    producer = IpfsDatasetsSemanticStateProvider()
+    assert producer.view_semantic_state_bundle(producer.build_semantic_state(state)).root.root_cid == payload["semantic_root_cid"]
+
+
+def test_default_program_scope_preserves_legacy_wire_bytes(tmp_path):
+    root = tmp_path / "legacy"
+    root.mkdir()
+    (root / "target.py").write_text("def target(): return 1\n")
+    args = dict(repository=root, paths=["target.py"], required_raw_paths=["target.py"],
+        objective="Inspect target", task_id="LEGACY-001")
+    prepare_semantic_context(**args, output=root / ".semantic/default")
+    prepare_semantic_context(**args, program_paths=None, output=root / ".semantic/none")
+    assert (root / ".semantic/default/worker-context.json").read_bytes() == (
+        root / ".semantic/none/worker-context.json").read_bytes()
+
+
+@pytest.mark.parametrize("program", [["target.py", "target.py"], ["target.py", "smoke.py"],
+    ["absent.py"], ["./target.py"], "target.py"])
+def test_explicit_program_subset_requires_canonical_population(tmp_path, program):
+    with pytest.raises(ValueError, match="program paths"):
+        _program_context(tmp_path, program=program)
+    assert not (tmp_path / "program-repository/.semantic/initial").exists()
+
+
+@pytest.mark.parametrize("mutation", ["subset", "extra_path", "drop_capsule", "drop_projected_capsule",
+    "support_raw", "downgrade", "untyped_authority", "symbol_count"])
+def test_saved_explicit_program_replays_subset_native_capsules_and_support(tmp_path, mutation):
+    root, output, _ = _program_context(tmp_path, query="target" if mutation == "drop_projected_capsule" else "")
+    artifact = output / "worker-context.json"
+    payload = json.loads(artifact.read_bytes())
+    if mutation == "subset":
+        from ipfs_accelerate_py.agent_supervisor.semantic_state.wire import cid_for_payload
+        payload["program_paths"] = []
+        payload["scope_cid"] = cid_for_payload({"schema": "supervisor-source-scope@2",
+            "sources": payload["manifest"], "program_paths": []})
+        payload["reconstruction"].update(scope_cid=payload["scope_cid"], program_paths=[],
+            doctor_source_paths=[], program_source_count=0, support_source_count=3)
+        payload["raw_sources"]["target.py"] = (root / "target.py").read_text()
+    elif mutation == "extra_path":
+        payload["program_paths"].append("outside.py")
+    elif mutation.startswith("drop_"):
+        payload["capsules"].pop()
+        payload["admissions"].pop()
+        if mutation == "drop_projected_capsule":
+            projection = payload["worker_projection"]
+            projection["selected_symbols"].pop()
+            projection["selected_capsule_count"] -= 1
+            projection["omitted_capsule_count"] += 1
+    elif mutation == "support_raw":
+        payload["raw_sources"].pop("smoke.py")
+    elif mutation == "downgrade":
+        payload["schema"] = "supervisor-semantic-worker-context@1"
+    elif mutation == "untyped_authority":
+        payload["reconstruction"]["completion_authority"] = 0
+    else:
+        payload["reconstruction"]["semantic_symbol_count"] += 1
+    artifact.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    with pytest.raises(ValueError):
+        load_semantic_worker_context(repository=root, artifact=".semantic/initial/worker-context.json",
+            expected_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(), task_id="PROGRAM-001")
+
+
+@pytest.mark.parametrize("name", ["target.py", "smoke.py"])
+def test_program_and_support_drift_both_refuse_saved_dispatch(tmp_path, name):
+    root, _, prepared = _program_context(tmp_path)
+    (root / name).write_text((root / name).read_text() + "# changed source\n")
+    with pytest.raises(ValueError, match="stale"):
+        load_semantic_worker_context(repository=root, artifact=".semantic/initial/worker-context.json",
+            expected_sha256=prepared["worker_payload_sha256"], task_id="PROGRAM-001")

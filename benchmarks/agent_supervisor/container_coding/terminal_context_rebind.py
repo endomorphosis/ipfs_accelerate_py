@@ -55,6 +55,8 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     selected_context = load_task_context_selection(repository=root, artifact=bundle["artifact"],
         expected_sha256=bundle["sha256"], task_cid=task_spec.task_cid, task_id=task_spec.task_key)
     metadata = dict(selected_context["metadata"])
+    from .terminal_program_population import terminal_program_partition
+    partition = terminal_program_partition(prepared)
 
     def source_contexts():
         semantic_text = load_semantic_worker_context(repository=root,
@@ -69,6 +71,19 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
                 or retrieval["index_id"] != original["index_id"]
                 or set(semantic["manifest"]) != set(prepared["worker_inputs"])):
             raise ValueError("reused indexes differ from current public input scope/query")
+        if (partition is not None and semantic.get("schema") == "supervisor-semantic-worker-context@2"
+                and semantic.get("program_paths") != partition["program_paths"]):
+            raise ValueError("reused semantic scope differs from signed program/support partition")
+        if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+            if (partition is None or retrieval["program_paths"] != partition["program_paths"]
+                    or semantic.get("schema") != "supervisor-semantic-worker-context@2"
+                    or semantic.get("program_paths") != partition["program_paths"]
+                    or retrieval["support_hashes"] != partition["support_hashes"]
+                    or any(retrieval[key] != original.get(key) for key in (
+                        "source_population_cid", "retrieval_schema", "disposition", "embedding_calls"))):
+                raise ValueError("reused empty observation differs from signed source population")
+        elif retrieval["index_id"] is None or original.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+            raise ValueError("reused retrieval lane differs from original source population")
         return semantic, retrieval
 
     semantic, retrieval = source_contexts()
@@ -138,6 +153,9 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
         "new_embedding_calls": 0, "text_generation_calls": 0,
         "execution_authority": False, "completion_authority": False,
         "canonical_task_mutated": False, "seconds": time.monotonic() - started}
+    if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+        result.update({key: retrieval[key] for key in (
+            "retrieval_schema", "source_population_cid", "disposition", "embedding_calls", "support_hashes", "program_paths")})
     if "source384_context" in selected_context:
         result["source384_context"] = selected_context["source384_context"]
     result["context_bundle"] = write_task_context_bundle(repository=root, prepared=[result],
@@ -158,6 +176,27 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
         contexts[kind] = json.loads("".join(row["summary"] for row in refs))
     semantic, retrieval, world = (contexts[kind] for kind in (
         "semantic-context", "code-retrieval-context", "intent-world-context"))
+    if semantic.get("schema") == "supervisor-semantic-worker-context@2":
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _validate_program_payload
+        _validate_program_payload(semantic)
+    empty = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
+    if empty:
+        from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import validate_empty_worker_context
+        validate_empty_worker_context(retrieval)
+        if any(retrieval[key] != rebound.get(key) for key in (
+                "retrieval_schema", "source_population_cid", "disposition", "embedding_calls", "support_hashes", "program_paths")):
+            raise ValueError("worker empty population differs from native rebind")
+        hashes = {**retrieval["source_sha256"],
+            **{name: binding["sha256"] for name, binding in retrieval["support_hashes"].items()}}
+        if (semantic.get("schema") != "supervisor-semantic-worker-context@2"
+                or semantic.get("program_paths") != retrieval["program_paths"]
+                or type(semantic.get("manifest")) is not dict
+                or set(semantic["manifest"]) != set(hashes)
+                or any(type(semantic["manifest"][name]) is not dict
+                    or semantic["manifest"][name].get("sha256") != digest for name, digest in hashes.items())):
+            raise ValueError("worker empty semantic partition differs from source population")
+    elif retrieval["index_id"] is None or rebound.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+        raise ValueError("worker retrieval lane differs from native rebind")
     tasks = [task for task in world.get("tasks", []) if task.get("task_cid") == rebound["task_cid"]]
     if (semantic["task_id"] != rebound["task_id"]
             or wire.get("objective_id") != rebound["task_id"]
@@ -174,7 +213,7 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
             or world.get("completion_authority") is not False
             or world.get("execution_authority") is not False):
         raise ValueError("native worker context identity/status differs from nomination")
-    return {"schema": "terminal-rebound-worker-context-observation@1",
+    result = {"schema": "terminal-rebound-worker-context-observation@1",
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         "prompt_bytes": len(prompt.encode()), "required_context_kinds": sorted(contexts),
         "semantic_root_cid": rebound["semantic_root_cid"], "index_id": rebound["index_id"],
@@ -185,3 +224,7 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
         "intent_freshness_checked_by_worker": world.get("intent_freshness_checked") is True,
         "world_scope": "sealed capture; task claim can supersede its intent revision",
         "task_completed": False, "completion_authority": False, "text_generation_calls": 0}
+    if empty:
+        result.update({key: retrieval[key] for key in (
+            "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
+    return result

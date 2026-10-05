@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="12" skipped="0" tests="34" time="59.583" timestamp="2026-10-05T01:25:39.198035+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-qualified]" time="2.225" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-authority]" time="2.154" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-model_consumed]" time="2.204" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-embedding_calls]" time="2.175" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[no-program-inputs-scan_count]" time="2.219" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-qualified]" time="2.220" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-authority]" time="2.056" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-model_consumed]" time="2.049" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-embedding_calls]" time="2.088" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_packet_cannot_use_python_equality_to_replace_declared_values[comment-only-program-scan_count]" time="1.985" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-provider_calls]" time="1.767" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-world_task_count]" time="1.868" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-indexed_symbols]" time="2.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-full_capsules]" time="1.951" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-learned_embeddings]" time="1.869" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[no-program-inputs-embedding_calls]" time="2.019" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-provider_calls]" time="1.925" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-world_task_count]" time="1.927" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-indexed_symbols]" time="1.951" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-full_capsules]" time="2.073" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-learned_embeddings]" time="2.124" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_typed_receipt_cannot_replace_observation_counts_with_equal_json_values[comment-only-program-embedding_calls]" time="2.025" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-capsules]" time="1.972"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'capsules'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno0/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno0/state', 'original_head': '3fb2828905025ab94b94682e419b0c84d8096d5f', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-worker_capsules]" time="1.928"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'worker_capsules'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno1/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno1/state', 'original_head': 'd3bcde2e5746499740888743978451598e505b8b', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[no-program-inputs-doctor_findings]" time="1.866"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '5eab802b71dae89f35fc7293d8feffd17c8d94e569cf2c20e16dbe69bfc6cd35'}, 'learned_embeddings': False, ...})
+change = 'doctor_findings'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno2/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno2/state', 'original_head': '6e5d7603bd5dfe2b247e38c189903bec1b82ff99', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-capsules]" time="1.943"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'capsules'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno3/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno3/state', 'original_head': 'd067c25f054cc75bf662868ce84746f89b818135', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-worker_capsules]" time="1.966"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'worker_capsules'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno4/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno4/state', 'original_head': '0e43ba7b66eb2507bb81334762d48c24ae466127', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts[comment-only-program-doctor_findings]" time="1.870"><failure message="Failed: DID NOT RAISE ValueError">captured = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/app'), PosixPath('/tmp/pytest-of-barber...son', 'sha256': '7eb76226204d0066a81798178f940301f0c7555e46a8a11d2d9940b0a577bb22'}, 'learned_embeddings': False, ...})
+change = 'doctor_findings'
+
+    @pytest.mark.parametrize("change", ["capsules", "worker_capsules", "doctor_findings"])
+    def test_rehashed_descriptor_cannot_invent_native_semantic_or_doctor_counts(captured, change):
+        root, state, prepared, receipt, descriptor = captured
+        descriptor["semantic"][change] = 99
+        if change == "capsules":
+            # Matching the loose result-side field must not hide an invented native
+            # capsule count; replay must bind the complete producer index itself.
+            receipt["full_capsules"] = 99
+        _persist_descriptor(root, state, receipt, descriptor)
+&gt;       _reject_before_dispatch(root, state, prepared)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:173: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/app')
+state = PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_rehashed_descriptor_canno5/state')
+prepared = {'schema': 'terminal-indexed-public-preparation@1', 'repository': '/tmp/pytest-of-barberb/pytest-1175/test_rehashed_de...b/pytest-1175/test_rehashed_descriptor_canno5/state', 'original_head': '2561c728bbcda45e76a64239289e7f8fd5541bab', ...}
+
+    def _reject_before_dispatch(root, state, prepared):
+        calls = []
+        def unexpected_provider(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("tampered initial context reached the planner provider")
+&gt;       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:63: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-training]" time="0.332"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain0/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain0/state', 'original_head': '83dd759f2060ca17c0f0f4128f65c0eec12bcbb7', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d386900&gt;
+decoder = 'training'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-legacy_security]" time="0.334"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain1/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain1/state', 'original_head': '83dd759f2060ca17c0f0f4128f65c0eec12bcbb7', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2ebef0&gt;
+decoder = 'legacy_security'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[no-program-inputs-source384]" time="0.389"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain2/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain2/state', 'original_head': 'a7685d973ef29dbe42f04a09d55d752d7aebf2d4', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2eaed0&gt;
+decoder = 'source384'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-training]" time="0.366"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain3/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain3/state', 'original_head': '60a8da455d99741ad65c4cbfda716d5bbc74405b', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d32b4d0&gt;
+decoder = 'training'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-legacy_security]" time="0.392"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain4/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain4/state', 'original_head': '54b2a20693909bf5337c7c9e6c1c22828c5fdd53', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2b7cb0&gt;
+decoder = 'legacy_security'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_empty_initial_replay" name="test_selected_decoders_abstain_before_consumption_for_empty_retrieval[comment-only-program-source384]" time="0.368"><failure message="AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'">prepared_only = (PosixPath('/tmp/pytest-of-barberb/pytest-1175/test_selected_decoders_abstain5/app'), PosixPath('/tmp/pytest-of-barber.../pytest-1175/test_selected_decoders_abstain5/state', 'original_head': '54b2a20693909bf5337c7c9e6c1c22828c5fdd53', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc066d2b4380&gt;
+decoder = 'source384'
+
+    @pytest.mark.parametrize("decoder", ["training", "legacy_security", "source384"])
+    def test_selected_decoders_abstain_before_consumption_for_empty_retrieval(prepared_only, monkeypatch, decoder):
+        from ipfs_accelerate_py.agent_supervisor.runtime import security_autoencoder_advisor as legacy
+        from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
+        from ipfs_datasets_py.logic.formalization.autoencoder.security import codebase_autoencoder as training
+    
+        root, state, _ = prepared_only
+        calls = []
+        def forbidden(*args, **kwargs):
+            calls.append(True)
+            pytest.fail("an unavailable empty-scope decoder consumed weights or source")
+        monkeypatch.setattr(legacy, "prepare_security_advice", forbidden)
+        monkeypatch.setattr(source384, "prepare_source384_context", forbidden)
+&gt;       monkeypatch.setattr(source384, "register_shared_parent", forbidden)
+E       AttributeError: &lt;module 'ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py'&gt; has no attribute 'register_shared_parent'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py:189: AttributeError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,73 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-05 01:28:00 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-05 01:28:00 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-05 01:28:00 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-05 01:28:00 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-05 01:28:00 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-05 01:28:00 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-05 01:28:00 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+test/api/test_doctor_repair_eligibility.py::test_inert_source_still_abstains_without_reviewed_inputs 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:18 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_inert_source_still_abstai0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [  5%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[import os\n\ndef target():\n    pass\n] PASSED [ 11%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[class Target:\n    pass\n] PASSED [ 16%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[@decorator\ndef target():\n    pass\n] PASSED [ 22%]
+test/api/test_doctor_repair_eligibility.py::test_live_operator_and_assessment_share_inert_module_gate[target = lambda: None\n] PASSED [ 27%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[findings] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:19 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_eligibility_rejects_unbou0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 33%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[scope] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:20 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_eligibility_rejects_unbou1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 38%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[manifest] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:21 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_eligibility_rejects_unbou2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 44%]
+test/api/test_doctor_repair_eligibility.py::test_eligibility_rejects_unbound_diagnostics_and_signed_source[source] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:22 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_eligibility_rejects_unbou3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 50%]
+test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[False] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:23 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_signed_program_subset_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 55%]
+test/api/test_doctor_repair_eligibility.py::test_signed_program_subset_replays_native_doctor_without_support_code[True] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:24 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_signed_program_subset_rep1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 61%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[empty_subset] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:26 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_doctor_explicit_subset_re0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 66%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[include_smoke] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:28 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_doctor_explicit_subset_re1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 72%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[partial_capture] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:29 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_doctor_explicit_subset_re2/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 77%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[support_drift] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:31 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_doctor_explicit_subset_re3/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 83%]
+test/api/test_doctor_repair_eligibility.py::test_doctor_explicit_subset_requires_signed_population_and_full_preimages[diagnostic] 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:32 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_doctor_explicit_subset_re4/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 88%]
+test/api/test_doctor_repair_eligibility.py::test_signing_arbitrary_smoke_does_not_grant_program_partition 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:34 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_signing_arbitrary_smoke_d0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [ 94%]
+test/api/test_doctor_repair_eligibility.py::test_explicit_subset_without_signed_profile_cannot_hide_source 
+-------------------------------- live log setup --------------------------------
+2026-10-05 01:28:35 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1181/test_explicit_subset_without_s0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+PASSED                                                                   [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/semantic-program-scope/doctor-03.xml -
+============================= 18 passed in 37.49s ==============================

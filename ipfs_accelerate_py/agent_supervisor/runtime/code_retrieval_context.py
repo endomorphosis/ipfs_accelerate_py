@@ -163,6 +163,11 @@ def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha
         return result
 
     payload = json.loads(raw, object_pairs_hook=unique)
+    if isinstance(payload, dict) and payload.get("schema") == "supervisor-empty-code-retrieval@1":
+        from .empty_code_retrieval import read_empty_code_retrieval_artifact
+        _, context = read_empty_code_retrieval_artifact(repository=root, artifact=artifact,
+            expected_sha256=expected_sha256, task_id=task_id)
+        return _json(context)
     referenced = isinstance(payload, dict) and payload.get("schema") == REFERENCED_SCHEMA
     if (not isinstance(payload, dict)
             or set(payload) != {"schema", "task_id", "query_text", "source_sha256", "result",
@@ -218,3 +223,11 @@ def load_code_retrieval_context(*, repository: Path, artifact: str, expected_sha
     if len(text.encode()) > 65_536:
         raise ValueError("retrieval worker projection exceeds byte bound")
     return text
+
+
+def prepare_empty_code_retrieval_context(*, repository, task_id, query_text,
+        program_paths, support_hashes, output):
+    """Persist an authenticated empty program/symbol population without vectors."""
+    from .empty_code_retrieval import prepare_empty_code_retrieval_context as prepare
+    return prepare(repository=repository, task_id=task_id, query_text=query_text,
+        program_paths=program_paths, support_hashes=support_hashes, output=output)

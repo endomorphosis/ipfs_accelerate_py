@@ -208,7 +208,7 @@ def _prompt_parts(prompt):
 
 def _verified_semantic(root, *, artifact, text, task_id, current):
     from ..semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
-    from .semantic_context_runtime import load_semantic_worker_context
+    from .semantic_context_runtime import load_semantic_worker_context, _source_scope_payload, _validate_program_payload
     from ...mcp_server.mcplusplus.kubo_cid import cid_for_bytes
     from ipfs_datasets_py.logic.software_contracts.semantic_state.models import SemanticCapsule
     from ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot import RepositorySnapshot
@@ -217,7 +217,7 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
     if raw != text.encode():
         raise SemanticTranslationError("nominated semantic artifact differs from native prompt")
     payload = _parse(text)
-    if (payload.get("schema") != "supervisor-semantic-worker-context@1"
+    if (payload.get("schema") not in {"supervisor-semantic-worker-context@1", "supervisor-semantic-worker-context@2"}
             or payload.get("task_id") != task_id or payload.get("completion_authority") is not False
             or not isinstance(payload.get("manifest"), dict) or not 1 <= len(payload["manifest"]) <= 64):
         raise SemanticTranslationError("semantic task/schema/source binding differs")
@@ -230,7 +230,15 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
     if view.root.repository_id != cid_for_payload({"repository": str(root)}):
         raise SemanticTranslationError("semantic producer belongs to another repository")
     manifest = payload["manifest"]
-    if payload.get("scope_cid") != cid_for_payload({"schema": "supervisor-source-scope@1", "sources": manifest}):
+    program = None
+    if payload["schema"] == "supervisor-semantic-worker-context@2":
+        try:
+            program = _validate_program_payload(payload)
+        except (ValueError, KeyError, TypeError) as error:
+            raise SemanticTranslationError("explicit semantic program selection differs") from error
+    elif "program_paths" in payload:
+        raise SemanticTranslationError("explicit semantic program selection requires its versioned schema")
+    if payload.get("scope_cid") != cid_for_payload(_source_scope_payload(manifest, program)):
         raise SemanticTranslationError("semantic source scope identity differs")
     # The native scanner retains its complete captured-file inventory as a
     # root-backed artifact fact. A caller-controlled manifest must not narrow
@@ -243,7 +251,7 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
             or any(entry.is_opaque for entry in snapshot.entries)
             or {entry.path: entry.source_cid for entry in snapshot.entries}
                 != {path: binding.get("source_cid") for path, binding in manifest.items()
-                    if isinstance(binding, dict)}
+                    if isinstance(binding, dict) and (program is None or path in program)}
             or any(not isinstance(binding, dict) or set(binding) != {"sha256", "source_cid"}
                    for binding in manifest.values())):
         raise SemanticTranslationError("semantic manifest differs from complete producer source inventory")
@@ -255,8 +263,10 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
         if capsule.to_dict() != view.capsule(capsule.stable_symbol_id).to_dict():
             raise SemanticTranslationError("capsule differs from verified producer")
         symbols.append(capsule.stable_symbol_id)
+    retained_sources = {}
     for path, binding in payload["manifest"].items():
         original = block(binding["source_cid"])
+        retained_sources[path] = original
         if _sha(original) != binding["sha256"] or cid_for_bytes(original) != binding["source_cid"]:
             raise SemanticTranslationError("retained semantic source binding differs")
         if current and _read(root, path) != original:
@@ -267,6 +277,11 @@ def _verified_semantic(root, *, artifact, text, task_id, current):
         # Preserve the existing dispatch loader's bounds and refresh contract.
         load_semantic_worker_context(repository=root, artifact=artifact,
             expected_sha256=_sha(raw), task_id=task_id)
+    elif program is not None:
+        try:
+            _validate_program_payload(payload, sources=retained_sources, repository=root)
+        except (ValueError, KeyError, TypeError) as error:
+            raise SemanticTranslationError("historical semantic program reconstruction differs") from error
     return payload, tuple(sorted(symbols))
 
 

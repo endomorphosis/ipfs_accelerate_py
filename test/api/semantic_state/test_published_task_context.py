@@ -41,7 +41,7 @@ def vectors(repository, previous_snapshot=None, previous_result=None, query_text
     return snapshot, search_code_symbol_vector_index(snapshot, vector(query_text), max_results=5)
 
 
-def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors):
+def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors, empty_population=None):
     from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import prepare_code_retrieval_context
     from ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
     root = scenario["repository"]
@@ -49,7 +49,8 @@ def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors):
     alias = scenario["graph"].tasks[0].task_key
     semantic = prepare_semantic_context(repository=root, paths=["answer.py", "test_answer.py"],
         required_raw_paths=["test_answer.py"], objective="Repair the answer", task_id=alias,
-        output=out / "semantic")
+        output=out / "semantic", **({"program_paths": empty_population["program_paths"]}
+            if empty_population is not None else {}))
     get_block = lambda cid: (out / "semantic/blocks" / cid).read_bytes()
     view = IpfsDatasetsSemanticStateProvider().open_verified_view(semantic["semantic_root_cid"], get_block)
     with owner.server._lock:
@@ -73,7 +74,11 @@ def initial_bundle(scenario, owner, *, retrieval=True, vector_builder=vectors):
         "World context sha256": world["artifact_sha256"],
         "World context repository": view.root.repository_id,
     }
-    if retrieval:
+    if empty_population is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import prepare_empty_code_retrieval_context
+        metadata.update(prepare_empty_code_retrieval_context(repository=root, task_id=alias,
+            query_text="answer", output=out / "retrieval.json", **empty_population)["metadata"])
+    elif retrieval:
         snapshot, hits = vector_builder(root)
         metadata.update(prepare_code_retrieval_context(repository=root, task_id=alias,
             query_text="answer", snapshot=snapshot, result=hits, output=out / "retrieval.json")["metadata"])

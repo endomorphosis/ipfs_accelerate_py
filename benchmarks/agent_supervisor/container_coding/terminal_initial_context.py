@@ -27,6 +27,10 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot im
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import task_profile_index_paths
+from .terminal_program_population import (
+    EMPTY_INDEX_SCHEMA, qualify_terminal_population, terminal_program_partition,
+    verify_empty_terminal_population,
+)
 
 
 SCHEMA = "terminal-initial-indexed-planning@1"
@@ -129,6 +133,11 @@ def _summaries(descriptor, semantic, retrieval, world, *, intent_freshness_check
          "hits": hits, "omitted_hits": len(retrieval["hits"]) - len(hits),
          "learned_embeddings": descriptor["learned_embeddings"], "nomination_only": True, **shared},
     ]
+    if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
+        summaries[2].update({key: retrieval[key] for key in (
+            "retrieval_schema", "source_population_cid", "disposition", "support_hashes", "embedding_calls")})
+    if "program_paths" in semantic:
+        summaries[1]["program_paths"] = semantic["program_paths"]
     learner = descriptor.get("codebase_autoencoder")
     if learner is not None:
         nominations = learner.get("security_candidate_nominations")
@@ -230,12 +239,11 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     alias = prepared["spec"]["task_key"]
     timings, stage = {}, time.monotonic()
     vectors = root / ".runtime/terminal-vectors"
-    if model_snapshot:
-        from .learned_vector_preflight import qualify
-        indexed = qualify(root, vectors, vector_paths, prepared["query"], model_snapshot, model_revision)
-    else:
-        from .vector_index_preflight import qualify
-        indexed = qualify(root, vectors, vector_paths, prepared["query"])
+    indexed, partition = qualify_terminal_population(prepared=prepared, output=vectors,
+        paths=vector_paths, model_snapshot=model_snapshot, model_revision=model_revision)
+    empty_population = indexed.get("schema") == EMPTY_INDEX_SCHEMA
+    if empty_population and (train_autoencoder or security_checkpoint is not None or source384_config is not None):
+        raise ValueError("empty retrieval requires independent decoder abstention; selected decoder/training is unavailable")
     timings["vector_qualification"] = time.monotonic() - stage
     stage = time.monotonic()
     learner = learner_catalog = frozen_advice = source384 = None
@@ -282,10 +290,12 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             output=state / "code-autoencoder-catalog")
         timings["codebase_autoencoder_catalog"] = time.monotonic() - stage
         stage = time.monotonic()
-    with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
-        row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
-        snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
-        del row
+    snapshot = None
+    if not empty_population:
+        with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
+            row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
+            snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
+            del row
     timings["persisted_snapshot_reopen"] = time.monotonic() - stage
     stage = time.monotonic()
     semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
@@ -293,16 +303,22 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         # Normalize whitespace only here; the public query remains byte-exact
         # in retrieval, required raw input, planner constraints and hashes.
         required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
-        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768)
+        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
+        **({"program_paths": partition["program_paths"]} if partition is not None else {}))
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
     del semantic_payload
     timings["semantic_build_reconstruction_and_hydration"] = time.monotonic() - stage
     stage = time.monotonic()
-    retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
-        query_text=prepared["query"], snapshot=snapshot,
-        result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
+    if empty_population:
+        from ipfs_accelerate_py.agent_supervisor.runtime.empty_code_retrieval import prepare_empty_code_retrieval_context
+        retrieval = prepare_empty_code_retrieval_context(repository=root, task_id=alias,
+            query_text=prepared["query"], output=output / "code-retrieval.json", **partition)
+    else:
+        retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
+            query_text=prepared["query"], snapshot=snapshot,
+            result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
     del snapshot
     metadata.update(retrieval["metadata"])
     timings["retrieval_persistence"] = time.monotonic() - stage
@@ -323,7 +339,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "retrieval": retrieval, "world": _reference(root, output / "initial-world.json"),
         "world_capture_cid": capture["capture_cid"], "world_artifact_kind": "empty-intent-planning-capture",
         "index": _reference(root, vectors / "result.json"),
-        "learned_embeddings": bool(model_snapshot), "model_snapshot": str(model_snapshot.resolve(strict=True)) if model_snapshot else None,
+        "learned_embeddings": bool(model_snapshot) and not empty_population,
+        "model_snapshot": str(model_snapshot.resolve(strict=True)) if model_snapshot else None,
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
     if public_profile is not None:
         descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
@@ -337,17 +354,20 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         descriptor["security_autoencoder_advice"] = frozen_advice
     if source384 is not None:
         descriptor["source384_context"] = source384
-    if model_snapshot:
+    if model_snapshot and not empty_population:
         descriptor["model_manifest"] = _reference(root, vectors / "model-manifest.json")
     _write(output / "descriptor.json", descriptor)
     result = {"schema": SCHEMA, "descriptor": _reference(root, output / "descriptor.json"),
         "semantic_root_cid": semantic["semantic_root_cid"], "world_snapshot_cid": capture["snapshot"]["snapshot_cid"],
         "index_id": indexed["index_id"], "indexed_symbols": indexed["symbols"],
-        "full_capsules": semantic["capsules"], "learned_embeddings": bool(model_snapshot),
+        "full_capsules": semantic["capsules"], "learned_embeddings": bool(model_snapshot) and not empty_population,
         "world_task_count": 0, "canonical_tasks_created": False, "provider_calls": 0,
         "nonoverlapping_seconds": timings, "seconds": time.monotonic() - started,
         "final_result_persistence_included_in_seconds": False,
         "execution_authority": False, "completion_authority": False}
+    if empty_population:
+        result.update({key: retrieval[key] for key in (
+            "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
     if public_profile is not None:
         result["public_task_index_scope"] = descriptor["public_task_index_scope"]
     if learner is not None:
@@ -396,6 +416,12 @@ def stage_initial_context_nomination(*, state: Path, prepared: dict, require_emp
 def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bool, result: dict,
                           _stage_source384: bool = False) -> dict:
     root = Path(prepared["repository"]).resolve(strict=True)
+    if (result.get("schema") != SCHEMA
+            or any(result.get(key) is not False for key in (
+                "execution_authority", "completion_authority", "canonical_tasks_created"))
+            or any(type(result.get(key)) is not int or result[key] != 0
+                for key in ("provider_calls", "world_task_count"))):
+        raise ValueError("initial context receipt cannot claim task or provider authority")
     descriptor = _read(root, result["descriptor"])
     if (descriptor.get("schema") != SCHEMA or descriptor["request_cid"] != PromptWorkflowRequest.from_dict(prepared["request"]).request_cid
             or descriptor["scan_cid"] != DirectoryScanReceipt.from_dict(prepared["scan"]).scan_cid
@@ -416,6 +442,50 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
     indexed = _read(root, descriptor["index"])
     if expected_scope is not None and set(indexed["source_sha256"]) != set(expected_scope["task_source_paths"]):
         raise ValueError("initial vector index omitted or added a declared public source")
+    partition = terminal_program_partition(prepared)
+    if (partition is not None and semantic.get("schema") == "supervisor-semantic-worker-context@2"
+            and semantic.get("program_paths") != sorted(partition["program_paths"])):
+        raise ValueError("initial semantic program scope differs from signed support partition")
+    if semantic.get("schema") == "supervisor-semantic-worker-context@2":
+        from ipfs_datasets_py.logic.software_contracts.semantic_state.models import SortedPairIndex
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import _doctor_for_scope
+        index_cid = view.root.capsule_index_cid
+        capsule_index = SortedPairIndex.from_dict({**json.loads(view.get_block(index_cid)), "index_cid": index_cid})
+        diagnostic, findings, bridge = _doctor_for_scope(
+            sources={name: get_block(binding["source_cid"]) for name, binding in semantic["manifest"].items()},
+            manifest=semantic["manifest"], scope_cid=semantic["scope_cid"],
+            repository_id=view.root.repository_id, program_paths=tuple(semantic["program_paths"]))
+        counts = {"capsules": len(capsule_index.pairs), "worker_capsules": len(semantic["capsules"]),
+            "doctor_findings": len(findings)}
+        if (any(type(descriptor["semantic"].get(key)) is not int or descriptor["semantic"][key] != value
+                for key, value in counts.items())
+                or descriptor["semantic"].get("program_paths") != semantic["program_paths"]
+                or _bytes(descriptor["semantic"].get("reconstruction")) != _bytes(semantic["reconstruction"])
+                or diagnostic.snapshot_id != semantic["doctor_snapshot_id"]
+                or bridge != semantic["doctor_manifest_cid"]):
+            raise ValueError("initial semantic/Doctor counts differ from complete native scope replay")
+    empty_index = indexed.get("schema") == EMPTY_INDEX_SCHEMA
+    empty_retrieval = retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1"
+    if (empty_index != empty_retrieval or (indexed.get("index_id") is None) != empty_index
+            or (retrieval.get("index_id") is None) != empty_index):
+        raise ValueError("initial retrieval lane differs from native population qualification")
+    if indexed.get("schema") == EMPTY_INDEX_SCHEMA:
+        verify_empty_terminal_population(prepared=prepared, indexed=indexed,
+            model_snapshot=descriptor["model_snapshot"], model_revision=descriptor["model_revision"])
+        for key in ("retrieval_schema", "source_population_cid", "disposition", "embedding_calls"):
+            if (_bytes(result.get(key)) != _bytes(retrieval.get(key))
+                    or _bytes(descriptor["retrieval"].get(key)) != _bytes(retrieval.get(key))):
+                raise ValueError("initial empty retrieval identity differs from signed source population")
+        if (retrieval.get("retrieval_schema") != "supervisor-empty-code-retrieval@1"
+                or semantic.get("schema") != "supervisor-semantic-worker-context@2"
+                or semantic.get("program_paths") != partition["program_paths"]
+                or retrieval.get("support_hashes") != indexed["support_hashes"]
+                or retrieval.get("source_population_cid") != indexed["source_population_cid"]
+                or descriptor["learned_embeddings"] is not False or result["learned_embeddings"] is not False
+                or "model_manifest" in descriptor
+                or result.get("indexed_symbols") != 0
+                or result.get("full_capsules") != descriptor["semantic"]["capsules"]):
+            raise ValueError("empty program population cannot claim an observed embedding policy")
     learner = descriptor.get("codebase_autoencoder")
     frozen = descriptor.get("security_autoencoder_advice")
     source384 = descriptor.get("source384_context")
@@ -503,6 +573,15 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             or retrieval["index_id"] != indexed["index_id"] or indexed["source_sha256"] != retrieval["source_sha256"]):
         raise ValueError("initial indexes differ from current permitted source/query")
     capture = _read(root, descriptor["world"])
+    if (any(type(result.get(key)) is not int for key in ("indexed_symbols", "full_capsules"))
+            or type(result.get("learned_embeddings")) is not bool
+            or result.get("semantic_root_cid") != semantic["semantic_root_cid"]
+            or result.get("world_snapshot_cid") != capture["snapshot"]["snapshot_cid"]
+            or result.get("index_id") != retrieval["index_id"]
+            or result.get("indexed_symbols") != indexed["symbols"]
+            or result.get("full_capsules") != descriptor["semantic"]["capsules"]
+            or result.get("learned_embeddings") != descriptor["learned_embeddings"]):
+        raise ValueError("initial context receipt differs from authenticated observations")
     claimed = capture.get("capture_cid")
     if (claimed != descriptor["world_capture_cid"]
             or claimed != content_identity({key: value for key, value in capture.items() if key != "capture_cid"})
