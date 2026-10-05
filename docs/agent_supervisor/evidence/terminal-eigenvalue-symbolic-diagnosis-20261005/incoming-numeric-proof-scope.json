@@ -1,0 +1,97 @@
+{
+  "actions": {
+    "benchmark_calls": 0,
+    "checkout_edits": 0,
+    "exported_source_bodies_keys_credentials": false,
+    "native_requalification_runs": 0,
+    "provider_calls": 0,
+    "tests": 0
+  },
+  "commit": "a6712457a8616c2d22100b3b0cd950986b891e64",
+  "commit_subject": "Qualify typed ranker source slices and publish proof-index evidence",
+  "explicit_open_scope": {
+    "DGEEV_implementation_ABI_correctness_certificate": true,
+    "Float_rounding_overflow_libm_and_certified_error_bounds": true,
+    "complex_arithmetic_and_general_nonsymmetric_eigendecomposition": true,
+    "dominant_eigenpair_numerical_correctness_certificate": true,
+    "feature_preparation_corpus_relation_and_full_training_loop": true,
+    "full_Terminal_Bench_task_satisfaction": true,
+    "host_parser_correctness_and_Python_source_semantics": true,
+    "math_fsum_and_binary64_execution_refinement": true,
+    "objective_and_computed_gradient_translation": true,
+    "speed_measurement_or_runtime_bound": true
+  },
+  "file_bindings": [
+    {
+      "bytes": 3085,
+      "commit": "a6712457a8616c2d22100b3b0cd950986b891e64",
+      "git_blob_sha1": "e79271aa7d09f4fa00806275f870b5129636be26",
+      "path": "maintenance/ranker-source-slices-publication-20261005-01/API.md",
+      "sha256": "7adf1900877870e81bfc643765c5ddb5ddf481acbea5503e7ee96232cb746cad"
+    },
+    {
+      "bytes": 3344,
+      "commit": "a6712457a8616c2d22100b3b0cd950986b891e64",
+      "git_blob_sha1": "4464ca3a2fd3b169d47e207c314ce4d9a4faeabb",
+      "path": "qualification/codebase_ir/ranker-source-semantics-20261005-01/README.md",
+      "sha256": "f7529814fd0e65c72a4d33add533fce99871c1bf863bfc2961b42db63de4f4b0"
+    },
+    {
+      "bytes": 11197,
+      "commit": "a6712457a8616c2d22100b3b0cd950986b891e64",
+      "git_blob_sha1": "ebfd18ffb5b4209dea2c0ae20b66f092e4332837",
+      "path": "qualification/codebase_ir/ranker-source-semantics-20261005-01/math-v2/TypedNumericSlice.lean",
+      "sha256": "bd65d5d0c5ba08dfe4523db151ac5e6075d5abb2f54b26e8007b0926b82f335d"
+    },
+    {
+      "bytes": 5487,
+      "commit": "a6712457a8616c2d22100b3b0cd950986b891e64",
+      "git_blob_sha1": "a47ed5ffe2c0e1aec8cd37dacf1579baa2067366",
+      "path": "qualification/codebase_ir/ranker-source-semantics-20261005-01/source-model-obligations-01.json",
+      "sha256": "184ce58096f0bea6eb698a33d7e8d585dd7e1bde6431c06ac031851c7821d7f2"
+    }
+  ],
+  "findings": [
+    "The new increment provides stronger exact-real scalar/ranker proof reuse, while preserving the existing distinction between exact-real mathematics and actual Python/Float execution.",
+    "These four inspected files introduce no float/complex Python frontend support or general DGEEV certificate. The current eigenvalue diagnosis caveat remains valid.",
+    "Timing must still be measured independently; administrative requirement coverage and exact-real ranker slices do not establish eigenpair correctness or speed."
+  ],
+  "incoming_obligation_flags": {
+    "S1": "PARTIALLY_PROVED",
+    "S5": "OPEN",
+    "binary64_error_bound_proved": false,
+    "completion_authority": false,
+    "execution_authority": false,
+    "native_Float_optimizer_convergence_proved": false,
+    "official_benchmark_score": null,
+    "proof_authority": false,
+    "python_ranker_source_equivalence_proved": false,
+    "whole_codebase_IR_semantic_preservation_proved": false
+  },
+  "limits": [
+    "This is a narrow proof-scope reading, not an independent audit of the incoming complete publication closure or accepted Lean modules.",
+    "No hidden verifier/reference source bodies or model prompt/private-thought bodies were read."
+  ],
+  "method": "Read-only immutable git-show inspection of four bounded files. This receipt does not requalify native Lean runs, source semantics, numerical behavior or benchmarks.",
+  "prior_planner_review_unchanged": {
+    "bytes": 12353,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-independent-review.json",
+    "sha256": "a4967450b1bb39af41f909dbca78a759304d024046c897749d21678558a94199"
+  },
+  "recorded_at_utc": "2026-10-05T15:55:22.682148+00:00",
+  "reviewer": "/root/staged_patch_review",
+  "schema": "largest-eigenval-incoming-numeric-proof-scope-review@1",
+  "status": "scope_review_pass",
+  "supported_scope": [
+    "Named supported scalar arithmetic syntax compiles to typed finite-slot IR and commutes with exact-real evaluation; unsupported syntax and unknown names are refused.",
+    "Exact-real dot multiplication and w - step * g update slices retain zipped-list truncation semantics.",
+    "Equal-length Fin 80 projection links these list operations to the original four-pair ranker mathematical model.",
+    "Update composition receives the mathematical gradient as an input; it does not prove that Python _objective computes that gradient."
+  ],
+  "upstream_native_acceptance_summary": {
+    "accepted_modules": 2,
+    "classification": "declared by the incoming API and README; not independently rerun or source-bound qualified by this scope review",
+    "inconclusive_attempts_retained": 1,
+    "unique_theorem_queries": 21
+  }
+}

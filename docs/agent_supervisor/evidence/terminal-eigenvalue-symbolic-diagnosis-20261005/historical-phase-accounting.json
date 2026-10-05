@@ -1,0 +1,53 @@
+{
+  "actual_new_coding_tokens": null,
+  "actual_new_full_trial": false,
+  "billing_total_verified": false,
+  "cache_tokens_already_included_in_input": true,
+  "dollar_cost": null,
+  "hypothetical_sessions_after_symbolic_planning": 1,
+  "hypothetical_sessions_before": 2,
+  "limits": [
+    "Router/CLI invocations are sessions, not internal model-turn or API request counts.",
+    "Historical phase accounting does not measure the cost, coding behavior, time or official result of a new symbolic arm.",
+    "Contract authoring, review and reuse costs are separate."
+  ],
+  "observed_total_tokens": 291432,
+  "official_reward": 1.0,
+  "planning_token_fraction_of_observed_total": 0.08154904059952235,
+  "projected_avoided_historical_planning_tokens": 23766,
+  "provider_invocations": [
+    {
+      "model": "gpt-6.1-sol",
+      "native_token_count_records": 1,
+      "phase": "planning",
+      "provider": "codex_cli",
+      "provider_seconds": 74.6190695129917,
+      "usage": {
+        "cached_input_tokens": 12288,
+        "input_tokens": 22075,
+        "output_tokens": 1691,
+        "total_tokens": 23766
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "native_token_count_records": 7,
+      "phase": "coding",
+      "provider": "codex_cli",
+      "provider_seconds": 186.79289680099464,
+      "usage": {
+        "cached_input_tokens": 232704,
+        "input_tokens": 263483,
+        "output_tokens": 4183,
+        "total_tokens": 267666
+      }
+    }
+  ],
+  "schema": "largest-eigenval-historical-phase-accounting@1",
+  "source": {
+    "bytes": 199232,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+    "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+  },
+  "trial": "largest-eigenval__iieLP5S"
+}

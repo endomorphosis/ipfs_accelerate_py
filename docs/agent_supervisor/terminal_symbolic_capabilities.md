@@ -1009,3 +1009,24 @@ and cache treatment differ. Serialized retry-list order also differs while both
 policies disable retries; the strict control mismatch remains visible. This
 one-trial observation does not establish an efficiency or reliability advantage
 or change the full-suite coverage denominator.
+
+## Eigenvalue failure and symbolic planning reduction (2026-10-05)
+
+The [follow-up diagnosis and native symbolic qualification](evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md)
+identify regular Codex's sole observed failure as the size-9 speed inequality:
+18.86 microseconds versus 15.76, about 19.64% too slow. Its official eigenpair
+and dominance families passed. A custom size-9 probe had already reported a
+speed win; the exact timing mechanism remains unresolved. The public evaluator
+itself covers only even sizes, which is a validation limitation rather than a
+complete explanation of the failure.
+
+An agent-authored, source-bound version-2 requirement contract selects the
+existing native symbolic planner with zero planning-provider calls. Eight
+candidate atoms are covered, replayed, admitted and stored as one coding task.
+This is administrative coverage; source semantics, numerical proof and
+completion authority remain false. It projects the historical supervisor's
+two router sessions to one, eliminating a 23,766-token planning component
+(8.15% of the historical total), without measuring a new coding outcome or
+official reward. Regular Codex already has one session. Further call reduction
+needs a reviewed general numeric operator, compatible float/complex semantics
+and independently measured public correctness and timing gates.
