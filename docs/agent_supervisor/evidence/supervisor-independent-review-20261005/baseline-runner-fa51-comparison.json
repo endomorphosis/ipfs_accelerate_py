@@ -1,0 +1,201 @@
+{
+  "baseline_commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "baseline_root": "/home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005",
+  "baseline_total": 47,
+  "baseline_failed": 14,
+  "baseline_passed": 33,
+  "unchanged_baseline_pins": true,
+  "runner_current_failure_count": 15,
+  "all_current_failing_functions_failed_on_baseline": true,
+  "current_legacy_exclusion_candidates": [
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_target_branch",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_scope_requires_exact_early_bootstrap",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_adoption_honors_blocked_exact_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_main_verifies_preloaded_native_dependency_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adoption_rejects_unconfigured_validation_workers",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_stale_worktree_cleanup_delegates_protected_dirty_checkout",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_run_portal_implementation_daemon_loop_runs_hooks_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_projection_persistence_failure_aborts_loop",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_daemon_binding",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_bridge_recovery"
+  ],
+  "targeted_cases_to_keep_and_fix_fixture_not_exclude": [
+    "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target[False]",
+    "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target[True]"
+  ],
+  "cases": [
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_propagates_explicit_merge_target_branch",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_propagates_explicit_merge_target_branch",
+      "baseline_failed": true,
+      "current_failure": "AssertionError: assert '\\n' not in 'import sys\\...Exit(main())'\n  \n  '\\n' is contained here:\n    import sys\n  ? ----------\n    (sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)\n    sys.argv.pop(1)\n    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process...\n  \n  ...Full output truncated (5 lines hidden), use '-vv' to show",
+      "baseline_failure": "AssertionError: assert '\\n' not in 'import sys\\...Exit(main())'\n  \n  '\\n' is contained here:\n    import sys\n  ? ----------\n    (sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)\n    sys.argv.pop(1)\n    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process...\n  \n  ...Full output truncated (5 lines hidden), use '-vv' to show",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:173: in test_supervisor_propagates_explicit_merge_target_branch\n    assert \"\\n\" not in command[3]\nE   AssertionError: assert '\\n' not in 'import sys\\...Exit(main())'\nE     \nE     '\\n' is contained here:\nE       import sys\nE     ? ----------\nE       (sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)\nE       sys.argv.pop(1)\nE       from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process...\nE     \nE     ...Full output truncated (5 lines hidden), use '-vv' to show",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:173: in test_supervisor_propagates_explicit_merge_target_branch\n    assert \"\\n\" not in command[3]\nE   AssertionError: assert '\\n' not in 'import sys\\...Exit(main())'\nE     \nE     '\\n' is contained here:\nE       import sys\nE     ? ----------\nE       (sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)\nE       sys.argv.pop(1)\nE       from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process...\nE     \nE     ...Full output truncated (5 lines hidden), use '-vv' to show"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_ordinary_daemon_scope_requires_exact_early_bootstrap",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_ordinary_daemon_scope_requires_exact_early_bootstrap",
+      "baseline_failed": true,
+      "current_failure": "AssertionError: assert not True\n +  where True = _managed_daemon_command_belongs_to_scope(['/home/barberb/.local/bin/python', '-P', '-m', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', '300.0', ...])\n +    where _managed_daemon_command_belongs_to_scope = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe8a494dcdac0>._managed_daemon_command_belongs_to_scope",
+      "baseline_failure": "AssertionError: assert not True\n +  where True = _managed_daemon_command_belongs_to_scope(['/home/barberb/.local/bin/python', '-P', '-m', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', '300.0', ...])\n +    where _managed_daemon_command_belongs_to_scope = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b6b0020a10>._managed_daemon_command_belongs_to_scope",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:211: in test_ordinary_daemon_scope_requires_exact_early_bootstrap\n    assert not supervisor._managed_daemon_command_belongs_to_scope(legacy_command)\nE   AssertionError: assert not True\nE    +  where True = _managed_daemon_command_belongs_to_scope(['/home/barberb/.local/bin/python', '-P', '-m', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', '300.0', ...])\nE    +    where _managed_daemon_command_belongs_to_scope = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b6b0020a10>._managed_daemon_command_belongs_to_scope",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:211: in test_ordinary_daemon_scope_requires_exact_early_bootstrap\n    assert not supervisor._managed_daemon_command_belongs_to_scope(legacy_command)\nE   AssertionError: assert not True\nE    +  where True = _managed_daemon_command_belongs_to_scope(['/home/barberb/.local/bin/python', '-P', '-m', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', '300.0', ...])\nE    +    where _managed_daemon_command_belongs_to_scope = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe8a494dcdac0>._managed_daemon_command_belongs_to_scope"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_ordinary_daemon_adoption_honors_blocked_exact_identity",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_ordinary_daemon_adoption_honors_blocked_exact_identity",
+      "baseline_failed": true,
+      "current_failure": "Failed: DID NOT RAISE RuntimeError",
+      "baseline_failure": "Failed: DID NOT RAISE RuntimeError",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:249: in test_ordinary_daemon_adoption_honors_blocked_exact_identity\n    with pytest.raises(\nE   Failed: DID NOT RAISE RuntimeError",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:249: in test_ordinary_daemon_adoption_honors_blocked_exact_identity\n    with pytest.raises(\nE   Failed: DID NOT RAISE RuntimeError"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_daemon_main_verifies_preloaded_native_dependency_once",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_daemon_main_verifies_preloaded_native_dependency_once",
+      "baseline_failed": true,
+      "current_failure": "AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute 'optional_active_sealed_native_dependency'",
+      "baseline_failure": "AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute 'optional_active_sealed_native_dependency'",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:273: in test_daemon_main_verifies_preloaded_native_dependency_once\n    monkeypatch.setattr(\nE   AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute 'optional_active_sealed_native_dependency'",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:273: in test_daemon_main_verifies_preloaded_native_dependency_once\n    monkeypatch.setattr(\nE   AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute 'optional_active_sealed_native_dependency'"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule",
+      "baseline_failed": true,
+      "current_failure": "assert False\n +  where False = any(<generator object test_rescue_dirty_worktree_commits_failed_test_files_in_submodule.<locals>.<genexpr> at 0xe8a454fd6330>)",
+      "baseline_failure": "assert False\n +  where False = any(<generator object test_rescue_dirty_worktree_commits_failed_test_files_in_submodule.<locals>.<genexpr> at 0xf8b6b1f905f0>)",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:385: in test_rescue_dirty_worktree_commits_failed_test_files_in_submodule\n    assert any(item.get(\"committed\") for item in submodule_results)\nE   assert False\nE    +  where False = any(<generator object test_rescue_dirty_worktree_commits_failed_test_files_in_submodule.<locals>.<genexpr> at 0xf8b6b1f905f0>)",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:385: in test_rescue_dirty_worktree_commits_failed_test_files_in_submodule\n    assert any(item.get(\"committed\") for item in submodule_results)\nE   assert False\nE    +  where False = any(<generator object test_rescue_dirty_worktree_commits_failed_test_files_in_submodule.<locals>.<genexpr> at 0xe8a454fd6330>)"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity",
+      "baseline_failed": true,
+      "current_failure": "SystemExit: 2",
+      "baseline_failure": "SystemExit: 2",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:441: in test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity\n    parsed = parse_supervisor_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args\n    return parser.parse_args(argv)\n           ^^^^^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.12/argparse.py:1911: in parse_args\n    self.error(msg % ' '.join(argv))\n/usr/lib/python3.12/argparse.py:2677: in error\n    self.exit(2, _('%(prog)s: error: %(message)s\\n') % args)\n/usr/lib/python3.12/argparse.py:2664: in exit\n    _sys.exit(status)\nE   SystemExit: 2",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:441: in test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity\n    parsed = parse_supervisor_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23350: in parse_args\n    args = parser.parse_args(argv)\n           ^^^^^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.12/argparse.py:1911: in parse_args\n    self.error(msg % ' '.join(argv))\n/usr/lib/python3.12/argparse.py:2677: in error\n    self.exit(2, _('%(prog)s: error: %(message)s\\n') % args)\n/usr/lib/python3.12/argparse.py:2664: in exit\n    _sys.exit(status)\nE   SystemExit: 2"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_adoption_rejects_unconfigured_validation_workers",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_supervisor_adoption_rejects_unconfigured_validation_workers",
+      "baseline_failed": true,
+      "current_failure": "assert not True\n +  where True = _managed_daemon_matches_command_line(\"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\")\n +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe8a494db64b0>._managed_daemon_matches_command_line\n +    and   \"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\" = <built-in method join of str object at 0xb29c78>(['/home/barberb/.local/bin/python', '-P', '-c', \"import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())\", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])\n +      where <built-in method join of str object at 0xb29c78> = ' '.join",
+      "baseline_failure": "assert not True\n +  where True = _managed_daemon_matches_command_line(\"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\")\n +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b66b1418e0>._managed_daemon_matches_command_line\n +    and   \"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\" = <built-in method join of str object at 0xb29c78>(['/home/barberb/.local/bin/python', '-P', '-c', \"import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())\", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])\n +      where <built-in method join of str object at 0xb29c78> = ' '.join",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:540: in test_supervisor_adoption_rejects_unconfigured_validation_workers\n    assert not supervisor._managed_daemon_matches_command_line(\nE   assert not True\nE    +  where True = _managed_daemon_matches_command_line(\"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\")\nE    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b66b1418e0>._managed_daemon_matches_command_line\nE    +    and   \"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\" = <built-in method join of str object at 0xb29c78>(['/home/barberb/.local/bin/python', '-P', '-c', \"import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())\", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])\nE    +      where <built-in method join of str object at 0xb29c78> = ' '.join",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:540: in test_supervisor_adoption_rejects_unconfigured_validation_workers\n    assert not supervisor._managed_daemon_matches_command_line(\nE   assert not True\nE    +  where True = _managed_daemon_matches_command_line(\"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\")\nE    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe8a494db64b0>._managed_daemon_matches_command_line\nE    +    and   \"/home/barberb/.local/bin/python -P -c import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1\" = <built-in method join of str object at 0xb29c78>(['/home/barberb/.local/bin/python', '-P', '-c', \"import sys\\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())\", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])\nE    +      where <built-in method join of str object at 0xb29c78> = ' '.join"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+      "baseline_failed": true,
+      "current_failure": "Failed: forced Codex command inspected an unrelated Meta secret",
+      "baseline_failure": "Failed: forced Codex command inspected an unrelated Meta secret",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:816: in test_daemon_resolves_relative_worktree_root_for_runner_workspace\n    command = daemon._build_implementation_command(workspace)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:61461: in _build_implementation_command\n    grok_ready = _grok_cli_available()\n                 ^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:2257: in _grok_cli_available\n    return get_llm_provider(\"grok_cli\") is not None\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/llm_router.py:10816: in get_llm_provider\n    return _resolve_provider_cached(provider, _provider_cache_key())\n                                              ^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/llm_router.py:9215: in _provider_cache_key\n    meta_model_api_key_fingerprint(),\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:786: in unexpected_secret_store_access\n    pytest.fail(\"forced Codex command inspected an unrelated Meta secret\")\nE   Failed: forced Codex command inspected an unrelated Meta secret",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:816: in test_daemon_resolves_relative_worktree_root_for_runner_workspace\n    command = daemon._build_implementation_command(workspace)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:61766: in _build_implementation_command\n    grok_ready = _grok_cli_available()\n                 ^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:2267: in _grok_cli_available\n    return get_llm_provider(\"grok_cli\") is not None\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/llm_router.py:10816: in get_llm_provider\n    return _resolve_provider_cached(provider, _provider_cache_key())\n                                              ^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/llm_router.py:9215: in _provider_cache_key\n    meta_model_api_key_fingerprint(),\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:786: in unexpected_secret_store_access\n    pytest.fail(\"forced Codex command inspected an unrelated Meta secret\")\nE   Failed: forced Codex command inspected an unrelated Meta secret"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_stale_worktree_cleanup_delegates_protected_dirty_checkout",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_stale_worktree_cleanup_delegates_protected_dirty_checkout",
+      "baseline_failed": true,
+      "current_failure": "AssertionError: daemon stale cleanup must not remove a worktree",
+      "baseline_failure": "AssertionError: daemon stale cleanup must not remove a worktree",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1000: in test_stale_worktree_cleanup_delegates_protected_dirty_checkout\n    result = daemon._cleanup_stale_worktrees(max_age_seconds=1)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:53008: in _cleanup_stale_worktrees\n    cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <lambda>\n    lambda *_args, **_kwargs: (_ for _ in ()).throw(\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <genexpr>\n    lambda *_args, **_kwargs: (_ for _ in ()).throw(\nE   AssertionError: daemon stale cleanup must not remove a worktree",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1000: in test_stale_worktree_cleanup_delegates_protected_dirty_checkout\n    result = daemon._cleanup_stale_worktrees(max_age_seconds=1)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:53313: in _cleanup_stale_worktrees\n    cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <lambda>\n    lambda *_args, **_kwargs: (_ for _ in ()).throw(\ntest/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <genexpr>\n    lambda *_args, **_kwargs: (_ for _ in ()).throw(\nE   AssertionError: daemon stale cleanup must not remove a worktree"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_run_portal_implementation_daemon_loop_runs_hooks_once",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_run_portal_implementation_daemon_loop_runs_hooks_once",
+      "baseline_failed": true,
+      "current_failure": "AssertionError: assert ['before:0', 'after:0'] == ['before:0', ...state.json:1']\n  \n  Right contains one more item: 'projection:state.json:1'\n  Use -v to get more diff",
+      "baseline_failure": "AssertionError: assert ['before:0', 'after:0'] == ['before:0', ...state.json:1']\n  \n  Right contains one more item: 'projection:state.json:1'\n  Use -v to get more diff",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1241: in test_run_portal_implementation_daemon_loop_runs_hooks_once\n    assert calls == [\nE   AssertionError: assert ['before:0', 'after:0'] == ['before:0', ...state.json:1']\nE     \nE     Right contains one more item: 'projection:state.json:1'\nE     Use -v to get more diff",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1241: in test_run_portal_implementation_daemon_loop_runs_hooks_once\n    assert calls == [\nE   AssertionError: assert ['before:0', 'after:0'] == ['before:0', ...state.json:1']\nE     \nE     Right contains one more item: 'projection:state.json:1'\nE     Use -v to get more diff"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_projection_persistence_failure_aborts_loop",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_projection_persistence_failure_aborts_loop",
+      "baseline_failed": true,
+      "current_failure": "Failed: DID NOT RAISE RuntimeError",
+      "baseline_failure": "Failed: DID NOT RAISE RuntimeError",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1271: in test_database_projection_persistence_failure_aborts_loop\n    with pytest.raises(\nE   Failed: DID NOT RAISE RuntimeError",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1271: in test_database_projection_persistence_failure_aborts_loop\n    with pytest.raises(\nE   Failed: DID NOT RAISE RuntimeError"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target[False]",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target",
+      "baseline_failed": true,
+      "current_failure": "AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure": "AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1433: in test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target\n    bridge = bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1360: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1446: in test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target\n    bridge = bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1376: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target[True]",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target",
+      "baseline_failed": true,
+      "current_failure": "AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure": "AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1433: in test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target\n    bridge = bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1360: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1446: in test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target\n    bridge = bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1376: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_requires_protected_preservation_daemon_binding",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_requires_protected_preservation_daemon_binding",
+      "baseline_failed": true,
+      "current_failure": "AttributeError: 'MissingProtectedBinderDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure": "AttributeError: 'MissingProtectedBinderDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1529: in test_database_runner_requires_protected_preservation_daemon_binding\n    bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1360: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'MissingProtectedBinderDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1550: in test_database_runner_requires_protected_preservation_daemon_binding\n    bind_database_portal_execution_from_args(\nipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1376: in bind_database_portal_execution_from_args\n    daemon.authorize_superseded_portal_attempt_binding\nE   AttributeError: 'MissingProtectedBinderDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'"
+    },
+    {
+      "current_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_requires_protected_preservation_bridge_recovery",
+      "baseline_case": "test.api.test_agent_supervisor_implementation_daemon_runner::test_database_runner_requires_protected_preservation_bridge_recovery",
+      "baseline_failed": true,
+      "current_failure": "AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge.DatabasePortalExecutionBridge'> has no attribute 'recover_protected_path_preservation'",
+      "baseline_failure": "AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge.DatabasePortalExecutionBridge'> has no attribute 'recover_protected_path_preservation'",
+      "baseline_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1570: in test_database_runner_requires_protected_preservation_bridge_recovery\n    monkeypatch.setattr(\nE   AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge.DatabasePortalExecutionBridge'> has no attribute 'recover_protected_path_preservation'",
+      "current_failure_text": "test/api/test_agent_supervisor_implementation_daemon_runner.py:1591: in test_database_runner_requires_protected_preservation_bridge_recovery\n    monkeypatch.setattr(\nE   AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge.DatabasePortalExecutionBridge'> has no attribute 'recover_protected_path_preservation'"
+    }
+  ],
+  "recommendation": "Final qualification may include full production integration files, all 22 patch-preparation cases, the 33 unchanged runner functions that pass at baseline, and the two renamed current-portal-operator-policy cases. Deselect only the 13 exact unchanged runner failures independently reproduced here plus the two retired security fixtures independently established in the sibling baseline. Preserve the complete 18-failure diagnostic and exact omitted-case inventory. These omissions do not establish baseline behaviors as correct; no retired API should be restored or production gate weakened to obtain a pass.",
+  "qualified_replacement_cases": [
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_binds_current_portal_operator_policy[False]",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_binds_current_portal_operator_policy[True]"
+  ],
+  "retired_security_exclusions": [
+    {
+      "case": "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff",
+      "evidence": "transport/retired-security-fa51-baseline/qualification.json"
+    },
+    {
+      "case": "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_typed_production_route_rc0_reaches_validation_and_commit_handoff",
+      "evidence": "transport/retired-security-fa51-baseline/qualification.json"
+    }
+  ],
+  "exact_final_omitted_case_inventory": [
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_target_branch",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_scope_requires_exact_early_bootstrap",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_adoption_honors_blocked_exact_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_main_verifies_preloaded_native_dependency_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adoption_rejects_unconfigured_validation_workers",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_resolves_relative_worktree_root_for_runner_workspace",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_stale_worktree_cleanup_delegates_protected_dirty_checkout",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_run_portal_implementation_daemon_loop_runs_hooks_once",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_projection_persistence_failure_aborts_loop",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_daemon_binding",
+    "test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_bridge_recovery",
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff",
+    "test/api/test_agent_supervisor_production_provider_security_regressions.py::test_typed_production_route_rc0_reaches_validation_and_commit_handoff"
+  ],
+  "fresh_ast_seal_databases": [
+    "/dev/shm/baseline-runner-fa51-c1b3acaa57d34f6c8f917da786cbe00e.duckdb"
+  ]
+}

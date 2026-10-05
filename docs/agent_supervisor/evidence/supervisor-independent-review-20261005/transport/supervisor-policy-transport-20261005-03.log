@@ -1,0 +1,24 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 107 items
+
+test/api/test_agent_supervisor_production_policy_transport.py .......... [  9%]
+..........................................................               [ 63%]
+test/api/test_agent_supervisor_production_provider_cli.py .............. [ 76%]
+.........................                                                [100%]
+
+--- generated xml file: /dev/shm/supervisor-policy-transport-20261005-03.xml ---
+============================= slowest 10 durations =============================
+2.16s call     test/api/test_agent_supervisor_production_policy_transport.py::test_policy_defaults_match_current_policy_without_creating_authority
+1.03s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+0.68s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-context-budget-tokens]
+0.67s call     test/api/test_agent_supervisor_production_policy_transport.py::test_operator_bounds_and_both_authority_bindings_survive_native_command
+0.66s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[duplicate---production-provider-review-authority-key-path]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-policy]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-timeout-seconds]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_disabled_policy_does_not_adopt_policy_bearing_daemon
+0.62s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-review-authority-key-path]
+0.62s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[duplicate---production-provider-launch-authority-receipt-path]
+============================= 107 passed in 43.03s =============================

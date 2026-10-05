@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="17.701" timestamp="2026-10-05T03:01:05.316861+00:00" hostname="spark-b271"><testcase classname="test.api.test_agent_supervisor_production_provider_security_regressions" name="test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff" time="0.016"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">test/api/test_agent_supervisor_production_provider_security_regressions.py:213: in test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_production_provider_security_regressions.py:502: in _daemon_for_ephemeral_handoff
+    daemon = TodoImplementationDaemon(
+E   TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'</failure></testcase><testcase classname="test.api.test_agent_supervisor_production_provider_security_regressions" name="test_typed_production_route_rc0_reaches_validation_and_commit_handoff" time="0.009"><failure message="TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'">test/api/test_agent_supervisor_production_provider_security_regressions.py:554: in test_typed_production_route_rc0_reaches_validation_and_commit_handoff
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_production_provider_security_regressions.py:502: in _daemon_for_ephemeral_handoff
+    daemon = TodoImplementationDaemon(
+E   TypeError: PortalImplementationDaemon.__init__() got an unexpected keyword argument 'production_provider_policy'</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,21 @@
+{
+  "base_commit": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "both_affected_files_identical_to_base": true,
+  "collection_errors": 1,
+  "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-policy-authority-20261005-01.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-policy-authority-20261005-01.xml test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py > /dev/shm/supervisor-policy-authority-20261005-01.log 2>&1",
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-policy-authority-20261005-01.duckdb",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "executed_tests": 0,
+  "missing_export": "BOARD_EXTENSION_INSTALL_POLICY_ENV",
+  "replacement_for_native_process_authority": false,
+  "schema": "retired-supervisor-authority-baseline-diagnostic@1",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "c694854ef79a957e6124cae47a8219defb6d084f722acf4f373ed1ba72a4ff9e",
+    "test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py": "5824f6eac73f4d0b98bcdfab7dbec57057ae755e73d095786362100dd01ba11a"
+  }
+}

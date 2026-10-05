@@ -7,12 +7,15 @@ import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     ImplementationProviderRouter,
     ProductionContractPacket,
+    ProviderRoutingError,
     bind_applied_patch_to_review_chain,
     build_production_contract_packet,
 )
@@ -256,9 +259,14 @@ def test_reviewed_effect_rejects_approval_with_findings_at_both_boundaries(
         **dict(result.review_proposal.payload),
         "findings": ["approval cannot carry a finding"],
     }
+    # Mutation of an already captured proposal is rejected before effect
+    # capture. Also test a freshly captured contradictory proposal below.
+    with pytest.raises(ProviderRoutingError, match="payload changed after capture"):
+        replace(result.review_proposal, payload=contradictory_payload)
     contradictory_review = replace(
         result.review_proposal,
         payload=contradictory_payload,
+        payload_digest="",
     )
     contradictory_result = replace(result, review_proposal=contradictory_review)
 

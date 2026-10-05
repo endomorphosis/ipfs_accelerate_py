@@ -1,0 +1,61 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 25 items
+
+test/api/test_production_independent_review_contract.py .............F.. [ 64%]
+.........                                                                [100%]
+
+=================================== FAILURES ===================================
+_____ test_invalid_operator_pinned_launch_receipt_blocks_provider_dispatch _____
+test/api/test_production_independent_review_contract.py:188: in _denied_route
+    outcome = _route(daemon, task, repo, **kwargs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:178: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44956: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:291: in run_production_model_assisted_route
+    fence()
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:142: in fence
+    load_verified_production_provider_launch_authority(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py:249: in wrapped
+    return function(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py:1729: in load_verified_production_provider_launch_authority
+    receipt_bytes = _read_external_regular_nofollow(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py:1633: in _read_external_regular_nofollow
+    _fail(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py:153: in _fail
+    raise ProductionContextSliceError(message, reason_code=reason_code)
+E   ipfs_accelerate_py.agent_supervisor.todo_daemon.production_context_slice.ProductionContextSliceError: launch authority must be an operator-owned mode-0600 regular file
+
+During handling of the above exception, another exception occurred:
+test/api/test_production_independent_review_contract.py:363: in test_invalid_operator_pinned_launch_receipt_blocks_provider_dispatch
+    _denied_route(daemon, task, repo, error_match="launch receipt CID differs")
+test/api/test_production_independent_review_contract.py:191: in _denied_route
+    assert re.search(error_match, str(error)), str(error)
+E   AssertionError: launch authority must be an operator-owned mode-0600 regular file
+E   assert None
+E    +  where None = <function search at 0xeb217343a980>('launch receipt CID differs', 'launch authority must be an operator-owned mode-0600 regular file')
+E    +    where <function search at 0xeb217343a980> = re.search
+E    +    and   'launch authority must be an operator-owned mode-0600 regular file' = str(ProductionContextSliceError('launch authority must be an operator-owned mode-0600 regular file'))
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/eac658a3bd82171be7a5/agent-merge-trains/master-ae7b4880bc37f329e421/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/eac658a3bd82171be7a5/agent-merge-trains/master-ae7b4880bc37f329e421/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/contract-draft05.xml -
+============================= slowest 10 durations =============================
+2.43s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+2.00s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+1.63s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.75s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.69s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[task_drift]
+0.68s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[missing_review]
+0.60s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[unmerged_same_bytes]
+0.59s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[reviewed_mode]
+0.58s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[reviewed_bytes]
+0.55s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_invalid_operator_pinned_launch_receipt_blocks_provider_dispatch
+======================== 1 failed, 24 passed in 26.18s =========================

@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 25 items
+
+test/api/test_production_independent_review_contract.py ................ [ 64%]
+.........                                                                [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/contract-final01.xml -
+============================= slowest 10 durations =============================
+2.62s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+2.02s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+1.61s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.62s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.61s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[missing_review]
+0.58s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[task_drift]
+0.58s call     test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+0.58s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate
+0.55s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[reviewed_bytes]
+0.55s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[unmerged_same_bytes]
+============================= 25 passed in 23.84s ==============================

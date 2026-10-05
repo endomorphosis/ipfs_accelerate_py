@@ -1,0 +1,43 @@
+{
+  "external_model_calls": 0,
+  "records": [
+    {
+      "baseline_restored": false,
+      "calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ],
+      "exception": "",
+      "external": false,
+      "external_preserved": false,
+      "injected": [
+        true
+      ],
+      "lease_present": true,
+      "observed": "VALUE = 'reviewed'\n",
+      "retain_flag": true,
+      "reviewed_binding_present": false,
+      "status": "rejected",
+      "write_performed": false
+    },
+    {
+      "baseline_restored": false,
+      "calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ],
+      "exception": "",
+      "external": true,
+      "external_preserved": true,
+      "injected": [
+        true
+      ],
+      "lease_present": true,
+      "observed": "VALUE = 'external concurrent drift'\n",
+      "retain_flag": true,
+      "reviewed_binding_present": false,
+      "status": "rejected",
+      "write_performed": false
+    }
+  ]
+}

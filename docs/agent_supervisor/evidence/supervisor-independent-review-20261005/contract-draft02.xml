@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="13" time="14.563" timestamp="2026-10-05T02:52:20.360998+00:00" hostname="spark-b271"><testcase classname="test.api.test_production_independent_review_contract" name="test_joined_route_binds_actual_written_and_committed_bytes" time="1.617"><failure message="ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats">test/api/test_production_independent_review_contract.py:171: in test_joined_route_binds_actual_written_and_committed_bytes
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[source_drift]" time="0.148"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[task_drift]" time="0.137"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[policy_drift]" time="0.124"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[undeclared_path]" time="0.151"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_rewrite]" time="0.121"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[review_decline]" time="0.121"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect[effective_provider]" time="0.116"><failure message="assert ([])">test/api/test_production_independent_review_contract.py:222: in test_provider_callbacks_cannot_promote_drift_or_rewrite_to_effect
+    assert calls and calls[0] == ProviderRole.GROK_IMPLEMENT.value
+E   assert ([])</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_foreign_policy_pair_is_rejected_before_provider_dispatch" time="0.141" /><testcase classname="test.api.test_production_independent_review_contract" name="test_role_bound_implementation_cannot_be_installed_as_its_own_reviewer" time="0.144" /><testcase classname="test.api.test_production_independent_review_contract" name="test_native_second_write_failure_restores_the_first_and_removes_temporaries" time="0.152"><failure message="assert False is True">test/api/test_production_independent_review_contract.py:279: in test_native_second_write_failure_restores_the_first_and_removes_temporaries
+    assert failed is True
+E   assert False is True</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_task_metadata_cannot_install_provider_policy_or_signing_key" time="0.131"><failure message="ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats">test/api/test_production_independent_review_contract.py:300: in test_task_metadata_cannot_install_provider_policy_or_signing_key
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats</failure></testcase><testcase classname="test.api.test_production_independent_review_contract" name="test_post_write_mutation_prevents_commit_bound_review" time="0.135"><failure message="ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats">test/api/test_production_independent_review_contract.py:311: in test_post_write_mutation_prevents_commit_bound_review
+    outcome = _route(daemon, task, repo)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_production_independent_review_contract.py:149: in _route
+    return daemon.run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:44944: in run_production_model_assisted_route
+    route = run_production_model_assisted_route(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py:99: in run_production_model_assisted_route
+    policy_bytes = canonical_json_bytes(policy.to_dict())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:314: in canonical_json_bytes
+    normalized = _canonical_value(value)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:278: in _canonical_value
+    result[raw_key] = _canonical_value(value[raw_key])
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py:268: in _canonical_value
+    raise ContractValidationError("canonical proof contracts cannot contain floats")
+E   ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.ContractValidationError: canonical proof contracts cannot contain floats</failure></testcase></testsuite></testsuites>

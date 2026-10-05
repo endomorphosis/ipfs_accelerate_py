@@ -1,0 +1,52 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 28 items
+
+test/api/test_production_independent_review_contract.py ...............F [ 57%]
+.......F....                                                             [100%]
+
+=================================== FAILURES ===================================
+___ test_live_implementation_validates_commits_and_signs_one_reviewed_effect ___
+test/api/test_production_independent_review_contract.py:433: in test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+    assert request.metadata[name] == retained[name]
+           ^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'provider_execution_receipt'
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8bcd1845d67af8e0bebb/agent-merge-trains/master-2b08dfdda9c2f055f0ee/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_unrelated_descendant_retains_only_the_verified_provider_review_gate[True] _
+test/api/test_production_independent_review_contract.py:551: in test_unrelated_descendant_retains_only_the_verified_provider_review_gate
+    assert retained["provider_review"]["target_commit"] == target
+E   AssertionError: assert '4ef1de41238c...3a0e3252b1ff0' == '6b25a132fee7...9012869008a14'
+E     
+E     - 6b25a132fee7e5d6e4cc891ccf99012869008a14
+E     + 4ef1de41238cd1ae08d07c229083a0e3252b1ff0
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8d6f234946cdda9e6982/agent-merge-trains/master-c991e6c933bf969ec358/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/8d6f234946cdda9e6982/agent-merge-trains/master-c991e6c933bf969ec358/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/coldqueue-draft06.xml -
+============================= slowest 10 durations =============================
+2.91s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.99s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+1.71s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.71s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate[False]
+0.69s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.68s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[missing_review]
+0.68s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[reviewed_mode]
+0.63s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[unmerged_same_bytes]
+0.62s call     test/api/test_production_independent_review_contract.py::test_old_valid_target_cannot_hide_a_changed_current_reviewed_blob
+0.62s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate[True]
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+FAILED test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate[True]
+======================== 2 failed, 26 passed in 27.07s =========================

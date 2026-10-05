@@ -1,0 +1,26 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 29 items
+
+test/api/test_production_daemon_operator_options.py ........F........... [ 68%]
+.........                                                                [100%]
+
+=================================== FAILURES ===================================
+___ test_daemon_does_not_treat_invalid_explicit_bounds_as_defaults[options3] ___
+test/api/test_production_daemon_operator_options.py:49: in test_daemon_does_not_treat_invalid_explicit_bounds_as_defaults
+    with pytest.raises(ValueError):
+E   Failed: DID NOT RAISE ValueError
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/17df56b194f096dcaf6f/agent-merge-trains/HEAD-afe78525f3a0fa85b731/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/17df56b194f096dcaf6f/agent-merge-trains/HEAD-afe78525f3a0fa85b731/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/daemon-options01.xml -
+============================= slowest 10 durations =============================
+1.63s call     test/api/test_production_daemon_operator_options.py::test_daemon_does_not_treat_invalid_explicit_bounds_as_defaults[options3]
+0.11s call     test/api/test_production_daemon_operator_options.py::test_task_metadata_cannot_enable_the_production_operator_route
+
+(8 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_production_daemon_operator_options.py::test_daemon_does_not_treat_invalid_explicit_bounds_as_defaults[options3]
+======================== 1 failed, 28 passed in 10.77s =========================

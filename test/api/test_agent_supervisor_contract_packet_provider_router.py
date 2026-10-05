@@ -23,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProviderReason,
     ProviderRole,
     RouteStatus,
+    bind_applied_patch_to_review_chain,
     redact_provider_data,
     route_contract_packet,
 )
@@ -383,7 +384,7 @@ def test_grok_quota_without_fallback_defers_with_typed_reason() -> None:
     assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
 
 
-def test_codex_quota_preserves_grok_as_evidence_without_writing() -> None:
+def test_codex_quota_capacity_recovery_never_grants_review_authority() -> None:
     writes = []
     router = ImplementationProviderRouter(
         grok_provider=_grok,
@@ -400,10 +401,14 @@ def test_codex_quota_preserves_grok_as_evidence_without_writing() -> None:
         writer_lease_id="lease:1",
     )
 
-    assert result.status is RouteStatus.FALLBACK
+    assert result.status is RouteStatus.SUCCEEDED
     assert result.reason_code == ProviderReason.CODEX_QUOTA_EXHAUSTED.value
-    assert not result.write_performed
-    assert writes == []
+    assert result.write_performed
+    assert len(writes) == 1
+    assert result.review_presence != "independent"
+    assert result.provider_result_admitted  # Admission covers effect application only.
+    assert result.completion_authoritative is False
+    assert bind_applied_patch_to_review_chain(result) is None
     assert router.grok_quota.attempts == 1
     assert router.codex_quota.attempts == 0
 

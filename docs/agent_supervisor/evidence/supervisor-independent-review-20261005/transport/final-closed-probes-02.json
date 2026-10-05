@@ -1,0 +1,104 @@
+{
+  "completion_sink_invoked": false,
+  "external_model_calls": 0,
+  "fault_injection": "Failed apply installs derived approved byte/mode postimage (0644), consistent with bounded child umask022, before reporting IO failure. Separate control installs external bytes instead.",
+  "final_combined_pytest_qualification_required": true,
+  "results": {
+    "currentness": {
+      "negative_controls": {
+        "current_target": {
+          "denied": true,
+          "reason": "production reviewed effect changed at completion target"
+        },
+        "historical_target": {
+          "denied": true,
+          "reason": "production reviewed effect changed at completion target"
+        }
+      },
+      "positive_review_gate_satisfied": true,
+      "provider_calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ]
+    },
+    "external_drift": {
+      "after_mode": "0o644",
+      "baseline_restored": false,
+      "before_mode": "0o664",
+      "exception": "",
+      "external_drift_preserved": true,
+      "injected": [
+        {
+          "child_umask": 18,
+          "installed_mode": 420
+        }
+      ],
+      "native_recovery_lease_present": true,
+      "provider_calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ],
+      "retain_recovery_flag": true,
+      "reviewed_effect_captured": false,
+      "status": "rejected",
+      "write_performed": false
+    },
+    "native_success": {
+      "after_mode": "0o644",
+      "baseline_restored": false,
+      "before_mode": "0o664",
+      "exception": "",
+      "external_drift_preserved": false,
+      "injected": [],
+      "native_recovery_lease_present": false,
+      "provider_calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ],
+      "retain_recovery_flag": false,
+      "reviewed_effect_captured": true,
+      "status": "succeeded",
+      "write_performed": true
+    },
+    "partial_approved": {
+      "after_mode": "0o664",
+      "baseline_restored": true,
+      "before_mode": "0o664",
+      "exception": "",
+      "external_drift_preserved": false,
+      "injected": [
+        {
+          "child_umask": 18,
+          "installed_mode": 420
+        }
+      ],
+      "native_recovery_lease_present": false,
+      "provider_calls": [
+        "grok-implement",
+        "codex-independent-review"
+      ],
+      "retain_recovery_flag": false,
+      "reviewed_effect_captured": false,
+      "status": "rejected",
+      "write_performed": false
+    }
+  },
+  "schema": "readonly-production-final-closed-probes@1",
+  "source_pins_unchanged": true,
+  "source_sha256_after": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a58df6ee641fb122ef62f2e4a9597717fdad57e2fa98d697f682d1b0109d77e3",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py": "437bf35e763e7210e38e4d502c571f9387af0f31d0c5641121973489fab3f98f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "e3edc291d7b76432204109b91a9a56fb57054ec17d02d6ad30e55ec0f9ceb69f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": "c29bdafe7b3e17bc1d2e96b3049a2442a2962935fe42286b3a6e8628984d8cb8",
+    "test/api/test_production_independent_review_contract.py": "7e0191f684a60be96d86d265e3673ce43dfbbb7e168ae251072bb86d2d763f3e"
+  },
+  "source_sha256_before": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a58df6ee641fb122ef62f2e4a9597717fdad57e2fa98d697f682d1b0109d77e3",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_context_slice.py": "437bf35e763e7210e38e4d502c571f9387af0f31d0c5641121973489fab3f98f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "e3edc291d7b76432204109b91a9a56fb57054ec17d02d6ad30e55ec0f9ceb69f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_reviewed_effect.py": "c29bdafe7b3e17bc1d2e96b3049a2442a2962935fe42286b3a6e8628984d8cb8",
+    "test/api/test_production_independent_review_contract.py": "7e0191f684a60be96d86d265e3673ce43dfbbb7e168ae251072bb86d2d763f3e"
+  }
+}

@@ -1315,8 +1315,10 @@ def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation
     assert calls == ["run_once"]
 
 
-def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target(
+@pytest.mark.parametrize("production_review", [False, True])
+def test_database_runner_binds_current_portal_operator_policy(
     tmp_path: Path,
+    production_review: bool,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1345,63 +1347,23 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks.update(values)
 
         @staticmethod
-        def bind_post_merge_recovery(callback: object) -> None:
-            callbacks["post_merge_recovery"] = callback
-
-        @staticmethod
-        def bind_superseded_consumed_attempt_recovery(
-            callback: object,
-        ) -> None:
-            callbacks["consumed_attempt_recovery"] = callback
-
-        @staticmethod
-        def bind_protected_preservation_recovery(
-            callback: object,
-        ) -> None:
-            callbacks["protected_preservation_recovery"] = callback
-
-        @staticmethod
-        def bind_protected_reconciliation_self_lock_recovery(
-            callback: object,
-        ) -> None:
-            callbacks["protected_reconciliation_self_lock_recovery"] = callback
-
-        @staticmethod
-        def bind_merge_train_recovery(**values: object) -> None:
-            callbacks["merge_train_recovery"] = values
-
-        @staticmethod
-        def bind_pending_merge_consume(callback: object) -> None:
-            callbacks["pending_merge_consume"] = callback
-
-        @staticmethod
-        def _database_portal_evidence_digest(_value: object) -> str:
-            return "sha256:" + ("0" * 64)
-
-        @staticmethod
-        def recover_blocked_post_merge_declared_outputs(
-            _evidence: object,
-        ) -> dict[str, object]:
-            pytest.fail("empty recovery queue invoked database recovery")
-
-        @staticmethod
-        def preauthorize_post_merge_declared_output_recovery(
-            _evidence: object,
-        ) -> dict[str, object]:
-            pytest.fail("empty recovery queue invoked database preauthorization")
-
-        @staticmethod
-        def recover_blocked_false_completed_merge(_evidence: object) -> dict[str, object]:
-            pytest.fail("empty recovery queue invoked false-completion recovery")
-
-        @staticmethod
-        def preauthorize_false_completed_merge_recovery(_evidence: object) -> dict[str, object]:
-            pytest.fail("empty recovery queue invoked false-completion preauthorization")
+        def authorize_superseded_portal_attempt_binding(*_args: object, **_kwargs: object):
+            pytest.fail("binding a Portal must not authorize an execution attempt")
 
     class CapturingPortal:
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
 
+    production_flags = []
+    if production_review:
+        production_flags = [
+            "--production-provider-policy", "grok-implement-codex-independent-review",
+            "--production-provider-context-budget-tokens", "3072",
+            "--production-provider-timeout-seconds", "240",
+            "--production-provider-review-authority-key-path", str(tmp_path / "shared.ed25519"),
+            "--production-provider-launch-authority-receipt-path", str(tmp_path / "launch.json"),
+            "--production-provider-launch-authority-receipt-content-id", "sha256:" + "a" * 64,
+        ]
     parsed = parse_args(
         [
             "--task-source-kind",
@@ -1426,6 +1388,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             "external/ipfs_kit",
             "--implement",
             "--once",
+            *production_flags,
         ]
     )
 
@@ -1438,40 +1401,19 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     )
 
     assert bridge is not None
-    assert bridge.merge_queue is not None
-    assert bridge.merge_queue.require_target_binding is True
-    assert bridge.merge_queue.target_branch == "main"
-    assert callable(callbacks["post_merge_recovery"])
-    assert callbacks["post_merge_recovery"]() is None
-    assert callable(callbacks["consumed_attempt_recovery"])
-    assert callable(callbacks["protected_preservation_recovery"])
-    assert callbacks["protected_preservation_recovery"] == (
-        bridge.recover_protected_path_preservation
-    )
-    assert callbacks["protected_reconciliation_self_lock_recovery"] == (
-        bridge.recover_protected_reconciliation_self_lock
-    )
-    assert callbacks["post_commit_candidate_recovery_fn"] == (
-        bridge.recover_post_commit_candidate
-    )
-    pending_consume = callbacks["merge_train_recovery"]["pending_merge_consume_fn"]
-    assert callable(pending_consume)
-    assert callbacks["merge_train_recovery"] == {
-        "merge_queue": bridge.merge_queue,
-        "repo_root": repo,
-        "merge_target_branch": "main",
-        "portal_attempt_root": bridge.attempt_root,
-        "worktree_submodule_paths": (
-            "external/ipfs_datasets",
-            "external/ipfs_kit",
-        ),
-        "pending_merge_consume_fn": pending_consume,
+    assert bridge.task_source is daemon.task_source
+    assert bridge.repo_root == repo
+    assert bridge.merge_target_branch == "main"
+    assert bridge.attempt_root == tmp_path / "state" / "example_database_portal_attempts"
+    assert bridge.prior_attempt_authority == daemon.authorize_superseded_portal_attempt_binding
+    assert callbacks == {
+        "provider_fn": bridge.run_provider,
+        "effect_fn": bridge.apply_effect,
+        "validation_fn": bridge.validate_effect,
     }
-    assert callbacks["pending_merge_consume"] == (
-        bridge.consume_pending_same_board_merge
-    )
     portal = bridge.portal_factory(
         argparse.Namespace(
+            root=tmp_path / "attempt",
             task_projection=tmp_path / "attempt" / "task-projection.md",
             state=tmp_path / "attempt" / "portal-task-state.json",
             strategy=tmp_path / "attempt" / "portal-strategy.json",
@@ -1480,9 +1422,17 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
         ),
         "VRIF-010",
     )
-    assert portal.kwargs["merge_queue"] is bridge.merge_queue
+    assert portal.kwargs["merge_queue_dir"] == tmp_path / "merge-queue"
     assert portal.kwargs["merge_target_branch"] == "main"
-    assert portal.kwargs["isolate_merge_queue_to_task_projection"] is True
+    assert portal.kwargs["execution_slice_task_ids"] == ("VRIF-010",)
+    assert portal.kwargs["generated_status_paths"] == ()
+    for field in (
+        "production_provider_policy", "production_provider_context_budget_tokens",
+        "production_provider_timeout_seconds", "production_provider_review_authority_key_path",
+        "production_provider_launch_authority_receipt_path",
+        "production_provider_launch_authority_receipt_content_id",
+    ):
+        assert portal.kwargs[field] == getattr(parsed, field)
 
 
 def test_database_runner_requires_protected_preservation_daemon_binding(

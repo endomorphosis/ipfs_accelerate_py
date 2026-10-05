@@ -1,0 +1,309 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005
+configfile: pytest.ini
+collected 47 items
+
+test/api/test_agent_supervisor_implementation_daemon_runner.py ...FFFFF. [ 19%]
+FF.......F....F.....FF.FFF............                                   [100%]
+
+=================================== FAILURES ===================================
+___________ test_supervisor_propagates_explicit_merge_target_branch ____________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:173: in test_supervisor_propagates_explicit_merge_target_branch
+    assert "\n" not in command[3]
+E   AssertionError: assert '\n' not in 'import sys\...Exit(main())'
+E     
+E     '\n' is contained here:
+E       import sys
+E     ? ----------
+E       (sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)
+E       sys.argv.pop(1)
+E       from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process...
+E     
+E     ...Full output truncated (5 lines hidden), use '-vv' to show
+__________ test_ordinary_daemon_scope_requires_exact_early_bootstrap ___________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:211: in test_ordinary_daemon_scope_requires_exact_early_bootstrap
+    assert not supervisor._managed_daemon_command_belongs_to_scope(legacy_command)
+E   AssertionError: assert not True
+E    +  where True = _managed_daemon_command_belongs_to_scope(['/home/barberb/.local/bin/python', '-P', '-m', 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', '300.0', ...])
+E    +    where _managed_daemon_command_belongs_to_scope = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b6b0020a10>._managed_daemon_command_belongs_to_scope
+_________ test_ordinary_daemon_adoption_honors_blocked_exact_identity __________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:249: in test_ordinary_daemon_adoption_honors_blocked_exact_identity
+    with pytest.raises(
+E   Failed: DID NOT RAISE RuntimeError
+__________ test_daemon_main_verifies_preloaded_native_dependency_once __________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:273: in test_daemon_main_verifies_preloaded_native_dependency_once
+    monkeypatch.setattr(
+E   AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-retired-security-fa51-20261005/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute 'optional_active_sealed_native_dependency'
+______ test_rescue_dirty_worktree_commits_failed_test_files_in_submodule _______
+test/api/test_agent_supervisor_implementation_daemon_runner.py:385: in test_rescue_dirty_worktree_commits_failed_test_files_in_submodule
+    assert any(item.get("committed") for item in submodule_results)
+E   assert False
+E    +  where False = any(<generator object test_rescue_dirty_worktree_commits_failed_test_files_in_submodule.<locals>.<genexpr> at 0xf8b6b1f905f0>)
+____ test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity ____
+test/api/test_agent_supervisor_implementation_daemon_runner.py:441: in test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity
+    parsed = parse_supervisor_args(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23134: in parse_args
+    return parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2
+----------------------------- Captured stderr call -----------------------------
+usage: __main__.py [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+                   [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+                   [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+                   [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256]
+                   [--once] [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+                   [--stale-seconds STALE_SECONDS]
+                   [--check-interval CHECK_INTERVAL]
+                   [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+                   [--max-restarts MAX_RESTARTS]
+                   [--max-task-attempts MAX_TASK_ATTEMPTS]
+                   [--daemon-interval DAEMON_INTERVAL]
+                   [--task-prefix TASK_PREFIX] [--state-prefix STATE_PREFIX]
+                   [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+                   [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+                   [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+                   [--quack-endpoint QUACK_ENDPOINT]
+                   [--state-store-id STATE_STORE_ID]
+                   [--state-store-generation STATE_STORE_GENERATION]
+                   [--state-schema-revision STATE_SCHEMA_REVISION]
+                   [--state-failover-policy {fail_closed,require_explicit_operator}]
+                   [--event-store-path EVENT_STORE_PATH]
+                   [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+                   [--export-profile EXPORT_PROFILE]
+                   [--explicit-legacy-task-source]
+                   [--implement | --no-implement]
+                   [--implementation-command IMPLEMENTATION_COMMAND]
+                   [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+                   [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+                   [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+                   [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+                   [--manual-completion-authority-revalidation-only]
+                   [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+                   [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+                   [--allow-reconciliation-only-llm-resolver]
+                   [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+                   [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+                   [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+                   [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+                   [--merge-target-branch MERGE_TARGET_BRANCH]
+                   [--merge-queue-dir MERGE_QUEUE_DIR]
+                   [--daemon-script-path DAEMON_SCRIPT_PATH]
+                   [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+                   [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+                   [--reconciliation-only] [--fail-on-reconciliation-error]
+                   [--no-worktree-reconciliation]
+                   [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+                   [--worktree-reconciliation-dry-run]
+                   [--no-worktree-reconciliation-preflight]
+                   [--no-worktree-scan-cache]
+                   [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+                   [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+                   [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+                   [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+                   [--task-shard-count TASK_SHARD_COUNT]
+                   [--task-shard-index TASK_SHARD_INDEX]
+                   [--strict-task-sharding]
+                   [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+                   [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+                   [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+                   [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+                   [--no-retry-budget-guardrail]
+                   [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+                   [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+                   [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+                   [--merge-retry-budget MERGE_RETRY_BUDGET]
+                   [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+                   [--retry-budget-commit-outputs]
+                   [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+                   [--no-dependency-guardrail]
+                   [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+                   [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+                   [--dependency-guardrail-commit-outputs]
+                   [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+                   [--no-reconciliation-guardrail]
+                   [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+                   [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+                   [--reconciliation-guardrail-commit-outputs]
+                   [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+                   [--auto-commit-generated-dirty]
+                   [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+                   [--no-generated-dirty-submodule-gitlinks]
+                   [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+                   [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+                   [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+                   [--codebase-refill-scan]
+                   [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+                   [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+                   [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+                   [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+                   [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+                   [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+                   [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+                   [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+                   [--allow-unscoped-codebase-refill]
+                   [--codebase-scan-commit-outputs]
+                   [--allow-codebase-refill-with-objective-work]
+                   [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+                   [--objective-refill-scan] [--no-objective-task-janitor]
+                   [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+                   [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+                   [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+                   [--objective-mission-term OBJECTIVE_MISSION_TERM]
+                   [--objective-path OBJECTIVE_PATH]
+                   [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+                   [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+                   [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+                   [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+                   [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+                   [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+                   [--no-objective-goal-refinement]
+                   [--no-objective-goal-completion-reconcile]
+                   [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+                   [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+                   [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+                   [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+                   [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+                   [--no-objective-goal-migration]
+                   [--objective-goal-migration-preview]
+                   [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+                   [--objective-seed-interoperability-goals]
+                   [--objective-seed-launch-readiness-goals]
+                   [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+                   [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+                   [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+                   [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+                   [--objective-ensure-tracking-document]
+                   [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+                   [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+                   [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+                   [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+                   [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+                   [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+                   [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+                   [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+                   [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+                   [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+                   [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+                   [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+                   [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+                   [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+                   [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+                   [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+                   [--no-objective-ast-dataset]
+                   [--no-objective-todo-vector-index]
+                   [--log-level {DEBUG,INFO,WARNING,ERROR}]
+__main__.py: error: unrecognized arguments: --validation-max-workers 4
+_______ test_supervisor_adoption_rejects_unconfigured_validation_workers _______
+test/api/test_agent_supervisor_implementation_daemon_runner.py:540: in test_supervisor_adoption_rejects_unconfigured_validation_workers
+    assert not supervisor._managed_daemon_matches_command_line(
+E   assert not True
+E    +  where True = _managed_daemon_matches_command_line("/home/barberb/.local/bin/python -P -c import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1")
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xf8b66b1418e0>._managed_daemon_matches_command_line
+E    +    and   "/home/barberb/.local/bin/python -P -c import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...mpts 0 --merge-target-branch implementation/tasks --task-shard-count 1 --task-shard-index 0 --validation-max-workers 1" = <built-in method join of str object at 0xb29c78>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <built-in method join of str object at 0xb29c78> = ' '.join
+_______ test_daemon_resolves_relative_worktree_root_for_runner_workspace _______
+test/api/test_agent_supervisor_implementation_daemon_runner.py:816: in test_daemon_resolves_relative_worktree_root_for_runner_workspace
+    command = daemon._build_implementation_command(workspace)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:61461: in _build_implementation_command
+    grok_ready = _grok_cli_available()
+                 ^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:2257: in _grok_cli_available
+    return get_llm_provider("grok_cli") is not None
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/llm_router.py:10816: in get_llm_provider
+    return _resolve_provider_cached(provider, _provider_cache_key())
+                                              ^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/llm_router.py:9215: in _provider_cache_key
+    meta_model_api_key_fingerprint(),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_implementation_daemon_runner.py:786: in unexpected_secret_store_access
+    pytest.fail("forced Codex command inspected an unrelated Meta secret")
+E   Failed: forced Codex command inspected an unrelated Meta secret
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/2789eaa61f19dffbadb6/agent-merge-trains/HEAD-8a7bc30a26380ccfbdb0/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/2789eaa61f19dffbadb6/agent-merge-trains/HEAD-8a7bc30a26380ccfbdb0/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+________ test_stale_worktree_cleanup_delegates_protected_dirty_checkout ________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1000: in test_stale_worktree_cleanup_delegates_protected_dirty_checkout
+    result = daemon._cleanup_stale_worktrees(max_age_seconds=1)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:53008: in _cleanup_stale_worktrees
+    cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <lambda>
+    lambda *_args, **_kwargs: (_ for _ in ()).throw(
+test/api/test_agent_supervisor_implementation_daemon_runner.py:991: in <genexpr>
+    lambda *_args, **_kwargs: (_ for _ in ()).throw(
+E   AssertionError: daemon stale cleanup must not remove a worktree
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/d8ba17ba42e79ec8a8d0/agent-merge-trains/main-70a6fdd037dc6f41e2eb/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/d8ba17ba42e79ec8a8d0/agent-merge-trains/main-70a6fdd037dc6f41e2eb/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+__________ test_run_portal_implementation_daemon_loop_runs_hooks_once __________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1241: in test_run_portal_implementation_daemon_loop_runs_hooks_once
+    assert calls == [
+E   AssertionError: assert ['before:0', 'after:0'] == ['before:0', ...state.json:1']
+E     
+E     Right contains one more item: 'projection:state.json:1'
+E     Use -v to get more diff
+------------------------------ Captured log call -------------------------------
+WARNING  test-daemon-runner:implementation_daemon_runner.py:1664 before hook: ['before-result']
+WARNING  test-daemon-runner:implementation_daemon_runner.py:1664 after hook: ['after-result']
+___________ test_database_projection_persistence_failure_aborts_loop ___________
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1271: in test_database_projection_persistence_failure_aborts_loop
+    with pytest.raises(
+E   Failed: DID NOT RAISE RuntimeError
+------------------------------ Captured log call -------------------------------
+INFO     test-daemon-runner-projection-failure:implementation_daemon_runner.py:73 fake pass complete: {'count': 1}
+_ test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target _
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1433: in test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target
+    bridge = bind_database_portal_execution_from_args(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1360: in bind_database_portal_execution_from_args
+    daemon.authorize_superseded_portal_attempt_binding
+E   AttributeError: 'BindingDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'
+_____ test_database_runner_requires_protected_preservation_daemon_binding ______
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1529: in test_database_runner_requires_protected_preservation_daemon_binding
+    bind_database_portal_execution_from_args(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py:1360: in bind_database_portal_execution_from_args
+    daemon.authorize_superseded_portal_attempt_binding
+E   AttributeError: 'MissingProtectedBinderDaemon' object has no attribute 'authorize_superseded_portal_attempt_binding'
+_____ test_database_runner_requires_protected_preservation_bridge_recovery _____
+test/api/test_agent_supervisor_implementation_daemon_runner.py:1570: in test_database_runner_requires_protected_preservation_bridge_recovery
+    monkeypatch.setattr(
+E   AttributeError: <class 'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge.DatabasePortalExecutionBridge'> has no attribute 'recover_protected_path_preservation'
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/baseline-runner-fa51.xml -
+============================= slowest 10 durations =============================
+1.65s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_implied_submodule_pins_ignore_absent_umbrella_paths
+0.76s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule
+0.71s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_manual_completion_authority_revalidation_only_propagates_end_to_end
+0.66s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_queue_namespace
+0.62s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_scope_requires_exact_early_bootstrap
+0.62s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_adoption_honors_blocked_exact_identity
+0.60s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_manual_completion_authority_revalidation_only_defaults_false_and_rejects_extra_flag
+0.60s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member
+0.59s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adoption_rejects_unconfigured_validation_workers
+0.58s call     test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_target_branch
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_propagates_explicit_merge_target_branch
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_scope_requires_exact_early_bootstrap
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_ordinary_daemon_adoption_honors_blocked_exact_identity
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_main_verifies_preloaded_native_dependency_once
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_rescue_dirty_worktree_commits_failed_test_files_in_submodule
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adopts_daemon_only_for_exact_execution_policy_identity
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_supervisor_adoption_rejects_unconfigured_validation_workers
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_daemon_resolves_relative_worktree_root_for_runner_workspace
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_stale_worktree_cleanup_delegates_protected_dirty_checkout
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_run_portal_implementation_daemon_loop_runs_hooks_once
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_projection_persistence_failure_aborts_loop
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_daemon_binding
+FAILED test/api/test_agent_supervisor_implementation_daemon_runner.py::test_database_runner_requires_protected_preservation_bridge_recovery
+======================== 14 failed, 33 passed in 32.38s ========================

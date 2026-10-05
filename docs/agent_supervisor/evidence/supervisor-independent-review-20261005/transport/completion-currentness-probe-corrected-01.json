@@ -1,0 +1,35 @@
+{
+  "changed_current_head": "f58b4d3fc760ea1574dfab0cd2d0869b26a09293",
+  "external_model_calls": 0,
+  "initial_review_gate_satisfied": true,
+  "negative_controls": {
+    "current_target": {
+      "denied": true,
+      "reason": "production reviewed effect changed at completion target"
+    },
+    "historical_target": {
+      "denied": true,
+      "reason": "production reviewed effect changed at completion target"
+    }
+  },
+  "provider_calls": [
+    "grok-implement",
+    "codex-independent-review"
+  ],
+  "reviewed_commit": "2540b8954a7991f245a7e543ec0a6c4bb35b51e0",
+  "schema": "readonly-production-completion-currentness-corrected-probe@1",
+  "scope": "The production completion helper alone; no queue/completion sink invoked.",
+  "source_pins_unchanged": true,
+  "source_sha256_after": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e8583e74fe297e8e7f59914a286867c3797d20dfdd64aeb6c494143160e75039",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "799ec0724d2c9a274d3d456ca266caffbbaca0585fcbb95cabc263c8212facf4",
+    "test/api/test_production_independent_review_contract.py": "a6fae41a4d6e05af9c40ba13bb1f172937eb18abad2c30bd1aadeb5c8c98b640"
+  },
+  "source_sha256_before": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py": "c9175240a50a51608ca55c54375a78ddfb9c4304e8f5ce30cbbd45ddb9d1126e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e8583e74fe297e8e7f59914a286867c3797d20dfdd64aeb6c494143160e75039",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/production_daemon_route.py": "799ec0724d2c9a274d3d456ca266caffbbaca0585fcbb95cabc263c8212facf4",
+    "test/api/test_production_independent_review_contract.py": "a6fae41a4d6e05af9c40ba13bb1f172937eb18abad2c30bd1aadeb5c8c98b640"
+  }
+}

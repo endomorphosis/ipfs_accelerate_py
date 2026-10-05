@@ -1,0 +1,106 @@
+{
+  "combined_six_abbreviated_flags": {
+    "disabled_supervisor_accepts": true,
+    "native_budget": 3072,
+    "native_implement": true,
+    "native_key_path": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/shared-review.ed25519",
+    "native_launch_cid": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "native_launch_path": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/launch.json",
+    "native_policy": "grok-implement-codex-independent-review",
+    "native_timeout": 240.0
+  },
+  "daemon_constructed": false,
+  "external_model_calls": 0,
+  "process_launched": false,
+  "records": [
+    {
+      "abbreviated_option": "--production-provider-polic",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_policy",
+      "native_parse_value": "grok-implement-codex-independent-review",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-polic",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_policy",
+      "native_parse_value": "grok-implement-codex-independent-review",
+      "style": "equals"
+    },
+    {
+      "abbreviated_option": "--production-provider-context-budget-token",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_context_budget_tokens",
+      "native_parse_value": "3072",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-context-budget-token",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_context_budget_tokens",
+      "native_parse_value": "3072",
+      "style": "equals"
+    },
+    {
+      "abbreviated_option": "--production-provider-timeout-second",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_timeout_seconds",
+      "native_parse_value": "240.0",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-timeout-second",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_timeout_seconds",
+      "native_parse_value": "240.0",
+      "style": "equals"
+    },
+    {
+      "abbreviated_option": "--production-provider-review-authority-key-pat",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_review_authority_key_path",
+      "native_parse_value": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/shared-review.ed25519",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-review-authority-key-pat",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_review_authority_key_path",
+      "native_parse_value": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/shared-review.ed25519",
+      "style": "equals"
+    },
+    {
+      "abbreviated_option": "--production-provider-launch-authority-receipt-pat",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_launch_authority_receipt_path",
+      "native_parse_value": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/launch.json",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-launch-authority-receipt-pat",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_launch_authority_receipt_path",
+      "native_parse_value": "/dev/shm/supervisor-policy-abbreviation-r472iwxb/launch.json",
+      "style": "equals"
+    },
+    {
+      "abbreviated_option": "--production-provider-launch-authority-receipt-content-i",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_launch_authority_receipt_content_id",
+      "native_parse_value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "style": "pair"
+    },
+    {
+      "abbreviated_option": "--production-provider-launch-authority-receipt-content-i",
+      "disabled_supervisor_accepts": true,
+      "field": "production_provider_launch_authority_receipt_content_id",
+      "native_parse_value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "style": "equals"
+    }
+  ],
+  "schema": "supervisor-disabled-policy-abbreviated-adoption-probe@1",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a58df6ee641fb122ef62f2e4a9597717fdad57e2fa98d697f682d1b0109d77e3",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "de0dcff3ae9b09467338bc67b801e8d3a5eb03bda9f99b28174eb24fb83b4c41"
+  }
+}

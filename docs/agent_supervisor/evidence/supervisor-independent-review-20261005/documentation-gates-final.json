@@ -1,0 +1,8 @@
+{
+  "command": [
+    "python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "returncode": 0,
+  "scope": "documentation only; no completion or proof authority"
+}

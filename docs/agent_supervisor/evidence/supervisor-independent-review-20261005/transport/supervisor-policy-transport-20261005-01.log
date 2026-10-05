@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 87 items / 37 deselected / 50 selected
+
+test/api/test_agent_supervisor_production_policy_transport.py .......... [ 20%]
+.....................................F                                   [ 96%]
+test/api/test_agent_supervisor_production_provider_cli.py ..             [100%]
+
+=================================== FAILURES ===================================
+______ test_obsolete_policy_identity_fenced_before_managed_child_adoption ______
+test/api/test_agent_supervisor_production_policy_transport.py:209: in test_obsolete_policy_identity_fenced_before_managed_child_adoption
+    assert result["reason"] == "obsolete_owned_managed_daemon_fenced"
+E   AssertionError: assert 'managed_pid_command_mismatch' == 'obsolete_own...daemon_fenced'
+E     
+E     - obsolete_owned_managed_daemon_fenced
+E     + managed_pid_command_mismatch
+--- generated xml file: /dev/shm/supervisor-policy-transport-20261005-01.xml ---
+============================= slowest 10 durations =============================
+3.55s call     test/api/test_agent_supervisor_production_policy_transport.py::test_policy_defaults_match_current_policy_without_creating_authority
+0.68s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-policy]
+0.66s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-context-budget-tokens]
+0.66s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-launch-authority-receipt-path]
+0.64s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[duplicate---production-provider-timeout-seconds]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-timeout-seconds]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-launch-authority-receipt-path]
+0.63s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[change---production-provider-review-authority-key-path]
+0.62s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[equals---production-provider-policy]
+0.61s call     test/api/test_agent_supervisor_production_policy_transport.py::test_adoption_requires_one_exact_complete_operator_policy[remove---production-provider-policy]
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_obsolete_policy_identity_fenced_before_managed_child_adoption
+================= 1 failed, 49 passed, 37 deselected in 39.06s =================

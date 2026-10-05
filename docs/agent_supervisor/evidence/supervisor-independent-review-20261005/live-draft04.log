@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 16 items / 14 deselected / 2 selected
+
+test/api/test_production_independent_review_contract.py ..               [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-independent-review-20261005/live-draft04.xml -
+============================= slowest 10 durations =============================
+3.95s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.55s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+====================== 2 passed, 14 deselected in 15.77s =======================

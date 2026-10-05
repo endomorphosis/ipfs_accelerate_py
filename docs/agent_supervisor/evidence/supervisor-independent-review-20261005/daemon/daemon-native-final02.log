@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 30 items
+
+test/api/test_production_independent_review_contract.py ................ [ 53%]
+..............                                                           [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/daemon-native-final02.xml -
+============================= slowest 10 durations =============================
+3.19s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+2.57s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+1.66s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.63s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[missing_review]
+0.61s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.61s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[task_drift]
+0.59s call     test/api/test_production_independent_review_contract.py::test_old_valid_target_cannot_hide_a_changed_current_reviewed_blob
+0.59s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate[True]
+0.58s call     test/api/test_production_independent_review_contract.py::test_lost_durable_lease_stops_remaining_and_compensating_writes
+0.57s call     test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+============================= 30 passed in 27.87s ==============================

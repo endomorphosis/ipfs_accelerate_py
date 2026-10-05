@@ -191,7 +191,7 @@ START or new Terminal-Bench score were produced by this qualification.
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
 | P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
-| P1 | Optional independent model review through the live daemon | Add explicit policy initialization and CLI transport in `todo_daemon/implementation_daemon.py`, then qualify the joined reviewed-effect path against its native effect owner. The seven retained optional integration failures remain open; current provider authorization does not supply review evidence. |
+| P1 | Authenticated live-provider qualification of optional independent review | Operator policy transport and the native reviewed-effect, merge, and restart path are connected below. Qualify authenticated Grok implementation and independent Codex review with real provider usage receipts; the local qualification uses authored responses and adds no live provider or benchmark score claim. |
 | P1 | Source/data and language coverage | `analysis/program_ast_adapters.py`, exhaustive corpus inventory, scoped Doctor diagnostics. Preserve all hashes and unresolved frontiers. Parsing, tokenization and vector hits do not establish executable semantics. |
 | P2 | Build/install/training and generated-artifact stages | Native task admission, validation and capability machinery. Bind commands, dependencies, environment identities, budgets and produced artifacts. Static file publication does not describe these workflows. |
 | P2 | Git state, services/VMs and alternate input roots | Existing source/task admission and process supervision. Add explicit effects and immutable capture profiles rather than broadening filesystem scope implicitly. |
@@ -385,8 +385,91 @@ Those six checks pass after selecting the installed native Lean 4.33.1/Lake
 binary; both runs and the exact refusal diagnostic remain in the evidence.
 AST sealing stayed enabled with fresh private catalogs and no completion
 authority. No decoder training, downloads or new benchmark score were produced.
-That qualification preceded the empty-source implementation above. Optional
-independent-review wiring remains pending.
+That qualification preceded the empty-source implementation above and the
+independent-review integration described below.
+
+## Operator-selected independent review (2026-10-05)
+
+The [independent-review qualification](evidence/supervisor-independent-review-20261005/qualification.json)
+records the final source-pinned local checks, original seven failing integration
+cases, development failures and their corrections. Those seven cases now pass.
+The final local selection passes 328 tests with unchanged source, datasets and
+retained model hashes, fresh AST catalogs and no skipped selected cases.
+Fifteen existing cases remain outside this qualification: two security tests
+exercise retired handoff APIs, and thirteen runner tests have existing API or
+behavior mismatches. Every omitted case also fails on unchanged `fa51b32`
+source. Their exact inventory, complete failure logs and baseline comparison
+remain in the evidence; this does not establish those behaviors as correct.
+The current DuckDB-to-Portal binding is tested with both policy selections.
+New native integration controls exercise the current owners. Missing historical
+status exports and unrelated process-authority exports are recorded separately,
+without restoring those retired interfaces.
+
+An operator explicitly selects `grok-implement-codex-independent-review`.
+The supervisor, native daemon entrypoint and DuckDB-to-Portal execution factory
+carry the same policy, context budget, timeout and signing-key path. An optional
+launch-receipt path and exact CID travel together and are verified against the
+existing four-root launch authority. Adoption requires canonical flag names and
+rejects abbreviated, missing, duplicated or changed operator fields. Task
+metadata cannot select the policy or its trust roots. CLI context defaults
+remain 24,576 tokens and 300 seconds; this packet budget is separate from the
+GTE autoencoder token windows. Model defaults remain
+Grok 4.7 for implementation and GPT-6.1-Sol with medium reasoning for review.
+
+The joined execution path derives a bounded source packet from the exact task
+and Git baseline. It rechecks task, source, provider, policy and launch pins
+across callbacks. An actual native checkout mutation lease and registered
+repository/worktree identity own the writer. Only the exact independently
+approved Grok proposal may write; missing review, quota exhaustion, reviewer
+replacement and forged provider provenance grant no write on this policy.
+The existing generic router's explicitly non-authoritative capacity recovery
+behavior is preserved separately.
+
+Replacement files retain no-follow directory descriptors and compare original
+bytes and modes before writing. Unified patches first reconstruct intended
+postimages in an isolated temporary Git index/object store with native capture,
+time and size bounds. The same reconstruction checks finalized effect bindings.
+Native patch application uses a child-only `0022` file creation mask to match
+the preview's `0644`/`0755` modes without changing the daemon's process mask.
+Compensation restores only the writer's own expected bytes and modes; external
+edits remain untouched. Losing the actual lease prevents further or compensating
+writes and retains the candidate for native recovery. A patch that installs
+bytes but reports failure is compensated from its pre-registered intended
+postimages.
+
+Native validation, candidate binding and Git commit precede effect finalization
+and Ed25519 attestation. Failed validation emits neither a candidate commit nor
+an attestation. The durable merge request carries all four review records bound
+by the attestation. Another lane or a restarted daemon verifies these carriers
+against its operator-pinned policy and shared public key before integration and completion.
+Recovery constructors inherit operator settings from their owner. Carriers
+cannot install a different policy or signer.
+
+Completion requires the reviewed implementation's ancestry and exact reviewed
+blob bytes and Git modes at the selected current merge target. Choosing an old
+valid commit cannot hide a changed current output. Unrelated descendants and
+the native task-board status commit may preserve that provider-review gate.
+Pending completion intents revalidate the current task and signed material
+before queue or decision publication. Independent review remains one gate;
+native validation, proof, source and publication owners retain their authority.
+
+`production-task-contract@2` binds task identity, requirements, dependencies,
+effect scope and every metadata entry except the case/whitespace-normalized
+workflow `status`. The native ready-to-completed
+projection therefore preserves the reviewed task meaning and canonical revision.
+Acceptance, validation, provider metadata and effect scope remain bound. Earlier
+raw-status contract CIDs fail closed; they are not silently reinterpreted as
+this version. Existing IR families, dimensions, decoder tasks, checkpoint bytes
+and embedding assets are unchanged.
+
+The qualification uses authored bounded provider responses and child envelopes
+with actual native Git/worktree, validation, lease, queue and Ed25519 owners.
+It makes no paid model calls and trains or downloads no models. AST sealing
+stays enabled with fresh private catalogs and false completion authority.
+These observations add no Terminal-Bench reward, proof of arbitrary generated
+behavior or whole-repository authority. Authenticated live provider dispatch,
+broader operator/decomposition coverage and independent behavioral contracts
+remain separate work.
 
 ## Router execution, checkpoint currentness and persistence (2026-10-05)
 
@@ -427,6 +510,7 @@ error on the unchanged base. The
 [preflight evidence](evidence/supervisor-router-lifecycle-20261005/preflight.json)
 records 48 unresolved archived plan-bound recovery cases and three separate
 prior-seed contract/guidance failures; ordinary shared-store recovery is covered,
-but sealed recovery-snapshot integration remains incomplete. Optional
-independent-review daemon wiring also remains pending. This qualification uses
-no paid providers and produces no new Terminal-Bench reward or token score.
+but sealed recovery-snapshot integration remains incomplete. Operator-selected
+independent-review daemon wiring is qualified separately above. This router
+qualification uses no paid providers and produces no new Terminal-Bench reward
+or token score.

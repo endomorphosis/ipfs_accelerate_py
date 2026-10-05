@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 0 items / 1 error
+
+==================================== ERRORS ====================================
+_ ERROR collecting test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py _
+ImportError while importing test module '/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py:11: in <module>
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+E   ImportError: cannot import name 'BOARD_EXTENSION_INSTALL_POLICY_ENV' from 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' (/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py)
+--- generated xml file: /dev/shm/supervisor-policy-authority-20261005-01.xml ---
+=========================== short test summary info ============================
+ERROR test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.49s ===============================

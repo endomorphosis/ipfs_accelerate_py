@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 39 items / 35 deselected / 4 selected
+
+test/api/test_agent_supervisor_production_provider_cli.py ....           [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/daemon-focused02.xml -
+============================= slowest 10 durations =============================
+1.93s call     test/api/test_agent_supervisor_production_provider_cli.py::test_ed25519_review_attestation_reconstructs_full_receipt_and_binding
+0.55s call     test/api/test_agent_supervisor_production_provider_cli.py::test_shared_cross_lane_authority_and_operator_policy_derive_provider_gate
+0.41s call     test/api/test_agent_supervisor_production_provider_cli.py::test_signed_attestation_cannot_choose_its_own_expected_policy
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+====================== 4 passed, 35 deselected in 15.10s =======================

@@ -1,0 +1,35 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 30 items
+
+test/api/test_production_independent_review_contract.py ............F... [ 53%]
+..............                                                           [100%]
+
+=================================== FAILURES ===================================
+_____ test_native_git_apply_failure_after_postimage_restores_owned_effect ______
+test/api/test_production_independent_review_contract.py:388: in test_native_git_apply_failure_after_postimage_restores_owned_effect
+    assert (repo / TARGET).read_text(encoding="utf-8") == BASELINE
+E   assert "VALUE = 'reviewed'\n" == "VALUE = 'baseline'\n"
+E     
+E     - VALUE = 'baseline'
+E     + VALUE = 'reviewed'
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/b244260e5050e25a0b01/agent-merge-trains/master-5f84992d17e26eec4325/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/b244260e5050e25a0b01/agent-merge-trains/master-5f84992d17e26eec4325/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/daemon-native-final01.xml -
+============================= slowest 10 durations =============================
+2.63s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+2.39s call     test/api/test_production_independent_review_contract.py::test_joined_route_binds_actual_written_and_committed_bytes
+1.46s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+0.63s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[forged_signature]
+0.62s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[missing_review]
+0.60s call     test/api/test_production_independent_review_contract.py::test_restart_revalidates_pending_intent_before_any_completion_publication[task_drift]
+0.59s call     test/api/test_production_independent_review_contract.py::test_lost_durable_lease_stops_remaining_and_compensating_writes
+0.57s call     test/api/test_production_independent_review_contract.py::test_unrelated_descendant_retains_only_the_verified_provider_review_gate[False]
+0.52s call     test/api/test_production_independent_review_contract.py::test_completion_target_requires_reviewed_ancestry_and_exact_postimage[unmerged_same_bytes]
+0.52s call     test/api/test_production_independent_review_contract.py::test_native_second_write_failure_restores_the_first_and_removes_temporaries
+=========================== short test summary info ============================
+FAILED test/api/test_production_independent_review_contract.py::test_native_git_apply_failure_after_postimage_restores_owned_effect
+======================== 1 failed, 29 passed in 27.71s =========================

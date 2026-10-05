@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from ..proof.formal_verification_contracts import content_identity
 from .contract_packet_provider_router import (
+    MAX_PROVIDER_RESPONSE_BYTES,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_SCHEMA,
     ProductionContractPacket,
@@ -37,8 +38,12 @@ from .contract_packet_provider_router import (
 )
 from .llm import LLM_CHILD_RESULT_SCHEMA
 from .production_context_slice import (
+    DEFAULT_MAX_SCOPE_PATHS,
+    DEFAULT_MAX_SOURCE_BYTES,
     PRODUCTION_CONTEXT_SLICE_INTERFACE,
     PRODUCTION_CONTEXT_SLICE_SCHEMA,
+    _run_git_bounded,
+    production_evidence_scan_budgeted,
 )
 from .production_provider_cli import (
     DEFAULT_CODEX_MODEL,
@@ -50,6 +55,9 @@ PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-reviewed-effect-binding@1"
 )
 PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE: Final = "ProductionReviewedEffectBinding@1"
+PRODUCTION_TASK_CONTRACT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-task-contract@2"
+)
 
 # Git treats these ambient variables as repository-routing authority.  A
 # long-lived supervisor must not let its service environment redirect proof
@@ -281,7 +289,13 @@ def _task_identity_payload(value: Any) -> dict[str, str]:
 
 
 def production_task_contract(task: Any, task_identity: Any) -> dict[str, Any]:
-    """Return the immutable task facts which authorize a reviewed write."""
+    """Bind task meaning independently of the native workflow Status field.
+
+    Canonical task revisions already exclude workflow status. A native board
+    completion may project ready to completed without changing the reviewed
+    task. Every other metadata entry remains part of this versioned contract.
+    Earlier raw-status contract CIDs are not silently reinterpreted.
+    """
 
     identity = _task_identity_payload(task_identity)
     metadata = getattr(task, "metadata", {}) or {}
@@ -291,6 +305,7 @@ def production_task_contract(task: Any, task_identity: Any) -> dict[str, Any]:
     if not outputs or len(outputs) != len(set(outputs)):
         raise ValueError("task outputs must be explicit and unique")
     contract = {
+        "schema": PRODUCTION_TASK_CONTRACT_SCHEMA,
         "task_id": _text(getattr(task, "task_id", "")),
         "title": str(getattr(task, "title", "") or ""),
         "priority": str(getattr(task, "priority", "") or ""),
@@ -299,7 +314,10 @@ def production_task_contract(task: Any, task_identity: Any) -> dict[str, Any]:
         "outputs": outputs,
         "validation": [str(value) for value in (getattr(task, "validation", ()) or ())],
         "acceptance": str(getattr(task, "acceptance", "") or ""),
-        "metadata": _json_detach(dict(metadata)),
+        "metadata": _json_detach({
+            key: value for key, value in metadata.items()
+            if not isinstance(key, str) or key.strip().casefold() != "status"
+        }),
         "canonical_task_key": identity["canonical_task_key"],
         "canonical_task_cid": identity["canonical_task_cid"],
         "board_namespace": identity["board_namespace"],
@@ -464,108 +482,132 @@ def _commit_diff(
     )
 
 
+@production_evidence_scan_budgeted
+def derive_production_reviewed_patch_effects(
+    *, repo_root: str | Path, baseline_ref: str, patch: str,
+) -> dict[str, tuple[bytes, int] | None]:
+    """Reconstruct bounded patch postimages without modifying the repository.
+
+    An isolated bare repository borrows immutable baseline objects through a
+    private alternates file. Its index and newly produced objects stay in the
+    temporary directory. The result describes intended effects for the native
+    writer's compensation journal; it grants no write or completion authority.
+    """
+
+    if not isinstance(patch, str) or not patch:
+        raise ValueError("reviewed patch must be nonempty text")
+    encoded_patch = patch.encode("utf-8", errors="strict")
+    if len(encoded_patch) > MAX_PROVIDER_RESPONSE_BYTES:
+        raise ValueError("reviewed patch exceeds the provider response bound")
+    root = _repository_root(Path(repo_root))
+
+    def run(directory: Path, *arguments: str, input_bytes: bytes | None = None,
+            maximum: int = 16_384) -> bytes:
+        returncode, stdout, stderr = _run_git_bounded(
+            directory, *arguments, maximum_stdout_bytes=maximum,
+            input_bytes=input_bytes,
+        )
+        if returncode:
+            raise ValueError("isolated reviewed patch reconstruction failed: " +
+                             stderr[-500:].decode("utf-8", errors="replace"))
+        return stdout
+
+    baseline = run(root, "rev-parse", "--verify", "--end-of-options",
+                   str(baseline_ref) + "^{commit}").decode("ascii").strip()
+    object_path = run(root, "rev-parse", "--git-path", "objects").decode("utf-8").strip()
+    objects = Path(object_path)
+    if not objects.is_absolute():
+        objects = root / objects
+    objects = objects.resolve(strict=True)
+    object_format = run(root, "rev-parse", "--show-object-format", maximum=128).decode("ascii").strip()
+    if object_format not in ("sha1", "sha256"):
+        raise ValueError("reviewed patch repository object format is unsupported")
+    if any(character in str(objects) for character in "\n\r\0"):
+        raise ValueError("repository object path cannot be represented safely")
+    with tempfile.TemporaryDirectory(prefix="reviewed-patch-") as name:
+        isolated = Path(name)
+        os.chmod(isolated, 0o700)
+        run(isolated, "-c", "init.templateDir=", "init", "--bare", "--quiet",
+            "--object-format=" + object_format)
+        alternates = isolated / "objects" / "info" / "alternates"
+        alternates.write_text(str(objects) + "\n", encoding="utf-8")
+        alternates.chmod(0o600)
+        run(isolated, "read-tree", baseline)
+        run(isolated, "apply", "--cached", "--whitespace=nowarn", "-",
+            input_bytes=encoded_patch)
+        paths = _nul_paths(run(
+            isolated, "diff", "--no-ext-diff", "--no-textconv", "--cached",
+            "--name-only", "--no-renames", "-z", baseline, "--",
+        ))
+        if not paths or len(paths) > DEFAULT_MAX_SCOPE_PATHS:
+            raise ValueError("reviewed patch exceeds its native effect path bound")
+        effects: dict[str, tuple[bytes, int] | None] = {}
+        remaining = DEFAULT_MAX_SOURCE_BYTES
+        for name in paths:
+            path = _canonical_path(name)
+            records = [record for record in run(
+                isolated, "ls-files", "--stage", "-z", "--", path,
+            ).split(b"\0") if record]
+            if not records:
+                effects[path] = None
+                continue
+            if len(records) != 1 or b"\t" not in records[0]:
+                raise ValueError("reviewed patch has an ambiguous index entry")
+            header, raw_path = records[0].split(b"\t", 1)
+            parts = header.decode("ascii", errors="strict").split()
+            if (raw_path.decode("utf-8", errors="strict") != path or len(parts) != 3
+                    or parts[2] != "0" or parts[0] not in ("100644", "100755")):
+                raise ValueError("reviewed patch requires regular file effects")
+            size = int(run(isolated, "cat-file", "-s", parts[1], maximum=128))
+            if size < 0 or size > remaining:
+                raise ValueError("reviewed patch exceeds its native postimage byte bound")
+            content = run(isolated, "cat-file", "blob", parts[1], maximum=max(1, size))
+            if len(content) != size:
+                raise ValueError("reviewed patch postimage size changed")
+            remaining -= size
+            effects[path] = (content, 0o755 if parts[0] == "100755" else 0o644)
+        return effects
+
+
 def _patch_index_effect_failures(
     binding: ProductionReviewedEffectBinding,
     *,
     repo_root: Path,
     patch: str,
 ) -> list[str]:
-    """Apply exact reviewed patch to an isolated baseline index and compare blobs."""
+    """Replay the writer's isolated patch preview and compare exact blobs."""
 
-    failures: list[str] = []
-    raw_objects = (
-        _run_git(repo_root, ["rev-parse", "--git-path", "objects"])
-        .decode("utf-8", errors="strict")
-        .strip()
-    )
-    repository_objects = Path(raw_objects)
-    if not repository_objects.is_absolute():
-        repository_objects = repo_root / repository_objects
-    repository_objects = repository_objects.resolve(strict=True)
-    with tempfile.TemporaryDirectory(prefix="reviewed-effect-") as directory_name:
-        temporary_root = Path(directory_name)
-        os.chmod(temporary_root, 0o700)
-        index_path = temporary_root / "index"
-        temporary_objects = temporary_root / "objects"
-        temporary_objects.mkdir(mode=0o700)
-        environment = _sanitized_git_environment()
-        environment["GIT_INDEX_FILE"] = str(index_path)
-        environment["GIT_OBJECT_DIRECTORY"] = str(temporary_objects)
-        environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = str(repository_objects)
-
-        def run(
-            arguments: Sequence[str],
-            *,
-            input_bytes: bytes | None = None,
-        ) -> bytes:
-            result = subprocess.run(
-                ["git", "--literal-pathspecs", *arguments],
-                cwd=repo_root,
-                env=environment,
-                input=input_bytes,
-                capture_output=True,
-                check=False,
-            )
-            if result.returncode != 0:
-                detail = (result.stderr or result.stdout).decode("utf-8", errors="replace")
-                raise ValueError("isolated reviewed patch reconstruction failed: " + detail[-500:])
-            return bytes(result.stdout)
-
-        try:
-            run(["read-tree", binding.baseline_commit])
-            run(
-                ["apply", "--cached", "--whitespace=nowarn", "-"],
-                input_bytes=patch.encode("utf-8"),
-            )
-            changed = _nul_paths(
-                run(
-                    [
-                        "diff",
-                        "--no-ext-diff",
-                        "--no-textconv",
-                        "--cached",
-                        "--name-only",
-                        "--no-renames",
-                        "-z",
-                        binding.baseline_commit,
-                        "--",
-                    ]
-                )
-            )
-            if tuple(sorted(changed)) != binding.changed_paths:
-                failures.append("reviewed_effect_grok_patch_path_set_mismatch")
-                return failures
-            for effect in binding.path_effects:
-                output = run(["ls-files", "--stage", "-z", "--", effect.path])
-                records = [record for record in output.split(b"\x00") if record]
-                if effect.status == "deleted":
-                    if records:
-                        failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
-                    continue
-                if len(records) != 1 or b"\t" not in records[0]:
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
-                    continue
-                header, raw_path = records[0].split(b"\t", 1)
-                parts = header.decode("ascii", errors="strict").split()
-                if (
-                    raw_path.decode("utf-8", errors="strict") != effect.path
-                    or len(parts) != 3
-                    or parts[2] != "0"
-                ):
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
-                    continue
-                mode, oid, _stage = parts
-                content = run(["cat-file", "blob", oid])
-                if (
-                    mode != effect.applied_git_mode
-                    or oid != effect.applied_blob_oid
-                    or len(content) != effect.applied_bytes
-                    or "sha256:" + hashlib.sha256(content).hexdigest() != effect.applied_sha256
-                ):
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
-        except (OSError, TypeError, UnicodeError, ValueError):
-            failures.append("reviewed_effect_grok_patch_reconstruction_failed")
-    return failures
+    try:
+        intended = derive_production_reviewed_patch_effects(
+            repo_root=repo_root, baseline_ref=binding.baseline_commit, patch=patch,
+        )
+        if tuple(sorted(intended)) != binding.changed_paths:
+            return ["reviewed_effect_grok_patch_path_set_mismatch"]
+        failures: list[str] = []
+        for effect in binding.path_effects:
+            postimage = intended[effect.path]
+            if effect.status == "deleted":
+                valid = postimage is None
+            else:
+                oid = ""
+                if postimage is not None:
+                    returncode, stdout, _stderr = _run_git_bounded(
+                        repo_root, "hash-object", "--stdin",
+                        input_bytes=postimage[0], maximum_stdout_bytes=128,
+                    )
+                    if returncode:
+                        raise ValueError("reviewed patch blob identity is unavailable")
+                    oid = stdout.decode("ascii", errors="strict").strip()
+                valid = bool(postimage is not None
+                    and ("100755" if postimage[1] & 0o111 else "100644") == effect.applied_git_mode
+                    and len(postimage[0]) == effect.applied_bytes
+                    and "sha256:" + hashlib.sha256(postimage[0]).hexdigest() == effect.applied_sha256
+                    and oid == effect.applied_blob_oid)
+            if not valid:
+                failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
+        return failures
+    except (OSError, TypeError, UnicodeError, ValueError):
+        return ["reviewed_effect_grok_patch_reconstruction_failed"]
 
 
 def _tree_blob(
@@ -1758,10 +1800,12 @@ def verify_finalized_production_reviewed_effect(
 __all__ = [
     "PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE",
     "PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA",
+    "PRODUCTION_TASK_CONTRACT_SCHEMA",
     "ProductionPathEffect",
     "ProductionReviewedEffectBinding",
     "ProductionReviewedEffectVerification",
     "capture_production_reviewed_effect",
+    "derive_production_reviewed_patch_effects",
     "finalize_production_reviewed_effect",
     "production_task_contract",
     "production_task_contract_cid",

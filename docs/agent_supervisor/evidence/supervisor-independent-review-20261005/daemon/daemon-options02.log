@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 29 items
+
+test/api/test_production_daemon_operator_options.py .................... [ 68%]
+.........                                                                [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/daemon-options02.xml -
+============================= slowest 10 durations =============================
+1.58s call     test/api/test_production_daemon_operator_options.py::test_task_metadata_cannot_enable_the_production_operator_route
+
+(9 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================= 29 passed in 10.27s ==============================
