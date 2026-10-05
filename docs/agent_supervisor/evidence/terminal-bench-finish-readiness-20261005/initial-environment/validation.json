@@ -1,0 +1,62 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "--tb=short",
+    "-o",
+    "addopts=",
+    "-o",
+    "log_cli=false",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/validation.xml",
+    "test/api/test_semantic_router_integration.py",
+    "test/api/test_semantic_router_translation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py"
+  ],
+  "containers_launched": false,
+  "counts": {
+    "errors": 0,
+    "failed": 4,
+    "passed": 156,
+    "skipped": 0
+  },
+  "datasets_revision": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "elapsed_seconds": 215.60191419298644,
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/ast-seals.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "evidence": [
+    {
+      "bytes": 548581,
+      "path": "source-snapshot.json",
+      "sha256": "ce173916d72e51613a865e39f0666a6c293d530e2e452c9c05b91f796a8e38b4"
+    },
+    {
+      "bytes": 37270,
+      "path": "validation.xml",
+      "sha256": "8114b29740a766b1a4dcc6cc89cf7d0a30f8b1d9e0c606c66c69c88fef65ea3d"
+    },
+    {
+      "bytes": 41957,
+      "path": "validation.log",
+      "sha256": "94a7a21455a0a326b9c71911fe167c4d084946e3a20e3e18aa981a99f8c5368f"
+    }
+  ],
+  "exit_code": 1,
+  "paid_providers_used": false,
+  "revision": "730dee888ea55bf5552e4853895f397107bf98c0",
+  "schema": "terminal-bench-readiness-validation/v1",
+  "source_binding_count": 2867,
+  "sources_unchanged": true
+}

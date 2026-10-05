@@ -1,0 +1,8 @@
+{
+  "schema": "terminal-publication-runtime-equivalence@1",
+  "docker_source_commit": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+  "archived_source_files_checked": 2798,
+  "changed_source_files": [],
+  "upstream_merge": "8bd5300665416274a49653b67bcb4a05a1823768",
+  "resolved_conflicts_preserve_tested_runtime": true
+}

@@ -1,0 +1,136 @@
+{
+  "code_edits": false,
+  "current_chain": [
+    {
+      "behavior": "Explicit extended profile driver900s, cleanup60s, work840s; Harbor960s and environment exec910s.",
+      "owner": {
+        "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+        "relevant_lines": [
+          25,
+          28,
+          29,
+          30
+        ],
+        "sha256": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a"
+      }
+    },
+    {
+      "behavior": "Coding router argv uses min(300, remaining work minus25). Independent implementation watchdog uses min(360, remaining work minus25). Absolute work alarm and separate cleanup deadline still bound the complete run.",
+      "owner": {
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+        "relevant_lines": [
+          488,
+          489,
+          514,
+          516,
+          517,
+          651,
+          674,
+          685,
+          687,
+          721
+        ],
+        "sha256": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385"
+      }
+    },
+    {
+      "behavior": "Serializes the selected timeout into implementation argv; provider-free Doctor candidate routes omit router timeout.",
+      "owner": {
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+        "relevant_lines": [
+          178,
+          194
+        ],
+        "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+      }
+    },
+    {
+      "behavior": "Generated root-owned container worker independently rejects timeout outside1..300; then forwards exact selected timeout into router implementation runner.",
+      "owner": {
+        "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+        "relevant_lines": [
+          131,
+          166,
+          210
+        ],
+        "sha256": "c1f9675a394bf09890c6a19b9a10cc72db633458c9603704da627fac8055a19f"
+      }
+    },
+    {
+      "behavior": "Accepts1..600 seconds, records selected timeout, and calls llm_router.generate_text with it.",
+      "owner": {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "relevant_lines": [
+          73,
+          87,
+          195,
+          205
+        ],
+        "sha256": "e64791642d99152348dbc6c17c93185ab4382c308b100e0b8f70354b610012f8"
+      }
+    },
+    {
+      "behavior": "Codex provider forwards explicit timeout to subprocess.run. No separate300s maximum; timeout exception retains partial native usage metadata.",
+      "owner": {
+        "path": "ipfs_accelerate_py/llm_router.py",
+        "relevant_lines": [
+          6324,
+          6355,
+          6375
+        ],
+        "sha256": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c"
+      }
+    },
+    {
+      "behavior": "Launch lifetime must be120..900 seconds. Explicit implementation timeout must be exact integer<=signed lifetime, is copied into signed manifest and daemon --implementation-timeout, and verified again. Existing301-invalid test assumes default lifetime300, not an absolute301 rejection.",
+      "owner": {
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+        "relevant_lines": [
+          344,
+          346,
+          348,
+          350,
+          514,
+          552,
+          568,
+          942
+        ],
+        "sha256": "a8efc0edd0d1ba348dda4b5d6fedfbd62e1e50de91eb649e57f3ae6fb771ce1a"
+      }
+    }
+  ],
+  "current_trial_resolution": "Root reports updated full-supervisor largest-eigenval trial03 official reward1, completed task, successful START/STOP and zero remaining processes. No timeout change needed for that trial.",
+  "focused_validation_targets": [
+    "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "test/api/test_router_implementation_runner.py"
+  ],
+  "future_minimal_plan": {
+    "candidate_limits": {
+      "implementation_watchdog_seconds": 660,
+      "router_call_seconds": 600,
+      "selection_rule": "Both clamped to remaining work minus existing25-second reserve, never spending the60-second cleanup reservation.600 fits current runner ceiling; watchdog stays within signed launch lifetime."
+    },
+    "comparison": "Record changed per-call policy and exact source/archive hashes; rerun matched arms as appropriate. Task-native time limits still vary from the840-second development work cap.",
+    "deadline": "Retain absolute work alarm, START allowance, signed launch lifetime, native STOP cleanup reservation and Harbor outer deadline. Recompute remaining time at existing dispatch boundaries; never alter a running trial or its signed admission.",
+    "profile": "Add an explicit recorded implementation-budget selection for an extended profile, preserving existing300/360 limits for default/legacy profiles and existing artifact reproducibility.",
+    "trigger": "Observed model timeout on a task needing more than300 seconds; not required by successful trial03.",
+    "worker_boundary": "Carry selected cap into trusted installation or a digest-bound root-owned boundary selection and reject arbitrary/unknown profiles. Do not raise the generated worker cap globally to600 without explicit selection. Keep provider-free routes unchanged."
+  },
+  "new_validation_needed": [
+    "Default and legacy profiles retain300/360 ceilings; extended selection gets600/660 only with enough remaining time.",
+    "Short remaining time clamps both limits; insufficient/NaN/bool/unknown selections fail before dispatch.",
+    "Generated worker rejects unselected>300 or selected>600 calls and preserves digest-bound boundary protections.",
+    "Real admitted constructor signs600/660 under sufficient lifetime and rejects timeout/lifetime or manifest substitutions.",
+    "Work deadline during START/model execution preserves native STOP and process-group cleanup."
+  ],
+  "observed_at": "2026-10-05T07:22:51.639725+00:00",
+  "provider_calls": 0,
+  "read_only_audit": true,
+  "running_trial_mutated": false,
+  "schema": "terminal-supervisor-implementation-cap-audit@1",
+  "source_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24"
+}

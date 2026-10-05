@@ -1,0 +1,64 @@
+{
+  "containers_launched_by_readiness_audit": 0,
+  "content_sha256": "c4c189e243e2908bd7d1e7c6c88b1710646f38321d80341cd254844fc2bd21a1",
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 215,
+    "skipped": 0
+  },
+  "created_utc": "2026-10-05T07:17:57.871057+00:00",
+  "datasets_revision": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "duckdb_version": "1.5.5",
+  "evidence": [
+    {
+      "bytes": 2335,
+      "path": "merged-environment/validation.json",
+      "sha256": "22a2af80b7b33e60b92afc70371cc5e071af296c3e01b4c199482ecf1b1b57e1"
+    },
+    {
+      "bytes": 41822,
+      "path": "merged-environment/validation.xml",
+      "sha256": "9ae1fdba3774b775b439931ad1551028f977e82f76a7d9cb7d72e4e5edc63173"
+    },
+    {
+      "bytes": 272,
+      "path": "merged-environment/validation.log",
+      "sha256": "7ce789a29c69f77bc8e24fd9115cc63fd00821e18800e80d64d964e9782c20b0"
+    },
+    {
+      "bytes": 549112,
+      "path": "merged-environment/source-snapshot.json",
+      "sha256": "1ec2ebe116d1552b5cb34b74e16a32b7407ecb6d9f4c669853fd33b01a52c850"
+    },
+    {
+      "bytes": 3878,
+      "path": "merge-integration.json",
+      "sha256": "9c45dbecda9d4ce1bcb32fa6627b9a34230063421e92b3d21b6c7159d2e9e9a3"
+    },
+    {
+      "bytes": 9479,
+      "path": "trial-03-observation.json",
+      "sha256": "07094c2dfc804ed796878d88771442323fe80e52071bc0fe4b8bb798349fde3b"
+    }
+  ],
+  "incoming_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+  "incoming_union_independently_reviewed": true,
+  "latest_official_trial_at_observation": {
+    "cli_version": "0.160.0",
+    "name": "largest-eigenval-03",
+    "official_reward": null,
+    "ownership": "separate existing run owner; no new calls or launches by readiness audit",
+    "status": "running"
+  },
+  "native_interpreter": "/home/barberb/.local/bin/python",
+  "new_benchmark_success_claimed": false,
+  "overlapping_earlier_test_counts_not_added": true,
+  "paid_provider_calls_by_readiness_audit": 0,
+  "revision_under_test": "88baab1af20d75ca94c47022b67fc8940cb58365",
+  "schema": "terminal-bench-readiness-merged-qualification/v1",
+  "source_binding_count": 2870,
+  "source_bindings_equal_qualified_commit": true,
+  "sources_unchanged": true,
+  "status": "merged_controls_passed_official_trial_pending"
+}

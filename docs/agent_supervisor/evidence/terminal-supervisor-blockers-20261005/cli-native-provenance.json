@@ -1,0 +1,66 @@
+{
+  "binaries": [
+    {
+      "bytes": 66921472,
+      "name": "codex-code-mode-host",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/codex-0160/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host",
+      "sha256": "7e0004bd8b37936753981729365c448bdc67f0173d9bc6453e40e3ad28774b6c"
+    },
+    {
+      "bytes": 248966648,
+      "name": "codex",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/codex-0160/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+      "sha256": "50b06603bdcdac39b714f5c3e68583c002b8ad8779ebfdaaf4932ff016b379c0"
+    }
+  ],
+  "install_scripts_executed": false,
+  "package": "@openai/codex@0.160.0",
+  "packages": {
+    "node_modules/@openai/codex": {
+      "integrity": "sha512-kEtVGzjRAYAMOwJxN39bGcna7LT3IDQgq64NNJ/dDTfu4OzZaocJcyNb5/gGJ/IVF/Vj7oK7E2m3nmTan7lpjg==",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0.tgz",
+      "version": "0.160.0"
+    },
+    "node_modules/@openai/codex-darwin-arm64": {
+      "integrity": "sha512-aefV6cqZA2REZgR//4McyXlp7zLcTti4CI2v3j9IVgNndPBv2kCeNEcz07qeelXcwOdSFPUKb6roA48vZmDgrQ==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-darwin-arm64.tgz",
+      "version": "0.160.0-darwin-arm64"
+    },
+    "node_modules/@openai/codex-darwin-x64": {
+      "integrity": "sha512-ir7cdsPrb9VkqNqpTECoTiomv04xws/FQ968mHQzuL+2J5Da0Dkh2Qlxp7sguDDZJab4YpYmNjQvBVMXbTeQaQ==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-darwin-x64.tgz",
+      "version": "0.160.0-darwin-x64"
+    },
+    "node_modules/@openai/codex-linux-arm64": {
+      "integrity": "sha512-VnVdsS06YlDsL8OwaJjQ3xdqdJNG4i+eBJBV3LytddknzSaF/urijLzVg3ptkwvoj8C7Gn7iWpVE+y8WEaPiCg==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-linux-arm64.tgz",
+      "version": "0.160.0-linux-arm64"
+    },
+    "node_modules/@openai/codex-linux-x64": {
+      "integrity": "sha512-KI/73OqGrHmR18s7ya7E1NqV6rT0y3lxr0s8S1qR2m6zU6QRF/HlR529jALLh5vjdUnsRT4Ahoxt0axb4kY99g==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-linux-x64.tgz",
+      "version": "0.160.0-linux-x64"
+    },
+    "node_modules/@openai/codex-win32-arm64": {
+      "integrity": "sha512-tTvK9ZIGuj9WnYaYOAnfjJVSfPV7dKqWtDHqUPLf0Hadp6SgynTxx7S7iMXRieFeXVOI2XH76KxEHSOTOnz3zw==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-win32-arm64.tgz",
+      "version": "0.160.0-win32-arm64"
+    },
+    "node_modules/@openai/codex-win32-x64": {
+      "integrity": "sha512-/gCFcuOmGlQkgGivWCtY8BNEDixh70Pue0HZOk9S8bj2vUIE1GLD9zcNB/KqqDJmn0S+lIttauLpzQnw6HOCHA==",
+      "name": "@openai/codex",
+      "resolved": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0-win32-x64.tgz",
+      "version": "0.160.0-win32-x64"
+    }
+  },
+  "platform": "linux-arm64",
+  "provider_calls": 0,
+  "retrieved_at": "2026-10-05T06:48:07.335820+00:00",
+  "schema": "codex-native-cache-package-provenance@1",
+  "source_registry": "https://registry.npmjs.org"
+}

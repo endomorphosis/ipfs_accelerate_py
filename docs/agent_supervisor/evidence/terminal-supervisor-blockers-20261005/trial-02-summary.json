@@ -1,0 +1,160 @@
+{
+  "archive_bytes_rehashed_here": false,
+  "archive_sha256": "6a7b9ec5951126efb873e4f2128c0c33f6dc311bdb96d5b937c53e79af058ff0",
+  "arm": "full",
+  "benchmark_advantage_claimed": false,
+  "build_command_sha256": "936a91faedf3a5d2b297a532221f5da659b572911167859e5f5c4451178db606",
+  "build_sources_clean": {
+    "accelerate": true,
+    "datasets": true,
+    "kit": true
+  },
+  "canonical_receipt": false,
+  "cli_version": "0.158.0",
+  "complete_single_trial_receipt": true,
+  "completion_authority": false,
+  "credential_contents_read": false,
+  "exported_model_or_verifier_bodies": false,
+  "exported_raw_error_strings": false,
+  "harbor_returncode": 0,
+  "inspected_at_utc": "2026-10-05T07:12:31.967958+00:00",
+  "inspector_sha256": "01cd8fd2bc883a4813734fd8c71cb14d0c28dab4abdbc0b7d32506e084b6fd6d",
+  "invocation_seconds": 279.48372908099554,
+  "manifest_sha256": "8335f9aabe159532b4cab2081bd66f3f883a02f962e208e6d2450d39eaa6b679",
+  "measured_usage_owner_sha256": "fe475f623c5d530ec736cfbad9be25038819de5d831e52c940511d998c68e154",
+  "model": "gpt-6.1-sol",
+  "original_task_inputs_unchanged": true,
+  "preparation_sha256": "42cc6a451b6384888a3969464dc78745e31339f858c1e6d83b1ba864f022a0ea",
+  "reasoning_effort": "high",
+  "receipt_bytes": 108129,
+  "receipt_sha256": "4d37e523086d18e7546de3f549fa97156a464414734fe639f747298721332880",
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "schema": "terminal-supervisor-bounded-trial-summary@1",
+  "semantic_diagnostic_owner_sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a",
+  "source_heads": {
+    "accelerate": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+    "datasets": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  },
+  "task": "largest-eigenval",
+  "trials": [
+    {
+      "admitted_context": {
+        "full_capsules": null,
+        "indexed_symbols": null,
+        "new_embedding_calls": null,
+        "worker_capsules": null,
+        "world_task_count": null
+      },
+      "doctor": {
+        "analysis_status": null,
+        "provider_calls": null,
+        "route": null,
+        "status": null
+      },
+      "durations_seconds": {
+        "agent_execution": 24.483479,
+        "agent_setup": 231.583151,
+        "environment_setup": 3.973898,
+        "verifier": 2.086626
+      },
+      "exact_trial_task_matches": true,
+      "exception_type": null,
+      "initial_context": {
+        "canonical_tasks_created": false,
+        "full_capsules": 8,
+        "indexed_symbols": 4,
+        "learned_embeddings": false,
+        "provider_calls": 0,
+        "seconds": 13.464332118019229,
+        "world_task_count": 0
+      },
+      "native_progress": {
+        "provider_outcomes_omitted": 0,
+        "samples": 0,
+        "stop_reason": "run_ended_without_terminal_observation",
+        "transition_count": 0,
+        "transitions_omitted": 0
+      },
+      "official_reward": 0.0,
+      "planning": {
+        "elapsed_seconds": 7.4417251519917045,
+        "goals": null,
+        "provider_calls": 1,
+        "qualified": false,
+        "strategy": "direct",
+        "tasks": null
+      },
+      "provider_invocations": [
+        {
+          "error_type": "LLMRouterError",
+          "exit_code": 1,
+          "failure_phase": "provider_invocation",
+          "model": "gpt-6.1-sol",
+          "native_token_count_records": 0,
+          "phase": "planning",
+          "provider": "codex_cli",
+          "provider_failure": null,
+          "seconds": 3.688436457014177,
+          "semantic_response_failure": null,
+          "status": "failed",
+          "timed_out": null
+        }
+      ],
+      "setup_cache": {
+        "completed": true,
+        "phase": "complete",
+        "policy": "source384-native-aarch64-dontneed@1"
+      },
+      "source384": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+        "counts": {
+          "harness_support_files": 3,
+          "inference_python_files": 2,
+          "omitted_candidates": 2,
+          "program_source_files": 2,
+          "provider_calls": 0,
+          "source_files": 5
+        },
+        "inference_sha256": "c720b4a6fad32e2b33a028dab4708c47ef065de28b5ea7d6151f21bc46510608",
+        "neural_inference_replayed": false,
+        "seconds": 9.214853071986,
+        "training_steps": 0
+      },
+      "supervisor": {
+        "error_phase": "planning",
+        "error_type": "RuntimeError",
+        "phases": {
+          "context_seconds": null,
+          "doctor_seconds": null,
+          "initial_context_seconds": 13.983157290989766,
+          "planning_seconds": 8.038647420995403,
+          "post_publication_refresh_seconds": null,
+          "prepare_seconds": 0.7349981669976842
+        },
+        "remaining_processes": null,
+        "seconds": 23.37985427197418,
+        "start_status": null,
+        "stop_status": null,
+        "task_completed": false,
+        "task_status": null,
+        "worker_cleanup_returncode": 0
+      },
+      "trial": "largest-eigenval__aWFqANC",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "cached_input_tokens": null,
+        "dollar_cost": null,
+        "input_tokens": null,
+        "observed_complete_sessions": true,
+        "output_tokens": null,
+        "provider_calls": 1,
+        "source": "observed_native_cumulative_totals",
+        "total_tokens": null
+      }
+    }
+  ]
+}

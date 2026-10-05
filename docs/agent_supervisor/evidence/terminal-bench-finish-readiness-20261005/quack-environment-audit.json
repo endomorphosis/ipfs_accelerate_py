@@ -1,0 +1,272 @@
+{
+  "all_sources_equal_head": true,
+  "capable_existing_interpreter": {
+    "duckdb_module": {
+      "bytes": 7753,
+      "path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+      "resolved_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+      "sha256": "c5b4efa32761b6ff6eed37cda365fd371743c062ffabd9125aa24b5f13b662e7"
+    },
+    "duckdb_version": "1.5.5",
+    "extension_file": {
+      "bytes": 29708110,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "resolved_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+    "extension_unchanged_after_load": true,
+    "extension_version": "c154811",
+    "missing_functions": [],
+    "missing_surfaces": [],
+    "observed_functions": [
+      "quack_serve",
+      "quack_query"
+    ],
+    "passes_health_check": true,
+    "python": "/home/barberb/.local/bin/python",
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "status": "compatible"
+  },
+  "claims_limits": [
+    "Two retained no-network in-memory native extension probes; no listener, provider, Docker task or model health call.",
+    "The corrected environment must still pass all160 cases, including four actual owner controls, before claiming readiness run qualified.",
+    "A compatible native capability report does not establish held-out Terminal-Bench reward or broader task coverage."
+  ],
+  "created_at": "2026-10-05T06:58:00.528464+00:00",
+  "docker_runtime_relation": {
+    "current_actual_docker_execution_in_this_audit": false,
+    "description": "Immutable runtime archives carry quack/httpfs/ducklake extensions. Deployment installs pinned1.5.5 and copies exact archived native extensions into supervisor HOME cache matching version/platform, then LOADs them under supervisor identity. Full native owner uses real capability gate before START. Rootvenv1.4.3 test failure does not establish a productionDocker1.5.5 Quack blocker.",
+    "extension_archive_source": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:846",
+    "pinned_requirement": "duckdb==1.5.5",
+    "pinned_requirement_source": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:41",
+    "setup_source": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py:1064"
+  },
+  "evidence": [
+    {
+      "bytes": 1808,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-bench-finish-readiness-20261005/quack-environment-probe.py",
+      "sha256": "27987ab57efd54d6c0f09cd645198ed879adce76dcf644f5dbbdb99a81c0b258"
+    },
+    {
+      "bytes": 6419,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-bench-finish-readiness-20261005/quack-root-venv-probe.json",
+      "sha256": "dcef94a16815cdfcbd5dfe5611d75e029e91ec6cf8103f6c2bf724810d2b3933"
+    },
+    {
+      "bytes": 8153,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-bench-finish-readiness-20261005/quack-native-155-probe.json",
+      "sha256": "42b5a1df3d83a9072e1971c8a390fcb32e9691e460c0fce31df076788a06ebcf"
+    },
+    {
+      "bytes": 2170,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/validation.json",
+      "sha256": "a798900556ab01f258c5287857b98a94ed4c2383c02a5f5d836bb6edd73ee192"
+    },
+    {
+      "bytes": 41957,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/validation.log",
+      "sha256": "94a7a21455a0a326b9c71911fe167c4d084946e3a20e3e18aa981a99f8c5368f"
+    },
+    {
+      "bytes": 37270,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/validation.xml",
+      "sha256": "8114b29740a766b1a4dcc6cc89cf7d0a30f8b1d9e0c606c66c69c88fef65ea3d"
+    }
+  ],
+  "head": "730dee888ea55bf5552e4853895f397107bf98c0",
+  "meaningful_safe_resolution": {
+    "argv": [
+      "/home/barberb/.local/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--color=no",
+      "--tb=short",
+      "-o",
+      "addopts=",
+      "-o",
+      "log_cli=false",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "--junitxml=/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-native-confirmation/validation.xml",
+      "test/api/test_semantic_router_integration.py",
+      "test/api/test_semantic_router_translation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py"
+    ],
+    "command_is_proposed_not_executed": true,
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "FRESH_UNIQUE_SEAL_DATABASE_PER_RUN",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+    },
+    "instructions": "Root is rerunning the same160 sources/tests with capable existing interpreter and fresh evidence/seal destinations. Preserve failed original run. No monkeypatches, no allow_experimental, no fake transport, no missing-function gate relaxation, no sharedrootvenv dependency mutation. Passing capability probe is a prerequisite, not by itself a passing full native owner test.",
+    "python": "/home/barberb/.local/bin/python",
+    "type": "test_interpreter_selection"
+  },
+  "model_health_calls": 0,
+  "network_install_attempted": false,
+  "original_readiness_run": {
+    "actual_failure_location": "open_existing_native_owner \u2192 server.start \u2192 _admit_capability before empty context native owner/worker/historical audit continuation",
+    "counts": {
+      "errors": 0,
+      "failed": 4,
+      "passed": 156,
+      "skipped": 0
+    },
+    "datasets_revision": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-01/ast-seals.duckdb",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+    },
+    "exit_code": 1,
+    "failed_nodeids": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[False-False]",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[False-True]",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-False]",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py::test_native_empty_context_reaches_planner_owner_worker_and_historical_audit[True-True]"
+    ],
+    "python": "/home/barberb/lift_coding/.venv/bin/python",
+    "source_binding_count": 2867,
+    "source_unchanged": true
+  },
+  "providers_called": 0,
+  "reason_code_correction": {
+    "assessment": "Do not interpret displayed reason import_only_insufficient as the substantive final decision. The root environment lacks required functions; native1.5.5 satisfies all profile surfaces. Optional future diagnostic selection improvement can preserve gate behavior.",
+    "behavior": "reason_code returns diagnostics[0].code. DuckDB import succeeds and appends informational import_only_insufficient before finalization. That value remains the first diagnostic for both failed mismatched and passing compatible reports.",
+    "failed_report_diagnostics": [
+      {
+        "code": "import_only_insufficient",
+        "exception_type": "",
+        "message": "duckdb import succeeded but is insufficient without Quack surfaces",
+        "subject": "duckdb"
+      },
+      {
+        "code": "required_function_missing",
+        "exception_type": "",
+        "message": "required Quack functions missing: quack_serve, quack_query",
+        "subject": "quack_serve,quack_query"
+      }
+    ],
+    "passing_report_diagnostics": [
+      {
+        "code": "import_only_insufficient",
+        "exception_type": "",
+        "message": "duckdb import succeeded but is insufficient without Quack surfaces",
+        "subject": "duckdb"
+      },
+      {
+        "code": "beta_limitations_recorded",
+        "exception_type": "",
+        "message": "Quack beta limitations recorded on the pinned compatible profile",
+        "subject": "quack"
+      }
+    ],
+    "source": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py:407"
+  },
+  "root": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005",
+  "root_venv_failure": {
+    "actual_function_catalog": [
+      [
+        "quack",
+        "scalar",
+        [
+          "col0"
+        ],
+        [
+          "VARCHAR"
+        ]
+      ],
+      [
+        "quack_openssl_version",
+        "scalar",
+        [
+          "col0"
+        ],
+        [
+          "VARCHAR"
+        ]
+      ]
+    ],
+    "duckdb_module": {
+      "bytes": 7507,
+      "path": "/home/barberb/lift_coding/.venv/lib/python3.12/site-packages/duckdb/__init__.py",
+      "resolved_path": "/home/barberb/lift_coding/.venv/lib/python3.12/site-packages/duckdb/__init__.py",
+      "sha256": "2b20aa68f219791777a195cfec5f87fff610299d26bfbc1e6ef7692476c704a1"
+    },
+    "duckdb_version": "1.4.3",
+    "extension_file": {
+      "bytes": 11539878,
+      "path": "/home/barberb/.duckdb/extensions/v1.4.3/linux_arm64/quack.duckdb_extension",
+      "resolved_path": "/home/barberb/.duckdb/extensions/v1.4.3/linux_arm64/quack.duckdb_extension",
+      "sha256": "fbb6464a260d14a288845f0da189aee083db308d5d143b342c89733f3315922f"
+    },
+    "extension_fingerprint": "sha256:1a61df42f1b6636d81427f0a614e1aea9a3301a6aceeee9e4c953cbf4c1c68e0",
+    "extension_version": "dbfffaa",
+    "missing_functions": [
+      "quack_serve",
+      "quack_query"
+    ],
+    "missing_surfaces": [
+      "quack_serve",
+      "quack_query",
+      "attach",
+      "whoami"
+    ],
+    "observed_functions": [],
+    "passes_health_check": false,
+    "python": "/home/barberb/lift_coding/.venv/bin/python",
+    "status": "mismatched",
+    "substantive_diagnostic": "required_function_missing: quack_serve,quack_query; installed DuckDB1.4.3 Quack has only scalar quack/quack_openssl_version, rather than client/server API"
+  },
+  "schema": "terminal-bench-quack-environment-audit/v1",
+  "services_started": 0,
+  "shared_virtualenv_mutations": 0,
+  "source_edits": 0,
+  "sources": {
+    "benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": {
+      "bytes": 16784,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/native_quack_qualification.py",
+      "sha256": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 50560,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+      "bytes": 77572,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "b3f153e415a78df269df68d01afa75f5d81612360f79cfc7ae09a6b24150b631"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py": {
+      "bytes": 11049,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py",
+      "sha256": "66677118b0e8c7acae1a6949b9153583d1eac39f82e7225afe0bb98ce0cdb65e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": {
+      "bytes": 238831,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "sha256": "44b804497a280f437270d0a5c2ac4e555a9d6b42a013c61c868c4bd72d938bcd"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py": {
+      "bytes": 48289,
+      "matches_head_blob": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py",
+      "sha256": "317e9f3b5c62d5bb3b0a955741e1ba7c40cf0ce2e59062fb71c3e60ed3217081"
+    }
+  },
+  "status": "environment_mismatch_isolated_capable_existing_interpreter_verified"
+}

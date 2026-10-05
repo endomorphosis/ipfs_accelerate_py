@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Supervisor primary-doc vocabulary",
+    "exit_code": 0,
+    "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+    "stderr": ""
+  },
+  {
+    "name": "Maintained-surface relative links",
+    "exit_code": 0,
+    "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+    "stderr": ""
+  },
+  {
+    "name": "Packaging version pin alignment",
+    "exit_code": 0,
+    "stdout": "OK: packaging pins aligned at 0.0.45\n",
+    "stderr": ""
+  },
+  {
+    "name": "Closeout navigation markers",
+    "exit_code": 0,
+    "stdout": "OK: closeout navigation markers present\n",
+    "stderr": ""
+  }
+]

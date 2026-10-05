@@ -1,0 +1,198 @@
+{
+  "complete_official_receipt_required_for_success": true,
+  "current_source_checkout": {
+    "branch": "codex/terminal-supervisor-blockers-20261005",
+    "classification": "committed_checkout_at_8dab684e_selected_paths_clean_remote_main_not_equal",
+    "commit_followup_observed_at_utc": "2026-10-05T07:15:50.402917+00:00",
+    "commit_summary": "8dab684ef69f87a88c3dac1585eea07a5bf29a24\nMerge remote-tracking branch 'origin/main' into codex/terminal-supervisor-blockers-20261005",
+    "head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+    "literal_or_imported_profile_not_executed": true,
+    "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+    "remote_ref_readback": {
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62\trefs/heads/main"
+    },
+    "selected_source_bindings": [
+      {
+        "bytes": 2327,
+        "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+        "sha256": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610"
+      },
+      {
+        "bytes": 26635,
+        "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+        "sha256": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883"
+      },
+      {
+        "bytes": 77720,
+        "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "sha256": "90462f088b54dcc3aa835359e61340b87412b2192adc63f47f095e74ed092a7b"
+      },
+      {
+        "bytes": 546227,
+        "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/ipfs_accelerate_py/llm_router.py",
+        "sha256": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c"
+      }
+    ],
+    "selected_tracked_status": "",
+    "tracked_status_empty": true,
+    "tracked_status_line_count": 0
+  },
+  "evidence_bindings": [
+    {
+      "bytes": 3445,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/config.json",
+      "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e"
+    },
+    {
+      "bytes": 58970,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/preparation.json",
+      "sha256": "7aabc6addbb38c955af422fc9ec77dff536f1099b1f550ea71f5ade29d550027"
+    },
+    {
+      "bytes": 269,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/invocation.json",
+      "sha256": "edae6a8972e5db911bd47d769979fb31470fa3130b9bdce14e14335d27fb5cd4"
+    },
+    {
+      "bytes": 547,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/result.json",
+      "sha256": "d6a0ca221574a305b42698c155fb8ac577b1bdc22f7b5423b10f3182336231b4"
+    },
+    {
+      "bytes": 3393,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/deployment/deployment.json",
+      "sha256": "5522dfe726ae36da2e3e82ac5daf83cd1c17a373224fd39746e6df55a1f9ba59"
+    },
+    {
+      "bytes": 2826,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/worker-boundary/deployment.json",
+      "sha256": "08d06856ab69abd5f3c74a634986f6a0be586c26da016703db219a64d2eafb72"
+    },
+    {
+      "bytes": 250,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/setup-cache/resources.json",
+      "sha256": "13babd570c89a4502eb99c5946e0b0cd7aec63a01b54dcd878602bcd5b173fba"
+    },
+    {
+      "bytes": 1529,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/worker-boundary/qualification/qualification.json",
+      "sha256": "0626b560e92da90686ef19685ca563e82233cc583b11609cb75fac76e75fb5dd"
+    },
+    {
+      "bytes": 2755,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-command.json",
+      "sha256": "bd0a053425ba7c19da7ea04eeeb3063425bd7b135dc9c2233db7c1b80a30b076"
+    },
+    {
+      "bytes": 53,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-exit.json",
+      "sha256": "1747410433931b1919691031b7f023525ff1cc66512351941f29addce83dd7e6"
+    },
+    {
+      "bytes": 1788,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/prepare-03-command.json",
+      "sha256": "24fc7e120737511c976f34474626bd8b16481ef96564c1d3397a8445b6d563d3"
+    },
+    {
+      "bytes": 48,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/prepare-03-exit.json",
+      "sha256": "9469a7e0ef5a4680a2b1f4be9e318f21b2e15d4f8fd20896acb669a339eb85e7"
+    },
+    {
+      "bytes": 1686,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/execute-03-command.json",
+      "sha256": "de6f51a90f4e65b45e914a204d2f9ddd80244028777ba1fa62a6c720a0a8e11c"
+    }
+  ],
+  "interpretation": "Fresh0.160trial supersedes02as latest activity but does not erase its historical failure. Completion and rewards remain pending until a complete immutable official receipt exists.",
+  "invocation_started_at": "2026-10-05T07:10:36.214873+00:00",
+  "job_results": [
+    {
+      "finished_at": null,
+      "id": "c47a876d-e8d6-4041-860d-6dc3cba99de0",
+      "n_total_trials": 1,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/result.json",
+      "started_at": "2026-10-05T07:10:36.738214",
+      "updated_at": "2026-10-05T07:10:37.158514Z"
+    }
+  ],
+  "observed_at_utc": "2026-10-05T07:15:13.921447+00:00",
+  "official_success_claimed": false,
+  "preparation": {
+    "archive": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03",
+    "archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+    "arm": "full",
+    "cli_version": "0.160.0",
+    "config_sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e",
+    "manifest_sha256": "9243e386b650ac1a0f97e42f28e94e302ffe9810ac939a2db713b6d5ef309f38",
+    "model": "gpt-6.1-sol",
+    "planning_strategy": "direct",
+    "prepared": true,
+    "provider_calls": 0,
+    "reasoning_effort": "high",
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "schema": "terminal-full-supervisor-preparation@1",
+    "task": "largest-eigenval"
+  },
+  "receipt": null,
+  "running_docker_containers": {
+    "argv": [
+      "docker",
+      "ps",
+      "--format",
+      "{{.Names}}\t{{.Image}}\t{{.Status}}"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "largest-eigenval__iielp5s__env-main-1\tlargest-eigenval__iielp5s__env-main\tUp 4 minutes"
+  },
+  "schema": "terminal-bench-trial-observation@1",
+  "scope": {
+    "containers_launched": 0,
+    "credential_contents_read": false,
+    "hidden_tests_or_solutions_read": false,
+    "provider_calls": 0,
+    "raw_prompt_or_response_bodies_read": false,
+    "report_only_write": true,
+    "services_changed": false,
+    "tests_started": 0
+  },
+  "setup_observations": [
+    {
+      "observed_fields": {
+        "codex_installed": true
+      },
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/deployment/deployment.json",
+      "provider_calls": 0,
+      "qualified": true,
+      "schema": "terminal-native-supervisor-deployment@1"
+    },
+    {
+      "observed_fields": {},
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/worker-boundary/deployment.json",
+      "provider_calls": 0,
+      "qualified": true,
+      "schema": "container-worker-deployment@1"
+    },
+    {
+      "observed_fields": {},
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/setup-cache/resources.json",
+      "provider_calls": null,
+      "qualified": null,
+      "schema": "terminal-source384-cgroup-observation@1"
+    },
+    {
+      "observed_fields": {},
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/worker-boundary/qualification/qualification.json",
+      "provider_calls": 0,
+      "qualified": true,
+      "schema": null
+    }
+  ],
+  "status": "in_progress_or_pending_receipt",
+  "supervisor_results": [],
+  "trial_directory": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03",
+  "trial_results": []
+}

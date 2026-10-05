@@ -1,0 +1,65 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "--tb=short",
+    "-o",
+    "addopts=",
+    "-o",
+    "log_cli=false",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-04/validation.xml",
+    "test/api/test_semantic_router_integration.py",
+    "test/api/test_semantic_router_translation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py",
+    "test/api/test_ordinary_supervisor_child_identity.py",
+    "test/api/test_ordinary_supervisor_child_fence.py",
+    "test/api/test_ordinary_supervisor_shutdown_reconcile.py"
+  ],
+  "containers_launched": false,
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 215,
+    "skipped": 0
+  },
+  "datasets_revision": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "elapsed_seconds": 283.02767663099803,
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005/.pytest_cache/terminal-readiness-04/ast-seals.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-bench-readiness-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+  },
+  "evidence": [
+    {
+      "bytes": 549112,
+      "path": "source-snapshot.json",
+      "sha256": "1ec2ebe116d1552b5cb34b74e16a32b7407ecb6d9f4c669853fd33b01a52c850"
+    },
+    {
+      "bytes": 41822,
+      "path": "validation.xml",
+      "sha256": "9ae1fdba3774b775b439931ad1551028f977e82f76a7d9cb7d72e4e5edc63173"
+    },
+    {
+      "bytes": 272,
+      "path": "validation.log",
+      "sha256": "7ce789a29c69f77bc8e24fd9115cc63fd00821e18800e80d64d964e9782c20b0"
+    }
+  ],
+  "exit_code": 0,
+  "paid_providers_used": false,
+  "revision": "88baab1af20d75ca94c47022b67fc8940cb58365",
+  "schema": "terminal-bench-readiness-validation/v1",
+  "source_binding_count": 2870,
+  "sources_unchanged": true
+}

@@ -1,0 +1,175 @@
+{
+  "canonical_llm_router": true,
+  "completion_gates": [
+    {
+      "id": "planning-provider",
+      "next_action": "Freeze and qualify existing canonical-router provider upgrade; verify exact selected provider inside the original disposable task container, with usage and closed failure receipts.",
+      "observation": "Latest largest-eigenval-02 isolated planning router exited1 with zero response bytes, before native START; reward0 retained. CLI0.160 host health succeeded; twoCLI0.158 checks failed; version causality remains unproven.",
+      "scope": "next selected full-arm trial",
+      "status": "open"
+    },
+    {
+      "id": "immutable-runtime",
+      "next_action": "Build and bind a fresh archive from qualified source and pinned offline assets; re-prepare the trial and any setup cache using the same provider/CLI profile.",
+      "observation": "Retained trial archive binds older terminal-supervisor-blockers checkout; completion cannot be credited to newly qualified lifecycle/checkpoint/preflight/staged-patch source.",
+      "scope": "next selected full-arm trial",
+      "status": "fresh_build_required"
+    },
+    {
+      "id": "suite-profiles",
+      "next_action": "Qualify explicit public input/output/effect profiles per task and retain unsupported tasks as unknown until actually attempted.",
+      "observation": "Historical ledger has four previously considered task names and85untried tasks. Exact /app file create/modify profiles do not cover every build/install/service/VM/Git-state or other-root task. Category counts are historical static review, not current execution verdicts.",
+      "scope": "all89tasks",
+      "status": "partial"
+    },
+    {
+      "id": "selected-decoder-empty-population",
+      "next_action": "Qualify source-bound decoder abstention or explicitly select an eligible model-off profile; preserve zero-inference metadata and treat it as a distinct arm.",
+      "observation": "Signed empty-program retrieval and native owner context now pass. terminal_initial_context.py still refuses selected Source384/security/training for empty retrieval without independently bound decoder abstention.",
+      "scope": "full arm when Source384/training is selected on an empty program population",
+      "status": "conditional_open"
+    },
+    {
+      "id": "evaluation-budgets",
+      "next_action": "Select and pin per-task resource/time policy, apply it identically to comparison arms, and run a fresh complete cohort; retain the development pilot separately.",
+      "observation": "The development5CPU/16GiB/840-secondwork+60-secondcleanup profile differs from native per-task budgets/resources;87of89public agent budgets exceed840seconds.",
+      "scope": "native-budget complete-suite evaluation and comparable baselines",
+      "status": "methodology_not_qualified"
+    }
+  ],
+  "concurrent_dirty_work_integrated": false,
+  "content_sha256": "6857c8a3330d9ec3ae3ff2660f7c51fa7e69521233efbde46567a737cd722270",
+  "created_utc": "2026-10-05T07:02:33.466236+00:00",
+  "dataset_revision": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "datasets_revision": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "evidence": [
+    {
+      "bytes": 548581,
+      "path": "initial-environment/source-snapshot.json",
+      "sha256": "ce173916d72e51613a865e39f0666a6c293d530e2e452c9c05b91f796a8e38b4"
+    },
+    {
+      "bytes": 2170,
+      "path": "initial-environment/validation.json",
+      "sha256": "a798900556ab01f258c5287857b98a94ed4c2383c02a5f5d836bb6edd73ee192"
+    },
+    {
+      "bytes": 41957,
+      "path": "initial-environment/validation.log",
+      "sha256": "94a7a21455a0a326b9c71911fe167c4d084946e3a20e3e18aa981a99f8c5368f"
+    },
+    {
+      "bytes": 37270,
+      "path": "initial-environment/validation.xml",
+      "sha256": "8114b29740a766b1a4dcc6cc89cf7d0a30f8b1d9e0c606c66c69c88fef65ea3d"
+    },
+    {
+      "bytes": 548581,
+      "path": "matched-environment/source-snapshot.json",
+      "sha256": "ce173916d72e51613a865e39f0666a6c293d530e2e452c9c05b91f796a8e38b4"
+    },
+    {
+      "bytes": 2156,
+      "path": "matched-environment/validation.json",
+      "sha256": "190b68bc542847199fd7e8fb9eea568ca9730d7a448ad223504165b71b4b90bb"
+    },
+    {
+      "bytes": 272,
+      "path": "matched-environment/validation.log",
+      "sha256": "125bb8f2d24a885fab9a64895e8cad87405aaed18ef25c3eaafb1e0ce201815b"
+    },
+    {
+      "bytes": 32754,
+      "path": "matched-environment/validation.xml",
+      "sha256": "a3eed3a64af50b63d37c33d1cf7e789187a60580d59a739bf4d37c2c9f112f34"
+    },
+    {
+      "bytes": 10836,
+      "path": "pending-work-audit.json",
+      "sha256": "372b95d78a30d71b277b7ee63925d9eee7763a6dabd51481b6bafd06088b5d27"
+    },
+    {
+      "bytes": 30305,
+      "path": "public-budget-inventory.json",
+      "sha256": "3710bf3f36d0e987f5951ac7dcde923929d38ab78f44ac231b98d12023a560ba"
+    },
+    {
+      "bytes": 13742,
+      "path": "quack-environment-audit.json",
+      "sha256": "ff8ea20f60c9d4c12912f54c116e6d6600d8076167f638937981282b8089fcb7"
+    },
+    {
+      "bytes": 8153,
+      "path": "quack-native-155-probe.json",
+      "sha256": "42b5a1df3d83a9072e1971c8a390fcb32e9691e460c0fce31df076788a06ebcf"
+    },
+    {
+      "bytes": 6419,
+      "path": "quack-root-venv-probe.json",
+      "sha256": "dcef94a16815cdfcbd5dfe5611d75e029e91ec6cf8103f6c2bf724810d2b3933"
+    },
+    {
+      "bytes": 26453,
+      "path": "runtime-audit.json",
+      "sha256": "eba7fc3b30159234b626e3b80225ffd41f71358fb9ca0095ca27296718a69a98"
+    },
+    {
+      "bytes": 22064,
+      "path": "validation-path-audit.json",
+      "sha256": "1b4dce7aec9ca9943002eb77fd775788f47a37d3eceb608388663988091ce50c"
+    }
+  ],
+  "immutable_diagnostics_commit_integrated": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+  "independent_reviews": [
+    "terminal_bench_runtime_audit",
+    "terminal_bench_supervisor_code_audit",
+    "staged_patch_review"
+  ],
+  "nonblocking_for_selected_codex_container_arm": {
+    "broad_symbolic_planning": "Limited reviewed operators and natural-language interpretation remain improvements; admitted residual LLM coding already produced two historical selected-task passes.",
+    "github_actions_billing": "Blocks hosted CI start, not local Harbor execution; local documentation gates are checked separately.",
+    "grok_container_route": "Optional provider extension; current matched arm explicitly selects Codex through llm_router.",
+    "host_validation_failures": "Eight confirmed default-host runner contract gaps; full container installs separate signed privilege-dropping candidate runner. They did not cause the latest planner failure.",
+    "leanstral_service": "Inactive service is not a dependency of the selected Codex arm.",
+    "model_weights": "No missing pinned Source384 assets observed; model publication/training is separate from this readiness qualification."
+  },
+  "published_revision_at_audit": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+  "qualified_code_revision": "730dee888ea55bf5552e4853895f397107bf98c0",
+  "schema": "terminal-bench-finish-assessment/v1",
+  "status": "readiness_tests_passed_benchmark_completion_blocked",
+  "suite_accounting": {
+    "all_public_agent_budget_hours": 41.541666666666664,
+    "budget_sums_are_limits_not_runtime_forecasts": true,
+    "full_suite_complete": false,
+    "historical85untried_budget_hours": 40.291666666666664,
+    "historical_untried_task_count": 85,
+    "new_gpt_6_1_trial": "largest-eigenval-02: planning failed, reward0",
+    "older_pilot_model": "gpt-5.6-sol; results do not transfer to fresh gpt-6.1-sol/profile/source comparisons",
+    "prior_selected_pilot_passes": 2,
+    "prior_selected_pilot_timeout_count": 1,
+    "remaining_rewards": "unknown",
+    "task_count": 89
+  },
+  "tests": {
+    "all_source_and_test_bytes_unchanged": true,
+    "duckdb_version": "1.5.5",
+    "initial_environment": {
+      "errors": 0,
+      "failed": 4,
+      "passed": 156,
+      "skipped": 0
+    },
+    "initial_failure_cause": "DuckDB1.4.3 Quack lacks required quack_serve/quack_query; initial diagnostic code is not the substantive cause",
+    "matching_interpreter": "/home/barberb/.local/bin/python",
+    "matching_runtime_environment": {
+      "errors": 0,
+      "failed": 0,
+      "passed": 160,
+      "skipped": 0
+    },
+    "native_empty_context_owner_cases_passed": 4,
+    "new_terminal_bench_trials": 0,
+    "paid_providers_used": false,
+    "source_binding_count": 2867
+  }
+}

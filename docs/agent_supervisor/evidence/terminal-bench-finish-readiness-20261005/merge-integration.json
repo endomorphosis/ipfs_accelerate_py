@@ -1,0 +1,84 @@
+{
+  "all_incoming_primary_documentation_preserved": true,
+  "incoming_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+  "only_reviewed_diagnostic_sources_tests_and_docs_differ_from_incoming": true,
+  "own_reviewed_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+  "pre_commit_merge_run_03": "Interrupted; private unqualified evidence retained, excluded from passing counts. Fresh committed merge run04 used for qualification.",
+  "revision": "88baab1af20d75ca94c47022b67fc8940cb58365",
+  "schema": "terminal-bench-readiness-merge-integration/v1",
+  "source_bindings": [
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 16764,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "7cf545caf75d70a700c37e2ac4e0f93910f5ebdb1ede379b9752cf7bbc196dcc"
+    },
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 33314,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+    },
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 12027,
+      "path": "test/api/test_semantic_router_integration.py",
+      "sha256": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72"
+    },
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 13748,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+      "sha256": "6a3dba6dcdee8e2482b2b0a6be26b7eb0ded673c4821186268779decf9f7db01"
+    },
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 22766,
+      "path": "benchmarks/agent_supervisor/container_coding/SUPERVISION_INTEGRATION.md",
+      "sha256": "c4dad4effab755f294b0972b3943f7a99c46377c05e6e9dc93b824cb6f8ef5a6"
+    },
+    {
+      "accepted_revision": "2eff6c1cd985e5524f65e3e7e0692628cba3baab",
+      "bytes": 4503,
+      "path": "benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md",
+      "sha256": "906df7b682c7ea1dc911d70182f81bbe258e4fbe4617c6ab6952b9143ac203e4"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 1007144,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 87767,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "sha256": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 44740,
+      "path": "test/api/test_agent_supervisor_managed_daemon_identity.py",
+      "sha256": "3780cf1395483d1a5ff8af6fe06f6b900d8bde69dcd514df606e001ff7207542"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 11118,
+      "path": "test/api/test_ordinary_supervisor_child_identity.py",
+      "sha256": "b7fe26a23c0f668babe129f960c8698f18dc9fec3a28596465ffba248cef9d6b"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 19437,
+      "path": "test/api/test_ordinary_supervisor_child_fence.py",
+      "sha256": "34910bcb10818c5696b135c8e8a992075ced8a5b26924e4abf4decd8a2fa4d32"
+    },
+    {
+      "accepted_revision": "05083ba35b3c0f305a5052e0bee4ee94c6a41a62",
+      "bytes": 4748,
+      "path": "test/api/test_ordinary_supervisor_shutdown_reconcile.py",
+      "sha256": "7687257b7260a93f52e87d90820d333d967c843d20d21ee99cec2c41219ec08c"
+    }
+  ],
+  "status": "exact_union_preserved"
+}

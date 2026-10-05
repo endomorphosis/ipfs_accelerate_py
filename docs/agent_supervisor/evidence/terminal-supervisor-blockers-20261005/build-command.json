@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+    "--datasets",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "--kit",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005",
+    "--extension-dir",
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/source384-config.json",
+    "--torch-cpu-wheel",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "--lean-toolchain",
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1",
+    "--setup-cache-policy",
+    "source384-native-aarch64-dontneed@2"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "provider_calls": 0,
+  "benchmark_executed": false,
+  "purpose": "generic source profile without Bottle header contract",
+  "source_heads": {
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  },
+  "source_status": {
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005": "",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "schema": "terminal-supervisor-cli-qualification@1",
+  "latest_merged_run": "final/merged-02",
+  "tests_not_summed_across_runs": true,
+  "ast_seal_enabled": true,
+  "fresh_duckdb_per_run": true,
+  "paid_provider_calls": 0,
+  "runtime_archive_pinned_separately": true,
+  "host_python_environment_hermetic": false,
+  "host_optional_kit_import_from_editable_environment": true,
+  "runs": [
+    {
+      "run": "final/joined-01",
+      "tests": 560,
+      "passed": 552,
+      "failures": [
+        "test_harbor_constructor_rejects_string_ablation"
+      ],
+      "skips": [
+        {
+          "case": "test_complete_vendor_runtime_is_copied_protected_and_executed",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[missing_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[symlink_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[nonexecuting_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[wrong_version]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[host_cannot_start]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice",
+          "reason": "explicit published action checkpoint and source instruction required"
+        }
+      ],
+      "source_unchanged": true,
+      "seconds": 303.9821913529886,
+      "log_sha256": "dd1f2943295798c1557c433c51bc1dfe5e4ad9a959dff7ef01d7fbb5f2904630",
+      "xml_sha256": "8625d64c1e7170f3183f26c15a909e58002dc1956cf09033fc0d7a80085d5f8b",
+      "source_commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+      "source_pins": {
+        "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "48fe0c26bf2b326a90c394cd8f2ec26dfa5fa5904247ee320b1f2e2b2bb2ebce",
+        "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "da04068d0a2b2ea64f0f9d36b1c1d158333323a24857f4ac86bc9583f9bbc56c",
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "90462f088b54dcc3aa835359e61340b87412b2192adc63f47f095e74ed092a7b",
+        "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "a58784ee64b5910511a6a4f0698c834e2965b6f6744d5dbaa76b952ed481cf3a",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py": "2d56d853ae03a7fc80e774ae85b9c0deb3c46c1546f4b00ead688d235857ec8c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py": "d49ffb33340c18b2167e060ad82e455e797eb1e7ee4ecf024d5e1ad4d7e7b93e",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "6e0fbdd10a42f98e73aa94c09db840f5d3f92654cf54a4fb480d0c8fdf2b0c31",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py": "1a2b6ceefb3071db9bacd41417fbe668818391897e82447d6598baa71fc016de",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "df12ecde9d392b2d254f47dda538a3f97218496458d9f9bb43300bc0d31b02f1",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py": "d2967bddb3ab8ecf6ab3f65eb05419af8112ac3e372681f13cd6c64373969703",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_bundle.py": "fcf83bf338487f84465457226af767b200bd029aeeb4730e263afff37c4c19ee",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py": "195412ba6895af6770d0982be6fd26b8af2affe62a0c15010cd1306e12ea51ad",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "746f23a2867dc7382de680054e5c10b7be0ef196e8f694e9688c720d357c7913",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": "8af74c76c4214dddeccff082e1411cc4d27e3ccd33073348a22b5979aec7dd89",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py": "87fbbfea5c4cc80b9701daac3263de44c06d1af910a7fd5069c3a964a2570709",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "083061c4823e8f8ab64b560d70c93ae4bbada46c4dc1c1723e6c1a2310d9510c",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "6a3dba6dcdee8e2482b2b0a6be26b7eb0ded673c4821186268779decf9f7db01",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "f8ab4cc73b8ad5f1b2e277498fcf017a4475153fd83cd9aef06fb3b0584d458a",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py": "d4d456e6520822045995d46eda89e8716aaef817778eea85a9a4c0e6bc43e1a1",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py": "b92d49e247410579f55115f828dd4f17653a5a6de3a2597879ef45527ff653cd",
+        "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "e64791642d99152348dbc6c17c93185ab4382c308b100e0b8f70354b610012f8",
+        "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a",
+        "ipfs_accelerate_py/llm_router.py": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c",
+        "test/api/test_router_implementation_runner.py": "b25e72ac07cdf2c91b4affa8fd405d80bae54198eb1a2b58ba028d24fc852270",
+        "test/api/test_router_provider_failure_diagnostics.py": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b",
+        "test/api/test_semantic_router_integration.py": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72",
+        "test/api/test_semantic_router_translation.py": "7f9c837e8fb0449cfab8f25590e0b07a31820edc45356b4ee85748d57009cc8e",
+        "test/api/test_supervisor_router_execution_contract.py": "0222c03328317cfb706b1af7f78e42be83bcb157675b38070dda3ca7403adde1"
+      }
+    },
+    {
+      "run": "harness-audit/intent-constructor-order-01",
+      "tests": 140,
+      "passed": 140,
+      "failures": [],
+      "skips": [],
+      "source_unchanged": true,
+      "seconds": 54.072781769995345,
+      "log_sha256": "605e2ecdb4ee5d932f3b76f134b64f134aaec296ab0598fb7a5a83e60a9c6d13",
+      "xml_sha256": "14b1be758b2141a6598f55f147fea2ccc43974ac4bcfefd3165374bfcf148964",
+      "source_commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+      "source_pins": {
+        "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "48fe0c26bf2b326a90c394cd8f2ec26dfa5fa5904247ee320b1f2e2b2bb2ebce",
+        "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "7ee508f424433581c10cc285f01745dca81d46f51335ece2f691673025f47985",
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "90462f088b54dcc3aa835359e61340b87412b2192adc63f47f095e74ed092a7b",
+        "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "a58784ee64b5910511a6a4f0698c834e2965b6f6744d5dbaa76b952ed481cf3a",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py": "2d56d853ae03a7fc80e774ae85b9c0deb3c46c1546f4b00ead688d235857ec8c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py": "d49ffb33340c18b2167e060ad82e455e797eb1e7ee4ecf024d5e1ad4d7e7b93e",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "6e0fbdd10a42f98e73aa94c09db840f5d3f92654cf54a4fb480d0c8fdf2b0c31",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py": "1a2b6ceefb3071db9bacd41417fbe668818391897e82447d6598baa71fc016de",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py": "d2967bddb3ab8ecf6ab3f65eb05419af8112ac3e372681f13cd6c64373969703",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_bundle.py": "fcf83bf338487f84465457226af767b200bd029aeeb4730e263afff37c4c19ee",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "746f23a2867dc7382de680054e5c10b7be0ef196e8f694e9688c720d357c7913",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": "8af74c76c4214dddeccff082e1411cc4d27e3ccd33073348a22b5979aec7dd89",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py": "bdc425f88c147c3e5cd1762df4b58171c9f668c8d4f0225e08f8b0ec3433c58e",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "083061c4823e8f8ab64b560d70c93ae4bbada46c4dc1c1723e6c1a2310d9510c",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "6a3dba6dcdee8e2482b2b0a6be26b7eb0ded673c4821186268779decf9f7db01",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "f8ab4cc73b8ad5f1b2e277498fcf017a4475153fd83cd9aef06fb3b0584d458a",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py": "b92d49e247410579f55115f828dd4f17653a5a6de3a2597879ef45527ff653cd",
+        "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "e64791642d99152348dbc6c17c93185ab4382c308b100e0b8f70354b610012f8",
+        "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a",
+        "ipfs_accelerate_py/llm_router.py": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c",
+        "test/api/test_router_provider_failure_diagnostics.py": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b",
+        "test/api/test_semantic_router_integration.py": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72"
+      }
+    },
+    {
+      "run": "final/merged-02",
+      "tests": 567,
+      "passed": 560,
+      "failures": [],
+      "skips": [
+        {
+          "case": "test_complete_vendor_runtime_is_copied_protected_and_executed",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[missing_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[symlink_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[nonexecuting_host]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[wrong_version]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_incomplete_or_nonrunning_native_runtime_refuses_deployment[host_cannot_start]",
+          "reason": "native bundle deployment must be tested as container root"
+        },
+        {
+          "case": "test_real_published_checkpoint_enters_benchmark_preplanning_without_manual_advice",
+          "reason": "explicit published action checkpoint and source instruction required"
+        }
+      ],
+      "source_unchanged": true,
+      "seconds": 294.2059893219848,
+      "log_sha256": "be876b3097e2ac658d3aa5ced4e2c01531cc38268b0a377bf9020f6186bb7e97",
+      "xml_sha256": "1522df63e685e99bcc90729e2f94924813b447bee5dd1fe5db3d1ae2ca479e06",
+      "source_commit": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+      "source_pins": {
+        "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "48fe0c26bf2b326a90c394cd8f2ec26dfa5fa5904247ee320b1f2e2b2bb2ebce",
+        "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d",
+        "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "7ee508f424433581c10cc285f01745dca81d46f51335ece2f691673025f47985",
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "90462f088b54dcc3aa835359e61340b87412b2192adc63f47f095e74ed092a7b",
+        "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "a58784ee64b5910511a6a4f0698c834e2965b6f6744d5dbaa76b952ed481cf3a",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py": "2d56d853ae03a7fc80e774ae85b9c0deb3c46c1546f4b00ead688d235857ec8c",
+        "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py": "d49ffb33340c18b2167e060ad82e455e797eb1e7ee4ecf024d5e1ad4d7e7b93e",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "6e0fbdd10a42f98e73aa94c09db840f5d3f92654cf54a4fb480d0c8fdf2b0c31",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py": "1a2b6ceefb3071db9bacd41417fbe668818391897e82447d6598baa71fc016de",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "df12ecde9d392b2d254f47dda538a3f97218496458d9f9bb43300bc0d31b02f1",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py": "d2967bddb3ab8ecf6ab3f65eb05419af8112ac3e372681f13cd6c64373969703",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_bundle.py": "fcf83bf338487f84465457226af767b200bd029aeeb4730e263afff37c4c19ee",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py": "195412ba6895af6770d0982be6fd26b8af2affe62a0c15010cd1306e12ea51ad",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "746f23a2867dc7382de680054e5c10b7be0ef196e8f694e9688c720d357c7913",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": "8af74c76c4214dddeccff082e1411cc4d27e3ccd33073348a22b5979aec7dd89",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py": "bdc425f88c147c3e5cd1762df4b58171c9f668c8d4f0225e08f8b0ec3433c58e",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "083061c4823e8f8ab64b560d70c93ae4bbada46c4dc1c1723e6c1a2310d9510c",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "6a3dba6dcdee8e2482b2b0a6be26b7eb0ded673c4821186268779decf9f7db01",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "f8ab4cc73b8ad5f1b2e277498fcf017a4475153fd83cd9aef06fb3b0584d458a",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py": "d4d456e6520822045995d46eda89e8716aaef817778eea85a9a4c0e6bc43e1a1",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py": "b92d49e247410579f55115f828dd4f17653a5a6de3a2597879ef45527ff653cd",
+        "docs/agent_supervisor/evidence/supervisor-ordinary-identity-20261005/audit_native_processes.py": "51ac480d7c4756118a143ecc8e0979acedb83a2c1c178c945d634e909a233d02",
+        "docs/agent_supervisor/evidence/supervisor-ordinary-identity-20261005/finalize_qualification.py": "325088f9e2dd66b87bacf6e141a455bfcde50a63cb97b87ef2aa20f90eeccd14",
+        "docs/agent_supervisor/evidence/supervisor-ordinary-identity-20261005/run_baseline.py": "a9b440b027a8fa5397928bf66dee446841f16af411768e820e1a537e12b60105",
+        "docs/agent_supervisor/evidence/supervisor-ordinary-identity-20261005/run_qualification.py": "896f869f41fd55d9c740f66ff3862ceeb9ee203b9e8c551b9685e54b378d883d",
+        "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "f4aac8583dda864da329c79e5860863dd6c5c66767b9941eb7d8117a4e30dfae",
+        "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": "8f73cd5841c4cf3eeb48fa07d3dabc222e23ab35e39e5873c57183b9c1af127b",
+        "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "e64791642d99152348dbc6c17c93185ab4382c308b100e0b8f70354b610012f8",
+        "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py": "fa4207391115f54674732d7a4d257a5bb35be95ace8e699c6c1aa4a32cb03e71",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": "e46f54d8c3ba7a38e13daaf837a11a649194a1134a6086889967d6a8fcb7993b",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "68beeeba41e543cbb90284f65c12bd07aeda2b896ab12aeb2863d6b4dee1213c",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py": "e9ae5b327964490669f29c29e0dd26e492887c780ea260e29e26a4126616fd07",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e",
+        "ipfs_accelerate_py/llm_router.py": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c",
+        "test/api/test_agent_supervisor_control_lifecycle.py": "a35cf783e46216c4b9316db5e56f53925c45fb638d1bfca050feadd0eabb66cb",
+        "test/api/test_agent_supervisor_daemon_checkpoints.py": "b2b8738f64a281119b38c001b094a44d993083aa1e6691110bc8a58375c879e1",
+        "test/api/test_agent_supervisor_lifecycle_orchestrator.py": "0e8d6c2e9d075bd0124e8ab91100b4229c90ce128b69a3f332b1df2d0825fa39",
+        "test/api/test_agent_supervisor_managed_daemon_identity.py": "3780cf1395483d1a5ff8af6fe06f6b900d8bde69dcd514df606e001ff7207542",
+        "test/api/test_llm_router_exact_provider_fallback.py": "1c66556fbfd3b3bf306a50a3572bed47a79ba9d64e5bb165a94e88e29ceeb876",
+        "test/api/test_ordinary_supervisor_child_fence.py": "34910bcb10818c5696b135c8e8a992075ced8a5b26924e4abf4decd8a2fa4d32",
+        "test/api/test_ordinary_supervisor_child_identity.py": "b7fe26a23c0f668babe129f960c8698f18dc9fec3a28596465ffba248cef9d6b",
+        "test/api/test_ordinary_supervisor_shutdown_reconcile.py": "7687257b7260a93f52e87d90820d333d967c843d20d21ee99cec2c41219ec08c",
+        "test/api/test_router_implementation_runner.py": "b25e72ac07cdf2c91b4affa8fd405d80bae54198eb1a2b58ba028d24fc852270",
+        "test/api/test_router_provider_failure_diagnostics.py": "cb6e4ed216776e1253d4c0f2ae990517b89745eecaff0391553de06132513f0b",
+        "test/api/test_semantic_router_integration.py": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72",
+        "test/api/test_semantic_router_translation.py": "7f9c837e8fb0449cfab8f25590e0b07a31820edc45356b4ee85748d57009cc8e",
+        "test/api/test_supervisor_preflight_persistence_deadline.py": "b291ebbfd706e2b53af31cb7aa1db86ab4fffcdf679b7f6a5b2c53dafe488006",
+        "test/api/test_supervisor_router_execution_contract.py": "0222c03328317cfb706b1af7f78e42be83bcb157675b38070dda3ca7403adde1",
+        "test/api/test_supervisor_staged_file_patching.py": "be090a34111c0db57fd0684e0ccbf534a0a53902d72d03a197f31520778b77a5"
+      }
+    }
+  ]
+}

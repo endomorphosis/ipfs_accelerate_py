@@ -1,0 +1,29 @@
+{
+  "schema": "terminal-extra-runtime-observation@1",
+  "receipt_sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf",
+  "intent_preplanning": {
+    "status": "fail_open_no_checkpoint",
+    "before_goal_decomposition": true,
+    "artifact_persisted": null,
+    "supplied_to_router": null,
+    "execution_authority": false,
+    "completion_authority": false
+  },
+  "cache": {
+    "policy": "source384-native-aarch64-dontneed@2",
+    "completed": true,
+    "phase": "complete",
+    "admission_authority": false,
+    "global_drop_caches": false,
+    "freed_bytes_claimed": false
+  },
+  "native_cache": {
+    "schema": "pinned-native-codex-cache-advice@1",
+    "codex_version": "0.160.0",
+    "selected_files": 4,
+    "hashed_files": 4,
+    "body_reads_after_advice": 0,
+    "selected_bytes": 631776240,
+    "post_boundary_receipt_sha256": "132ffd1ac15430e35897c206eb981af9f8cab03cc66fe1461bebbcf50e020af2"
+  }
+}

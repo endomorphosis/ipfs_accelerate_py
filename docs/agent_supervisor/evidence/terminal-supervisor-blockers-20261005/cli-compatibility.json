@@ -1,0 +1,69 @@
+{
+  "schema": "terminal-cli-model-compatibility@1",
+  "model": "gpt-6.1-sol",
+  "provider": "codex_cli",
+  "same_host_account_and_prompt": true,
+  "model_prompt": "Reply with the single word READY. Do not use tools or read any files.",
+  "runs": [
+    {
+      "schema": "terminal-provider-health@1",
+      "provider": "codex_cli",
+      "model": "gpt-6.1-sol",
+      "purpose": "isolated single readiness inference; no benchmark task data",
+      "cli_version": "0.160.0",
+      "timeout_seconds": 30,
+      "status": "returned",
+      "expected_response": true,
+      "observation": {
+        "exit_code": 0,
+        "model_id": "gpt-6.1-sol",
+        "prompt_tokens": 15500,
+        "completion_tokens": 5
+      },
+      "seconds": 5.169384162989445
+    },
+    {
+      "schema": "terminal-provider-health@1",
+      "provider": "codex_cli",
+      "model": "gpt-6.1-sol",
+      "purpose": "isolated single readiness inference; no benchmark task data",
+      "cli_version": "0.158.0",
+      "timeout_seconds": 30,
+      "status": "failed",
+      "error_type": "LLMRouterError",
+      "classification": null,
+      "diagnostic_markers": [],
+      "observation": {
+        "exit_code": 1,
+        "model_id": "gpt-6.1-sol"
+      },
+      "seconds": 5.703388566005742
+    },
+    {
+      "schema": "terminal-provider-health@1",
+      "provider": "codex_cli",
+      "model": "gpt-6.1-sol",
+      "purpose": "isolated single readiness inference; no benchmark task data",
+      "cli_version": "0.158.0",
+      "timeout_seconds": 30,
+      "status": "failed",
+      "error_type": "LLMRouterError",
+      "classification": null,
+      "diagnostic_markers": [],
+      "observation": {
+        "exit_code": 1,
+        "model_id": "gpt-6.1-sol"
+      },
+      "seconds": 2.6870902299997397
+    }
+  ],
+  "pinned_native_error_status": 400,
+  "pinned_native_error_kind": "invalid_request_error",
+  "pinned_error_reports_model_unsupported_for_chatgpt_account": true,
+  "raw_provider_trace_exported": false,
+  "benchmark_task_data_supplied": false,
+  "not_a_benchmark_score": true,
+  "token_usage_unknown_for_failed_calls": true,
+  "original_local_record_sha256": "ef10c92c508c66885644216dbff8c34bc4ca3b40601432d70c8309ee90754a1f",
+  "session_identifiers_omitted": true
+}

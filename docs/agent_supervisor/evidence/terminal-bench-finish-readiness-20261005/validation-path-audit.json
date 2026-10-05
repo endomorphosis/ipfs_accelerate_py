@@ -1,0 +1,371 @@
+{
+  "all_bound_sources_equal_committed_head": true,
+  "baseline_evidence": {
+    "baseline_unchanged": true,
+    "dependency_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "failed_count": 8,
+    "path": "docs/agent_supervisor/evidence/supervisor-lifecycle-followup-20261005/baseline.json",
+    "status": "all_eight_current_failures_reproduced_on_clean_prior_baseline"
+  },
+  "benchmark_entrypoints": [
+    {
+      "description": "Loads immutable runtime/archive, source-bound task profile and public instruction, creates Harbor config, runs configuration dry run and binds archive/task/adapter hashes.",
+      "line": 199,
+      "operation": "prepare",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py"
+    },
+    {
+      "description": "Fresh one-shot trial rechecks prepared bindings before Harbor execution; unchanged independent official verifier determines reward.",
+      "line": 324,
+      "operation": "execute",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py"
+    },
+    {
+      "description": "Deadline-bounded context/planning/admission, native supervisor START/observe/STOP, usage collection and cleanup. Exact source/output/check profile and task body remain required.",
+      "line": 430,
+      "operation": "run",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    }
+  ],
+  "canonical_router": {
+    "allow_cross_provider_fallback": false,
+    "allow_local_fallback": false,
+    "canonical_import": "ipfs_accelerate_py.llm_router.generate_text",
+    "configuration": "codex_cli explicit model/high reasoning; canonical benchmark CLI pin0.158.0; separate active checkout upgrading to0.160 is not integrated/audited here",
+    "dispatch_line": 173,
+    "line": 58,
+    "paid_provider_calls_in_this_audit": 0,
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "side_effecting": true
+  },
+  "claims_limits": [
+    "Source audit plus4 host test reproductions; no liveprovider or Docker task executed.",
+    "Current original published HEAD audited; active terminal-supervisor-blockers checkout changes were excluded.",
+    "Canonical historical pilot source/reward pins remain unchanged; current source improvements do not retroactively qualify that runtime."
+  ],
+  "completion_blockers_classification": {
+    "eight_host_failures": "Confirmed baseline host-profile contracts, not established cause of current full-container Terminal-Bench trial failure.",
+    "latest_largest_eigenval_failure": "Parent reports planner exit1/empty response before native START. Not independently inspected in this subtask; host raw-no-site or Landlock fixes must not be represented as its cause.",
+    "remaining_suite": "Historical selected pilot2 official passes/1 timeout;85other tasks lack full-methodology trials. Broad /app scope, supported source/scans, exact outputs, services/system package permissions and single-worker budgets need per-task qualification, not fabricated rewards."
+  },
+  "created_at": "2026-10-05T06:47:43.489067+00:00",
+  "current_reproduction": {
+    "argv": [
+      "/home/barberb/lift_coding/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "addopts=",
+      "-o",
+      "cache_dir=/tmp/terminal-bench-source-audit-20261005-e7ba42-cache",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+    ],
+    "assertions": [
+      "overlapping state-root command returned0 expected75",
+      "raw-no-site command prepended exportPYTHONPATH",
+      "validation_filesystem_boundary key absent after real Ruff F401",
+      "infrastructure_failure key absent after Ruff unavailable return75"
+    ],
+    "cwd": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005",
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/terminal-bench-source-audit-20261005-e7ba42.duckdb",
+      "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+    },
+    "exit_code": 1,
+    "failed": 4,
+    "junit_file": null,
+    "passed": 0,
+    "provider_calls": 0,
+    "pytest_seconds": 21.24,
+    "raw_log_file": null,
+    "selected_nodeids": [
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+    ],
+    "skipped": 0,
+    "source_mutations": 0,
+    "stdout_retained_in_tool_output": true
+  },
+  "full_container_validation_path": [
+    {
+      "description": "Admitted runtime signs candidate_runner_argv=(/opt/ipfs-supervisor/bin/validation-worker,) for one worker and one attempt.",
+      "line": 691,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    },
+    {
+      "description": "Binds root-controlled runner and boundary file hashes; places binding in signed launch environment.",
+      "line": 359,
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "description": "Portal factory reads exact environment runner binding and invokes install_portal_candidate_runner.",
+      "line": 1354,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py"
+    },
+    {
+      "description": "Replaces host _validation_command_runner with run_candidate; disables unbound cache reuse and sets scheduler one worker.",
+      "line": 119,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py"
+    },
+    {
+      "description": "Validation launcher sudo-drops ownerUID1000 to workerUID1001; worker verifies root-controlled namespace/workspace boundary; executes literal validation argv with sanitized environment; owner monitor reaps descendants.",
+      "line": 78,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py"
+    },
+    {
+      "description": "Postpublication exact signed acceptance checks also use the bound isolated candidate_runner when supplied.",
+      "line": 1535,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py"
+    }
+  ],
+  "head": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+  "historical_readiness_corrections": [
+    {
+      "current_source": "benchmarks/agent_supervisor/container_coding/terminal_program_population.py:46",
+      "finding": "Current canonical full context has signed empty-program observation and no-vector route; do not label historical source-less refusal as current blanket blocker. Runtime official task qualification is still needed.",
+      "old_claim": "Source-less full arm always refuses"
+    },
+    {
+      "current_sources": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py:58",
+        "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:242",
+        "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:866"
+      ],
+      "finding": "Current source binds generated support roles separately from program_paths and passes explicit program scope into semantic/Doctor eligibility. Historical pilot limitation must not be promoted to current confirmed blocker without targeted runtime reproduction.",
+      "old_claim": "Doctor requires instruction Markdown and profileJSON to parse as code"
+    }
+  ],
+  "host_issues": [
+    {
+      "applicability": "Default host validator with IPFS_PROOF_REUSE_STATE_ROOT; isolated full container runner overrides this seam.",
+      "bounded_fix_proposal": "Wrap command with existing validation_readonly_state_command before execution; refuse unavailable/overlapping/hardlinked roots before command effects; retain applied boundary receipt only after successful boundary application; preserve sealed inherited descriptors and classify Landlock failure marker.",
+      "cause": "Default host _validation_command_runner launches shell directly under sealed Python and does not call existing validation_readonly_state_command; protected state/workspace overlap and hardlink checks are bypassed and filesystem-boundary evidence absent. Sealed Ruff still executes but has no fence receipt.",
+      "confirmed": true,
+      "existing_reusable_boundary": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py:1557",
+      "full_container_latest_trial_cause": false,
+      "id": "proof_state_write_fence_not_applied",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:47566",
+      "test_nodeids": [
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence"
+      ]
+    },
+    {
+      "applicability": "Opted-in host raw-no-site profile; benchmark worker has separate sanitized container environment.",
+      "bounded_fix_proposal": "Honor validation_python_profile raw-no-site before adding shell PYTHONPATH; keep sealed approved environment binding.",
+      "cause": "_with_worktree_validation_pythonpath inserts export PYTHONPATH for configured workspace package roots without preserving the raw-no-site sealed environment contract.",
+      "confirmed": true,
+      "full_container_latest_trial_cause": false,
+      "id": "raw_no_site_pythonpath_rewritten",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:47804",
+      "test_nodeids": [
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath"
+      ]
+    },
+    {
+      "applicability": "Separate authority-bearing Docker host profile; admitted candidate runner explicitly refuses manual completion authority override.",
+      "authority_runner_source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:47164",
+      "bounded_fix_proposal": "Update obsolete test seam, then establish explicit early refusal of raw-no-site Docker substitution with focused contract test. Do not restore unrelated obsolete socket probe only to satisfy fixture.",
+      "cause": "Test fails before invoking authority runner because it monkeypatches removed _unix_stream_socket_permitted. Inspection also finds no explicit raw-no-site refusal in Docker authority runner, but test failure alone does not verify that later behavior.",
+      "confirmed": true,
+      "full_container_latest_trial_cause": false,
+      "id": "raw_no_site_authority_fixture_removed_seam",
+      "source": "test/api/test_agent_supervisor_validation_scheduler.py:1018",
+      "test_nodeids": [
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution"
+      ]
+    },
+    {
+      "applicability": "Default host validation result projection.",
+      "bounded_fix_proposal": "Map established unavailable marker to infrastructure_failure=True and validation_environment_ruff_executable_unavailable; preserve output/returncode and separate actual lint failure.",
+      "cause": "Sealed launcher correctly returns75 and Ruff unavailable marker, but default host runner returns ordinary nonzero result without infrastructure_failure/error classification.",
+      "confirmed": true,
+      "full_container_latest_trial_cause": false,
+      "id": "missing_ruff_failure_untyped",
+      "marker_source": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py:109",
+      "source": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py:47748",
+      "test_nodeids": [
+        "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+      ]
+    }
+  ],
+  "proposed_focused_test_selection": [
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+    "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+  ],
+  "proposed_test_command": {
+    "argv": [
+      "/home/barberb/lift_coding/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "addopts=",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_cannot_be_inside_writable_workspace",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_proof_reuse_state_root_rejects_workspace_hardlink_to_receipt",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_daemon_raw_no_site_profile_preserves_approved_pythonpath",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_raw_no_site_authority_validation_rejects_docker_substitution",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_sealed_ruff_survives_proof_state_landlock_fence",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_nested_sealed_ruff_survives_proof_state_landlock_fence",
+      "test/api/test_agent_supervisor_validation_scheduler.py::test_missing_ruff_is_typed_as_infrastructure_unavailable"
+    ],
+    "cwd": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005",
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "MUST_USE_FRESH_UNIQUE_DUCKDB_PATH",
+      "IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI": "0",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004"
+    },
+    "followup": "After targeted fixes run full test/api/test_agent_supervisor_validation_scheduler.py with another fresh unique seal DB and applicable isolated container candidate controls; no provider calls required."
+  },
+  "provider_calls": 0,
+  "root": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005",
+  "schema": "terminal-bench-supervisor-validation-path-audit/v1",
+  "source_edits": 0,
+  "source_files": {
+    "benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md": {
+      "bytes": 4117,
+      "matches_head_blob": true,
+      "sha256": "f8d7ad562c5b2d9cd77e60bd00fe189affced1ccc9ac50faed8d49db822550fc"
+    },
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+      "bytes": 24396,
+      "matches_head_blob": true,
+      "sha256": "c1f9675a394bf09890c6a19b9a10cc72db633458c9603704da627fac8055a19f"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+      "bytes": 23087,
+      "matches_head_blob": true,
+      "sha256": "228ad1ed731e73d7c4bccdab099849a48c80ce1105cf3940bd251afb3f8570d4"
+    },
+    "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": {
+      "bytes": 26239,
+      "matches_head_blob": true,
+      "sha256": "b2a435505a3a72b118eb01be48f7fb57644def9b142fc16d910795f3fc989a07"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 50560,
+      "matches_head_blob": true,
+      "sha256": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+      "bytes": 77572,
+      "matches_head_blob": true,
+      "sha256": "b3f153e415a78df269df68d01afa75f5d81612360f79cfc7ae09a6b24150b631"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 11949,
+      "matches_head_blob": true,
+      "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 61225,
+      "matches_head_blob": true,
+      "sha256": "98dc854247f794dcc5ea2be6c36abfb321c5cfa2d53a39eba827ede7c7fc2683"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "bytes": 46812,
+      "matches_head_blob": true,
+      "sha256": "11e901d8e1123672f355b73ed1b27f5b69a99b8589d74df1b3dd92c3843a6ed1"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_program_population.py": {
+      "bytes": 4677,
+      "matches_head_blob": true,
+      "sha256": "80bb37870cfd2600fd1436b87c26a2c50c0fc281a1ce354b5b90b380c02ae679"
+    },
+    "docs/agent_supervisor/evidence/supervisor-lifecycle-followup-20261005/baseline.json": {
+      "bytes": 9645,
+      "matches_head_blob": true,
+      "sha256": "bebf1c0f6c3a75f3b1cad2b2a1b2715dac50b53ac72caf0e1d588489ae3a1cba"
+    },
+    "docs/agent_supervisor/evidence/supervisor-lifecycle-followup-20261005/final.json": {
+      "bytes": 3875,
+      "matches_head_blob": true,
+      "sha256": "a5e1ad745cd25bd1dc08da98ded9a4d4b252332a7f01d3285d08c92e657af160"
+    },
+    "docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/README.md": {
+      "bytes": 6621,
+      "matches_head_blob": true,
+      "sha256": "9887e24508da540a6f346250b721f4787d7eeb69120e4e8ea289d864df4dc1c1"
+    },
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "bytes": 94964,
+      "matches_head_blob": true,
+      "sha256": "a8efc0edd0d1ba348dda4b5d6fedfbd62e1e50de91eb649e57f3ae6fb771ce1a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py": {
+      "bytes": 9454,
+      "matches_head_blob": true,
+      "sha256": "f8bd110dd70d4d2c710d1953b883bd1c7779af9480d2fb4c1a3bba40b68a5054"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_repair_composition.py": {
+      "bytes": 43376,
+      "matches_head_blob": true,
+      "sha256": "36808957399a425569acb0a10899f5adf18885c8c798c2004bc38ee6e67cfad7"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/empty_code_retrieval.py": {
+      "bytes": 16971,
+      "matches_head_blob": true,
+      "sha256": "bdd74bf68fd35bcdd7508e64252ec10ff372295b514a09da8288d7157ed95603"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "bytes": 89042,
+      "matches_head_blob": true,
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 16092,
+      "matches_head_blob": true,
+      "sha256": "933cbe2b0262f061166edc4ea86ea6b3f08d31eab37ae06560be37a1de2c0284"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervised_task_context.py": {
+      "bytes": 12075,
+      "matches_head_blob": true,
+      "sha256": "5b6e9a88274c436f095440efed831be93bd878cee50e27252aa0cb17b866d7ab"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py": {
+      "bytes": 5213,
+      "matches_head_blob": true,
+      "sha256": "f2b57e250ae4767689707291e95b5976743747317ef5be03946c40e0e2608c17"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3233162,
+      "matches_head_blob": true,
+      "sha256": "68beeeba41e543cbb90284f65c12bd07aeda2b896ab12aeb2863d6b4dee1213c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": {
+      "bytes": 71945,
+      "matches_head_blob": true,
+      "sha256": "045907b45ae3ec96f5de3a1d5ab09440fc72d5f25eb38024d9887dd1022c0ee9"
+    },
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": {
+      "bytes": 129651,
+      "matches_head_blob": true,
+      "sha256": "8181d562c0631c172b1706716ff14b556ee10ce38d655967e0b089314dc75d4d"
+    },
+    "test/api/test_agent_supervisor_validation_scheduler.py": {
+      "bytes": 102641,
+      "matches_head_blob": true,
+      "sha256": "abaf5a173bb43e4db86cef78b6c4aa87bdb05279cbfabb3ce84684c7d7a4bd93"
+    }
+  },
+  "status": "read_only_paths_audited_host_failures_independently_reproduced"
+}

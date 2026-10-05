@@ -1,0 +1,170 @@
+{
+  "authored_at_utc": "2026-10-05T06:47:39.652109+00:00",
+  "canonical_revision": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+  "concurrent_dirty_scope": {
+    "activity": "Source/status changes were observed during read-only inspection. Two /proc snapshots found no persistent process with the checkout as cwd or exact checkout path in arguments beyond these inspection shells; this does not establish that another agent or owner is idle.",
+    "integration_authorized_by_this_audit": false,
+    "intended_work_observed": [
+      "Candidate CLI0.160.0 pin centralized for native and supervisor arms; preparation, execution and deployment reject runtime archives with another pin; historical0.158.0 setup-cache advice remains separately bound.",
+      "Closed provider failure classification projects nested Codex JSONL errors/status without exporting diagnostic bodies or changing retry classifier inputs.",
+      "Benchmark fixtures/docs are being updated alongside candidate profile code."
+    ],
+    "last_observed_tracked_paths": [
+      "benchmarks/agent_supervisor/container_coding/SUPERVISION_INTEGRATION.md",
+      "benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+      "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+      "benchmarks/agent_supervisor/container_coding/test_native_codex_bundle.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "ipfs_accelerate_py/llm_router.py"
+    ],
+    "last_observed_untracked_paths": [
+      "benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py",
+      "test/api/test_router_provider_failure_diagnostics.py"
+    ],
+    "observed_scope_growth": {
+      "first_tracked_files": 6,
+      "first_untracked_files": 2,
+      "last_tracked_files": 19,
+      "last_untracked_files": 3
+    },
+    "owner_identity_established": false,
+    "process_control_or_owner_contact_performed": false,
+    "recommended_handling": "Do not modify, reset, merge or snapshot-integrate this live dirty checkout. Coordinate with its owner and require a frozen, reviewed revision before separately integrating pending profile/diagnostic work.",
+    "snapshot_is_frozen": false,
+    "status": "unpublished_and_nonqualified"
+  },
+  "evidence_references": [
+    {
+      "claim": "Historical three-task full-indexed pilot records two official passes and largest-eigenval timeout, gpt-5.6-sol/CLI0.158.0, and85 remaining unqualified tasks; no matched native/no-index baseline.",
+      "path": "docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/README.md"
+    },
+    {
+      "claim": "Historical follow-ups include task scopes, empty sources, doctor metadata/code partition, created-output indexing and matched ablations. The MODIFY retry follow-up must be assessed against later canonical fixes rather than assumed current.",
+      "path": "docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/pilot-followups.json"
+    },
+    {
+      "claim": "88 tasks assessed with category/resource/effect gaps; file-layout/static parse observations are not runtime qualification.",
+      "path": "docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/broader-readiness.json"
+    },
+    {
+      "claim": "Retains actual local native lifecycle/cache component qualification with explicit source revisions and exclusions; no Docker/provider/Terminal-Bench score.",
+      "path": "docs/agent_supervisor/evidence/terminal-supervisor-contracts-20261004/runtime/qualification-final.json"
+    }
+  ],
+  "examined_branch": "codex/terminal-supervisor-blockers-20261005",
+  "examined_checkout": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+  "examined_commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+  "immutable_commit_review": {
+    "blocking_code_review_findings": [],
+    "change_stats": {
+      "deletions": 9,
+      "files": 6,
+      "insertions": 168
+    },
+    "diagnostic_contract": "Only exact recognized SemanticTranslationError messages map to closed codes; unknown messages map to unclassified. Raw exception text, provider replies and task bodies are excluded from invocation receipts.",
+    "documentation_limit": "The immutable commit describes gpt-6.1-sol/CLI0.158.0 as its then-current code profile. Candidate CLI0.160.0 qualification remains separate; no runtime compatibility or new Terminal-Bench success is established by these prose edits.",
+    "existing_usage_retention": "The finally path still retains observed native usage for successful provider returns whose semantic decoding fails.",
+    "files": [
+      {
+        "bytes": 22766,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "89fa5296f749f513dd484bfe88db21cb02fe15a3",
+        "path": "benchmarks/agent_supervisor/container_coding/SUPERVISION_INTEGRATION.md",
+        "sha256": "c4dad4effab755f294b0972b3943f7a99c46377c05e6e9dc93b824cb6f8ef5a6"
+      },
+      {
+        "bytes": 4503,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "67224cdb952d91aae358bac43a53a7ac65939efc",
+        "path": "benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md",
+        "sha256": "906df7b682c7ea1dc911d70182f81bbe258e4fbe4617c6ab6952b9143ac203e4"
+      },
+      {
+        "bytes": 13748,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "573821495515382db294f1cb41d9ac7d5b4385fa",
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+        "sha256": "6a3dba6dcdee8e2482b2b0a6be26b7eb0ded673c4821186268779decf9f7db01"
+      },
+      {
+        "bytes": 16764,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "606a29dddd761043dc8a28d2ed01886e34af7eff",
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "7cf545caf75d70a700c37e2ac4e0f93910f5ebdb1ede379b9752cf7bbc196dcc"
+      },
+      {
+        "bytes": 33314,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "3a7580f8809e5a0f0313dddf54e3dbd83c0dfa04",
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+        "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+      },
+      {
+        "bytes": 12027,
+        "canonical_matches_commit_parent": true,
+        "commit": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+        "git_blob_oid": "d9ba5936a81f02e3fb1347d5b45e98681bf48142",
+        "path": "test/api/test_semantic_router_integration.py",
+        "sha256": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72"
+      }
+    ],
+    "provider_calls_by_this_review": 0,
+    "summary": "Closed, owner-authored semantic decoding failure diagnoses retain the observed provider usage and distinguish invocation, result-validation and semantic-response phases. Candidate rejection, completion authority and shared llm_router invocation remain unchanged.",
+    "tests_executed_by_this_review": false,
+    "tests_intent": [
+      "test/api/test_semantic_router_integration.py covers unknown aliases, stale source, malformed duplicate reserved envelopes, foreign binding, native grammar refusal, size refusal, unclassified exception messages and usage/private-body preservation.",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py adds an explicit retrieval-options authored double to its existing driver-loop test; this is not native task qualification."
+    ]
+  },
+  "limitations": [
+    "This is a pending-code and ownership audit, not a full runtime readiness certification.",
+    "Dirty paths are names from observed prior status outputs, not a stable accepted source snapshot.",
+    "No claim is made that closed failure diagnoses or version correlation itself fixes Terminal-Bench task outcomes."
+  ],
+  "merge_base": "77cdae9603c3c2e6bad4bfc0fdea35a2d8cfc88c",
+  "review_boundaries": {
+    "commits": false,
+    "evidence_output_is_only_write": true,
+    "hidden_verifier_or_solution_bodies_read": false,
+    "provider_invocations": 0,
+    "raw_provider_logs_read": false,
+    "source_and_git_reads_only": true,
+    "source_mutations": false
+  },
+  "safe_integration_recommendation": {
+    "base": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+    "immutable_commit_to_cherry_pick": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+    "reason": "Canonical contains later lifecycle/checkpoint/preflight/staged-patch changes absent from the old branch tree. Applying only the immutable commit preserves those changes.",
+    "required_validation": [
+      "Fresh isolated checkout cherry-pick followed by semantic-router integration, router invocation, native progress and related benchmark controls.",
+      "Document gates and exact resulting source revision before publication.",
+      "Candidate CLI upgrade separately needs a frozen owner-reviewed patch, rebuilt archive, fresh task preparations and runtime qualification; historical trials remain immutable."
+    ],
+    "whole_branch_or_dirty_tree_merge_recommended": false
+  },
+  "schema": "terminal-bench-pending-work-audit/v1",
+  "status": "immutable_commit_review_passed_pending_fresh_checkout_validation",
+  "unmerged_commits": [
+    "3ca896ae24b872001f3c5e2159426d2493209c7f"
+  ]
+}

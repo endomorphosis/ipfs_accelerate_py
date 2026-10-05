@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03",
+    "--task",
+    "largest-eigenval"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+  "selection": "explicit matched-model codex_cli/gpt-6.1-sol profile through llm_router; not Grok fallback",
+  "source_heads": {
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  }
+}

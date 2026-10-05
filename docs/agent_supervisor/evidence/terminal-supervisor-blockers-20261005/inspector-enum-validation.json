@@ -1,0 +1,76 @@
+{
+  "enum_owner_sha256": {
+    "cache": "3cca632184cfb2ee56346050f8a1be5113329a255338b358421f6fcd6a7437a6",
+    "doctor_dispatch": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3",
+    "doctor_workflow": "e375a0be14dcfe7579f917807f9308c7fa42024b67c11b1e0add18452dad0156",
+    "driver": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385",
+    "progress": "1e034ca7e0baf5a14642b80b51c4b4bf422190f2621ceafdc47683cece016811"
+  },
+  "enums": {
+    "cache_phases": [
+      "archive_advice",
+      "complete",
+      "native_binary_advice",
+      "native_library_advice",
+      "resource_observation"
+    ],
+    "doctor_analysis_statuses": [
+      "available",
+      "unavailable"
+    ],
+    "doctor_routes": [
+      "doctor_candidate",
+      "doctor_contract_candidate",
+      "model_router"
+    ],
+    "doctor_statuses": [
+      "candidate_ready",
+      "prepared",
+      "residual",
+      "unavailable"
+    ],
+    "idle_reasons": [
+      "",
+      "all_selectable_ready_tasks_deprioritized_as_off_mission",
+      "all_selectable_ready_tasks_reached_max_task_attempts",
+      "claim_withdrawn_control_not_dispatchable",
+      "completion_evidence_unavailable",
+      "expired_attempt_settlement_unavailable",
+      "native_dispatch_observation_unavailable",
+      "no_eligible_ready_tasks_after_selection_filters",
+      "no_ready_tasks",
+      "no_shard_selectable_ready_tasks",
+      "provider_capacity_backoff",
+      "task_fence_evidence_unavailable",
+      "unsettled_portal_failure_quarantine"
+    ],
+    "phases": [
+      "admission",
+      "context",
+      "doctor",
+      "implementation_setup",
+      "initial_context",
+      "native_execution",
+      "planning",
+      "prepare"
+    ],
+    "stop_reasons": [
+      "all_selectable_ready_tasks_reached_max_task_attempts",
+      "expired_attempt_settlement_unavailable",
+      "native_task_blocked",
+      "native_task_cancelled",
+      "native_task_completed",
+      "native_task_failed",
+      "run_ended_without_terminal_observation",
+      "timeout_observed_without_terminal_state",
+      "unsettled_portal_failure_quarantine"
+    ]
+  },
+  "inspector_sha256": "6ed295ed4b9c4f174b6b2e18b345fece1d5984052d37d6834abe06fc0248568d",
+  "original_inspector_preserved": true,
+  "original_summary_modified": false,
+  "private_diagnostic_filtered": true,
+  "schema": "bounded-trial-inspector-validation@1",
+  "unknown_usage_preserved": true,
+  "used_trial_03": false
+}

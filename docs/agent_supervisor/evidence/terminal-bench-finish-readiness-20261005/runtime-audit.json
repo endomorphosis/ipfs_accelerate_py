@@ -1,0 +1,616 @@
+{
+  "blockers": {
+    "broader_historical_coverage_gate_count": 5,
+    "broader_historical_coverage_gates": [
+      {
+        "detail": "General supervisor Grok4.7 route is available on host; full benchmark container pins Codex6.1 via llm_router. Need immutable provider selection, isolated installation/auth transport and provider-native usage receipts.",
+        "id": "grok-container-route",
+        "status": "unsupported"
+      },
+      {
+        "detail": "Generic benchmark constraints force one goal/subgoal/coding task. Reviewed repair dispatch has limited operator coverage; source384 candidates and Lean syntax do not prove arbitrary prose interpretation or behavioral correctness.",
+        "id": "broad-symbolic-planning",
+        "status": "partial"
+      },
+      {
+        "detail": "Empty/zero-symbol retrieval exists; selecting Source384 or legacy security inference/training still refuses empty population without separately bound decoder abstention.",
+        "id": "empty-source-decoder",
+        "status": "partial"
+      },
+      {
+        "detail": "Current profile is bounded exact files under /app. Additional languages/data, installs/builds/generated artifacts, services/VMs, Git transitions and other roots require explicit profiles and qualification.",
+        "id": "suite-task-profiles",
+        "status": "partial"
+      },
+      {
+        "detail": "840s supervisor work plus60s cleanup is a development cap, not every task native budget. Original remaining88 task agent budgets total41.29h before setup and verification. Fresh model/source trials require new matched baselines.",
+        "id": "budget-comparability",
+        "status": "partial"
+      }
+    ],
+    "historical_followup_applicability": "Earlier doctor metadata partition/create scope followups require current source review; do not blindly treat older open list as current blockers. Current source has explicit terminal_source_partition owner.",
+    "immediate_observed_runtime_gate_count": 1,
+    "immediate_observed_runtime_gates": [
+      {
+        "current_applicability": "stable canonical pins0.158 remain; concurrent checkout is under active unpublished repair and must be independently qualified",
+        "id": "isolated-planning-provider-failure",
+        "next_step": "Review and qualify synchronized provider CLI pins in isolated checkout, bounded health gate and rebuilt immutable bundle before fresh benchmark task.",
+        "status": "observed_on_old_trial"
+      }
+    ]
+  },
+  "checkouts": [
+    {
+      "classification": "canonical_published_checkout",
+      "head": "87545101dd6a487d57d68bb78f86305cf3f2b9f1",
+      "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005",
+      "pins": {
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": {
+          "CLI_VERSION": "0.158.0",
+          "MODEL": "gpt-6.1-sol",
+          "REASONING": "high"
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+          "CODEX_VERSION": "0.158.0"
+        }
+      },
+      "selected_tracked_status": "",
+      "source_bindings": {
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": {
+          "bytes": 26239,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+          "sha256": "b2a435505a3a72b118eb01be48f7fb57644def9b142fc16d910795f3fc989a07"
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+          "bytes": 77572,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+          "sha256": "b3f153e415a78df269df68d01afa75f5d81612360f79cfc7ae09a6b24150b631"
+        },
+        "ipfs_accelerate_py/llm_router.py": {
+          "bytes": 544049,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/ipfs_accelerate_py/llm_router.py",
+          "sha256": "1218309bf24c5f4b99b26753c0c55260b3da2ef35626f7b239d380153585475f"
+        }
+      },
+      "source_bytes_unchanged_during_observation": true,
+      "whole_checkout_clean_claimed": false
+    },
+    {
+      "classification": "concurrently_changing_unpublished_checkout",
+      "head": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+      "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+      "pins": {
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": {
+          "CLI_VERSION": null,
+          "MODEL": "gpt-6.1-sol",
+          "REASONING": "high"
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+          "CODEX_VERSION": null
+        }
+      },
+      "provider_profile_followup_observed_at_utc": "2026-10-05T06:46:14.828595+00:00",
+      "provider_profile_not_executed_by_audit": true,
+      "selected_tracked_status": "M benchmarks/agent_supervisor/container_coding/native_codex_baseline.py\n M benchmarks/agent_supervisor/container_coding/terminal_deployment.py\n M ipfs_accelerate_py/llm_router.py",
+      "source_bindings": {
+        "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py": {
+          "bytes": 26267,
+          "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+          "sha256": "e08d51294d1bf2fc28d7b4ffe2e8a8964fdf60bea84a5be433e364723fd319e0"
+        },
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": {
+          "bytes": 77712,
+          "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+          "sha256": "ed3346a9386ac685f043dadbaa5a340dc46079ece466dc5ee7439855c74a1b9e"
+        },
+        "ipfs_accelerate_py/llm_router.py": {
+          "bytes": 546227,
+          "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/ipfs_accelerate_py/llm_router.py",
+          "sha256": "021e90de6b5439df05c3bcbe7ac861004fad9f399e225197ed823639e2f2c69c"
+        }
+      },
+      "source_bytes_unchanged_during_observation": true,
+      "untracked_shared_provider_profile": {
+        "CLI_VERSION": "0.160.0",
+        "bytes": 584,
+        "literal_constants_missing_from_deployment_and_baseline_because_profile_is_shared": true,
+        "path": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+        "requires_fresh_archives": true,
+        "sha256": "4878780c97940145c074993016600467be316df8fde04062dab21177697af155",
+        "status": "unpublished_candidate"
+      },
+      "whole_checkout_clean_claimed": false
+    }
+  ],
+  "completion": {
+    "canonical_live_provider_benchmark_after_latest_lifecycle_changes": false,
+    "terminal_bench_finished": false,
+    "whole_suite_success_claimed": false
+  },
+  "coverage": {
+    "historical_task_category_counts": {
+      "bounded_pilot": 3,
+      "build_install_or_training_execution_profile_needed": 15,
+      "cross_root_input_capture_needed": 1,
+      "empty_source_index_representation_needed": 8,
+      "external_data_acquisition_profile_needed": 3,
+      "generated_artifact_and_execution_profile_needed": 3,
+      "git_state_transition_profile_needed": 3,
+      "non_app_repository_profile_needed": 1,
+      "persistent_service_or_vm_profile_needed": 10,
+      "public_test_path_provenance_review": 4,
+      "source_candidate_needs_profile": 1,
+      "source_data_or_language_capture_needs_review": 35,
+      "unknown_needs_exact_public_profile": 1
+    },
+    "latest_trial_is_repeat_of_existing_pilot_task": true,
+    "native_budget_context": "Historical88remaining native agent budgets total41.29hours before setup/verification; development profile840seconds supervisorwork+60cleanup is not native budget parity.",
+    "previously_excluded_task": "fix-code-vulnerability",
+    "prior_full_indexed_pilot_unique_tasks": 3,
+    "remaining_rewards": "unknown",
+    "runtime_qualification_from_static_harbor_parse": false,
+    "tasks_without_trials_under_methodology": 85,
+    "total_tasks": 89
+  },
+  "current_runtime": {
+    "codex_login_metadata": {
+      "argv": [
+        "codex",
+        "login",
+        "status"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "logged_in"
+    },
+    "codex_version": {
+      "argv": [
+        "codex",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "codex-cli 0.160.0"
+    },
+    "disk_free_bytes": 578391826432,
+    "docker_images": {
+      "argv": [
+        "docker",
+        "image",
+        "ls",
+        "--format",
+        "{{.Repository}}:{{.Tag}}\t{{.Size}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "ipfs-supervisor-preview-worker:20261005-r3\t1.87GB\nipfs-supervisor-preview-worker:20261005-r2\t1.76GB\nipfs-supervisor-preview-worker:20261005\t1.76GB\npython:3.12-slim-bookworm\t219MB"
+    },
+    "docker_info": {
+      "argv": [
+        "docker",
+        "info",
+        "--format",
+        "{{.Architecture}} {{.Driver}} {{.CgroupVersion}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "aarch64 overlayfs 2"
+    },
+    "docker_running_containers": {
+      "argv": [
+        "docker",
+        "ps",
+        "--format",
+        "{{.Names}}\t{{.Image}}\t{{.Status}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": ""
+    },
+    "grok_auth_file_metadata": {
+      "authentication_not_validated": true,
+      "exists": true,
+      "nonempty": true
+    },
+    "grok_version": {
+      "argv": [
+        "grok",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "grok 1.0.46 (2765805b9442) [stable]"
+    },
+    "harbor_environment": {
+      "argv": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-c",
+        "import importlib.metadata,json; print(json.dumps({n:importlib.metadata.version(n) for n in [\"harbor\",\"pydantic\"]}))"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\"harbor\": \"0.23.0\", \"pydantic\": \"2.13.5\"}"
+    },
+    "leanstral_system_service": {
+      "argv": [
+        "systemctl",
+        "is-active",
+        "ipfs-accelerate-leanstral.service"
+      ],
+      "returncode": 4,
+      "stderr": "",
+      "stdout": "inactive"
+    },
+    "leanstral_user_service": {
+      "argv": [
+        "systemctl",
+        "--user",
+        "is-active",
+        "ipfs-accelerate-leanstral.service"
+      ],
+      "returncode": 3,
+      "stderr": "",
+      "stdout": "inactive"
+    },
+    "memory": {
+      "MemAvailable": "112268620 kB",
+      "MemTotal": "127601388 kB",
+      "SwapFree": "12055040 kB"
+    },
+    "memory_psi": "some avg10=0.00 avg60=0.00 avg300=0.00 total=3153106668\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2797839472",
+    "service_inactive_is_not_claimed_as_codex_benchmark_blocker": true
+  },
+  "evidence": [
+    {
+      "bytes": 3202,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/readiness.json",
+      "sha256": "3896c61f7a00c04b3a0039f00006086a2e7c925030a2d6cae9674f64e8c4c009"
+    },
+    {
+      "bytes": 2649,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/qualification.json",
+      "sha256": "437af6aeb87161edf3bff3c12c39b928d7b8bb89ddbe158aef909e6d2b436976"
+    },
+    {
+      "bytes": 12745,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/preflight.json",
+      "sha256": "31f400f6eae577bcef5b95aae767fe600815b99ed96af74eafe869797d45571e"
+    },
+    {
+      "bytes": 943,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/route-selection.json",
+      "sha256": "e5e2d63723a531f521fa483de1ce97a20e8f587eb67d56c4e470f60f44b6e239"
+    },
+    {
+      "bytes": 499,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/provider-health.json",
+      "sha256": "af7ab828f81092543b5c503cd713725e30577d9157b72f0a6ed042750c7a7560"
+    },
+    {
+      "bytes": 500,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/provider-health-0158.json",
+      "sha256": "339679980b96e4a3ce7f58dca2291c97e87bba650dd4705ab3150f2caab1c417"
+    },
+    {
+      "bytes": 501,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/provider-health-0158-trace.json",
+      "sha256": "74a4bf46fa05599bd7ad858454d80efb65e0914053cb8630848ed588a2c7186f"
+    },
+    {
+      "bytes": 2755,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-02-command.json",
+      "sha256": "936a91faedf3a5d2b297a532221f5da659b572911167859e5f5c4451178db606"
+    },
+    {
+      "bytes": 58515,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-02/preparation.json",
+      "sha256": "42cc6a451b6384888a3969464dc78745e31339f858c1e6d83b1ba864f022a0ea"
+    },
+    {
+      "bytes": 108129,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-02/receipt.json",
+      "sha256": "4d37e523086d18e7546de3f549fa97156a464414734fe639f747298721332880"
+    },
+    {
+      "bytes": 25390,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-02/jobs/supervisor-full-largest-eigenval/largest-eigenval__aWFqANC/agent/supervisor-result.json",
+      "sha256": "5a0da43cfff9e1ddc4dfc3bc86fdc11036d7e37f79506f307e84d064be88bdf9"
+    },
+    {
+      "bytes": 2762,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/pilot-followups.json",
+      "sha256": "b1bc42b3a824106d369d284329c7b8db1e01f04f0dfdd0b8b3cb56b98aa70cf1"
+    },
+    {
+      "bytes": 3033,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/pilot-result.json",
+      "sha256": "b7f4347b7c49f0299e7c2f0de0233a4bf78fe36c23bf09dcaa86cd6f18095561"
+    },
+    {
+      "bytes": 6621,
+      "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/README.md",
+      "sha256": "9887e24508da540a6f346250b721f4787d7eeb69120e4e8ea289d864df4dc1c1"
+    }
+  ],
+  "historical_component_qualification": {
+    "reported_tests": 221,
+    "selected_source_comparisons": [
+      {
+        "current_binding": {
+          "bytes": 5333,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+          "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11"
+        },
+        "matches_historical_qualification": true,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+        "set": "harness"
+      },
+      {
+        "current_binding": {
+          "bytes": 3083,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py",
+          "sha256": "195412ba6895af6770d0982be6fd26b8af2affe62a0c15010cd1306e12ea51ad"
+        },
+        "matches_historical_qualification": true,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py",
+        "set": "harness"
+      },
+      {
+        "current_binding": {
+          "bytes": 13505,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "sha256": "1131258194742df240e320cf79e010e6bc4d5edd1678f49188704b4383bb568a"
+        },
+        "matches_historical_qualification": false,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+        "set": "harness"
+      },
+      {
+        "current_binding": {
+          "bytes": 16090,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+          "sha256": "d4d456e6520822045995d46eda89e8716aaef817778eea85a9a4c0e6bc43e1a1"
+        },
+        "matches_historical_qualification": true,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+        "set": "harness"
+      },
+      {
+        "current_binding": {
+          "bytes": 12263,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+          "sha256": "7af238ba61627c53652f7930d7f4e07ef42b20bcfc8a5ab6cd38467458390b3f"
+        },
+        "matches_historical_qualification": true,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+        "set": "harness"
+      },
+      {
+        "current_binding": {
+          "bytes": 13505,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+          "sha256": "1131258194742df240e320cf79e010e6bc4d5edd1678f49188704b4383bb568a"
+        },
+        "matches_historical_qualification": false,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+        "set": "semantic"
+      },
+      {
+        "current_binding": {
+          "bytes": 16092,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "sha256": "933cbe2b0262f061166edc4ea86ea6b3f08d31eab37ae06560be37a1de2c0284"
+        },
+        "matches_historical_qualification": false,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "set": "semantic"
+      },
+      {
+        "current_binding": {
+          "bytes": 28629,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "sha256": "4b08e56dde6ef69315c0f641101656ac713c6219cc548cbd64c2e9242e7ea023"
+        },
+        "matches_historical_qualification": false,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+        "set": "semantic"
+      },
+      {
+        "current_binding": {
+          "bytes": 8638,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/test/api/test_semantic_router_integration.py",
+          "sha256": "a7b18167842296d02b922772c5acd5f2a71830c6f8724eeb64193949ca79bd67"
+        },
+        "matches_historical_qualification": false,
+        "path": "test/api/test_semantic_router_integration.py",
+        "set": "semantic"
+      },
+      {
+        "current_binding": {
+          "bytes": 20382,
+          "path": "/home/barberb/lift_coding_worktrees/supervisor-lifecycle-followup-20261005/test/api/test_semantic_router_translation.py",
+          "sha256": "7f9c837e8fb0449cfab8f25590e0b07a31820edc45356b4ee85748d57009cc8e"
+        },
+        "matches_historical_qualification": true,
+        "path": "test/api/test_semantic_router_translation.py",
+        "set": "semantic"
+      }
+    ],
+    "transfers_as_current_full_qualification": false
+  },
+  "historical_provider_health": {
+    "interpretation": "Historical CLI0.160 returned; two CLI0.158 probes failed. Neither login readiness nor correlated version failures establish current quota, live inference success or causal mechanism.",
+    "performed_this_audit": false,
+    "records": [
+      {
+        "classification": null,
+        "cli_version": "0.160.0",
+        "error_type": null,
+        "expected_response": true,
+        "model": "gpt-6.1-sol",
+        "observation": {
+          "completion_tokens": 5,
+          "exit_code": 0,
+          "model_id": "gpt-6.1-sol",
+          "prompt_tokens": 15500,
+          "thread_id": "01a10ac7-4a47-7a10-8b9c-89bcc1d00527"
+        },
+        "provider": "codex_cli",
+        "seconds": 5.169384162989445,
+        "status": "returned"
+      },
+      {
+        "classification": null,
+        "cli_version": "0.158.0",
+        "error_type": "LLMRouterError",
+        "expected_response": null,
+        "model": "gpt-6.1-sol",
+        "observation": {
+          "exit_code": 1,
+          "model_id": "gpt-6.1-sol",
+          "thread_id": "01a10ac8-e351-7aa0-8001-8142283d77c2"
+        },
+        "provider": "codex_cli",
+        "seconds": 5.703388566005742,
+        "status": "failed"
+      },
+      {
+        "classification": null,
+        "cli_version": "0.158.0",
+        "error_type": "LLMRouterError",
+        "expected_response": null,
+        "model": "gpt-6.1-sol",
+        "observation": {
+          "exit_code": 1,
+          "model_id": "gpt-6.1-sol",
+          "thread_id": "01a10aca-4a78-7231-85a8-4cb3078d904e"
+        },
+        "provider": "codex_cli",
+        "seconds": 2.6870902299997397,
+        "status": "failed"
+      }
+    ]
+  },
+  "latest_actual_benchmark": {
+    "cli_version": "0.158.0",
+    "complete_single_trial_receipt": true,
+    "failure": {
+      "error": {
+        "message": "the model proposal did not pass independent admission",
+        "type": "RuntimeError"
+      },
+      "error_phase": "planning",
+      "native_progress": {
+        "completion_authority": false,
+        "provider_outcomes": [
+          {
+            "exit_code": 1,
+            "invocation_id_sha256": "5692920d63ec4e8de7a2ec7dc08d9ab1ec91015d044be49d295e83339351441d",
+            "phase": "planning",
+            "router_calls": 1,
+            "seconds": 3.688436457014177,
+            "status": "failed",
+            "timeout_seconds": 90
+          }
+        ],
+        "provider_outcomes_omitted": 0,
+        "retry_authority": false,
+        "samples": 0,
+        "schema": "terminal-native-progress@1",
+        "settlement_authority": false,
+        "stop_reason": "run_ended_without_terminal_observation",
+        "transition_count": 0,
+        "transitions": [],
+        "transitions_omitted": 0
+      },
+      "remaining_processes": null,
+      "seconds": 23.37985427197418,
+      "task_completed": false,
+      "worker_cleanup_returncode": 0
+    },
+    "harbor_returncode": 0,
+    "interpretation": "Latest selected trial failed before native task dispatch because isolated planning router exited unsuccessfully. This is distinct from historical native_execution timeout. Exact CLI causality is unproven.",
+    "invocation_seconds": 279.48372908099554,
+    "model": "gpt-6.1-sol",
+    "original_task_inputs_unchanged": true,
+    "planning": {
+      "failure": {
+        "message": "provider proposal failed and local fallback is disabled: isolated planning router did not complete successfully",
+        "type": "PromptGoalPlannerError"
+      },
+      "provider": "codex_cli",
+      "provider_calls": 1,
+      "provider_observation": {
+        "cached_input_tokens": null,
+        "cached_tokens": null,
+        "completion_tokens": null,
+        "input_tokens": null,
+        "model_id": null,
+        "output_tokens": null,
+        "prompt_tokens": null,
+        "reasoning_output_tokens": null,
+        "session_id": null,
+        "total_cost_usd": null,
+        "total_tokens": null,
+        "usage": null
+      },
+      "provider_receipt": {
+        "attempted": true,
+        "latency_ms": 7437,
+        "max_new_tokens": 4096,
+        "model_id": "gpt-6.1-sol",
+        "provider_id": "codex_cli",
+        "reason_code": "failed",
+        "request_bytes": 23292,
+        "request_sha256": "sha256:a55e2a216775acfe9c74d3fe0779fa1dc29a87a0b615e4ac6972dbe3a10a8bf8",
+        "response_bytes": 0,
+        "response_sha256": "",
+        "status": "failed",
+        "timeout_ms": 90000
+      },
+      "qualified": false
+    },
+    "runtime_archive_sha256": "6a7b9ec5951126efb873e4f2128c0c33f6dc311bdb96d5b937c53e79af058ff0",
+    "source_bundle_origin": {
+      "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005": "3ca896ae24b872001f3c5e2159426d2493209c7f",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+    },
+    "task": "largest-eigenval",
+    "trials": [
+      {
+        "durations_seconds": {
+          "agent_execution": 24.483479,
+          "agent_setup": 231.583151,
+          "environment_setup": 3.973898,
+          "verifier": 2.086626
+        },
+        "exception_type": null,
+        "reward": {
+          "reward": 0.0
+        },
+        "task": "terminal-bench/largest-eigenval",
+        "trial": "largest-eigenval__aWFqANC"
+      }
+    ]
+  },
+  "observed_at_utc": "2026-10-05T06:45:42.370641+00:00",
+  "safe_next_steps": [
+    "Coordinate with owner of actively changing terminal-supervisor-blockers checkout; do not mutate or launch duplicate health/model calls.",
+    "Qualify source/router and synchronized shared native CLI0.160 candidate with fresh evidence, preserving historical0.158 cachepolicy identity; then rebuild runtime bundle from frozen source/dependency selections.",
+    "Perform one bounded fresh full-supervisor trial with a new task/attempt identity, retained router receipts, exact scopes and original hidden verifier separation; preserve prior failures.",
+    "Expand explicit public task profiles for85untried tasks and empty source/service/build/Git/data cases before fullsuite execution; matched ablation campaign remains separate."
+  ],
+  "schema": "terminal-bench-finish-runtime-audit@1",
+  "scope": {
+    "containers_launched": 0,
+    "credential_contents_read": false,
+    "hidden_tests_or_solutions_read": false,
+    "provider_calls": 0,
+    "raw_provider_response_bodies_read": false,
+    "report_only_file_write": true,
+    "secrets_exported": false,
+    "services_changed": false,
+    "tests_started": 0
+  }
+}

@@ -1,0 +1,241 @@
+{
+  "conclusion": {
+    "all_task_rewards_known": false,
+    "benchmark_advantage_claimed": false,
+    "bounded_next_trial_supported_pending_native_execution": true,
+    "host_resource_blocker_observed": false,
+    "task_parallel_planning_demonstrated": false,
+    "whole_suite_finished": false,
+    "whole_suite_supported_and_qualified": false
+  },
+  "current_trial": {
+    "historical_score_not_overwritten": true,
+    "new_score_asserted_by_this_preflight": false,
+    "status": "one updated CLI/cache full-supervisor rerun reserved for root execution and bounded official-result interpretation",
+    "task": "largest-eigenval"
+  },
+  "dataset_commit": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "historical_executed_pilots": [
+    {
+      "error_phase": null,
+      "error_type": null,
+      "historical_trial_not_current_source_score": true,
+      "receipt": {
+        "path": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/pilot-result.json",
+        "sha256": "665bfce6d4b4ab5c57467c7abd25ed236c9b47afe9022427a2f8a9d7e6fe3846"
+      },
+      "remaining_processes": 0,
+      "reward": {
+        "reward": 1.0
+      },
+      "task": "headless-terminal",
+      "task_completed": true
+    },
+    {
+      "error_phase": "native_execution",
+      "error_type": "TimeoutError",
+      "historical_trial_not_current_source_score": true,
+      "receipt": {
+        "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/pilot-result.json",
+        "sha256": "b7f4347b7c49f0299e7c2f0de0233a4bf78fe36c23bf09dcaa86cd6f18095561"
+      },
+      "remaining_processes": 0,
+      "reward": {
+        "reward": 0.0
+      },
+      "task": "largest-eigenval",
+      "task_completed": false
+    },
+    {
+      "error_phase": null,
+      "error_type": null,
+      "historical_trial_not_current_source_score": true,
+      "receipt": {
+        "path": "/home/barberb/lift_coding/artifacts/terminal-suite-feal-pilot-20261004/pilot-result.json",
+        "sha256": "539e3b31b66f6b09ca0b5d973e6e04523ee1bb642c5b2ae48970c859d466571a"
+      },
+      "remaining_processes": 0,
+      "reward": {
+        "reward": 1.0
+      },
+      "task": "feal-differential-cryptanalysis",
+      "task_completed": true
+    }
+  ],
+  "inventory": {
+    "categories_are_not_executed_failure_counts": true,
+    "evidence": {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/broader-readiness.json",
+      "sha256": "a8558f1049ec57aadde95d66063ac524ad1248bbe8a4a7d38c8c722bafeea2bb"
+    },
+    "historical_category_counts": {
+      "bounded_pilot": 3,
+      "build_install_or_training_execution_profile_needed": 15,
+      "cross_root_input_capture_needed": 1,
+      "empty_source_index_representation_needed": 8,
+      "external_data_acquisition_profile_needed": 3,
+      "generated_artifact_and_execution_profile_needed": 3,
+      "git_state_transition_profile_needed": 3,
+      "non_app_repository_profile_needed": 1,
+      "persistent_service_or_vm_profile_needed": 10,
+      "public_test_path_provenance_review": 4,
+      "source_candidate_needs_profile": 1,
+      "source_data_or_language_capture_needs_review": 35,
+      "unknown_needs_exact_public_profile": 1
+    },
+    "historical_pilots": 3,
+    "historical_remaining_inventory": 88,
+    "prior_excluded_task": "fix-code-vulnerability",
+    "readiness_review_is_not_runtime_qualification": true,
+    "tasks_without_trial_under_this_methodology": 85,
+    "total_tasks": 89,
+    "untried_rewards": null
+  },
+  "observed_at": "2026-10-05T07:05:49.839520+00:00",
+  "remaining_engineering_gaps": [
+    {
+      "detail": "General supervisor Grok4.7 route is available on host; full benchmark container pins Codex6.1 via llm_router. Need immutable provider selection, isolated installation/auth transport and provider-native usage receipts.",
+      "id": "grok-container-route",
+      "status": "unsupported"
+    },
+    {
+      "detail": "Generic benchmark constraints force one goal/subgoal/coding task. Reviewed repair dispatch has limited operator coverage; source384 candidates and Lean syntax do not prove arbitrary prose interpretation or behavioral correctness.",
+      "id": "broad-symbolic-planning",
+      "status": "partial"
+    },
+    {
+      "detail": "Empty/zero-symbol retrieval exists; selecting Source384 or legacy security inference/training still refuses empty population without separately bound decoder abstention.",
+      "id": "empty-source-decoder",
+      "status": "partial"
+    },
+    {
+      "detail": "Current profile is bounded exact files under /app. Additional languages/data, installs/builds/generated artifacts, services/VMs, Git transitions and other roots require explicit profiles and qualification.",
+      "id": "suite-task-profiles",
+      "status": "partial"
+    },
+    {
+      "detail": "840s supervisor work plus60s cleanup is a development cap, not every task native budget. Original remaining88 task agent budgets total41.29h before setup and verification. Fresh model/source trials require new matched baselines.",
+      "id": "budget-comparability",
+      "status": "partial"
+    }
+  ],
+  "resources": {
+    "architecture": "aarch64",
+    "disk_free_bytes": 566634455040,
+    "disk_used_percent": 80.87,
+    "docker": {
+      "argv": [
+        "docker",
+        "version",
+        "--format",
+        "{{.Server.Version}}"
+      ],
+      "returncode": 0,
+      "stdout": "29.2.1"
+    },
+    "gpu_compute_processes": {
+      "argv": [
+        "nvidia-smi",
+        "--query-compute-apps=pid,used_memory",
+        "--format=csv,noheader"
+      ],
+      "returncode": 0,
+      "stdout": ""
+    },
+    "gpu_unified_memory_note": "GB10 total/free GPU memory unsupported in nvidia-smi; host availability and native admission remain authoritative.",
+    "leanstral_system": {
+      "argv": [
+        "systemctl",
+        "is-active",
+        "ipfs-accelerate-leanstral.service"
+      ],
+      "returncode": 4,
+      "stdout": "inactive"
+    },
+    "leanstral_user": {
+      "argv": [
+        "systemctl",
+        "--user",
+        "is-active",
+        "ipfs-accelerate-leanstral.service"
+      ],
+      "returncode": 3,
+      "stdout": "inactive"
+    },
+    "memory": {
+      "MemAvailable_kib": 111483824,
+      "MemFree_kib": 5047336,
+      "MemTotal_kib": 127601388,
+      "SwapFree_kib": 11902000,
+      "SwapTotal_kib": 16777212
+    },
+    "memory_psi": "some avg10=0.00 avg60=0.05 avg300=0.05 total=3155216515\nfull avg10=0.00 avg60=0.05 avg300=0.05 total=2799916105",
+    "running_containers": {
+      "argv": [
+        "docker",
+        "ps",
+        "--format",
+        "{{.Names}}\t{{.Image}}\t{{.Status}}"
+      ],
+      "returncode": 0,
+      "stdout": ""
+    }
+  },
+  "route_and_setup": {
+    "current_cache_policy": "source384-native-aarch64-dontneed@2",
+    "current_cli_inference_health": {
+      "cli_version": "0.160.0",
+      "expected_response": true,
+      "model": "gpt-6.1-sol",
+      "provider": "codex_cli",
+      "source": {
+        "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/provider-health.json",
+        "sha256": "af7ab828f81092543b5c503cd713725e30577d9157b72f0a6ed042750c7a7560"
+      },
+      "status": "returned"
+    },
+    "current_container_cli_version": "0.160.0",
+    "current_full_benchmark_provider": "codex_cli through llm_router, explicitly matched model gpt-6.1-sol",
+    "dynamic_grok_to_codex_container_fallback_qualified": false,
+    "grok_container_support": "not yet qualified; host readiness does not establish container provider installation/auth/usage transport",
+    "historical_cli_compatibility": {
+      "new_cli": "0.160.0",
+      "old_cli": "0.158.0",
+      "old_cli_model_rejection_observed": true,
+      "source": {
+        "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/cli-compatibility.json",
+        "sha256": "ef10c92c508c66885644216dbff8c34bc4ca3b40601432d70c8309ee90754a1f"
+      }
+    },
+    "host_metadata_readiness_source": {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/route-selection.json",
+      "sha256": "e5e2d63723a531f521fa483de1ce97a20e8f587eb67d56c4e470f60f44b6e239"
+    }
+  },
+  "schema": "terminal-supervisor-final-preflight@1",
+  "secrets_exported": false,
+  "source_boundary": {
+    "hidden_verifier_or_solution_bodies_read": false,
+    "historical_bounded_result_summaries_read": true,
+    "provider_calls_in_this_preflight": 0,
+    "public_task_toml_read": true,
+    "service_or_container_mutations": false
+  },
+  "source_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+  "time_allowances": {
+    "current_extended_profile_cleanup_seconds": 60,
+    "current_extended_profile_harbor_seconds": 960,
+    "current_extended_profile_work_seconds": 840,
+    "historical_budget_mismatch_counts": {
+      "native900_with840_work60_cleanup": 47,
+      "selected_cap_shorter_than_native": 39,
+      "selected_envelope_longer_than_native_requires_explicit_disclosure_or_adjustment": 2
+    },
+    "interpretation": "Sums of permitted per-task agent time limits, not predicted runtime. Excludes setup, indexing/qualification, verification, retries and repeated trials. Parallel execution would reduce wall time subject to admission.",
+    "native_agent_budget_hours_89_tasks": 41.541666666666664,
+    "native_agent_budget_hours_untried85": 40.291666666666664,
+    "native_agent_budget_seconds_89_tasks": 149550.0,
+    "native_agent_budget_seconds_untried85": 145050.0,
+    "three_matched_arms_sum_hours_89_tasks": 124.625
+  }
+}

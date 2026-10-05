@@ -731,3 +731,65 @@ validation/review, merge currentness and durable completion. Its controls must
 cover parallel independent tasks, dependency-aware readiness and cold restart
 before claiming parallel execution. These profile and execution increments
 remain planned; this child-ownership change does not implement them.
+
+## Terminal-Bench finishing gates (2026-10-05)
+
+The [current readiness assessment](evidence/terminal-bench-finish-readiness-20261005/assessment.json)
+records **160 passing tests**, zero failures or skips, and unchanged source
+bindings. This includes native empty-program owner/context cases and the shared
+router's closed failure diagnostics. The earlier 156-pass/four-failure run is
+retained: its interpreter used DuckDB 1.4.3 and a Quack build without the required
+serve/query functions. The existing interpreter with DuckDB 1.5.5 passes the
+unchanged capability gate and all 160 cases, matching the container dependency
+pin. The first diagnostic code alone does not identify the substantive failure;
+the complete capability report does.
+
+The latest completed eigenvalue trial at the initial audit failed in planning before native START:
+the isolated router exited unsuccessfully and returned no response. Its official
+reward remains zero. Two earlier Codex CLI 0.158 health checks failed while a
+0.160 host check succeeded; this observation does not prove version causality or
+establish health inside the task container. Canonical production calls continue
+through llm_router. The reviewed semantic-response diagnostics commit is
+integrated here; actively changing provider-upgrade work remains separate until
+it is frozen and qualified.
+
+The next trial requires a qualified provider profile, a fresh immutable runtime
+archive containing the lifecycle/checkpoint and patch fixes, fresh signed trial
+preparation, and provider accounting inside the original disposable container.
+Changing a CLI pin also requires rebuilding or requalifying its setup cache.
+Earlier prepared archives and trials cannot establish execution of these changes.
+
+The eight documented default-host validation failures do not explain this
+planning failure. The full container arm installs its own signed,
+privilege-dropping candidate runner. Signed empty-program retrieval is also
+implemented; selecting Source384, security inference or training on that empty
+population still requires independently bound decoder abstention. That
+conditional gate must not be described as a blanket lack of empty-source support.
+
+The historical ledger leaves 85 of 89 task names without trials under its
+methodology. Its two selected-task passes use an older model/profile and are
+not a completed suite score. Exact file effects under /app still need broader
+public profiles for builds, installations, services, VMs, Git transitions and
+other roots. Static category counts are review guidance, not execution verdicts.
+The development 5 CPU/16 GiB/840-second work profile is distinct from native task
+budgets: 87 of 89 public agent limits exceed 840 seconds. A comparable complete
+evaluation needs a pinned per-task resource/time policy and matched fresh arms.
+
+Grok container transport, the inactive Leanstral service and broader symbolic
+operator coverage remain improvements; the selected Codex container arm does
+not depend on their completion. GitHub's account billing lock prevents hosted
+CI from starting but does not prevent local Harbor execution. This assessment
+makes no new provider calls and records no new official task success.
+
+The [merged qualification](evidence/terminal-bench-finish-readiness-20261005/merged-qualification.json)
+records **215 passing tests**, zero failures or skips, after incorporating the
+independently qualified ordinary-supervisor custody changes. All 2,870 source
+bindings match the tested commit and remain unchanged. Earlier selections
+overlap this run and are not added to its count. A separate owner started
+fresh eigenvalue trial 03 with CLI 0.160.0 and a new archive; the retained
+[observation](evidence/terminal-bench-finish-readiness-20261005/trial-03-observation.json)
+was captured before a completed receipt or official reward was available.
+The later [completed recovery evidence](evidence/terminal-supervisor-blockers-20261005/README.md)
+records reward 1.0, native completion and clean shutdown, actual Source384
+inference, and 291432 observed tokens. The CLI/cache upgrade is now frozen and
+qualified in that Docker trial; the remaining suite gates above still apply.

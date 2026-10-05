@@ -1,0 +1,39 @@
+{
+  "archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "prepare",
+    "--dataset",
+    "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+    "--task",
+    "largest-eigenval",
+    "--task-profile",
+    "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+    "--archive",
+    "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03",
+    "--arm",
+    "full",
+    "--resource-profile",
+    "source384-5cpu-16gib-extended@1",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+    "--setup-cache-policy",
+    "source384-native-aarch64-dontneed@2"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-supervisor-blockers-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  }
+}
