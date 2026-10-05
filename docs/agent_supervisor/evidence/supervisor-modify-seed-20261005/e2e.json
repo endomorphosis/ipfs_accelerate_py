@@ -1,0 +1,289 @@
+{
+  "schema": "supervisor-modify-seed-e2e-evidence@1",
+  "base_commit": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "scope": "No production edits in this lane; new real-Git replay tests and updated attestation projection unit test.",
+  "runs": {
+    "red-01": {
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_unchanged": false,
+      "before_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "073df3a758b3feb60ac36fa23f088b8727af9794c91d74caebcc3fbd241083ac",
+        "test/api/test_supervisor_modify_seed_replay.py": "33033f642ea8c78659bb4e9ce6a6cb11693d9a8d3ec907d36a33ab62e1802893"
+      },
+      "after_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "baf4b0b31369bf2ca44319682040f65e7b91ab2069b7b3a8a26f99f00b1bb29f",
+        "test/api/test_supervisor_modify_seed_replay.py": "33033f642ea8c78659bb4e9ce6a6cb11693d9a8d3ec907d36a33ab62e1802893"
+      },
+      "log_sha256": "ae28b4f04f208c08d70854b2ffd6ef19ba0ab47d3ca91a505c5d0740bfd62d44",
+      "xml_sha256": "a71fe2d1da8ebe0cae30a7845676938764a3e8edda41047a575e9c0bdc490168",
+      "ast_seal": {
+        "fresh_catalog": true,
+        "records": 0,
+        "completion_authoritative_records": 0
+      },
+      "passed_nodes": []
+    },
+    "red-02": {
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_unchanged": true,
+      "before_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "baf4b0b31369bf2ca44319682040f65e7b91ab2069b7b3a8a26f99f00b1bb29f",
+        "test/api/test_supervisor_modify_seed_replay.py": "86b9e9713ac2f9d410d85278e3f309ae39b6e37879c6b8a93052f31f001f2b7a"
+      },
+      "after_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "baf4b0b31369bf2ca44319682040f65e7b91ab2069b7b3a8a26f99f00b1bb29f",
+        "test/api/test_supervisor_modify_seed_replay.py": "86b9e9713ac2f9d410d85278e3f309ae39b6e37879c6b8a93052f31f001f2b7a"
+      },
+      "log_sha256": "c134f7d1062cd599188afaa78944f1b72f0c7d7aadddaef646e6a2d3afd364c7",
+      "xml_sha256": "a462b0bf5d041f3bbf508c77c9a5ba58622a49beca0d64b06e16a26dea3de1ca",
+      "ast_seal": {
+        "fresh_catalog": true,
+        "records": 0,
+        "completion_authoritative_records": 0
+      },
+      "passed_nodes": []
+    },
+    "red-03": {
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_unchanged": true,
+      "before_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4c41fedb1c3a17e441af38437e8d4433195ab8e5e212a41a48971d309a8c8653",
+        "test/api/test_supervisor_modify_seed_replay.py": "da076902562266b88df39facdb8d9eacd915e033a97e89b7bcaac9a6a3989678"
+      },
+      "after_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4c41fedb1c3a17e441af38437e8d4433195ab8e5e212a41a48971d309a8c8653",
+        "test/api/test_supervisor_modify_seed_replay.py": "da076902562266b88df39facdb8d9eacd915e033a97e89b7bcaac9a6a3989678"
+      },
+      "log_sha256": "76f0eae7339984b6d9a0db4483eec5f248bd39d27eab6d4e3f2b78c09449121f",
+      "xml_sha256": "97a558240316c70380e9892380387a942cd2d54ac122bb0098349b9459a6d62e",
+      "ast_seal": {
+        "fresh_catalog": true,
+        "records": 0,
+        "completion_authoritative_records": 0
+      },
+      "passed_nodes": []
+    },
+    "pristine-red-01": {
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_unchanged": true,
+      "before_source_sha256": {
+        "test_pristine_modify_seed_replay.py": "4521cac18e3aa0d9082cad52086a313c4549b663253839750843d2b1410d4e4e",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "618deb3aea5347af756744053737a88c48bca5cd9101fadc7d1a5c51554c1700",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4a2daa231dc9e1cb9fdfe2232be84782b16bdc6eb1cc6a14abd4d2c5f97fae9e"
+      },
+      "after_source_sha256": {
+        "test_pristine_modify_seed_replay.py": "4521cac18e3aa0d9082cad52086a313c4549b663253839750843d2b1410d4e4e",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "618deb3aea5347af756744053737a88c48bca5cd9101fadc7d1a5c51554c1700",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "4a2daa231dc9e1cb9fdfe2232be84782b16bdc6eb1cc6a14abd4d2c5f97fae9e"
+      },
+      "log_sha256": "eacf844f55354f6ec551d62d8d75bf323f27abdcefd8bfda915ec668068add6f",
+      "xml_sha256": "e60a21f7c74c7eaf44efa5db2c2bd0e66464e8a6fb572ec11371b06ab4de1d6e",
+      "ast_seal": {
+        "fresh_catalog": true,
+        "records": 0,
+        "completion_authoritative_records": 0
+      },
+      "passed_nodes": []
+    },
+    "green-03": {
+      "exit_code": 0,
+      "counts": {
+        "tests": 68,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "source_unchanged": false,
+      "before_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "05d3015d8c3dcf9c84e3b2d5808ed151a0a45b33d78a9b2e25710f160ebce82a",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "70b1539fe08052a2c6a346545a28af6082f3ff57b89dd2fbff7d86c050c55d65",
+        "test/api/test_agent_supervisor_prior_attempt_seed.py": "a3e543566215bce86049b72dfabf39895a411b9fc0e9d29c25447c2ff67fe3d0",
+        "test/api/test_prior_seed_guidance_replay.py": "58891825e36cee2e176576fd494245c02e0c3739935e4ea3445861eca69c39bd",
+        "test/api/test_supervisor_modify_seed_contract.py": "ac2ba7a86f48b09375797c8709d8d0ae352b604c4af19a302cd152f7deb08645",
+        "test/api/test_supervisor_modify_seed_replay.py": "4521cac18e3aa0d9082cad52086a313c4549b663253839750843d2b1410d4e4e"
+      },
+      "after_source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "05d3015d8c3dcf9c84e3b2d5808ed151a0a45b33d78a9b2e25710f160ebce82a",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "c9b81d9d530c94472f0b03600a09d10c6d61a82dd33e5632d691f100937f5f32",
+        "test/api/test_agent_supervisor_prior_attempt_seed.py": "a3e543566215bce86049b72dfabf39895a411b9fc0e9d29c25447c2ff67fe3d0",
+        "test/api/test_prior_seed_guidance_replay.py": "58891825e36cee2e176576fd494245c02e0c3739935e4ea3445861eca69c39bd",
+        "test/api/test_supervisor_modify_seed_contract.py": "2c69763ff8a110a5994e62b61253c3eae6b31913fbd04d6c8d1cc27690d60e82",
+        "test/api/test_supervisor_modify_seed_replay.py": "4521cac18e3aa0d9082cad52086a313c4549b663253839750843d2b1410d4e4e"
+      },
+      "log_sha256": "d24602d9f016cb0509313053a94ea37c0316a9caf4eba3c770f1d1d884232bee",
+      "xml_sha256": "1b70311de2fd036d57c06a81b8fd8ceb71b519f448b4649297fb61d2c57543c9",
+      "ast_seal": {
+        "fresh_catalog": true,
+        "records": 68,
+        "completion_authoritative_records": 0
+      },
+      "passed_nodes": [
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_apply_prior_attempt_seed_replays_without_moving_head",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_board_completion_merge_queued_is_not_complete",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_board_completion_merged_is_complete",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_board_completion_validation_failure_is_incomplete",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_consume_merge_rejects_queue_target_mismatch",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_daemon_configured_merge_target_used_for_seed_baseline",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_attempt_seed_plan_first_attempt_uses_baseline",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_attempt_seed_plan_reuses_unmerged_commit",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_attempt_seed_plan_skips_when_already_on_target",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_authority_filters_protected_paths_and_matches_globs",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_child_secret_fails_pre_dispatch_and_rolls_back",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_divergence_preserves_baseline_and_replays_full_child_delta",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_empty_tree_delta_is_explicit_no_change",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_fast_forward_replays_without_rejected_ancestry",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_ignores_unconfigured_gitlink_advanced_only_on_main",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_output_attestations_bind_modify_before_and_after_bytes",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_preserves_configured_dependency_changed_only_on_main[add]",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_preserves_configured_dependency_changed_only_on_main[advance]",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_reconciliation_failure_removes_staged_replay",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_rejects_unconfigured_root_gitlink_delta",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_rejects_unreconciled_nested_gitlink_delta",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_replays_child_only_divergent_delta",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_requires_accepted_same_identity_proposal",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_root_only_replay_keeps_configured_child_at_baseline",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_root_replay_failure_rolls_back_to_baseline",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_prior_seed_root_secret_fails_pre_dispatch_and_rolls_back",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[mixed]",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[staged]",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_proposal_patch_roundtrips_new_and_existing_files[untracked]",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_record_prior_attempt_seed_failure_never_writes_inside_candidate",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_record_prior_attempt_seed_failure_writes_guidance_outside_candidate",
+        "api/test_agent_supervisor_prior_attempt_seed.py::test_retry_seed_replays_absent_scoped_target_through_dual_preflight",
+        "api/test_prior_seed_guidance_replay.py::test_candidate_event_state_is_refused_before_any_guidance_write",
+        "api/test_prior_seed_guidance_replay.py::test_exact_guidance_restart_replay_and_consumption_do_not_scan_events",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[attempt]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[authority]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[boolean_attempt]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[duplicate_key]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[extra]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[guidance]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[key]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[oversize]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[schema]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[symlink]",
+        "api/test_prior_seed_guidance_replay.py::test_foreign_stale_or_malformed_guidance_is_not_replayed[task]",
+        "api/test_prior_seed_guidance_replay.py::test_guidance_budget_refusal_preserves_pending_advice",
+        "api/test_prior_seed_guidance_replay.py::test_symlinked_log_directory_does_not_contaminate_candidate",
+        "api/test_supervisor_modify_seed_replay.py::test_foreign_namespace_is_refused_before_modify_replay",
+        "api/test_supervisor_modify_seed_replay.py::test_foreign_task_cannot_replay_real_accepted_modify_proposal[board_namespace]",
+        "api/test_supervisor_modify_seed_replay.py::test_foreign_task_cannot_replay_real_accepted_modify_proposal[canonical_task_cid]",
+        "api/test_supervisor_modify_seed_replay.py::test_foreign_task_cannot_replay_real_accepted_modify_proposal[canonical_task_key]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_retry_reaches_provider_command_only_after_post_replay_preflight",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_retry_refuses_provider_admission_after_candidate_byte_drift",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_authority_requires_source_proposal_namespace[None]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_authority_requires_source_proposal_namespace[foreign-board]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_never_attests_out_of_scope_source_files[staged]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_never_attests_out_of_scope_source_files[untracked]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_real_proposals_pass_both_dependency_preflights",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[after_blob]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[after_bytes]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[baseline_identity]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[before_blob]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[before_bytes]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[board_namespace]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[duplicate_output]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[malformed_output]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[task_identity]",
+        "api/test_supervisor_modify_seed_replay.py::test_modify_seed_rejects_resealed_tampering_after_real_replay[unattested_output]"
+      ]
+    }
+  },
+  "qualification": {
+    "red-01": "Fixture setup failure: unsupported merge_target constructor argument; not behavioral evidence.",
+    "red-02": "Fixture identity registration missing; accepted source event lacked CID; not MODIFY behavior evidence.",
+    "red-03": "Meaningful post-replay dependency refusal v2_present_target_digest_mismatch. Relevant owner behavior unchanged; preflight file had new constant only.",
+    "pristine-red-01": "Same positive test bytes fail at post-replay preflight on clean base commit. Import origin is asserted; real source proposal, baseline preflight, replay gate and byte/HEAD assertions already passed.",
+    "green-03": "68 passing tests; cross-agent production source changed during run. Diagnostic only; root final joined run supersedes qualification."
+  },
+  "effects": {
+    "real_owners": [
+      "canonical task registration",
+      "accepted source proposal validation",
+      "baseline dependency preflight",
+      "Git seed replay",
+      "pre-dispatch proposal validation",
+      "content-bound seed authority",
+      "post-replay dependency preflight",
+      "retry prompt construction",
+      "ephemeral worktree orchestration"
+    ],
+    "substituted_effect": "Installed-distribution probe result only; provider command construction is stopped by a BaseException barrier after actual admission owners pass.",
+    "provider_calls": 0,
+    "positive_barrier_reached": true,
+    "tampered_candidate_blocked_before_barrier": true,
+    "exact_utf8_crlf_no_final_newline_roundtrip": true,
+    "head_stays_baseline_through_replay_and_preflight": true,
+    "staged_and_untracked_out_of_scope_files_never_attested": true,
+    "tampering_rejected": [
+      "before SHA",
+      "before Git blob",
+      "after bytes",
+      "after Git blob",
+      "board namespace",
+      "task CID",
+      "baseline commit and tree",
+      "duplicate attestation",
+      "malformed before digest",
+      "unauthorized path",
+      "source proposal namespace missing or foreign"
+    ]
+  },
+  "portable_invocation": {
+    "environment": {
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "<repo>:<datasets>:<Harbor site-packages>",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "<fresh catalog>"
+    },
+    "pytest_flags": [
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal"
+    ],
+    "targets": [
+      "test/api/test_supervisor_modify_seed_replay.py",
+      "test/api/test_agent_supervisor_prior_attempt_seed.py",
+      "test/api/test_prior_seed_guidance_replay.py"
+    ]
+  },
+  "frozen_test_sha256": {
+    "test/api/test_supervisor_modify_seed_replay.py": "4521cac18e3aa0d9082cad52086a313c4549b663253839750843d2b1410d4e4e",
+    "test/api/test_agent_supervisor_prior_attempt_seed.py": "a3e543566215bce86049b72dfabf39895a411b9fc0e9d29c25447c2ff67fe3d0"
+  },
+  "pristine_refusal_projection": {
+    "passed": false,
+    "reason": "project_dependency_contract_collection_failed",
+    "contract_error_reason": "v2_present_target_digest_mismatch",
+    "receipt_sha256": "0aab4cadf1a886a0fee8102812b459fd944d6e369d782a171a9e5c7e6dfe0031"
+  }
+}

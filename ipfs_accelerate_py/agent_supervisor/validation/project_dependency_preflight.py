@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import zlib
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -58,6 +59,9 @@ SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2 = (
 )
 SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
+)
+SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA_V2 = (
+    "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@2"
 )
 PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -93,6 +97,7 @@ MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES = 4096
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS = 256
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES = 256 * 1024
 MAX_SCOPED_PRIOR_SEED_AUTHORITY_BYTES = 4 * 1024 * 1024
+MAX_SCOPED_PRIOR_SEED_GIT_PATH_DEPTH = 64
 MAX_STATIC_REQUIREMENTS = 512
 MAX_REQUIREMENT_BYTES = 2048
 MAX_INSTALLED_VERSION_BYTES = 512
@@ -180,6 +185,12 @@ _SCOPED_PRIOR_SEED_AUTHORITY_FIELDS = frozenset(
 )
 _SCOPED_PRIOR_SEED_OUTPUT_FIELDS = frozenset(
     {"path", "sha256", "git_blob_id"}
+)
+_SCOPED_PRIOR_SEED_OUTPUT_FIELDS_V2 = frozenset(
+    {
+        "path", "change_kind", "before_sha256", "before_git_blob_id",
+        "sha256", "git_blob_id",
+    }
 )
 _SCOPED_CONTRACT_AUTHORITY_FIELDS = frozenset(
     {
@@ -717,7 +728,6 @@ def _require_scoped_prior_seed_paths(
         type(value) is list
         and value
         and len(value) <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS
-        and len(value) == len(set(value))
         and all(
             type(path) is str
             and path
@@ -731,6 +741,7 @@ def _require_scoped_prior_seed_paths(
             and not any(ord(character) < 32 for character in path)
             for path in value
         )
+        and len(value) == len(set(value))
         and sum(
             len(path.encode("utf-8", errors="surrogatepass"))
             for path in value
@@ -741,17 +752,163 @@ def _require_scoped_prior_seed_paths(
     return list(value)
 
 
+def _scoped_prior_seed_git(repo: Path, *arguments: str) -> bytes:
+    """Read bounded Git evidence without caller repository overrides or replacements."""
+
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    try:
+        returncode, output, failure = _run_bounded_probe_process(
+            ["git", "--no-replace-objects", "-C", str(repo), *arguments],
+            input_payload=b"",
+            environment=environment,
+        )
+    except (OSError, ValueError) as exc:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_git_mismatch"
+        ) from exc
+    if returncode != 0 or failure:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_git_mismatch"
+        )
+    return output
+
+
+def _scoped_prior_seed_blob_matches(payload: bytes, blob_id: str) -> bool:
+    framed = b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+    digest = hashlib.sha1(framed) if len(blob_id) == 40 else hashlib.sha256(framed)
+    return digest.hexdigest() == blob_id
+
+
+def _scoped_prior_seed_baseline_payload(
+    workspace: Path,
+    authority: Mapping[str, Any],
+    declared_output: str,
+) -> tuple[bytes | None, str]:
+    """Resolve an exact baseline blob, following only baseline-pinned gitlinks."""
+
+    repo = workspace
+    commit = str(authority["baseline_commit_id"])
+    parts = PurePosixPath(declared_output).parts
+    if len(parts) > MAX_SCOPED_PRIOR_SEED_GIT_PATH_DEPTH:
+        raise _ScopedDependencyContractError(
+            "v2_prior_seed_baseline_git_exceeds_bound"
+        )
+    deadline = time.monotonic() + DEPENDENCY_PROBE_TIMEOUT_SECONDS
+
+    def git(expected_repo: Path, *arguments: str) -> bytes:
+        if time.monotonic() >= deadline:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_git_exceeds_bound"
+            )
+        output = _scoped_prior_seed_git(expected_repo, *arguments)
+        if time.monotonic() >= deadline:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_git_exceeds_bound"
+            )
+        return output
+
+    def require_checkout(expected_repo: Path, expected_commit: str) -> None:
+        top = git(expected_repo, "rev-parse", "--show-toplevel")
+        head = git(expected_repo, "rev-parse", "HEAD")
+        if (
+            top.rstrip(b"\n") != os.fsencode(expected_repo.resolve(strict=True))
+            or head.strip() != expected_commit.encode("ascii")
+        ):
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_git_mismatch"
+            )
+
+    require_checkout(repo, commit)
+    checkouts = [(repo, commit)]
+
+    def finish(payload: bytes | None, blob_id: str) -> tuple[bytes | None, str]:
+        for checkout, expected_commit in checkouts:
+            require_checkout(checkout, expected_commit)
+        return payload, blob_id
+
+    tree = git(repo, "rev-parse", f"{commit}^{{tree}}")
+    if b"git-tree:" + tree.strip() != str(
+        authority["repository_tree_id"]
+    ).encode("ascii"):
+        raise _ScopedDependencyContractError("v2_prior_seed_baseline_git_mismatch")
+    treeish = commit
+    physical_path = workspace
+    for index, part in enumerate(parts):
+        output = git(
+            repo, "ls-tree", "-z", treeish, "--", f":(literal){part}"
+        )
+        if not output:
+            return finish(None, "")
+        records = output.split(b"\0")
+        try:
+            if len(records) != 2 or records[-1] != b"":
+                raise ValueError("ambiguous tree entry")
+            metadata, name = records[0].split(b"\t", 1)
+            mode, kind, raw_oid = metadata.split(b" ")
+            oid = raw_oid.decode("ascii")
+            if name != os.fsencode(part) or not re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}", oid
+            ):
+                raise ValueError("invalid tree entry")
+        except (ValueError, UnicodeError) as exc:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_git_mismatch"
+            ) from exc
+        physical_path = physical_path / part
+        if index == len(parts) - 1:
+            if kind != b"blob" or mode not in {b"100644", b"100755"}:
+                raise _ScopedDependencyContractError(
+                    "v2_prior_seed_baseline_target_mismatch"
+                )
+            payload = git(repo, "cat-file", "blob", oid)
+            if (
+                len(payload) > MAX_DEPENDENCY_MANIFEST_BYTES
+                or not _scoped_prior_seed_blob_matches(payload, oid)
+            ):
+                raise _ScopedDependencyContractError(
+                    "v2_prior_seed_baseline_target_mismatch"
+                )
+            return finish(payload, oid)
+        if kind == b"tree" and mode == b"040000":
+            treeish = oid
+        elif kind == b"commit" and mode == b"160000":
+            repo = physical_path
+            require_checkout(repo, oid)
+            checkouts.append((repo, oid))
+            treeish = oid
+        else:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_target_mismatch"
+            )
+    raise _ScopedDependencyContractError("v2_prior_seed_baseline_target_mismatch")
+
+
 def _scoped_prior_seed_target_sha256(
     authority: Mapping[str, Any] | None,
     *,
     project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
     relative_root: str,
     selected_target: Mapping[str, Any],
+    target_payload: bytes | None = None,
 ) -> str:
-    """Authenticate one task-bound replay that materialized an absent target.
+    """Verify the daemon's accepted-proposal handoff against the scoped baseline.
 
-    The baseline receipt proves that the target was absent before replay.  The
-    seed authority is emitted only after the daemon's accepted proposal gate
+    The seed authority is emitted only after the daemon's accepted proposal gate
     has rebound the prior task delta to the current clean baseline.  This
     verifier closes and content-binds that compact handoff before trusting it.
     """
@@ -787,7 +944,11 @@ def _scoped_prior_seed_target_sha256(
         raise _ScopedDependencyContractError(
             "v2_prior_seed_authority_digest_mismatch"
         )
-    if authority.get("schema") != SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA:
+    seed_schema = authority.get("schema")
+    if type(seed_schema) is not str or seed_schema not in {
+        SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+        SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA_V2,
+    }:
         raise _ScopedDependencyContractError(
             "v2_prior_seed_authority_schema_invalid"
         )
@@ -858,6 +1019,13 @@ def _scoped_prior_seed_target_sha256(
             "v2_prior_seed_target_not_proposal_bound"
         )
 
+    versioned_outputs = (
+        seed_schema == SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA_V2
+    )
+    output_fields = (
+        _SCOPED_PRIOR_SEED_OUTPUT_FIELDS_V2
+        if versioned_outputs else _SCOPED_PRIOR_SEED_OUTPUT_FIELDS
+    )
     seeded_outputs = authority.get("seeded_outputs")
     if not (
         type(seeded_outputs) is list
@@ -865,13 +1033,59 @@ def _scoped_prior_seed_target_sha256(
         and len(seeded_outputs) <= MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS
         and all(
             type(output) is dict
-            and set(output) == _SCOPED_PRIOR_SEED_OUTPUT_FIELDS
+            and set(output) == output_fields
             for output in seeded_outputs
         )
     ):
         raise _ScopedDependencyContractError(
             "v2_prior_seed_outputs_invalid"
         )
+    if versioned_outputs:
+        _require_scoped_prior_seed_paths(
+            [output.get("path") for output in seeded_outputs],
+            reason="v2_prior_seed_outputs_invalid",
+        )
+        for output in seeded_outputs:
+            if not (
+                output["path"] in changed_paths
+                and output["path"] in authorized_paths
+                and type(output["change_kind"]) is str
+                and output["change_kind"] in {"add", "modify"}
+                and type(output["sha256"]) is str
+                and _LOWER_SHA256_PATTERN.fullmatch(output["sha256"])
+                and type(output["git_blob_id"]) is str
+                and re.fullmatch(
+                    r"[0-9a-f]{40}|[0-9a-f]{64}", output["git_blob_id"]
+                )
+                and len(output["git_blob_id"]) == len(baseline_commit_id)
+                and (
+                    (
+                        output["change_kind"] == "add"
+                        and output["before_sha256"] == ""
+                        and output["before_git_blob_id"] == ""
+                    )
+                    or (
+                        output["change_kind"] == "modify"
+                        and type(output["before_sha256"]) is str
+                        and _LOWER_SHA256_PATTERN.fullmatch(
+                            output["before_sha256"]
+                        )
+                        and type(output["before_git_blob_id"]) is str
+                        and re.fullmatch(
+                            r"[0-9a-f]{40}|[0-9a-f]{64}",
+                            output["before_git_blob_id"],
+                        )
+                        and len(output["before_git_blob_id"])
+                        == len(output["git_blob_id"])
+                        and output["before_sha256"] != output["sha256"]
+                        and output["before_git_blob_id"]
+                        != output["git_blob_id"]
+                    )
+                )
+            ):
+                raise _ScopedDependencyContractError(
+                    "v2_prior_seed_target_attestation_invalid"
+                )
     matching_outputs = [
         output
         for output in seeded_outputs
@@ -949,6 +1163,14 @@ def _scoped_prior_seed_target_sha256(
             "v2_prior_seed_baseline_project_missing"
         )
     baseline_project = matching_projects[0]
+    expected_baseline_state = (
+        "present"
+        if versioned_outputs and seeded_output["change_kind"] == "modify"
+        else "declared-output-absent"
+    )
+    expected_materialization_state = (
+        "present" if expected_baseline_state == "present" else "absent"
+    )
     if not (
         baseline_project.get("passed") is True
         and baseline_project.get("dependency_contract_schema")
@@ -956,11 +1178,12 @@ def _scoped_prior_seed_target_sha256(
         and baseline_project.get("scoped_validation_command_sha256")
         == selected_target["validation_command_sha256"]
         and baseline_project.get("scoped_validation_target_baseline_state")
-        == "declared-output-absent"
+        == expected_baseline_state
+        and selected_target["baseline_state"] == expected_baseline_state
         and baseline_project.get(
             "scoped_validation_target_materialization_state"
         )
-        == "absent"
+        == expected_materialization_state
         and baseline_project.get("scoped_validation_task_authority_sha256")
         == _content_sha256(expected_task_authority)
         and baseline_project.get("scoped_validation_target_contract_sha256")
@@ -969,6 +1192,60 @@ def _scoped_prior_seed_target_sha256(
         raise _ScopedDependencyContractError(
             "v2_prior_seed_baseline_project_mismatch"
         )
+    if versioned_outputs:
+        baseline_payload, baseline_blob_id = _scoped_prior_seed_baseline_payload(
+            workspace, authority, declared_output,
+        )
+        if expected_baseline_state == "present":
+            manifests = baseline_project.get("dependency_manifests")
+            target_path_sha256 = hashlib.sha256(
+                str(selected_target["target"]).encode("utf-8")
+            ).hexdigest()
+            matching_manifests = (
+                [
+                    manifest for manifest in manifests
+                    if type(manifest) is dict
+                    and manifest.get("path_sha256") == target_path_sha256
+                ]
+                if type(manifests) is list else []
+            )
+            if not (
+                baseline_payload is not None
+                and baseline_blob_id == seeded_output["before_git_blob_id"]
+                and hashlib.sha256(baseline_payload).hexdigest()
+                == seeded_output["before_sha256"]
+                == selected_target["baseline_sha256"]
+                and len(matching_manifests) == 1
+                and matching_manifests[0].get("content_sha256")
+                == seeded_output["before_sha256"]
+                and type(matching_manifests[0].get("bytes")) is int
+                and matching_manifests[0]["bytes"] == len(baseline_payload)
+            ):
+                raise _ScopedDependencyContractError(
+                    "v2_prior_seed_baseline_target_mismatch"
+                )
+        elif baseline_payload is not None:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_baseline_target_mismatch"
+            )
+        if not (
+            target_payload is not None
+            and hashlib.sha256(target_payload).hexdigest() == target_sha256
+            and _scoped_prior_seed_blob_matches(target_payload, git_blob_id)
+        ):
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_target_content_mismatch"
+            )
+        _target_file, current_payload = _read_bounded_contained_regular_file(
+            project_root,
+            project_root / str(selected_target["target"]),
+            maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+            expected_containment_root_snapshot=expected_project_root_snapshot,
+        )
+        if current_payload != target_payload:
+            raise _ScopedDependencyContractError(
+                "v2_prior_seed_target_content_mismatch"
+            )
     return target_sha256
 
 
@@ -1381,7 +1658,32 @@ def _scoped_setup_extra_dependencies(
                 expected_containment_root_snapshot=expected_project_root_snapshot,
             )
             observed_target_sha256 = hashlib.sha256(target_payload).hexdigest()
-            if observed_target_sha256 != selected_v2_target["baseline_sha256"]:
+            seed_outputs = (
+                prior_seed_authority.get("seeded_outputs")
+                if isinstance(prior_seed_authority, Mapping) else None
+            )
+            seed_selects_target = isinstance(seed_outputs, list) and any(
+                isinstance(output, Mapping)
+                and output.get("path") == selected_v2_target["declared_output"]
+                for output in seed_outputs
+            )
+            if prior_seed_authority is not None and (
+                observed_target_sha256 != selected_v2_target["baseline_sha256"]
+                or seed_selects_target
+            ):
+                _scoped_prior_seed_target_sha256(
+                    prior_seed_authority,
+                    project_root=project_root,
+                    expected_project_root_snapshot=expected_project_root_snapshot,
+                    relative_root=relative_root,
+                    selected_target=selected_v2_target,
+                    target_payload=target_payload,
+                )
+                target_materialization_state = "authenticated-prior-seed"
+                prior_seed_authority_sha256 = str(
+                    prior_seed_authority.get("authority_sha256")
+                )
+            elif observed_target_sha256 != selected_v2_target["baseline_sha256"]:
                 raise _ScopedDependencyContractError(
                     "v2_present_target_digest_mismatch"
                 )
@@ -1397,14 +1699,6 @@ def _scoped_setup_extra_dependencies(
                     raise
                 if prior_seed_authority is None:
                     raise
-                expected_seeded_target_sha256 = (
-                    _scoped_prior_seed_target_sha256(
-                        prior_seed_authority,
-                        project_root=project_root,
-                        relative_root=relative_root,
-                        selected_target=selected_v2_target,
-                    )
-                )
                 target_file, target_payload = (
                     _read_bounded_contained_regular_file(
                         project_root,
@@ -1413,6 +1707,16 @@ def _scoped_setup_extra_dependencies(
                         expected_containment_root_snapshot=(
                             expected_project_root_snapshot
                         ),
+                    )
+                )
+                expected_seeded_target_sha256 = (
+                    _scoped_prior_seed_target_sha256(
+                        prior_seed_authority,
+                        project_root=project_root,
+                        expected_project_root_snapshot=expected_project_root_snapshot,
+                        relative_root=relative_root,
+                        selected_target=selected_v2_target,
+                        target_payload=target_payload,
                     )
                 )
                 observed_target_sha256 = hashlib.sha256(
