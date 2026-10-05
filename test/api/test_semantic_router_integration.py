@@ -135,6 +135,10 @@ def test_decode_refusal_retains_observed_provider_usage(allocated, provider, cap
     assert len(observed) == 1
     assert receipt["status"] == "failed"
     assert receipt["error_type"] == "SemanticTranslationError"
+    assert receipt["failure_phase"] == "semantic_response_decode"
+    assert receipt["semantic_response_failure"] == {
+        "phase": "semantic_response_decode", "reason_code": "response_alias_unknown",
+    }
     assert receipt["usage"] == {"exit_code": 0, "prompt_tokens": 123, "completion_tokens": 7,
         "cached_tokens": 19, "reasoning_tokens": 3}
     assert receipt["model_prompt_sha256"] == _sha(observed[0][0])
@@ -167,6 +171,74 @@ def test_structured_reply_refuses_source_change_during_provider_call(allocated, 
     receipt = next(row for row in receipts if row.get("schema") == "router-implementation-invocation@1")
     assert len(observed) == 1
     assert receipt["status"] == "failed"
+    assert receipt["semantic_response_failure"] == {
+        "phase": "semantic_response_decode", "reason_code": "source_stale",
+    }
     assert receipt["usage"]["prompt_tokens"] == 123
     assert receipt["usage"]["completion_tokens"] == 7
     assert "semantic_response_translation" not in receipt
+
+
+@pytest.mark.parametrize("refusal,expected_code", [
+    ("reserved_duplicate", "response_reserved_envelope_malformed"),
+    ("foreign_binding", "response_envelope_binding_mismatch"),
+    ("native_grammar", "response_native_grammar_invalid"),
+    ("oversized", "response_size_exceeded"),
+])
+def test_rejected_provider_reply_has_closed_diagnostic_and_usage(
+        allocated, provider, capsys, refusal, expected_code):
+    repository, _, prompt, _ = allocated
+    state, observed = provider
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository)
+    reply, _ = _reply(encoded)
+    private_marker = "provider-only-diagnostic-must-not-be-exported"
+    if refusal == "reserved_duplicate":
+        response = json.dumps(reply)[:-1] + ',"schema":' + json.dumps(codec.REPLY_SCHEMA) + '}'
+    elif refusal == "foreign_binding":
+        reply["task_id"] = private_marker
+        response = json.dumps(reply)
+    elif refusal == "native_grammar":
+        reply["response"]["output_class"] = private_marker
+        response = json.dumps(reply)
+    else:
+        response = private_marker + "x" * codec.MAX_BYTES
+    state["reply"] = response
+
+    with pytest.raises(codec.SemanticTranslationError):
+        _run(repository, prompt)
+    captured = capsys.readouterr().out
+    receipts = [json.loads(line) for line in captured.splitlines() if line.startswith("{")]
+    receipt = next(row for row in receipts if row.get("schema") == "router-implementation-invocation@1")
+    assert len(observed) == 1
+    assert receipt["status"] == "failed"
+    assert receipt["semantic_response_failure"] == {
+        "phase": "semantic_response_decode", "reason_code": expected_code,
+    }
+    assert receipt["usage"]["exit_code"] == 0
+    assert receipt["usage"]["prompt_tokens"] == 123
+    assert receipt["usage"]["completion_tokens"] == 7
+    assert "semantic_response_translation" not in receipt
+    assert receipt["completion_authority"] is False
+    assert private_marker not in captured
+    assert response not in captured
+
+
+def test_unrecognized_semantic_exception_text_stays_private(allocated, provider, monkeypatch, capsys):
+    repository, _, prompt, _ = allocated
+    private_marker = "unclassified-provider-or-source-text-must-not-be-exported"
+
+    def fail_decode(**_):
+        raise codec.SemanticTranslationError(private_marker)
+
+    monkeypatch.setattr(codec, "decode_semantic_router_response", fail_decode)
+    with pytest.raises(codec.SemanticTranslationError, match=private_marker):
+        _run(repository, prompt)
+    captured = capsys.readouterr().out
+    receipts = [json.loads(line) for line in captured.splitlines() if line.startswith("{")]
+    receipt = next(row for row in receipts if row.get("schema") == "router-implementation-invocation@1")
+    assert receipt["semantic_response_failure"] == {
+        "phase": "semantic_response_decode", "reason_code": "unclassified",
+    }
+    assert receipt["usage"]["exit_code"] == 0
+    assert receipt["status"] == "failed"
+    assert private_marker not in captured
