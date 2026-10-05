@@ -1,0 +1,119 @@
+{
+  "schema": "supervisor-router-baseline-comparison@1",
+  "baseline_head": "fa51b32e8d3f296f4481344a5a61da9fd3ffd2a6",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "baseline_worktree_clean": true,
+  "compared_tests": 43,
+  "baseline_passed": 35,
+  "baseline_failed": 8,
+  "current_compared_statuses_identical": true,
+  "new_failures_in_compared_scope": [],
+  "test_sources": [
+    {
+      "path": "test/api/test_llm_router_exact_provider_fallback.py",
+      "sha256": "ca962cb278225da3a37c13c0714a28d1e623bd597eab7d7fe65c6e753ee8a8ca",
+      "unchanged_in_current": true
+    },
+    {
+      "path": "test/test_llm_router_grok_cli.py",
+      "sha256": "f43dca0fd72d4fd0211db5e5635bdd8f0945b6c29b5679ec7bfd9d63f7afd54d",
+      "unchanged_in_current": true
+    }
+  ],
+  "failures": [
+    {
+      "node": "api.test_llm_router_exact_provider_fallback::test_ordinary_default_route_retains_cross_provider_fallback",
+      "classification": "preexisting_model_selection_retry_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture expects one primary call; existing automatic model selection and permitted default-model retry produce two before cross-provider fallback. The exact-provider no-fallback controls pass."
+    },
+    {
+      "node": "api.test_llm_router_exact_provider_fallback::test_remote_fallback_can_be_enabled_without_local_fallback",
+      "classification": "preexisting_model_selection_retry_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture expects one primary call; existing automatic model selection and permitted default-model retry produce two before cross-provider fallback. The exact-provider no-fallback controls pass."
+    },
+    {
+      "node": "api.test_llm_router_exact_provider_fallback::test_remote_fallback_remains_default_when_local_fallback_is_disabled",
+      "classification": "preexisting_model_selection_retry_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture expects one primary call; existing automatic model selection and permitted default-model retry produce two before cross-provider fallback. The exact-provider no-fallback controls pass."
+    },
+    {
+      "node": "api.test_llm_router_exact_provider_fallback::test_exact_provider_does_not_consume_cross_provider_cached_response",
+      "classification": "preexisting_model_selection_retry_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture expects one primary call; existing automatic model selection and permitted default-model retry produce two before cross-provider fallback. The exact-provider no-fallback controls pass."
+    },
+    {
+      "node": "test_llm_router_grok_cli::test_grok_cli_discovery_survives_systemd_minimal_path",
+      "classification": "preexisting_host_executable_discovery_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture changes HOME, but existing discovery uses uid operator home and finds the installed host Grok executable."
+    },
+    {
+      "node": "test_llm_router_grok_cli::test_grok_cli_command_template_preserves_prompt_as_one_argument",
+      "classification": "preexisting_command_template_discovery_expectation",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Fixture configures an unavailable grok-wrapper command; existing discovery resolves the installed host Grok executable before the unresolved template. Subprocess execution is mocked."
+    },
+    {
+      "node": "test_llm_router_grok_cli::test_agent_route_readiness_negative_auth_text_outranks_zero_exit",
+      "classification": "preexisting_probe_fixture_signature",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Probe fixture lambda accepts only command/timeout_seconds; existing readiness call also supplies command_prefix and environment."
+    },
+    {
+      "node": "test_llm_router_grok_cli::test_agent_route_readiness_accepts_positive_login_status",
+      "classification": "preexisting_probe_fixture_signature",
+      "baseline": "failed",
+      "current": "failed",
+      "reason": "Probe fixture lambda accepts only command/timeout_seconds; existing readiness call also supplies command_prefix and environment."
+    }
+  ],
+  "separate_collection_blocker": {
+    "path": "test/api/test_llm_router_agent_implementation_route.py",
+    "missing_symbol": "llm_router._VGO_AGENT_ROUTE_AUTHORIZATION_PATH",
+    "baseline_exit_code": 2,
+    "baseline_collection_errors": 1,
+    "same_blocker_reported_on_current": true,
+    "classification": "preexisting_missing_historical_route_symbol",
+    "resolution": "Historical authorization bindings were not restored or relabeled merely to make collection pass."
+  },
+  "runs": {
+    "router-baseline-01": {
+      "exit_code": 1,
+      "source_unchanged": true,
+      "command_sha256": "78521bab331c7070303f63d59734d41ed7ddb7a71c3498139c84685a4e10620b",
+      "log_sha256": "3cb241557c3a881a5552176f4869cf797349655d051b1a969a5f232d85de0753",
+      "xml_sha256": "4c04621910698195680e711b076166ad45a6495c3c8c60150ef17123e23e7553",
+      "artifact_directory": "lifecycle"
+    },
+    "router-baseline-collection-01": {
+      "exit_code": 2,
+      "source_unchanged": true,
+      "command_sha256": "146117c2df4d3f4ffea2bae6186d1d14ca72d611ac358c62398afb23280e22fd",
+      "log_sha256": "e460ef0434578e70b24b94b53d7913f9642b2d7d93a90ac1333f42b694cd85f0",
+      "xml_sha256": "3c5a82664bace342d769b337d9faaf1602051b26b8669e5e3ffb464759f644d0",
+      "artifact_directory": "lifecycle"
+    },
+    "router-green-02": {
+      "exit_code": 1,
+      "source_unchanged": true,
+      "command_sha256": "e0fef43f986bd547d9b9b1e7a26e0e214ad6050d6c3516805ba2d22a0d7f744e",
+      "log_sha256": "3ed08e1d46bdb92fefe372e6bd662813a97a7d8fe349152e0fe9307e490d9948",
+      "xml_sha256": "1f667741b191881245ac9762a8f5efaa45e8c692cc7e2423a70a742aa8d70ce2",
+      "artifact_directory": "lifecycle"
+    }
+  },
+  "scope": "Read-only classification of previously failing authored tests. This does not establish that preexisting failures are resolved or qualify a live provider/official benchmark.",
+  "test_source_changes": false,
+  "live_provider_generation_calls": 0
+}

@@ -13,6 +13,7 @@ import errno
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -266,6 +267,10 @@ class ArtifactQuotaExceeded(BoundedPersistenceError):
 
 class ArtifactBlobIntegrityError(BoundedPersistenceError, ValueError):
     """A referenced immutable blob is absent, truncated, or corrupt."""
+
+
+class _ArtifactStoreLockTimeout(TimeoutError):
+    """The caller's shared deadline elapsed before acquiring store locks."""
 
 
 class RetentionClass(str, Enum):
@@ -743,11 +748,31 @@ class BoundedArtifactStore:
         return int(self._clock() * 1000)
 
     @contextmanager
-    def _locked(self) -> Iterator[None]:
-        with self._thread_lock:
+    def _locked(self, *, deadline: float | None = None) -> Iterator[None]:
+        acquired = self._thread_lock.acquire(
+            timeout=-1 if deadline is None else max(0.0, deadline - time.monotonic())
+        )
+        if not acquired:
+            raise _ArtifactStoreLockTimeout("artifact store thread lock deadline elapsed")
+        try:
             handle = self.lock_path.open("a+b")
+            file_locked = False
             try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                if deadline is None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                else:
+                    while True:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise _ArtifactStoreLockTimeout(
+                                "artifact store process lock deadline elapsed"
+                            )
+                        try:
+                            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except BlockingIOError:
+                            time.sleep(min(0.01, remaining))
+                file_locked = True
                 if self._refresh_on_lock and hasattr(self, "_manifest"):
                     # Shared instances may outlive another writer. Reload its
                     # verified generation under the same cross-process lock
@@ -761,8 +786,11 @@ class BoundedArtifactStore:
                         self._manifest = current
                 yield
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                if file_locked:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
                 handle.close()
+        finally:
+            self._thread_lock.release()
 
     @staticmethod
     def _manifest_digest(value: Mapping[str, Any]) -> str:
@@ -808,6 +836,7 @@ class BoundedArtifactStore:
 
     def _load_or_recover_manifest(self) -> dict[str, Any]:
         manifest = self._decode_manifest(self.manifest_path)
+        restore_current = manifest is None
         if manifest is None:
             manifest = self._decode_manifest(self.previous_manifest_path)
             if manifest is not None:
@@ -817,7 +846,10 @@ class BoundedArtifactStore:
             if self.manifest_path.exists() or self.previous_manifest_path.exists():
                 self._increment("manifest_recoveries")
         changed = self._reconcile_files(manifest)
-        if changed or not self.manifest_path.exists():
+        if changed or restore_current:
+            # Publish the verified recovery while holding the store lock. A
+            # shared instance refreshes from the current path on its very next
+            # operation; leaving a torn current file defeats a valid backup.
             self._write_manifest(manifest, preserve_previous=False)
         return manifest
 
@@ -1838,16 +1870,20 @@ class BoundedArtifactStore:
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
             or timeout_seconds <= 0
+            or not math.isfinite(timeout_seconds)
         ):
-            raise ValueError("timeout_seconds must be positive")
+            raise ValueError("timeout_seconds must be positive and finite")
         if self._closed:
             return True
         deadline = time.monotonic() + float(timeout_seconds)
-        with self._locked():
-            if time.monotonic() >= deadline:
-                return False
-            self._write_manifest(self._manifest)
-            self._closed = True
+        try:
+            with self._locked(deadline=deadline):
+                if time.monotonic() >= deadline:
+                    return False
+                self._write_manifest(self._manifest)
+                self._closed = True
+        except _ArtifactStoreLockTimeout:
+            return False
         return time.monotonic() <= deadline
 
     shutdown = close

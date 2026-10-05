@@ -3972,7 +3972,7 @@ def _effective_model_key(
                 "IPFS_ACCELERATE_PY_CODEX_MODEL",
                 "IPFS_DATASETS_PY_CODEX_MODEL",
             )
-            or "chatgpt-5.6-terra"
+            or "gpt-6.1-sol"
         ).strip()
     if pk == "copilot_sdk":
         return _coalesce_env(
@@ -6194,9 +6194,14 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             model = (
                 model_name
                 or _coalesce_env(
-                    "ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL"
+                    "ipfs_accelerate_py_CODEX_CLI_MODEL",
+                    "IPFS_ACCELERATE_PY_CODEX_CLI_MODEL",
+                    "IPFS_DATASETS_PY_CODEX_CLI_MODEL",
+                    "ipfs_accelerate_py_CODEX_MODEL",
+                    "IPFS_ACCELERATE_PY_CODEX_MODEL",
+                    "IPFS_DATASETS_PY_CODEX_MODEL",
                 )
-                or "chatgpt-5.6-terra"
+                or "gpt-6.1-sol"
             ).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = (
@@ -7808,7 +7813,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 "IPFS_ACCELERATE_PY_GROK_CLI_MODEL",
                 "IPFS_DATASETS_PY_GROK_CLI_MODEL",
                 "GROK_CLI_MODEL",
-            )
+            ) or _grok_default_model()
             timeout = float(kwargs.pop("timeout", 180))
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
             trace_dir = kwargs.pop("trace_dir", None)
@@ -9916,7 +9921,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
             "IPFS_ACCELERATE_PY_CODEX_MODEL",
             "IPFS_DATASETS_PY_CODEX_MODEL",
         ),
-        default_model="chatgpt-5.6-terra",
+        default_model="gpt-6.1-sol",
         tools="supported",
     ),
     _LLMProviderSpec(

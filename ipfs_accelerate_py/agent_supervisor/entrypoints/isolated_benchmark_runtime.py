@@ -268,20 +268,45 @@ class IsolatedBenchmarkRuntime:
             runtime._children.append(child)
             return child
 
-        runtime.process = NativeSupervisorHealthAdapter(popen=logged_popen)
-        runtime.orchestrator = LifecycleOrchestrator(
-            state_root=state, profiles=(runtime.profile,), process_adapter=runtime.process,
-            poll_interval_ms=50, stop_grace_ms=1_000,
-        )
-        runtime._permits = {}
-        runtime._requests = {}
-        runtime.service = SupervisorControlService(
-            repository_allowlist=(repository,), state_allowlist=(state,),
-            handlers={Operation.START: runtime.orchestrator, Operation.STOP: runtime.orchestrator},
-            authorization_validator=ControlMutationAuthorizer(runtime._policy),
-            identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
-        )
+        try:
+            runtime.process = NativeSupervisorHealthAdapter(popen=logged_popen)
+            runtime.orchestrator = LifecycleOrchestrator(
+                state_root=state, profiles=(runtime.profile,), process_adapter=runtime.process,
+                poll_interval_ms=50, stop_grace_ms=1_000,
+            )
+            runtime._permits = {}
+            runtime._requests = {}
+            runtime.service = SupervisorControlService(
+                repository_allowlist=(repository,), state_allowlist=(state,),
+                handlers={Operation.START: runtime.orchestrator, Operation.STOP: runtime.orchestrator},
+                authorization_validator=ControlMutationAuthorizer(runtime._policy),
+                identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
+            )
+        except BaseException:
+            try:
+                runtime._close_unlaunched_construction()
+            except BaseException as cleanup_error:
+                runtime._construction_cleanup_failed = True
+                raise RuntimeError("isolated constructor cleanup unproven") from cleanup_error
+            raise
         return runtime
+
+    def _close_unlaunched_construction(self) -> None:
+        """Release a refused constructor's lease without claiming native STOP."""
+        if self._children:
+            raise RuntimeError("isolated construction has undisposed process custody")
+        process = getattr(self, "process", None)
+        if process is not None and process.snapshot(self.profile).members:
+            raise RuntimeError("isolated construction has a live native process tree")
+        self.coordinator.release(self.lease, expected_fencing_token=self.lease.fencing_token,
+                                 expected_fence_epoch=self.lease.fence_epoch)
+        self.coordinator.close()
+        (self.state / "construction-cleanup.json").write_text(json.dumps({
+            "schema": "isolated-unlaunched-constructor-cleanup@1",
+            "native_STOP_proved": False,
+            "process_observation": "empty_native_tree" if process is not None else "lifecycle_not_constructed",
+            "run_lease_released": True, "completion_authority": False,
+        }, sort_keys=True) + "\n")
 
     def _verify(self) -> None:
         for path in (self.directory, self.repository, self.state, self.profile_dir, self.lifecycle_dir):

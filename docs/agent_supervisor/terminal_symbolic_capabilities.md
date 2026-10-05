@@ -468,3 +468,47 @@ These observations add no Terminal-Bench reward, proof of arbitrary generated
 behavior or whole-repository authority. Authenticated live provider dispatch,
 broader operator/decomposition coverage and independent behavioral contracts
 remain separate work.
+
+## Router execution, checkpoint currentness and persistence (2026-10-05)
+
+The benchmark planning and coding workers use `llm_router.generate_text` with
+an explicit side-effecting request. Each invocation now requires a fresh native
+process and usage receipt; response caching cannot substitute old text for
+workspace effects. The Codex provider, cache identity and catalog agree on
+`gpt-6.1-sol` and all six supported model environment aliases. The Grok provider
+explicitly supplies `grok-4.7` when no model override is configured. The ordinary
+Grok supervisor runner retains router-owned command, authorization and guarded
+fallback decisions. Ordinary automatic or explicitly pinned Codex daemon
+invocations still construct native CLI arguments directly after router selection;
+that remaining consolidation boundary is separate from benchmark dispatch.
+
+A failed isolated constructor releases its exact fenced lease and closes its
+coordinator only when no native child custody exists. Security source advice
+rechecks the selected checkpoint bytes after inference and optional Lake work;
+drift discards dependent candidates and state while planning continues. Shared
+preflight storage republishes a verified backup manifest during restart. Its
+close deadline now covers thread and process lock contention, and an incomplete
+close leaves the daemon's store handle available for retry. Candidate patches
+use literal Git paths and preserve CRLF bytes across staged, untracked and mixed
+changes, with external diff and text-conversion hooks disabled.
+
+The [frozen final qualification](evidence/supervisor-router-lifecycle-20261005/final.json)
+passes **412 distinct tests** against datasets commit
+`987cf856b2b902aa68c4587bb492b19b932b5d30`: 235 router/checkpoint cases and
+177 lifecycle/preflight/replay cases. Source and test hashes remain unchanged
+during both runs. Coverage includes real cached Security384/Intent384 CPU
+inference, native Lake checks, signed START/observe/STOP, an authored symbolic
+repair with refreshed indexes, actual lock contention and Git patch replay.
+No test-owned native process remained after the run. Earlier checkpoint,
+lifecycle and preflight counts overlap this final coverage and must not be added.
+
+The [baseline router audit](evidence/supervisor-router-lifecycle-20261005/router-baseline.json)
+reproduces eight broader failures and a historical authorization collection
+error on the unchanged base. The
+[preflight evidence](evidence/supervisor-router-lifecycle-20261005/preflight.json)
+records 48 unresolved archived plan-bound recovery cases and three separate
+prior-seed contract/guidance failures; ordinary shared-store recovery is covered,
+but sealed recovery-snapshot integration remains incomplete. Operator-selected
+independent-review daemon wiring is qualified separately above. This router
+qualification uses no paid providers and produces no new Terminal-Bench reward
+or token score.
