@@ -1,0 +1,23 @@
+{
+  "comparison": {
+    "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+    "differences": [
+      "job_controls_sha256.retry"
+    ],
+    "matches": false,
+    "status": "mismatch"
+  },
+  "limitations": [
+    "One retrospective single-trial baseline, not a randomized repeated comparison.",
+    "Identical public resource/outer-time limits do not make internal work and provider-call time allowances identical.",
+    "Native adapter has regular terminal tools; supervisor has indexing, planning, transactional worker constraints and different setup/cache work.",
+    "Strict common-control hashing retains unordered retry-list order differences; both retry policies disable retries."
+  ],
+  "model_cli_reasoning_same": true,
+  "native_config_sha256": "5a507dd92450667d072dd11eeed8edeea37a78a8c655244c4396bdcf91424a54",
+  "original_task_hashes_same": true,
+  "retry_disabled_in_both": true,
+  "retry_policies_semantically_equal": true,
+  "schema": "native-eigenvalue-preflight-comparison@1",
+  "supervisor_receipt_sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+}

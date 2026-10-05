@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "python",
+    "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/inspect_comparison.py",
+    "--checkout",
+    "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005",
+    "--baseline",
+    "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+    "--supervisor",
+    "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/comparison.json"
+  ],
+  "created_utc": "2026-10-05T14:57:49.146624+00:00",
+  "execution_source_revision": "e804005fcb12e95e8fea87100fcaba46aadb7727",
+  "inspector_sha256": "b0b898382875ec496294e3f31d4dd6d153415d5bc80543d6f7286c84021ef317",
+  "native_driver_sha256": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+  "native_driver_unchanged_from_execution_revision": true,
+  "output_sha256": "a7a3691bf26a06af793ee6aef97d08c7c715de4ca4afe1f1d832e6bb69cca3ce",
+  "publication_base_revision": "7dda779c99ffc25166459277a6358dcf78caee29",
+  "schema": "native-eigenvalue-bounded-inspection-producer@1"
+}

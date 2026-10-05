@@ -1,0 +1,52 @@
+{
+  "created_utc": "2026-10-05T14:59:31.631198+00:00",
+  "execution_revision": "e804005fcb12e95e8fea87100fcaba46aadb7727",
+  "new_runtime_tests": 0,
+  "paid_repeated_trials": 0,
+  "publication_base_revision": "7dda779c99ffc25166459277a6358dcf78caee29",
+  "schema": "native-eigenvalue-comparison-qualified-source-readback@1",
+  "source_bindings": [
+    {
+      "bytes": 10281,
+      "path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/agents/factory.py",
+      "sha256": "de65a45ba2d030e250c6351f4d0103de0752ad157ceed69c0219f631d5255ef0",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 57185,
+      "path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/agents/installed/codex.py",
+      "sha256": "ee0ca8ec43617f3909d2195afe8f9e7cbd7313a8b3b558b01fde388f65b7c39c",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 21115,
+      "path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/models/job/config.py",
+      "sha256": "195cbc3491efa2bc9947b90d6d390370dd601ade658e13daeafaf2665eb8f638",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 9654,
+      "path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/harbor/models/task/task.py",
+      "sha256": "de88877f90e09949c02c6764876ca53fc795be617f95c03c48e4b6e1e5885322",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 26635,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "sha256": "30e84bfddc4bf2e5f3198ff3c61cc90744076ac30a24ec33ee33ecdbfe79a883",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 11149,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "48fe0c26bf2b326a90c394cd8f2ec26dfa5fa5904247ee320b1f2e2b2bb2ebce",
+      "unchanged_from_preparation": true
+    },
+    {
+      "bytes": 2327,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-codex-baseline-20261005/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "sha256": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610",
+      "unchanged_from_preparation": true
+    }
+  ]
+}
