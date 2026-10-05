@@ -47,7 +47,10 @@ def test_actual_semantic_producer_normalizes_only_objective_not_public_multiline
         *prepared["constraints"]["constraint_summaries"], *loaded["summaries"]]}
     rendered = build_prompt_goal_provider_request(PromptWorkflowRequest.from_dict(prepared["request"]),
         DirectoryScanReceipt.from_dict(prepared["scan"]), config=prep._config(root), constraint_summaries=constraints)
-    assert json.dumps("Public instruction.md (the complete authorized task):\n" + query) in rendered
+    from benchmarks.agent_supervisor.container_coding.terminal_planner_instruction import bind_public_instruction
+    bound = json.loads(bind_public_instruction(rendered, prepared=prepared))
+    assert bound["terminal_public_instruction"]["text"] == query
+    assert query not in bound["constraints"]["constraint_summaries"]
     assert not (state / "planner-invoked.json").exists()
 
 

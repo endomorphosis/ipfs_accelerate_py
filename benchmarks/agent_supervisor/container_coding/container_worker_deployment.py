@@ -101,6 +101,12 @@ sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
 from ipfs_accelerate_py.agent_supervisor.runtime.container_worker_boundary import verify_container_worker_boundary
 artifact=root/'container-boundary.json'
 digest=hashlib.sha256(artifact.read_bytes()).hexdigest()
+selected_provider=json.loads(artifact.read_bytes()).get('provider','codex_cli')
+if selected_provider not in ('codex_cli','grok_cli'):raise SystemExit('unknown deployed provider')
+if selected_provider=='grok_cli':
+ os.environ['GROK_HOME']=str(root/'worker-home/.grok')
+ os.environ['ipfs_accelerate_py_GROK_CLI_CMD']=str(root/'provider-bin/grok')
+ os.environ.update({name:'0' for name in ('GROK_CODEX_AGENTS_ENABLED','GROK_CODEX_HOOKS_ENABLED','GROK_CODEX_MCPS_ENABLED','GROK_CODEX_RULES_ENABLED','GROK_CODEX_SESSIONS_ENABLED','GROK_CODEX_SKILLS_ENABLED')})
 if sys.argv[1:]==['--cleanup']:
  boundary=json.loads(artifact.read_bytes())
  if boundary['namespaces']!={k:os.readlink('/proc/self/ns/'+k) for k in ('pid','mnt','net')}:raise SystemExit('cleanup namespace differs')
@@ -127,6 +133,7 @@ if validating:
  if len(sys.argv)<3 or len(sys.argv)>130 or any(len(x)>8192 for x in sys.argv[2:]):raise SystemExit('bounded literal validation argv required')
  os.execvpe(sys.argv[2],sys.argv[2:],dict(os.environ))
 parser=argparse.ArgumentParser()
+parser.add_argument('--provider',choices=['codex_cli','grok_cli'],default=selected_provider)
 parser.add_argument('--model',default='gpt-6.1-sol');parser.add_argument('--reasoning-effort',choices=['low','medium','high','xhigh','max'],default='high')
 parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-output-tokens',type=int,default=4096)
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
@@ -151,6 +158,7 @@ parser.add_argument('--public-instruction-sha256')
 parser.add_argument('--public-instruction-task-cid')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 args=parser.parse_args()
+if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
 doctor_values=(args.doctor_candidate_artifact,args.doctor_candidate_sha256,args.doctor_task_cid)
 residual_values=(args.doctor_residual_artifact,args.doctor_residual_sha256,args.doctor_residual_task_cid)
 contract_values=(args.doctor_contract_artifact,args.doctor_contract_sha256,args.doctor_contract_task_cid)
@@ -207,7 +215,7 @@ elif args.doctor_candidate_artifact is not None:
  raise SystemExit(main())
 else:
  from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import main
- sys.argv=[sys.argv[0],'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
+ sys.argv=[sys.argv[0],'--provider',args.provider,'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
@@ -215,7 +223,9 @@ else:
 """
 
 
-async def install_worker_boundary(environment, *, container_name: str, output: Path) -> dict:
+async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli") -> dict:
+    if provider not in {"codex_cli", "grok_cli"}:
+        raise ValueError("explicit supported container provider required")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
 
@@ -258,17 +268,26 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     }
     if host_namespaces != namespaces:
         raise ValueError("Docker engine and observed namespace identities differ")
+    provider_home = ".grok" if provider == "grok_cli" else ".codex"
+    auth_home = "grok-auth" if provider == "grok_cli" else "codex-auth"
     await run(
         "worker-account",
         f"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo && "
         f"useradd --uid 1001 --gid supervisor --home-dir {ROOT}/worker-home --shell /usr/sbin/nologin benchmarkworker && "
         f"install -d -o root -g root -m 0755 {ROOT}/bin {ROOT}/provider-bin && "
         f"install -d -o supervisor -g supervisor -m 0750 {ROOT}/worktrees && "
-        f"install -d -o benchmarkworker -g supervisor -m 0700 {ROOT}/worker-home {ROOT}/worker-home/.codex && "
-        f"install -o benchmarkworker -g supervisor -m 0600 {ROOT}/codex-auth/auth.json {ROOT}/worker-home/.codex/auth.json && "
-        f"chmod 0700 {ROOT}/home {ROOT}/codex-auth {ROOT}/state",
+        f"install -d -o benchmarkworker -g supervisor -m 0700 {ROOT}/worker-home {ROOT}/worker-home/{provider_home} && "
+        f"install -o benchmarkworker -g supervisor -m 0600 {ROOT}/{auth_home}/auth.json {ROOT}/worker-home/{provider_home}/auth.json && "
+        f"chmod 0700 {ROOT}/home {ROOT}/{auth_home} {ROOT}/state",
     )
-    await run("native-codex-binary", "python3 -I -c " + shlex.quote(native_codex_exposure_script()))
+    if provider == "codex_cli":
+        await run("native-codex-binary", "python3 -I -c " + shlex.quote(native_codex_exposure_script()))
+    else:
+        # Deployment already exposed and pinned this root-owned executable.
+        from .terminal_grok_deployment import GROK_VERSION_OUTPUT
+        observed = await run("native-grok-version", ROOT + "/provider-bin/grok --version")
+        if observed.stdout.strip() != GROK_VERSION_OUTPUT:
+            raise ValueError("worker Grok version differs")
     boundary = {
         "schema": "supervisor-container-worker-boundary@1",
         "container_id": cid,
@@ -277,7 +296,8 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         "owner_uid": 1000,
         "worker_uid": 1001,
         "allowed_worktree_roots": [ROOT + "/worktrees"],
-        "owner_private_paths": [ROOT + "/state", ROOT + "/home", ROOT + "/codex-auth"],
+        "owner_private_paths": [ROOT + "/state", ROOT + "/home", ROOT + "/" + auth_home],
+        "provider": provider,
         "validation_repository_roots": ["/app"],
         "single_worker": True,
     }
@@ -311,7 +331,8 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         "boundary": boundary,
         "boundary_sha256": hashlib.sha256(raw).hexdigest(),
         "implementation_command": ROOT
-        + "/bin/router-worker --model gpt-6.1-sol --reasoning-effort high --timeout 90",
+        + "/bin/router-worker --provider " + provider + " --model "
+        + ("grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol") + " --reasoning-effort high --timeout 90",
         "candidate_runner_argv": [ROOT + "/bin/validation-worker"],
         "worker_worktree_root": ROOT + "/worktrees",
         "provider_calls": 0,
@@ -321,7 +342,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     return result
 
 
-async def deploy_worker_boundary(environment, *, output: Path) -> dict:
+async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli") -> dict:
     """Fresh Harbor deployment: install and exercise the actual worker boundary."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -329,7 +350,7 @@ async def deploy_worker_boundary(environment, *, output: Path) -> dict:
     # the installer independently compares engine and in-container namespaces.
     container = await environment._platform._resolve_service_container("main")
     installed = await install_worker_boundary(
-        environment, container_name=container, output=output / "installation"
+        environment, container_name=container, output=output / "installation", provider=provider
     )
     qualified = await qualify_worker_boundary(environment, output=output / "qualification")
     result = {**installed, "qualified": qualified["qualified"], "qualification": qualified}

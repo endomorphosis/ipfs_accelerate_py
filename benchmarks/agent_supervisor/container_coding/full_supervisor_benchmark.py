@@ -18,7 +18,8 @@ from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
 )
 from benchmarks.agent_supervisor.container_coding import benchmark_controls
 from .benchmark_resource_profile import PROFILES, validate_resource_profile
-from .benchmark_provider_profile import prepared_provider_identity, require_runtime_cli_version
+from .benchmark_provider_profile import (prepared_provider_identity, require_runtime_provider_profile,
+    resolve_provider_profile, PROVIDER_PROFILES)
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -151,7 +152,8 @@ def _intent_selection(contract: dict | None) -> dict:
 def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                *, intent_requirement_contract: dict | None = None, resource_profile=None,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
-               task_profile: dict | None = None) -> dict:
+               task_profile: dict | None = None, provider_profile: str | None = None) -> dict:
+    selected_provider = resolve_provider_profile(provider_profile)
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     from .benchmark_resource_profile import execution_budget
@@ -159,12 +161,14 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     config = baseline_config(dataset, output, resource_profile=resource_profile, task_name=task_name)
     config["job_name"] = "supervisor-" + arm + "-" + task_name
     config["agents"] = [{
-        "import_path": ADAPTER, "model_name": MODEL,
+        "import_path": ADAPTER, "model_name": selected_provider["model"],
         "override_timeout_sec": float(budget["harbor_seconds"]), "max_timeout_sec": float(budget["harbor_seconds"]),
         "override_setup_timeout_sec": 1800.0,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
                    "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"},
     }]
+    if provider_profile is not None:
+        config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
     if intent_requirement_contract is not None:
         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
     if task_profile is not None:
@@ -172,6 +176,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     if resource_profile is not None:
         config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
     if setup_cache_selection is not None:
+        if selected_provider["provider"] != "codex_cli":
+            raise ValueError("Codex setup cache is incompatible with Grok")
         from .terminal_setup_cache_advice import _selection_shape
         _selection_shape(setup_cache_selection)
         config["agents"][0]["kwargs"]["setup_cache_selection"] = json.loads(json.dumps(setup_cache_selection))
@@ -202,7 +208,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             intent_action_384_config: Path | None = None,
             source384_config: Path | None = None, resource_profile=None,
             setup_cache_policy: str | None = None, task_name: str = TASK,
-            task_profile: Path | None = None) -> dict:
+            task_profile: Path | None = None, provider_profile: str | None = None) -> dict:
+    selected_provider = resolve_provider_profile(provider_profile)
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
@@ -214,7 +221,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
-    require_runtime_cli_version(manifest)
+    require_runtime_provider_profile(manifest, provider_profile)
+    if selected_provider["provider"] == "grok_cli":
+        from .terminal_grok_deployment import verify_grok_archive
+        verify_grok_archive(archive / "runtime.tar.gz", manifest)
+        if setup_cache_policy is not None:
+            raise ValueError("Codex setup cache is incompatible with Grok")
     from .terminal_deployment import (
         load_intent_action_384_config, _intent_action_384_assets,
         validate_intent_action_384_binding, verify_intent_action_384_archive,
@@ -236,13 +248,14 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     from .terminal_setup_cache_advice import select_setup_cache, validate_setup_cache_prerequisites
     setup_cache_selection = select_setup_cache(archive, setup_cache_policy)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
-        auth_json=Path.home() / ".codex/auth.json", arm=arm, resource_profile=resource_profile)
+        auth_json=Path.home() / (".codex/auth.json" if selected_provider["provider"] == "codex_cli" else ".grok/auth.json"), arm=arm, resource_profile=resource_profile)
     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset, task_name=task_name)
     validate_header_planning_selection(selected_source384, requirements, arm)
     task_hashes = _task_hashes(task)
     declared_config = config_for(dataset, output, archive, arm,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
-        setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile)
+        setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
+        **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
@@ -263,9 +276,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               "task_input_sha256": task_hashes, "config_sha256": _hash(output / "config.json"),
               "comparison_controls": benchmark_controls.build_controls(
                   json.loads((output / "config.json").read_text()),
-                  task_input_sha256=task_hashes, task=task_name, model=MODEL,
-                  reasoning_effort=REASONING, cli_version=CLI_VERSION),
-              "command": command, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
+                  task_input_sha256=task_hashes, task=task_name, model=selected_provider["model"],
+                  reasoning_effort=selected_provider["reasoning_effort"], cli_version=selected_provider["cli_version"]),
+              "command": command, **{key: selected_provider[key] for key in ("model", "reasoning_effort", "cli_version")},
+              **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
@@ -308,6 +322,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     unchanged = _task_hashes(task) == prepared["task_input_sha256"]
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
+              **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               "original_task_inputs_unchanged": unchanged,
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
@@ -338,7 +353,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime archive changed")
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
-    require_runtime_cli_version(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()))
+    require_runtime_provider_profile(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), prepared.get("provider_profile"))
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
     with (output / "invocation.json").open("x") as stream:
@@ -362,6 +377,7 @@ def main():
                         help="Explicit public-instruction-bound task profile for a nondefault supervisor task")
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
+    parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES, help="Explicit immutable router route; no cross-provider fallback")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     from .terminal_setup_cache_advice import POLICIES
     parser.add_argument("--setup-cache-policy", choices=POLICIES,
@@ -381,7 +397,7 @@ def main():
                          source384_config=args.source384_config, resource_profile=args.resource_profile,
                          setup_cache_policy=args.setup_cache_policy,
                          task_name=TASK if args.task is None else args.task,
-                         task_profile=args.task_profile)
+                         task_profile=args.task_profile, provider_profile=args.provider_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import hashlib
 from pathlib import Path
 
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from . import local_planning_admission as local
-from .terminal_task_profile import PROFILE
+from .terminal_task_profile import PROFILE, DATA_SCHEMA
 from .terminal_source_partition import (terminal_profile_partition,
     TerminalSourcePartitionError as DoctorSourcePartitionError)
 
@@ -28,6 +29,7 @@ class DoctorSourcePartition:
     profile_sha256: str
     program_paths: tuple[str, ...]
     support_hashes: tuple[tuple[str, str, str], ...]
+    task_profile_json: str | None = field(default=None, repr=False)
 
     def observation(self) -> dict:
         payload = {
@@ -40,6 +42,8 @@ class DoctorSourcePartition:
             "execution_authority": False, "proof_authority": False,
             "completion_authority": False,
         }
+        if self.task_profile_json is not None:
+            payload["task_profile"] = json.loads(self.task_profile_json)
         return {**payload, "partition_cid": content_identity(payload)}
 
     def assert_current(self, repository: Path) -> None:
@@ -73,9 +77,14 @@ def terminal_doctor_source_partition(
     partition = terminal_profile_partition(repository=root, manifest=manifest)
     if partition is None or selected[0].task_key != manifest["tasks"][0]["task_key"]:
         raise DoctorSourcePartitionError("profile differs from signed graph task")
+    raw_profile = (root / PROFILE).read_bytes()
+    if hashlib.sha256(raw_profile).hexdigest() != partition.profile_sha256:
+        raise DoctorSourcePartitionError("profile changed during Doctor partition observation")
+    profile = json.loads(raw_profile)
     return DoctorSourcePartition(
         admission_json=canonical_json(admission), task_cid=task_cid,
         manifest_cid=verified["receipt"]["manifest_cid"],
         profile_sha256=partition.profile_sha256,
         program_paths=partition.program_paths, support_hashes=partition.support_hashes,
+        task_profile_json=canonical_json(profile) if profile["schema"] == DATA_SCHEMA else None,
     )

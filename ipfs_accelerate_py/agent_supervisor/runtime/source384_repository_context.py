@@ -227,6 +227,8 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advis
             program_source_files=len(program_scope["program_paths"]),
             harness_support_files=len(program_scope["harness_support"]),
             inference_python_files=len(report["preparation"]["paths"]))
+        if "task_data" in program_scope:
+            result["task_data_files"] = len(program_scope["task_data"])
     if advisory_successor:
         result.update(advice_only=True, requires_independent_manifest=True,
                       planning_authority=False, dispatch_authority=False)
@@ -299,7 +301,8 @@ def validate_historical_source384_selection(*, repository, expected_receipt):
         envelope = json.loads(raw)
         scope_owner.verified_selection_manifest(envelope, repository=root)
         _require(raw == _raw(envelope) and scope == scope_owner.recorded_scope(
-            source_hashes=receipt["source_hashes"], envelope=envelope),
+            source_hashes=receipt["source_hashes"], envelope=envelope,
+            task_profile=scope.get("task_profile")),
             "historical Source384 selection identity changed")
     scope_owner.require_selected_scope(receipt["source_hashes"], receipt.get("program_scope"))
     return receipt

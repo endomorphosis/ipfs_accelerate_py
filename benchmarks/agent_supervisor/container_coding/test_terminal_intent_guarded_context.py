@@ -107,7 +107,7 @@ def test_learned_clause_with_explicit_data_premises_reaches_goal_planner(
     assert result["qualified"] and result["intent_preplanning"]["supplied_to_router"]
     constraints = json.loads(prompt)["constraints"]["constraint_summaries"]
     assert summary in constraints
-    assert "Public instruction.md (the complete authorized task):\n" + PROBE in constraints
+    assert json.loads(prompt)["terminal_public_instruction"]["text"] == PROBE
     assert prepared["query"] == PROBE == (repository / preparation.INSTRUCTION).read_text()
     assert manifest.read_bytes() == before
 

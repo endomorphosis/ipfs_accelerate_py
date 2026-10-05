@@ -740,11 +740,17 @@ def build_runtime_archive(
     torch_cpu_wheel: Path | None = None,
     torch_cpu_wheel_sha256: str | None = None,
     setup_cache_policy: str | None = None,
+    grok_binary: Path | None = None,
 ) -> dict:
     """Package only source/code assets and explicitly selected native runtimes."""
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output:
         raise ValueError("fresh runtime archive directory required")
+    if grok_binary is not None:
+        from .terminal_grok_deployment import validate_grok_binary
+        grok_binary = validate_grok_binary(grok_binary)
+        if setup_cache_policy is not None:
+            raise ValueError("Grok runtime does not admit the Codex setup cache policy")
     if setup_cache_policy is not None:
         import platform
         from .terminal_setup_cache_advice import POLICIES
@@ -848,6 +854,9 @@ def build_runtime_archive(
             Path(extension_dir) / f"{extension}.duckdb_extension",
             f"extensions/{extension}.duckdb_extension",
         )
+    if grok_binary is not None:
+        from .terminal_grok_deployment import GROK_PATH
+        add(grok_binary, GROK_PATH)
     if lean_toolchain is not None:
         toolchain = Path(lean_toolchain).resolve(strict=True)
         if not (toolchain / "bin/lean").is_file():
@@ -921,6 +930,10 @@ def build_runtime_archive(
         "task_inputs_in_archive": intent_request_binding is not None,
         **({"task_modeling_premises_included": True} if intent_request_binding is not None else {}),
     }
+    if grok_binary is not None:
+        from .terminal_grok_deployment import grok_binding, validate_grok_binding
+        manifest["grok_cli_assets"] = grok_binding()
+        validate_grok_binding(manifest, required=True)
     validate_intent_action_384_binding(manifest)
     validate_source384_binding(manifest)
     validate_torch_cpu_wheel_binding(manifest)
@@ -944,8 +957,16 @@ async def deploy_supervisor(
     install_codex: bool = True,
     setup_cache_selection: dict | None = None,
     isolated_uv_bootstrap: bool = False,
+    provider: str = "codex_cli",
 ) -> dict:
     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
+    if provider not in {"codex_cli", "grok_cli"}:
+        raise ValueError("explicit supported container provider required")
+    if provider == "grok_cli" and (install_codex or setup_cache_selection is not None or auth_json is None):
+        raise ValueError("Grok deployment requires its auth file, no Codex install and no Codex cache policy")
+    if auth_json is not None:
+        from .terminal_grok_deployment import validate_auth_file
+        auth_json = validate_auth_file(auth_json)
     from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
     validate_setup_cache_selection(archive_dir, setup_cache_selection)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
@@ -957,6 +978,8 @@ async def deploy_supervisor(
     archive = Path(archive_dir) / "runtime.tar.gz"
     if _sha(archive) != manifest["archive_sha256"]:
         raise ValueError("runtime archive changed")
+    from .terminal_grok_deployment import verify_grok_archive, grok_exposure_script
+    grok_binding = verify_grok_archive(archive, manifest, required=provider == "grok_cli")
     torch_binding = verify_torch_cpu_wheel_archive(archive, manifest)
     verify_intent_action_384_archive(archive, manifest)
     verify_source384_archive(archive, manifest)
@@ -1099,6 +1122,8 @@ print(duckdb.__version__,platform)
             ).stdout.strip()
             if version != "codex-cli " + CODEX_VERSION:
                 raise ValueError("native Codex pin differs")
+        if provider == "grok_cli":
+            await execute("grok-native-expose", "python3 -I -c " + shlex.quote(grok_exposure_script()))
         if auth_json is not None:
             auth_json = Path(auth_json)
             if (
@@ -1108,20 +1133,19 @@ print(duckdb.__version__,platform)
             ):
                 raise ValueError("one bounded regular auth.json file required")
             # No file contents, hashes, token-bearing environment or host home mount.
-            await environment.upload_file(auth_json, ROOT + "/codex-auth/auth.json")
+            auth_directory = "/grok-auth" if provider == "grok_cli" else "/codex-auth"
+            config_directory = "/home/.grok" if provider == "grok_cli" else "/home/.codex"
+            await execute("provider-auth-directory", f"install -d -o supervisor -g supervisor -m 0700 {ROOT}{auth_directory} {ROOT}{config_directory}", record=False)
+            await environment.upload_file(auth_json, ROOT + auth_directory + "/auth.json")
             await execute(
                 "auth-permissions",
-                f"chown supervisor:supervisor {ROOT}/codex-auth/auth.json && chmod 0600 {ROOT}/codex-auth/auth.json && "
-                f"ln -s {ROOT}/codex-auth/auth.json {ROOT}/home/.codex/auth.json",
+                f"chown supervisor:supervisor {ROOT}{auth_directory}/auth.json && chmod 0600 {ROOT}{auth_directory}/auth.json && "
+                f"ln -s {ROOT}{auth_directory}/auth.json {ROOT}{config_directory}/auth.json",
                 record=False,
             )
-            await execute(
-                "auth-status",
-                "codex login status",
-                user="supervisor",
-                env=runtime_environment(),
-                record=False,
-            )
+            if provider == "codex_cli":
+                await execute("auth-status", "codex login status", user="supervisor",
+                    env=runtime_environment(), record=False)
     finally:
         environment.default_user = old_default
     imported = json.loads(
@@ -1168,6 +1192,9 @@ print(duckdb.__version__,platform)
         "imports": imported,
         "steps": steps,
         "codex_installed": install_codex,
+        "provider": provider,
+        "grok_installed": provider == "grok_cli",
+        "grok_cli_assets": grok_binding if provider == "grok_cli" else None,
         "auth_file_transferred": auth_json is not None,
         "credential_contents_recorded": False,
         "provider_calls": 0,
@@ -1192,6 +1219,7 @@ async def qualify_original_container(
     source384_warm_recovery: str | None = None,
     intent_requirement_contract: Path | None = None,
     setup_cache_selection: dict | None = None,
+    provider: str = "codex_cli",
 ) -> dict:
     from harbor.environments.docker.docker import DockerEnvironment
     from harbor.models.task.task import Task
@@ -1256,6 +1284,7 @@ async def qualify_original_container(
             output=output / "deployment",
             auth_json=auth_json,
             install_codex=install_codex,
+            provider=provider,
             **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {}),
         )
         if setup_cache_selection is not None:
@@ -1303,6 +1332,7 @@ def main():
     for name in ("output", "source", "datasets", "kit", "extension-dir"):
         build.add_argument("--" + name, type=Path, required=True)
     build.add_argument("--lean-toolchain", type=Path)
+    build.add_argument("--grok-binary", type=Path, help="Explicit pinned regular native Grok binary")
     build.add_argument("--model-snapshot", type=Path)
     build.add_argument("--torch-cpu-wheel", type=Path, help="Local pinned CPython 3.12 Torch CPU wheel")
     build.add_argument("--torch-cpu-wheel-sha256", help="Independent SHA-256 of the selected Torch CPU wheel")
@@ -1332,6 +1362,7 @@ def main():
         deploy.add_argument("--" + name, type=Path, required=True)
     deploy.add_argument("--auth-json", type=Path)
     deploy.add_argument("--no-codex", action="store_true")
+    deploy.add_argument("--provider", choices=["codex_cli", "grok_cli"], default="codex_cli")
     deploy.add_argument("--keep-container", action="store_true")
     from .benchmark_resource_profile import PROFILES
     deploy.add_argument("--resource-profile", choices=PROFILES,
@@ -1353,6 +1384,7 @@ def main():
             kit=args.kit,
             extension_dir=args.extension_dir,
             lean_toolchain=args.lean_toolchain,
+            grok_binary=args.grok_binary,
             model_snapshot=args.model_snapshot,
             torch_cpu_wheel=args.torch_cpu_wheel,
             torch_cpu_wheel_sha256=args.torch_cpu_wheel_sha256,
@@ -1389,6 +1421,7 @@ def main():
                 output=args.output,
                 auth_json=args.auth_json,
                 install_codex=not args.no_codex,
+                provider=args.provider,
                 keep_container=args.keep_container,
                 resource_profile=args.resource_profile,
                 source384_context=args.source384_context,

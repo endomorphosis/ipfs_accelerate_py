@@ -18,7 +18,7 @@ PINS = ["--public-instruction-artifact", "/app/.runtime/router-public-instructio
         "--public-instruction-sha256", "a" * 64, "--public-instruction-task-cid", "cid:task"]
 
 
-def dispatch(monkeypatch, args):
+def dispatch(monkeypatch, args, *, provider="codex_cli"):
     tree = ast.parse(deployment.WORKER_ENTRY)
     start = next(i for i, node in enumerate(tree.body) if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "parser" for target in node.targets))
@@ -27,7 +27,8 @@ def dispatch(monkeypatch, args):
     monkeypatch.setattr(router, "main", lambda: calls.append(sys.argv[:]) or 0)
     monkeypatch.setattr(sys, "argv", ["worker-entry", *args])
     namespace = {"argparse": argparse, "pathlib": pathlib, "sys": sys,
-        "artifact": pathlib.Path("/worker-boundary/manifest.json"), "digest": "b" * 64}
+        "artifact": pathlib.Path("/worker-boundary/manifest.json"), "digest": "b" * 64,
+        "selected_provider": provider}
     with pytest.raises(SystemExit) as stopped:
         exec(compile(tree, "deployed-worker-parser", "exec"), namespace)
     return stopped.value.code, calls
@@ -60,3 +61,17 @@ def test_legacy_worker_invocation_needs_no_instruction_flags(monkeypatch):
     code, calls = dispatch(monkeypatch, ["--model", "pinned"])
     assert code == 0 and len(calls) == 1
     assert not any(value.startswith("--public-instruction") for value in calls[0])
+
+
+def test_grok_worker_preserves_deployed_provider_and_instruction_binding(monkeypatch):
+    code, calls = dispatch(monkeypatch, ["--provider", "grok_cli", "--model", "grok-4.7", *PINS], provider="grok_cli")
+    assert code == 0 and len(calls) == 1
+    assert calls[0][calls[0].index("--provider") + 1] == "grok_cli"
+    assert calls[0][-len(PINS):] == PINS
+
+
+@pytest.mark.parametrize("deployed,requested", [("grok_cli", "codex_cli"), ("codex_cli", "grok_cli")])
+def test_worker_refuses_provider_change_before_dispatch(monkeypatch, deployed, requested):
+    code, calls = dispatch(monkeypatch, ["--provider", requested, "--model", "pinned"], provider=deployed)
+    assert code == "provider differs from deployed worker route"
+    assert calls == []

@@ -47,6 +47,40 @@ def _source_scope_payload(manifest, program_paths=None):
     return payload
 
 
+def _task_data_projection(*, sources, manifest, program, required, verify_data=True):
+    """Defer only exact canonical public data, never an arbitrary source subset.
+
+    The caller admits the source scope. This replays its captured profile and
+    generated support without acquiring proof or omission authority. Every
+    deferred file remains mandatory raw input fetched from the signed checkout.
+    """
+    from .terminal_task_profile import (DATA_SCHEMA, PROFILE, INSTRUCTION, SMOKE,
+        validate_task_profile, task_profile_bytes, task_profile_worker_inputs,
+        task_profile_smoke, validate_task_data)
+    if program is None or not {PROFILE, INSTRUCTION, SMOKE} <= set(sources):
+        raise ValueError("deferred task data requires explicit program scope and canonical support")
+    profile = validate_task_profile(json.loads(sources[PROFILE]), instruction=sources[INSTRUCTION].decode())
+    data = profile.get("data_inputs", [])
+    names = {item["path"] for item in data}
+    if (profile["schema"] != DATA_SCHEMA or not data
+            or sources[PROFILE] != task_profile_bytes(profile)
+            or sources[SMOKE] != task_profile_smoke(profile).encode()
+            or set(task_profile_worker_inputs(profile)) != set(manifest)
+            or tuple(name for name in profile["input_paths"] if name not in names) != tuple(program)
+            or names & set(required)):
+        raise ValueError("deferred task data differs from its exact public profile")
+    if verify_data:
+        for item in data:
+            validate_task_data(sources[item["path"]], item["media_type"])
+    return dict(schema="supervisor-task-data-projection@1",
+        profile_sha256=manifest[PROFILE]["sha256"],
+        immutable_support={name: manifest[name] for name in (INSTRUCTION, PROFILE, SMOKE)},
+        raw_source_fetch_required={item["path"]: dict(manifest[item["path"]],
+            media_type=item["media_type"], role="task_data") for item in data},
+        fetch_policy="Read exact repository bytes and verify SHA256 before deriving task results; these references do not substitute for data.",
+        semantic_equivalence_claimed=False, proof_authority=False, completion_authority=False)
+
+
 def _doctor_for_scope(*, sources, manifest, scope_cid, repository_id, program_paths):
     from ..analysis.doctor_repository_diagnostics import DoctorAuthorityRoots, DoctorSourceUnit, diagnose_repository
     from ..analysis.doctor_contract_adapters import materialize_runtime_diagnostics
@@ -72,6 +106,7 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
     from ..context.context_contracts import ContextBudget
     from ..semantic_state.wire import cid_for_payload
     selected, scope_cid = tuple(sorted(sources)), base["scope_cid"]
+    deferred = set(base.get("task_data_projection", {}).get("raw_source_fetch_required", {}))
     full_capsule_count = len(state.symbols)
     capsules, admissions, selected_symbols = select_worker_capsules(
         bundle=bundle, view=view, provider=provider, symbols=state.symbols,
@@ -86,7 +121,7 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
             "omitted_capsule_count": full_capsule_count - len(capsules),
             "selected_symbols": selected_symbols, "capsule_index_cid": view.root.capsule_index_cid,
             "raw_source_fetch_required": {name: manifest[name] for name in selected
-                if name not in required and ("program_paths" not in base or name in base["program_paths"])},
+                if name not in required and ("program_paths" not in base or name in base["program_paths"] or name in deferred)},
             "omission_reason": "explicit bounded worker projection; full source and capsule index retained",
             "raw_required_caveat": "Read exact repository source before editing; omitted raw bytes are not substituted or proved equivalent by capsules.",
             "semantic_equivalence_claimed": False, "completion_authority": False}
@@ -103,7 +138,7 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
     packed = packed_context()
     raw_paths = set(required)
     if "program_paths" in base:
-        raw_paths.update(set(selected) - set(base["program_paths"]))
+        raw_paths.update(set(selected) - set(base["program_paths"]) - deferred)
     if projection is None:
         for admission, symbol in zip(admissions, state.symbols):
             if admission.ref.raw_source_required:
@@ -165,6 +200,7 @@ def prepare_semantic_context(
     paths: Sequence[str],
     required_raw_paths: Sequence[str],
     program_paths: Sequence[str] | None = None,
+    defer_task_data: bool = False,
     objective: str,
     task_id: str,
     output: Path,
@@ -211,6 +247,8 @@ def prepare_semantic_context(
     selected = tuple(sorted(set(paths)))
     required = tuple(sorted(set(required_raw_paths)))
     program = _program_paths(program_paths, selected)
+    if type(defer_task_data) is not bool or (defer_task_data and not worker_query):
+        raise ValueError("deferred task data requires an explicit bounded worker projection")
     if not objective.strip() or not task_id.strip():
         raise ValueError("objective and task identity are required")
     if (
@@ -239,6 +277,8 @@ def prepare_semantic_context(
         name: {"sha256": hashlib.sha256(raw).hexdigest(), "source_cid": cid_for_bytes(raw)}
         for name, raw in sources.items()
     }
+    data_projection = (_task_data_projection(sources=sources, manifest=manifest,
+        program=program, required=required) if defer_task_data else None)
     scope_payload = _source_scope_payload(manifest, program)
     scope_cid = cid_for_payload(scope_payload)
     provider = IpfsDatasetsSemanticStateProvider()
@@ -283,6 +323,9 @@ def prepare_semantic_context(
             if previous_program != list(program):
                 raise ValueError("refresh cannot expand or shrink semantic program scope")
             refresh_lineage["program_paths"] = list(program)
+        previous_data = refresh_lineage.pop("previous_task_data_projection", None)
+        if previous_data != data_projection:
+            raise ValueError("semantic refresh changed immutable task data or support bindings")
         refresh_lineage.update(
             {
                 "scope_cid": scope_cid,
@@ -311,6 +354,8 @@ def prepare_semantic_context(
     }
     if program is not None:
         base.update(schema="supervisor-semantic-worker-context@2", program_paths=list(program))
+    if data_projection is not None:
+        base["task_data_projection"] = data_projection
     payload, compact, packed, projection, full_capsule_count, raw_scope_payload, delta_payload = _worker_payload(
         base=base, sources=sources, manifest=manifest, required=required,
         state=state, bundle=bundle, view=view, provider=provider,
@@ -405,6 +450,8 @@ def prepare_semantic_context(
     }
     if program is not None:
         result.update(schema="supervisor-semantic-context-preparation@2", program_paths=list(program))
+    if data_projection is not None:
+        result["task_data_projection"] = data_projection
     (output / "result.json").write_bytes(_encoded(result, pretty=True))
     return result
 
@@ -419,6 +466,8 @@ def _validate_program_payload(payload, *, sources=None, repository=None):
         "required_raw_paths", "preparation_bounds", "doctor_snapshot_id", "doctor_manifest_cid",
         "reconstruction", "refresh_lineage", "completion_authority", "program_paths", "capsules",
         "admissions", "raw_sources", "pack"}
+    if "task_data_projection" in payload:
+        fields.add("task_data_projection")
     if set(payload) not in (fields, fields | {"worker_projection"}):
         raise ValueError("closed explicit semantic program payload required")
     bounds = payload["preparation_bounds"]
@@ -454,6 +503,16 @@ def _validate_program_payload(payload, *, sources=None, repository=None):
         raise ValueError("explicit semantic program reconstruction differs")
     capsules, admissions, raw_sources = payload["capsules"], payload["admissions"], payload["raw_sources"]
     projection = payload.get("worker_projection")
+    deferred = set()
+    if "task_data_projection" in payload:
+        if type(raw_sources) is not dict or projection is None:
+            raise ValueError("deferred task data requires its raw support and bounded projection")
+        support = {name: text.encode() for name, text in raw_sources.items() if type(text) is str}
+        expected_data = _task_data_projection(sources=sources if sources is not None else support,
+            manifest=manifest, program=program, required=required, verify_data=sources is not None)
+        if payload["task_data_projection"] != expected_data:
+            raise ValueError("deferred task data references differ from source bindings")
+        deferred = set(expected_data["raw_source_fetch_required"])
     if projection is not None and (
             type(projection) is not dict or projection.get("schema") != "supervisor-semantic-worker-projection@1"
             or projection.get("selector") != "lexical-query-symbol-name@1"
@@ -468,7 +527,8 @@ def _validate_program_payload(payload, *, sources=None, repository=None):
     if (type(capsules) is not list or type(admissions) is not list or len(capsules) != len(admissions)
             or len(capsules) > count or (projection is None and len(capsules) != count)
             or type(raw_sources) is not dict or not set(raw_sources) <= set(manifest)
-            or not (set(required) | (set(manifest) - set(program))) <= set(raw_sources)):
+            or not (set(required) | (set(manifest) - set(program) - deferred)) <= set(raw_sources)
+            or deferred & set(raw_sources)):
         raise ValueError("explicit semantic program projection differs")
     for name, text in raw_sources.items():
         if type(text) is not str or hashlib.sha256(text.encode()).hexdigest() != manifest[name]["sha256"]:
@@ -725,6 +785,9 @@ def resolve_semantic_worker_context(
     if previous["schema"] == "supervisor-semantic-worker-context@2":
         lineage["previous_program_paths"] = previous["program_paths"]
         program_kwargs["program_paths"] = previous["program_paths"]
+        if "task_data_projection" in previous:
+            lineage["previous_task_data_projection"] = previous["task_data_projection"]
+            program_kwargs["defer_task_data"] = True
     result = prepare_semantic_context(
         repository=root,
         paths=tuple(previous["manifest"]),

@@ -12,7 +12,8 @@ from pathlib import Path
 from ..proof.formal_verification_contracts import content_identity
 from . import local_planning_admission as local
 from .terminal_source_partition import terminal_profile_partition
-from .terminal_task_profile import PROFILE, INSTRUCTION, SMOKE
+from .terminal_task_profile import (PROFILE, INSTRUCTION, SMOKE, DATA_SCHEMA,
+    task_profile_bytes, validate_task_profile)
 
 SCHEMA = "source384-terminal-program-scope@1"
 ARTIFACT = "source-selection.json"
@@ -63,23 +64,32 @@ def program_scope(*, repository, source_hashes, envelope, current=False):
     for name, _, digest in partition.support_hashes:
         if source_hashes[name] != digest:
             raise ValueError("Source384 immutable harness support changed")
-    result = recorded_scope(source_hashes=source_hashes, envelope=envelope)
+    profile = json.loads((Path(repository) / PROFILE).read_text())
+    result = recorded_scope(source_hashes=source_hashes, envelope=envelope,
+        task_profile=profile if profile["schema"] == DATA_SCHEMA else None)
     if result["program_paths"] != list(partition.program_paths):
         raise ValueError("Source384 canonical profile program population differs")
     return result
 
 
-def recorded_scope(*, source_hashes, envelope):
+def recorded_scope(*, source_hashes, envelope, task_profile=None):
     """Reconstruct historical selection identity without source-current claims."""
     manifest = envelope["payload"]
     sources = manifest["sources"]
     support = ((INSTRUCTION, "instruction"), (PROFILE, "task_profile"), (SMOKE, "structural_smoke"))
+    if task_profile is not None:
+        task_profile = validate_task_profile(task_profile)
+        if (task_profile["schema"] != DATA_SCHEMA
+                or hashlib.sha256(task_profile_bytes(task_profile)).hexdigest() != sources[PROFILE]["sha256"]
+                or set(task_profile["input_paths"]) | {name for name, _ in support} != set(sources)):
+            raise ValueError("Source384 historical task data declaration differs from signed profile")
+        support += tuple((item["path"], "task_data") for item in task_profile["data_inputs"])
     support_paths = {name for name, _ in support}
     if set(source_hashes) != set(sources) or not support_paths <= set(sources):
         raise ValueError("Source384 historical selection population differs")
     if any(source_hashes[name] != sources[name]["sha256"] for name in support_paths):
         raise ValueError("Source384 historical support hashes changed")
-    return dict(schema=SCHEMA, manifest_cid=content_identity(envelope),
+    result = dict(schema=SCHEMA, manifest_cid=content_identity(envelope),
         selection_sha256=hashlib.sha256(_raw(envelope)).hexdigest(),
         source_population_sha256=hashlib.sha256(_raw(source_hashes)).hexdigest(),
         profile_sha256=sources[PROFILE]["sha256"], program_paths=sorted(set(sources) - support_paths),
@@ -87,6 +97,11 @@ def recorded_scope(*, source_hashes, envelope):
                          for name, role in support],
         proof_authority=False, execution_authority=False, completion_authority=False,
         formalization_authority=False)
+    if task_profile is not None:
+        result.update(task_profile=task_profile,
+            task_data=[item for item in result["harness_support"] if item["role"] == "task_data"])
+        result["harness_support"] = [item for item in result["harness_support"] if item["role"] != "task_data"]
+    return result
 
 
 def require_selected_scope(source_hashes, scope):

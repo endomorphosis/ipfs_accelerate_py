@@ -24,13 +24,13 @@ from .terminal_deployment import (
 )
 from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
-from .benchmark_provider_profile import require_runtime_cli_version
+from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 
 
 def measured_usage(report: dict) -> dict:
-    """Count final native totals once per invocation, including failed calls."""
+    """Count observed native totals once, retaining provider-specific semantics."""
     rows = report.get("provider_invocations", [])
     unique = {}
     for row in rows:
@@ -47,16 +47,45 @@ def measured_usage(report: dict) -> dict:
                   for row in unique.values()]
         result[key] = sum(values) if known and all(type(v) is int and v >= 0 for v in values) else None
     result["provider_calls"] = len(unique)
-    result["observed_complete_sessions"] = all(
+    result["observed_complete_sessions"] = known and all(
         (row.get("native_rollout_usage") or {}).get("task_complete_observed") is True
         for row in unique.values()
     ) if unique else False
-    result["cache_included_in_input"] = True
-    result["source"] = "observed_native_cumulative_totals"
+    grok = any(row.get("provider") == "grok_cli" for row in unique.values())
+    cache_semantics = [(row.get("native_rollout_usage") or {}).get("cache_included_in_input")
+                       if row.get("provider") == "grok_cli" else True
+                       for row in unique.values()]
+    result["cache_included_in_input"] = (cache_semantics[0] if cache_semantics
+        and all(type(value) is bool and value == cache_semantics[0] for value in cache_semantics)
+        else None) if grok else True
+    result["source"] = "observed_native_final_totals" if grok else "observed_native_cumulative_totals"
+    if grok:
+        writes = [(row.get("native_rollout_usage") or {}).get("usage", {}).get("cache_write_input_tokens")
+                  for row in unique.values()]
+        result["cache_write_input_tokens"] = (sum(writes)
+            if known and all(type(value) is int and value >= 0 for value in writes) else None)
+        completeness = [(row.get("native_rollout_usage") or {}).get("usage_complete_observed")
+                        for row in unique.values()]
+        result["usage_complete_observed"] = (False if any(value is False for value in completeness)
+            else True if known and all(value is True for value in completeness) else None)
     result["all_invocations_receipted"] = known
     result["billing_total_verified"] = False
     result["dollar_cost"] = None
     return result
+
+
+def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
+    """Harbor input includes cache; retain native categories in the receipt."""
+    value = usage["input_tokens"] if usage.get("cache_included_in_input") is True else None
+    if usage.get("cache_included_in_input") is False:
+        categories = [usage.get(key) for key in ("input_tokens", "cached_input_tokens",
+                                                "cache_write_input_tokens", "output_tokens", "total_tokens")]
+        if (all(type(item) is int and item >= 0 for item in categories)
+                and sum(categories[:4]) == categories[4]):
+            value = sum(categories[:3])
+    context.n_input_tokens = value
+    context.n_cache_tokens = usage["cached_input_tokens"]
+    context.n_output_tokens = usage["output_tokens"]
 
 
 def security_asset_arguments(manifest: dict, arm: str) -> tuple[list[str], dict]:
@@ -227,22 +256,28 @@ class FullSupervisorAgent(BaseAgent):
     def __init__(self, *args, runtime_archive: str, arm="full", auth_json: str | None = None,
                  model_revision="", disable_intent_autoencoder: bool = False,
                  intent_requirement_contract: dict | None = None, resource_profile=None,
-                 setup_cache_selection: dict | None = None, task_profile: dict | None = None, **kwargs):
+                 setup_cache_selection: dict | None = None, task_profile: dict | None = None,
+                 provider_profile: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.model_name != MODEL or arm not in {"full", "no-index"}:
+        selected_provider = resolve_provider_profile(provider_profile)
+        if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
-        self.auth_json = Path(auth_json or Path.home() / ".codex/auth.json")
+        self.provider_profile = provider_profile
+        self.auth_json = Path(auth_json or Path.home() / (".codex/auth.json"
+            if selected_provider["provider"] == "codex_cli" else ".grok/auth.json"))
         self.arm = arm
         self.model_revision = model_revision
         if resource_profile not in (None, *PROFILES):
             raise ValueError("unknown benchmark resource profile")
         self.resource_profile = resource_profile
         from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
+        if selected_provider["provider"] != "codex_cli" and setup_cache_selection is not None:
+            raise ValueError("Codex setup cache is incompatible with Grok")
         validate_setup_cache_selection(self.runtime_archive, setup_cache_selection)
-        validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
+        validate_setup_cache_prerequisites(setup_cache_selection, install_codex=selected_provider["provider"] == "codex_cli",
             auth_json=self.auth_json, arm=arm, resource_profile=resource_profile)
         self.setup_cache_selection = json.loads(json.dumps(setup_cache_selection))
         self.disable_intent_autoencoder = disable_intent_autoencoder
@@ -263,7 +298,8 @@ class FullSupervisorAgent(BaseAgent):
         return "ipfs-admitted-supervisor"
 
     def version(self):
-        return "isolated-native-v1+codex-" + CLI_VERSION
+        selected = resolve_provider_profile(getattr(self, "provider_profile", None))
+        return "isolated-native-v1+" + selected["provider"].removesuffix("_cli") + "-" + selected["cli_version"]
 
     async def setup(self, environment):
         from .terminal_setup_cache_advice import (
@@ -271,22 +307,25 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
-        require_runtime_cli_version(manifest)
+        selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
-        validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=self.auth_json,
+        validate_setup_cache_prerequisites(selection, install_codex=selected_provider["provider"] == "codex_cli", auth_json=self.auth_json,
             arm=self.arm, resource_profile=getattr(self, "resource_profile", None))
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_bootstrap import bootstrap_task_repository
             self.task_bootstrap = await bootstrap_task_repository(environment, profile=task_profile,
                 output=self.logs_dir / "task-bootstrap")
+        provider_options = ({"provider": "grok_cli", "install_codex": False}
+            if selected_provider["provider"] == "grok_cli" else {})
         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
-                                output=self.logs_dir / "deployment", auth_json=self.auth_json,
+                                output=self.logs_dir / "deployment", auth_json=self.auth_json, **provider_options,
                                 **({"isolated_uv_bootstrap": True} if task_profile is not None else {}),
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
-        await deploy_worker_boundary(environment, output=boundary)
+        await deploy_worker_boundary(environment, output=boundary,
+            **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
         if selection is not None:
             self.setup_cache_receipt = await apply_setup_cache_advice(environment,
                 archive_dir=self.runtime_archive, expected=selection,
@@ -312,6 +351,9 @@ class FullSupervisorAgent(BaseAgent):
         argv = [PYTHON, "-P", "-m", "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor",
                 "--instruction", instruction_path, "--state", state,
                 "--arm", self.arm, "--timeout-seconds", str(budget["driver_seconds"])]
+        provider_profile = getattr(self, "provider_profile", None)
+        if provider_profile is not None:
+            argv += ["--provider-profile", provider_profile]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -341,6 +383,7 @@ class FullSupervisorAgent(BaseAgent):
             manifest, self.arm, getattr(self, "resource_profile", None))
         argv += source384_arguments
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
+                            "provider_profile": resolve_provider_profile(provider_profile),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,
@@ -376,9 +419,7 @@ class FullSupervisorAgent(BaseAgent):
                 await asyncio.wait_for(environment.download_file(report_path, self.logs_dir / "supervisor-result.json"), timeout=5)
                 report = json.loads((self.logs_dir / "supervisor-result.json").read_text())
                 usage = measured_usage(report)
-                context.n_input_tokens = usage["input_tokens"]
-                context.n_cache_tokens = usage["cached_input_tokens"]
-                context.n_output_tokens = usage["output_tokens"]
+                populate_harbor_usage(context, usage)
                 context.metadata.update(task_completed=report["task_completed"], usage=usage,
                                         supervisor_seconds=report["seconds"], phases=report["phases"],
                                         intent_preplanning=(report.get("planning") or {}).get(

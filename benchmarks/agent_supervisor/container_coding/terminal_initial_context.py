@@ -304,7 +304,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         # in retrieval, required raw input, planner constraints and hashes.
         required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
         output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
-        **({"program_paths": partition["program_paths"]} if partition is not None else {}))
+        **({"program_paths": partition["program_paths"], "defer_task_data": any(
+            row["role"] == "task_data" for row in partition["support_hashes"].values())}
+            if partition is not None else {}))
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)

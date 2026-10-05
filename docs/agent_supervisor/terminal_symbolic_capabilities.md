@@ -25,8 +25,12 @@ header profile is reported separately from the actual selected Doctor workflow.
 
 The optional `doctor-terminal-source-partition@1` must account for every signed
 input exactly once. Its instruction, task profile, and generated structural
-smoke retain their hashes and explicit roles. All original task input files,
-including unsupported data, remain in the program-input population. An empty
+smoke retain their hashes and explicit roles. Under the original public profile,
+all original task input files, including unsupported data, remain in the
+program-input population. The explicit public profile `@2` additionally permits
+bounded, validated JSON, JSONL, XML and calendar inputs with a `task_data` role.
+Their signed hashes remain in the complete ledger; the bound canonical profile
+allows independent replay of the code/data classification. An empty program
 population stays empty; instruction text does not become a software symbol.
 No partition in a legacy result means unknown partition coverage.
 
@@ -48,9 +52,13 @@ route. `runtime/doctor_source_partition.py` now independently replays the signed
 admission and exact canonical profile, instruction binding, task specification,
 and generated smoke. The shared `runtime/terminal_source_partition.py` checker
 recomputes the selected planning evidence used by the real preparation entrypoint,
-including its acceptance-evidence CID. Only those three generated files receive support roles.
-Every actual input remains in the program population, including JSON, Markdown,
-and other unsupported inputs; their unresolved coverage still blocks mutation.
+including its acceptance-evidence CID. The original public profile assigns support
+roles only to those three generated files. The explicit `@2` profile also
+classifies independently validated, declared data inputs; undeclared data and
+other unsupported inputs remain in the program population. Data classification
+does not establish a behavioral contract for consumers: generic Doctor dispatch
+retains `doctor_task_data_contract_unavailable`, and direct repair composition
+refuses that population. These unresolved obligations still block symbolic mutation.
 All signed file hashes remain in the transaction ledger. Replays before proof
 and candidate mutation reject stale support or program inputs.
 
@@ -73,20 +81,46 @@ Two generic closed operators are available on eligible profiles: a local Python
 keyword rename and an imported alias call repair. For example, an existing
 `from helpers import transform as normalize` can justify changing the unresolved
 `transform(value)` call to `normalize(value)`. The latter route requires a signed,
-flat local donor, an unambiguous alias, inert function bodies and arguments,
+flat local donor, an unambiguous alias, closed function bodies and inert arguments,
 compatible signatures, no shadowing, no unresolved calls or call cycles, and no
-import-time effects. The grammar admits at most 16 bindings per module and
-64-character identifiers. Separate native theorem and prover-argument limits
+import-time effects. Module and function docstrings, immutable literal defaults
+(including signed numeric literals), positional-only parameters, and arithmetic
+or conditional return expressions are supported. Every function still has one
+return statement after its optional docstring. Call arguments retain the narrower
+name/constant grammar; annotations, decorators, mutable or computed defaults,
+variadic parameters, dynamic access, rebinding and nested calls remain unsupported.
+The grammar admits at most 16 bindings per module, 32 parameters per function,
+and 64-character identifiers. Separate native theorem and prover-argument limits
 return an explicit residual on overflow, before proof state is created.
 It does not insert dependencies or guess missing imports.
 The source-derived finite binding map is projected to real Lean/Z3 checks for
-alias resolution, the original name's absence, and argument preservation. Local
+alias resolution, the original name's absence, and argument preservation. The
+finite signature projection additionally checks positional capacity, permitted
+keyword names, required-parameter coverage and absence of duplicate bindings.
+Both the native Python signature replay and the independently executed Lean/Z3
+checks must succeed. Arithmetic return behavior and overloaded Python operators
+are unchanged by the identifier repair; their behavior is not proved. Local
 module resolution is an explicit assumption, not a theorem about Python's loader.
 The report identifies the actually selected operator using a closed map.
 The theorem remains about the reviewed local transformation; AST placement,
 signature binding, source hashes, dependency impact and transaction validation
 are separate gates. Autoencoder formulas and index results remain nominations,
 not independent behavioral specifications or proofs of the whole task.
+
+The [expanded authored workflow tests](../../benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py)
+exercise actual public preparation, reused indexes, an authored IntentIR symbolic
+plan, native Lean/Z3 proof, isolated Doctor transaction, candidate handoff and
+worker materialization without a model call. Separate authored execution checks
+exercise defaults and positional-only calls. Negative controls retain residuals
+or refuse publication for missing parameters, failed provers and stale donors;
+the [projection controls](../../test/api/test_doctor_alias_binding_coverage.py)
+also make real Lean reject an incorrect binding and real Z3 return `sat` for its
+falsified counterpart. The focused AST-sealed qualification passed 136 tests;
+18 overlapping partition/data checks passed again after the final partition
+correction. These are authored integration results, not Terminal-Bench rewards,
+learned intent-interpretation accuracy or whole-program correctness results.
+See the [public suite profiles](../../benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md)
+for input-format coverage and the remaining task-specific validation obligations.
 
 ## Native execution diagnostics
 
@@ -717,8 +751,9 @@ replay. Ten related context, dispatch, execution or indexed-qualification guards
 also retain singleton requirements. Increasing the budget alone would leave
 those joins incomplete.
 
-The next planning increment is an explicit `terminal-public-task-profile@2`
-with at most 16 reviewed task/operation bindings. Bind the original instruction
+The next planning increment is a separately versioned multi-task public profile
+with at most 16 reviewed task/operation bindings. The current public profile `@2`
+adds declared data formats and retains the single-task contract. Bind the original instruction
 hash and requirement-contract CID, unique task identities, disjoint output
 ownership with exact union coverage, operation and requirement dependencies,
 and each task's validation and acceptance keys. Preserve the current profile

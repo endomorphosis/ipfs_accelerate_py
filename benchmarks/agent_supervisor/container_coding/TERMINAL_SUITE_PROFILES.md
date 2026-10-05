@@ -41,8 +41,11 @@ no header contract; unsupported repairs become explicit residual work through
 `ipfs_accelerate_py.llm_router`. The current comparison route pins `codex_cli`, model
 `gpt-6.1-sol`, high reasoning and CLI `0.160.0`. The retained three-task pilot
 used `gpt-5.6-sol` and CLI `0.158.0`; changing the model or CLI starts a
-different experiment. This
-container profile does not yet deploy the general supervisor's Grok route.
+different experiment. The explicit
+[`grok-4.7-cli-1.0.46@1` container route](../../../docs/agent_supervisor/TERMINAL_GROK_CONTAINER_ROUTE.md)
+uses the same supervisor through `llm_router` with separately pinned native
+assets and provider-specific token accounting; it never silently falls back
+to another provider. Select it with `--provider-profile` during preparation.
 Runtime archives must carry the current CLI pin. The optional
 `source384-native-aarch64-dontneed@1` setup-cache policy remains bound to
 CLI `0.158.0` and its original binary hashes. Use the separately pinned
@@ -67,7 +70,11 @@ bound. Empty-context and no-index configurations need their own task qualificati
 Other limitations remain explicit: workers cannot install system-wide packages,
 files outside `/app` are not covered, write effects are exact create/modify paths,
 there is one worker and one native attempt, and unsupported AST/index populations
-fail rather than silently disappearing. Generic runs do not train on benchmark
+fail rather than silently disappearing. The reviewed
+[version 2 task profiles](../../../docs/agent_supervisor/TERMINAL_PUBLIC_TASK_PROFILES.md)
+separate immutable JSON/JSONL/XML/calendar data from the code population and
+preserve exact source references when raw data exceed the worker context budget.
+Generic runs do not train on benchmark
 inputs. No-index/native baselines require matched profiles before comparison.
 
 Terminal-Bench 2.0 revision `2fd12b88aafdd04a52c298e3940bcb189f9766d6`
@@ -83,4 +90,6 @@ The subsequent [supervisor recovery trial](../../../docs/agent_supervisor/eviden
 passes `largest-eigenval` with CLI `0.160.0` and `gpt-6.1-sol` through
 `llm_router`, consuming 291432 observed tokens. It verifies actual Source384
 inference and native completion, and retains the remaining suite blockers.
-It has no matched native or no-index baseline and establishes no efficiency advantage.
+The later [regular Codex baseline](../../../docs/agent_supervisor/evidence/terminal-codex-eigenvalue-baseline-20261005/README.md)
+records reward 0.0 and 161750 observed tokens, with strict comparison differences
+retained. No matched no-index trial or efficiency advantage is established.

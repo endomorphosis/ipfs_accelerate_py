@@ -82,8 +82,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
     from ipfs_accelerate_py.router_deps import RouterDeps
 
-    if provider != "codex_cli":
-        raise ValueError("this version qualifies the router's codex_cli coding route only")
+    if provider not in {"codex_cli", "grok_cli"}:
+        raise ValueError("explicit supported shared-router coding provider required")
+    if provider == "grok_cli" and model != "grok-4.7":
+        raise ValueError("explicit pinned Grok benchmark model required")
     if not model or not 1 <= timeout <= 600 or not 1 <= max_output_tokens <= 16_384:
         raise ValueError("explicit model and bounded invocation settings required")
     if reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
@@ -99,6 +101,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         boundary = verify_container_worker_boundary(
             artifact=container_boundary, expected_sha256=container_boundary_sha256, workspace=root,
         )
+    if provider == "grok_cli" and purpose == "coding" and boundary is None:
+        raise ValueError("Grok coding requires the verified isolated container worker boundary")
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     if Path(top).resolve() != root:
         raise ValueError("implementation must start at its allocated Git worktree root")
@@ -198,6 +202,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "external_container_boundary": boundary,
     }
     failure_phase = "provider_invocation"
+    provider_options = {}
+    if provider == "grok_cli":
+        # Reuse the existing Grok adapter. Planning has no tools; terminal tools
+        # require the separately verified external Docker/UID boundary above.
+        provider_options = {"grok_tools": "" if purpose == "planning" else
+            "read_file,search_replace,grep,list_dir,todo_write,run_terminal_cmd",
+            "grok_permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
+            "grok_max_turns": 1 if purpose == "planning" else 128}
     try:
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
@@ -208,6 +220,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             # native receipt. Cached response text cannot replay those effects.
             side_effecting=True,
             task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
+            **provider_options,
         )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
@@ -245,12 +258,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens",
             "total_cost_usd", "model_id", "session_id", "thread_id", "num_turns", "exit_code", "timed_out",
         ) if key in observation}
-        from .codex_usage_receipt import recover_codex_usage
-        receipt["native_rollout_usage"] = recover_codex_usage(
-            home=Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
-            thread_id=str(observation.get("thread_id") or observation.get("session_id") or ""),
-            workspace=root,
-        )
+        if provider == "codex_cli":
+            from .codex_usage_receipt import recover_codex_usage
+            receipt["native_rollout_usage"] = recover_codex_usage(
+                home=Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
+                thread_id=str(observation.get("thread_id") or observation.get("session_id") or ""),
+                workspace=root)
+        else:
+            from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_usage_receipt
+            receipt["native_rollout_usage"] = grok_usage_receipt(observation)
         receipt["seconds"] = time.monotonic() - started
         print(json.dumps(receipt, sort_keys=True), flush=True)
         if previous is None:
@@ -265,7 +281,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", default="codex_cli", choices=["codex_cli"])
+    parser.add_argument("--provider", default="codex_cli", choices=["codex_cli", "grok_cli"])
     parser.add_argument("--model", required=True)
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--max-output-tokens", type=int, default=4096)

@@ -14,7 +14,8 @@ from ..proof.formal_verification_contracts import content_identity
 from . import local_planning_admission as local
 from .terminal_task_profile import (INSTRUCTION, PROFILE, SMOKE, task_profile_bytes,
     task_profile_smoke, task_profile_spec, task_profile_worker_inputs,
-    validate_task_profile, normalized_instruction)
+    validate_task_profile, normalized_instruction,
+    validate_task_data)
 
 class TerminalSourcePartitionError(ValueError):
     """Signed harness support cannot be independently reproduced."""
@@ -90,8 +91,17 @@ def terminal_profile_partition(*, repository: Path, manifest: dict) -> TerminalS
     expected_smoke = task_profile_smoke(profile).encode("utf-8")
     if _read(root, SMOKE, sources, len(expected_smoke)) != expected_smoke:
         raise TerminalSourcePartitionError("structural smoke differs from the fixed producer")
+    data_support = []
+    for item in profile.get("data_inputs", []):
+        name = item["path"]
+        try:
+            validate_task_data(_read(root, name, sources, 262144), item["media_type"])
+        except (ValueError, TypeError, UnicodeError) as error:
+            raise TerminalSourcePartitionError("signed task data format does not replay") from error
+        data_support.append((name, "task_data", sources[name]["sha256"]))
     return TerminalSourcePartition(
         profile_sha256=hashlib.sha256(raw).hexdigest(),
-        program_paths=tuple(profile["input_paths"]),
+        program_paths=tuple(name for name in profile["input_paths"]
+            if name not in {item["path"] for item in profile.get("data_inputs", [])}),
         support_hashes=tuple((name, role, sources[name]["sha256"]) for name, role in (
-            (INSTRUCTION, "instruction"), (PROFILE, "task_profile"), (SMOKE, "structural_smoke"))))
+            (INSTRUCTION, "instruction"), (PROFILE, "task_profile"), (SMOKE, "structural_smoke"))) + tuple(data_support))

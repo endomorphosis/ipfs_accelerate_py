@@ -105,6 +105,8 @@ def _historical_preparation(tmp_path, runner, monkeypatch):
     # Author the historical control with its historical source profile, then
     # collect it with today's untouched profile. No actual task/model executes.
     with monkeypatch.context() as frozen:
+        frozen.setattr(profile, "resolve_provider_profile", lambda name=None: {
+            "id": "historical-fixture", "provider": "codex_cli", **historical})
         frozen.setattr(native, "MODEL", historical["model"])
         frozen.setattr(native, "CLI_VERSION", historical["cli_version"])
         prepared["comparison_controls"] = native.benchmark_controls.build_controls(config,

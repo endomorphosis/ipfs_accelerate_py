@@ -93,7 +93,7 @@ def test_source_bound_temporal_context_reaches_existing_goal_planner(original, r
     assert result["qualified"] and result["intent_preplanning"]["supplied_to_router"]
     assert summary in json.loads(prompt)["constraints"]["constraint_summaries"]
     assert prepared["query"] == PROBE == (repository / preparation.INSTRUCTION).read_text()
-    assert "Public instruction.md (the complete authorized task):\n" + PROBE in json.loads(prompt)["constraints"]["constraint_summaries"]
+    assert json.loads(prompt)["terminal_public_instruction"]["text"] == PROBE
     assert all(advice[key] is False for key in advisor.AUTHORITY_FIELDS)
 
 
@@ -161,7 +161,7 @@ def test_optional_file_failure_keeps_raw_planning_admission(original, roundtrip_
     _assert_base_retained(advice)
     result, prompt = _plan(state, prepared, monkeypatch)
     assert result["qualified"] and prepared["query"] == PROBE
-    assert "Public instruction.md (the complete authorized task):\n" + PROBE in json.loads(prompt)["constraints"]["constraint_summaries"]
+    assert json.loads(prompt)["terminal_public_instruction"]["text"] == PROBE
 
 
 def test_request_archive_relocation_keeps_exact_file_pin_and_runtime_source_binding(tmp_path, roundtrip_checkpoint):

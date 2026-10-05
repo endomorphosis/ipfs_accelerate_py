@@ -54,12 +54,14 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
     elif agent.get("import_path") == (
         "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
     ):
-        # This fixed adapter has no runtime CLI/reasoning selectors. Its source
-        # and archive are pinned by the supervisor preparation/execute owner.
-        from .native_codex_baseline import MODEL, REASONING, CLI_VERSION
-        if (model, reasoning_effort, cli_version) != (MODEL, REASONING, CLI_VERSION):
+        # Route selection is closed and committed by the full configuration
+        # digest. Source and archive are pinned by preparation/execute.
+        from .benchmark_provider_profile import resolve_provider_profile
+        selected = resolve_provider_profile(kwargs.get("provider_profile"))
+        if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
+                ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "task_profile" in kwargs:
             from .terminal_task_profile import validate_task_profile
@@ -68,6 +70,8 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             from .benchmark_resource_profile import validate_resource_profile
             validate_resource_profile(config, kwargs["resource_profile"])
         if "setup_cache_selection" in kwargs:
+            if selected["provider"] != "codex_cli":
+                raise ValueError("Codex cache selection cannot qualify a Grok route")
             from .terminal_setup_cache_advice import _selection_shape
             from .benchmark_resource_profile import PROFILES
             _selection_shape(kwargs["setup_cache_selection"])

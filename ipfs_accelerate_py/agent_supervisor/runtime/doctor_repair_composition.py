@@ -513,6 +513,8 @@ class DoctorCompositionInputs:
             if type(self.source_partition) is not DoctorSourcePartition or self.worktree_adapter is None:
                 raise DoctorCompositionError("typed replayable source partition and adapter required")
             self.source_partition.assert_current(self.worktree_adapter.repository_root)
+            if any(role == "task_data" for _, role, _ in self.source_partition.support_hashes):
+                raise DoctorCompositionError("Doctor task data requires an independent consumer contract")
             support = {path for path, _, _ in self.source_partition.support_hashes}
             program_paths = set(self.source_partition.program_paths)
             if support & program_paths or support | program_paths != set(hashes):
@@ -560,6 +562,8 @@ class DoctorCompositionInputs:
         support_kinds = {}
         if self.source_partition is not None:
             self.source_partition.assert_current(checkout_root)
+            if any(role == "task_data" for _, role, _ in self.source_partition.support_hashes):
+                raise DoctorCompositionError("Doctor task data requires an independent consumer contract")
             program_paths = set(self.source_partition.program_paths)
             support_kinds = {
                 name: {"instruction": "text_reference", "task_profile": "structured_data",

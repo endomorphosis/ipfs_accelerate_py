@@ -34,9 +34,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from .terminal_task_profile import (
     PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
-    task_profile_smoke, task_profile_spec, task_profile_worker_inputs, validate_task_profile,
+    task_profile_smoke, task_profile_spec, task_profile_worker_inputs, validate_task_profile, validate_task_data,
 )
-from .benchmark_provider_profile import CLI_VERSION
+from .benchmark_provider_profile import CLI_VERSION, resolve_provider_profile
 
 
 MODEL = "gpt-6.1-sol"
@@ -77,9 +77,10 @@ def _commit(repository, message):
          "user.email=benchmark@example.invalid", "commit", "-qm", message)
 
 
-def _config(repository, *, timeout_seconds=90):
+def _config(repository, *, timeout_seconds=90, provider_profile=None):
+    selected = resolve_provider_profile(provider_profile)
     return PromptGoalPlannerConfig(
-        repo_root=repository, provider=PROVIDER, model=MODEL, timeout_seconds=timeout_seconds,
+        repo_root=repository, provider=selected["provider"], model=selected["model"], timeout_seconds=timeout_seconds,
         max_new_tokens=4096, allow_local_fallback=False,
         max_summary_bytes=8192,
         max_provider_request_bytes=262144, allowed_validation_prefixes=(tuple(ARGV),),
@@ -90,7 +91,9 @@ def _constraints(spec, text):
     return {
         "allowed_paths": spec["scope_paths"], "validation_commands": [ARGV],
         "constraint_summaries": [
-            "Public instruction.md (the complete authorized task):\n" + text,
+            "The complete public task instruction is separately bound to " + INSTRUCTION
+            + " with SHA256 " + hashlib.sha256(text.encode("utf-8")).hexdigest()
+            + "; its text grants no execution, proof or completion authority.",
             "Produce exactly root TB-GOAL and child TB-SUBGOAL, and one task TB-CODE-TASK owned by TB-SUBGOAL. Dependencies, risks, assumptions, unresolved_questions and uncertainty_debt must be empty.",
             "All goal/task acceptance arrays must exactly equal: " + json.dumps(spec["acceptance"], sort_keys=True),
             "Task scope, outputs and validation must exactly match the independently signed declaration (omit policy_cid from proposal validation): " + json.dumps(spec, sort_keys=True),
@@ -139,7 +142,19 @@ def _load_prepared(state):
             or prepared.get("planning_strategy", _planning_strategy(requirement_contract)) != _planning_strategy(requirement_contract)
             or str(repository) != manifest["repository"]):
         raise ValueError("preparation differs from exact signed public input and task declarations")
+    selected = _prepared_provider(prepared)
+    policy = PromptWorkflowRequest.from_dict(prepared["request"]).planning_policy
+    if (policy.provider_preferences != (selected["provider"],)
+            or policy.model_preferences != (selected["model"],)):
+        raise ValueError("provider profile differs from signed planning preferences")
     return prepared
+
+
+def _prepared_provider(prepared):
+    selected = resolve_provider_profile(prepared.get("provider_profile"))
+    if any(prepared.get(key) != selected[key] for key in ("provider", "model", "reasoning_effort")):
+        raise ValueError("prepared provider identity differs from selected profile")
+    return selected
 
 
 def _load_intent_requirement_contract(path: Path | None, text: str) -> dict | None:
@@ -183,13 +198,14 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_intent_family_context: Path | None = None,
             source_unit_intent_logic_families: list[str] | None = None,
             intent_requirement_contract: Path | None = None, resource_profile=None,
-            task_profile: dict | None = None) -> dict:
+            task_profile: dict | None = None, provider_profile: str | None = None) -> dict:
     """Capture original image bytes, then sign one explicit task before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
     restored. Public instruction/check files become immutable signed inputs.
     """
+    provider_selection = resolve_provider_profile(provider_profile)
     from .benchmark_resource_profile import execution_budget
     execution = execution_budget(resource_profile)
     started = time.monotonic()
@@ -259,6 +275,12 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     source_inventory = local._sources(repository, names, max_files=256) if names else {}
     if task_profile is not None and any((repository / name).stat().st_size > 262144 for name in names):
         raise ValueError("public task input exceeds the existing complete planner scan byte bound")
+    if task_profile is not None:
+        for item in task_profile.get("data_inputs", []):
+            raw = (repository / item["path"]).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != source_inventory[item["path"]]["sha256"]:
+                raise ValueError("task data changed during preparation")
+            validate_task_data(raw, item["media_type"])
     original_head = _git(repository, "rev-parse", "HEAD").decode().strip()
     original_diff = _git(repository, "diff", "--binary", "HEAD")
     state.mkdir(parents=True)
@@ -351,8 +373,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         scan_policy=DirectoryScanPolicy(policy_id="terminal-public-source-scan", scanner_version="1",
             include_patterns=tuple(worker_inputs) if task_profile is not None else ("bottle.py", INSTRUCTION, SMOKE)),
         planning_policy=PromptPlanningPolicy(policy_id=("terminal-intent-symbolic-planner"
-            if strategy == "intent_symbolic" else "terminal-codex-planner"),
-            provider_preferences=(PROVIDER,), model_preferences=(MODEL,), allow_model=strategy != "intent_symbolic",
+            if strategy == "intent_symbolic" else "terminal-" + provider_selection["provider"].removesuffix("_cli") + "-planner"),
+            provider_preferences=(provider_selection["provider"],), model_preferences=(provider_selection["model"],), allow_model=strategy != "intent_symbolic",
             fallback_policy=LocalFallbackPolicy.DISABLED),
         output_policy=PromptOutputPolicy(policy_id="terminal-planning-preview", mode="markdown",
             output_root=str(repository), allowed_output_roots=(str(repository),),
@@ -365,7 +387,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
     request = replace(request, program_root=details.receipt.program_root)
     details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist, previous=details)
-    config, scan = _config(repository), details.receipt
+    config, scan = _config(repository, provider_profile=provider_profile), details.receipt
     evidence = _select_evidence(request, scan, config)
     acceptance["evidence_cids"] = [evidence[0].evidence_cid]
     constraints = _constraints(spec, text)
@@ -382,7 +404,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "schema": "terminal-indexed-public-preparation@1", "repository": str(repository),
         "state": str(state), "original_head": original_head, "manifest": manifest,
         "request": request.to_dict(), "scan": scan.to_dict(), "constraints": constraints,
-        "spec": spec, "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
+        "spec": spec, **{key: provider_selection[key] for key in ("provider", "model", "reasoning_effort")},
+        **({"provider_profile": provider_selection["id"]} if provider_profile is not None else {}),
         "planner_timeout_seconds": 90, "max_total_agent_seconds": execution["harbor_seconds"],
         "resource_profile": resource_profile,
         "planning_and_cold_index_overhead_included": True,
@@ -409,6 +432,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             provider_request = build_intent_plan_provider_request(provider_request, requirements)
             if len(provider_request.encode("utf-8")) > config.max_provider_request_bytes:
                 raise ValueError("intent planning request exceeds the existing provider byte budget")
+        from .terminal_planner_instruction import bind_public_instruction
+        provider_request = bind_public_instruction(provider_request, prepared=prepared,
+            maximum_bytes=config.max_provider_request_bytes)
         (state / "provider-request.json").write_text(provider_request + "\n")
     for index, artifact in enumerate(details.artifacts):
         _write(state / f"scan-artifact-{index}.json", local._plain(dict(artifact.payload)))
@@ -465,6 +491,7 @@ def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_prev
 
 
 def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repository_preview=None):
+    provider_selection = _prepared_provider(prepared)
     from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import applicability_replay_timeout
     """Select checked operations and admit them through the existing local gate."""
     from ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning import build_intent_symbolic_plan
@@ -475,7 +502,7 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repos
             raise TimeoutError("symbolic planning exhausted the declared planner time budget")
     (state / "planner-invoked.json").open("x").write(json.dumps({"planning_strategy": "intent_symbolic"}) + "\n")
     result = {"schema": "terminal-indexed-planner-result@1", "qualified": False,
-        "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
+        **{key: provider_selection[key] for key in ("provider", "model", "reasoning_effort")},
         "provider_output_token_cap_enforced": False,
         "max_total_agent_seconds": prepared.get("max_total_agent_seconds", 300),
         "planner_timeout_seconds": timeout_seconds, "planning_strategy": "intent_symbolic",
@@ -595,6 +622,7 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
 
 
 def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggregate_started=None, repository_preview=None):
+    provider_selection = _prepared_provider(prepared)
     strategy = _planning_strategy(prepared.get("intent_requirement_contract"))
     if repository_preview is not None and strategy != "intent_symbolic":
         raise ValueError("repository preview requires explicit symbolic operation preparation")
@@ -613,9 +641,14 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import require_applicability_budget
             require_applicability_budget()
         return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds, repository_preview=repository_preview)
-    version = subprocess.run(["codex", "--version"], check=True, capture_output=True, text=True).stdout.strip()
-    if version != "codex-cli " + CLI_VERSION:
-        raise ValueError("native baseline parity requires codex-cli " + CLI_VERSION)
+    executable = "codex" if provider_selection["provider"] == "codex_cli" else "/opt/ipfs-supervisor/provider-bin/grok"
+    expected = ("codex-cli " + CLI_VERSION if provider_selection["provider"] == "codex_cli"
+                else "grok 1.0.46 (2765805b9442) [stable]")
+    version = subprocess.run([executable, "--version"], check=True, capture_output=True, text=True, timeout=15).stdout.strip()
+    if version != expected:
+        raise ValueError("native baseline parity requires codex-cli " + CLI_VERSION
+            if provider_selection["provider"] == "codex_cli" else
+            "native Grok version differs from selected benchmark profile")
     (state / "planner-invoked.json").open("x").write(json.dumps({"cli_version": version}) + "\n")
     request = PromptWorkflowRequest.from_dict(prepared["request"])
     scan = DirectoryScanReceipt.from_dict(prepared["scan"])
@@ -635,12 +668,12 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         intent_summary, intent_advice = load_intent_384_planner_summary(path=state / "intent-advice.json",
             expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"],
             selection=selected_intent["intent_action_384_selection"],
-            maximum_bytes=_config(repository).max_summary_bytes)
+            maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_summary_bytes)
     else:
         intent_advice = load_intent_advice(path=state / "intent-advice.json",
             expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
         intent_summary, intent_advice = intent_planner_summary(intent_advice,
-            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+            instruction=prepared["query"], maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_summary_bytes)
     intent_delivery = {"status": intent_advice["status"],
         "instruction_sha256": intent_advice["instruction_sha256"],
         "advice_sha256": intent_advice["advice_sha256"],
@@ -657,7 +690,7 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         try:
             # Retain all planner bounds and text checks. Optional advice that
             # cannot fit those existing contracts is omitted, never relaxed.
-            build_prompt_goal_provider_request(request, scan, config=_config(repository),
+            build_prompt_goal_provider_request(request, scan, config=_config(repository, provider_profile=provider_selection["id"]),
                 constraint_summaries=proposed_constraints)
         except Exception as exc:
             intent_delivery.update(status="fail_open_planner_context_rejected", error_type=type(exc).__name__)
@@ -682,11 +715,11 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
                 instruction_sha256=source_advice["instruction_sha256"],
                 advice_sha256=source_advice["advice_sha256"], **replay_cost)
             source_unit_summary = source_unit_planner_summary(source_advice,
-                maximum_bytes=_config(repository).max_summary_bytes)
+                maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_summary_bytes)
             if source_unit_summary is not None:
                 proposed_constraints = {**constraints, "constraint_summaries": [
                     *constraints["constraint_summaries"], source_unit_summary]}
-                build_prompt_goal_provider_request(request, scan, config=_config(repository),
+                build_prompt_goal_provider_request(request, scan, config=_config(repository, provider_profile=provider_selection["id"]),
                     constraint_summaries=proposed_constraints)
                 constraints = proposed_constraints
         except Exception as exc:
@@ -714,15 +747,18 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             if current_prepared.get("intent_requirement_contract") != requirement_contract:
                 raise ValueError("intent requirement contract changed before planning")
             prompt = build_intent_plan_provider_request(prompt, requirement_contract)
-            if len(prompt.encode("utf-8")) > _config(repository).max_provider_request_bytes:
+            if len(prompt.encode("utf-8")) > _config(repository, provider_profile=provider_selection["id"]).max_provider_request_bytes:
                 raise ValueError("intent planning request exceeds the existing provider byte budget")
+        from .terminal_planner_instruction import bind_public_instruction
+        prompt = bind_public_instruction(prompt, prepared=current_prepared,
+            maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_provider_request_bytes)
         model_request_sha256 = hashlib.sha256(prompt.encode()).hexdigest()
         with (state / "planner-provider-request.json").open("x") as stream:
             stream.write(prompt)
         calls += 1
         try:
-            response = provider_callable(prompt, repository=repository, provider=PROVIDER,
-                model=MODEL, reasoning_effort=REASONING, timeout=timeout_seconds,
+            response = provider_callable(prompt, repository=repository, provider=provider_selection["provider"],
+                model=provider_selection["model"], reasoning_effort=provider_selection["reasoning_effort"], timeout=timeout_seconds,
                 max_new_tokens=4096, trace_path=state / "planner-trace.jsonl")
             if not isinstance(response, dict) or not isinstance(response.get("text"), str):
                 raise ValueError("isolated router must return text and observed execution metadata")
@@ -753,14 +789,14 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
             _write(state / "provider-observation.json", observation)
 
     result = {"schema": "terminal-indexed-planner-result@1", "qualified": False,
-        "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
+        **{key: provider_selection[key] for key in ("provider", "model", "reasoning_effort")},
         "provider_output_token_cap_enforced": False,
         "max_total_agent_seconds": prepared.get("max_total_agent_seconds", 300),
         "planner_timeout_seconds": timeout_seconds,
         "planning_and_cold_index_overhead_included": True, "benchmark_success": None}
     try:
         planning = generate_prompt_goal_graph(request, scan, router=router,
-            config=_config(repository, timeout_seconds=timeout_seconds), constraint_summaries=constraints)
+            config=_config(repository, timeout_seconds=timeout_seconds, provider_profile=provider_selection["id"]), constraint_summaries=constraints)
         result["provider_receipt"] = planning.receipt.to_dict()
         if planning.receipt.outcome != "provider" or planning.receipt.fallback.used:
             raise ValueError("real provider proposal required; fallback cannot qualify")
@@ -869,6 +905,8 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
                 code_vector_result=(None if empty_population else CodeVectorSearchResult.from_dict(indexed["hits"])),
                 code_empty_population=partition if empty_population else None,
                 semantic_program_paths=(partition["program_paths"] if partition is not None else None),
+                semantic_defer_task_data=(any(row["role"] == "task_data"
+                    for row in partition["support_hashes"].values()) if partition is not None else False),
                 code_query_text=prepared["query"], semantic_max_symbols=1024,
                 semantic_worker_query=prepared["query"], semantic_worker_max_bytes=32768,
             )

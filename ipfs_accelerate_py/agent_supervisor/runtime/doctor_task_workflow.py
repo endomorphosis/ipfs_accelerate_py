@@ -294,9 +294,14 @@ def prepare_doctor_task_repair(
         raise DoctorCompositionError("native Doctor inventory differs from signed source")
     partition = terminal_doctor_source_partition(repository=root, admission=admission, task_cid=task_cid)
     program_paths = tuple(sorted(ledger)) if partition is None else partition.program_paths
+    if partition is not None and any(role == "task_data" for _, role, _ in partition.support_hashes):
+        # A validated data parser establishes input classification, not a
+        # behavioral contract for its consumers. Retain every hash and defer
+        # repair until the operator can reconstruct that dependency itself.
+        reasons.append("doctor_task_data_contract_unavailable")
     support_kinds = {} if partition is None else {
         name: {"instruction": "text_reference", "task_profile": "structured_data",
-               "structural_smoke": "semantic_ast"}[role]
+               "structural_smoke": "semantic_ast"}.get(role, "unsupported_task_data")
         for name, role, _ in partition.support_hashes
     }
     if any(row.coverage_kind != support_kinds.get(row.path, "semantic_ast")

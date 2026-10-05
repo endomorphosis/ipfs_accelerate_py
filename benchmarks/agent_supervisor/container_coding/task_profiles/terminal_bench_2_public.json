@@ -1,0 +1,119 @@
+{
+  "dataset_commit": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "schema": "terminal-reviewed-public-profile-catalog@1",
+  "tasks": {
+    "constraints-scheduling": {
+      "inputs": [
+        {
+          "environment_path": "inputs/alice_calendar.ics",
+          "media_type": "text/calendar",
+          "path": "alice_calendar.ics",
+          "sha256": "5a5d45804bffd339c2479d49e76fe817b38244d14d389afe1de583443808ecbc"
+        },
+        {
+          "environment_path": "inputs/bob_calendar.ics",
+          "media_type": "text/calendar",
+          "path": "bob_calendar.ics",
+          "sha256": "c97e85dbcdd756758f8a80f4db5fd5c1dcacee79298e4d2262f46de5ff680b50"
+        },
+        {
+          "environment_path": "inputs/carol_calendar.ics",
+          "media_type": "text/calendar",
+          "path": "carol_calendar.ics",
+          "sha256": "32a0f8687637df0a12b8e5c56d49c4192bc3e790856943632d70f237c7c1363b"
+        }
+      ],
+      "outputs": [
+        {
+          "effect": "create",
+          "media_type": "text/calendar",
+          "path": "meeting_scheduled.ics"
+        }
+      ],
+      "public_metadata": {
+        "environment/Dockerfile": "7d9aba072a4a907229728b9739c8cf821fc2c98450babd64452682caf3759c84",
+        "instruction.md": "342def78177f9bc41bea4d11af679bc385a9dda2ac8a1e425be384a5b7f937b6",
+        "task.toml": "7b9842de16d74e8faf8c7c0aa03b0b81145941cb12dd322d81ae23fc48607250"
+      }
+    },
+    "llm-inference-batching-scheduler": {
+      "inputs": [
+        {
+          "environment_path": "task_file/scripts/__init__.py",
+          "media_type": null,
+          "path": "task_file/scripts/__init__.py",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "environment_path": "task_file/scripts/baseline_packer.py",
+          "media_type": null,
+          "path": "task_file/scripts/baseline_packer.py",
+          "sha256": "547d230d5e6d93197803480cb81cab0ec6ac63fcfa0a24b246f549523f216c4e"
+        },
+        {
+          "environment_path": "task_file/scripts/cost_model.py",
+          "media_type": null,
+          "path": "task_file/scripts/cost_model.py",
+          "sha256": "0cf417fd5ff0112defcd46970d37a290c0763c5a9092e91cb3ebb86c3f20e6ce"
+        },
+        {
+          "environment_path": "task_file/input_data/requests_bucket_1.jsonl",
+          "media_type": "application/x-ndjson",
+          "path": "task_file/input_data/requests_bucket_1.jsonl",
+          "sha256": "8b3cf1e2b06074162038064dd2c114abe308acd32cec7d365ee63ee81978f7de"
+        },
+        {
+          "environment_path": "task_file/input_data/requests_bucket_2.jsonl",
+          "media_type": "application/x-ndjson",
+          "path": "task_file/input_data/requests_bucket_2.jsonl",
+          "sha256": "e15e2d4c4d55f875c42a6042610d6282f6c0657c39d3e0d0f087268252525cb5"
+        }
+      ],
+      "outputs": [
+        {
+          "effect": "create",
+          "media_type": "application/x-ndjson",
+          "path": "task_file/output_data/plan_b1.jsonl"
+        },
+        {
+          "effect": "create",
+          "media_type": "application/x-ndjson",
+          "path": "task_file/output_data/plan_b2.jsonl"
+        }
+      ],
+      "public_metadata": {
+        "environment/Dockerfile": "10a6193904ee0022ac098504182989893b196dfc74e626a3ca48534a8eacde48",
+        "instruction.md": "0817374767533fbf51bb93345ee1bba266263c216c6cc55c096e71b4a1d37dfc",
+        "task.toml": "52aaac942f917e6a91ff658e0272195bd1cd842d41d71e302414c52603cc588b"
+      }
+    },
+    "tune-mjcf": {
+      "inputs": [
+        {
+          "environment_path": "src/eval.py",
+          "media_type": null,
+          "path": "eval.py",
+          "sha256": "9943ce3b2d6a15e7198946d07044e58d3b1b4d56cabb05327d324e7ced64140d"
+        },
+        {
+          "environment_path": "src/model_ref.xml",
+          "media_type": "application/xml",
+          "path": "model_ref.xml",
+          "sha256": "f3561cbea5bb024886e9627e795c8f60a3984bd749853073bbd433d0e49bf0b7"
+        }
+      ],
+      "outputs": [
+        {
+          "effect": "create",
+          "media_type": "application/xml",
+          "path": "model.xml"
+        }
+      ],
+      "public_metadata": {
+        "environment/Dockerfile": "9b78295361faa3a84399ee97e95e85a8f1032bb5c4cb609013335b51f5d0d006",
+        "instruction.md": "c7fb299b6c6d6c9a2dcd95c5938e6f902ddad1cb02aee875d369cb7eae584b1f",
+        "task.toml": "27b6d4e5a23761cc1a24a695125d891be74a2930fb83a02a66221db0244b08b3"
+      }
+    }
+  }
+}

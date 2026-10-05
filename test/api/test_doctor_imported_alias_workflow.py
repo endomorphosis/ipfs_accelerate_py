@@ -132,7 +132,7 @@ def test_alias_identifier_and_module_binding_grammar_bounds():
     (SOURCE, DONOR.replace('return value', 'return print(value)')),
     (SOURCE, DONOR.replace('return value', 'return transform(value)')),
     (SOURCE.replace('transform', 'len'), DONOR.replace('transform', 'len')),
-    (SOURCE.replace('def answer(value)', 'def answer(value=1)'), DONOR),
+    (SOURCE.replace('def answer(value)', 'def answer(value=[])'), DONOR),
     (SOURCE.replace('    return transform(value)', '    try:\n        return transform(value)\n    except Exception as normalize:\n        return value'), DONOR),
     (SOURCE.replace('    return transform(value)', '    with value as normalize:\n        return transform(value)'), DONOR),
     (SOURCE.replace('    return transform(value)', '    match value:\n        case normalize:\n            return transform(value)'), DONOR),

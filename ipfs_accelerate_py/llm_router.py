@@ -8081,6 +8081,17 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     )
                 except FileNotFoundError as exc:
                     raise LLMRouterError("Grok CLI not found on PATH") from exc
+                except subprocess.TimeoutExpired as exc:
+                    from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
+                    from .cli_runtime.grok_native_usage import native_grok_observation
+                    partial_stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+                    partial_stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+                    observed = remember_cli_run("grok_cli", partial_stdout, partial_stderr,
+                        extra={"model_id": model, "timed_out": True})
+                    observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
+                    observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
+                    set_last_cli_observation("grok_cli", observed)
+                    raise
             finally:
                 if prompt_path:
                     try:
@@ -8090,7 +8101,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
 
             payload = _grok_cli_json_payload(proc.stdout or "")
             try:
-                from .cli_runtime.cli_metadata import remember_cli_run
+                from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
 
                 extra = {
                     "model_id": model,
@@ -8114,12 +8125,16 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     usage = payload.get("usage")
                     if isinstance(usage, dict):
                         extra.update(usage)
-                remember_cli_run(
+                from .cli_runtime.grok_native_usage import native_grok_observation
+                observed = remember_cli_run(
                     "grok_cli",
                     proc.stdout or "",
                     proc.stderr or "",
                     extra=extra,
                 )
+                observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
+                observed.update(native_grok_observation(payload, exit_code=proc.returncode))
+                set_last_cli_observation("grok_cli", observed)
             except Exception:
                 pass
             if proc.returncode != 0:

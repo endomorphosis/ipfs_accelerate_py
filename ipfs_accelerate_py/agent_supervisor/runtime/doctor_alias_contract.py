@@ -25,7 +25,8 @@ OPERATOR = "closed-imported-alias-call@1"
 PROOF_SCOPE = (
     "Under closed local-module resolution, the existing explicit import alias resolves to its signed donor export; "
     "changing only the direct callee identifier preserves the argument expressions "
-    "and order. Independent AST/signature replay binds the edit under the closed "
+    "and order, and the projected supplied parameters satisfy the declared signature. "
+    "Independent AST/signature replay binds the edit under the closed "
     "local-module import assumptions. Not whole-program correctness or equivalence "
     "to the original unresolved call."
 )
@@ -33,6 +34,9 @@ MAX_IDENTIFIER_CHARACTERS = 64
 MAX_MODULE_BINDINGS = 16
 _IDENTIFIER = re.compile(rf"[A-Za-z_][A-Za-z0-9_]{{0,{MAX_IDENTIFIER_CHARACTERS - 1}}}")
 _PURE_EXPRESSIONS = (ast.Name, ast.Constant, ast.Load)
+_RETURN_EXPRESSIONS = (*_PURE_EXPRESSIONS, ast.BinOp, ast.UnaryOp, ast.BoolOp,
+    ast.Compare, ast.IfExp, ast.operator, ast.unaryop, ast.boolop, ast.cmpop)
+MAX_PARAMETERS = 32
 _RESERVED_MODULES = frozenset(sys.stdlib_module_names) | frozenset(sys.builtin_module_names)
 _IMPLICIT_GLOBALS = frozenset({"__name__", "__doc__", "__package__", "__loader__", "__spec__",
                                "__builtins__", "__file__", "__cached__", "__annotations__"})
@@ -86,20 +90,63 @@ def read_imported_alias_sources(*, repository, source_hashes):
     return sources
 
 
+def _literal_default(node):
+    # Only immutable, literal defaults. Never evaluate source expressions or
+    # permit defaults/annotations/decorators to execute during module loading.
+    if (isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub))
+            and isinstance(node.operand, ast.Constant) and type(node.operand.value) in {int, float}):
+        return -node.operand.value if isinstance(node.op, ast.USub) else node.operand.value
+    _require(isinstance(node, ast.Constant) and
+             type(node.value) in {type(None), bool, int, float, str, bytes})
+    return node.value
+
+
+def _docstring(node):
+    return (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+            and type(node.value.value) is str)
+
+
+def _return_expression(function):
+    body = function.body[1:] if function.body and _docstring(function.body[0]) else function.body
+    _require(len(body) == 1 and isinstance(body[0], ast.Return) and body[0].value is not None)
+    return body[0].value
+
+
 def _signature(function):
     args = function.args
-    parameters = [*args.args, *args.kwonlyargs]
+    positional = [*args.posonlyargs, *args.args]
+    parameters = [*positional, *args.kwonlyargs]
     _require(_IDENTIFIER.fullmatch(function.name) and not function.name.startswith("__")
+             and len(parameters) <= MAX_PARAMETERS
              and len({arg.arg for arg in parameters}) == len(parameters)
              and not function.decorator_list and function.returns is None
              and not function.type_comment and not getattr(function, "type_params", ())
-             and not args.defaults and not args.vararg and not args.kwarg and not args.posonlyargs
-             and all(default is None for default in args.kw_defaults)
+             and not args.vararg and not args.kwarg
              and all(_IDENTIFIER.fullmatch(arg.arg) and arg.annotation is None and not arg.type_comment
                      for arg in parameters))
+    defaults = [inspect.Parameter.empty] * (len(positional) - len(args.defaults))
+    defaults.extend(_literal_default(node) for node in args.defaults)
     return inspect.Signature([
-        *(inspect.Parameter(arg.arg, inspect.Parameter.POSITIONAL_OR_KEYWORD) for arg in args.args),
-        *(inspect.Parameter(arg.arg, inspect.Parameter.KEYWORD_ONLY) for arg in args.kwonlyargs)])
+        *(inspect.Parameter(arg.arg, inspect.Parameter.POSITIONAL_ONLY if index < len(args.posonlyargs)
+                            else inspect.Parameter.POSITIONAL_OR_KEYWORD, default=defaults[index])
+          for index, arg in enumerate(positional)),
+        *(inspect.Parameter(arg.arg, inspect.Parameter.KEYWORD_ONLY,
+                            default=inspect.Parameter.empty if default is None else _literal_default(default))
+          for arg, default in zip(args.kwonlyargs, args.kw_defaults))])
+
+
+def _call_binding(signature, call):
+    """Finite signature projection, checked separately by inspect and provers."""
+    parameters = tuple(signature.parameters.values())
+    return {
+        "positional_parameters": [p.name for p in parameters if p.kind in {
+            inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}],
+        "keyword_parameters": [p.name for p in parameters if p.kind in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}],
+        "required_parameters": [p.name for p in parameters if p.default is inspect.Parameter.empty],
+        "positional_argument_count": len(call.args),
+        "keyword_arguments": [keyword.arg for keyword in call.keywords],
+    }
 
 
 def _population(sources):
@@ -115,11 +162,12 @@ def _population(sources):
         except (SyntaxError, ValueError) as error:
             raise ImportedAliasContractError("closed alias source does not parse") from error
         functions, imports = {}, {}
-        for node in tree.body:
+        for index, node in enumerate(tree.body):
+            if index == 0 and _docstring(node):
+                continue
             if isinstance(node, ast.FunctionDef):
-                _require(node.name not in functions and node.name not in imports
-                         and len(node.body) == 1 and isinstance(node.body[0], ast.Return)
-                         and node.body[0].value is not None)
+                _require(node.name not in functions and node.name not in imports)
+                _return_expression(node)
                 functions[node.name] = (node, _signature(node))
             else:
                 _require(isinstance(node, ast.ImportFrom) and node.level == 0
@@ -154,7 +202,7 @@ def _contracts(sources, path):
         for owner, (function, signature) in functions.items():
             parameters = set(signature.parameters)
             _require(not parameters.intersection(names))
-            expression = function.body[0].value
+            expression = _return_expression(function)
             calls = [node for node in ast.walk(expression) if isinstance(node, ast.Call)]
             # Single direct calls with inert argument expressions; no callbacks,
             # nested calls, attributes, comprehensions, assignment or mutation.
@@ -163,7 +211,10 @@ def _contracts(sources, path):
             for node in ast.walk(expression):
                 if node is call or isinstance(node, ast.keyword):
                     continue
-                _require(isinstance(node, _PURE_EXPRESSIONS))
+                # Non-call returns may compute over parameters. Their behavior
+                # is unchanged, not proved: operators may be overloaded by the
+                # caller. Call arguments keep the narrower inert grammar.
+                _require(isinstance(node, _PURE_EXPRESSIONS if call else _RETURN_EXPRESSIONS))
                 if isinstance(node, ast.Name) and (call is None or node is not call.func):
                     _require(node.id in parameters)
             if call is None:
@@ -207,6 +258,7 @@ def _contracts(sources, path):
                     "donor_declaration_ast": content_identity({"ast": ast.dump(modules[donor][0][exported][0])}),
                     "call_arguments_ast": content_identity({"args": [ast.dump(arg) for arg in call.args],
                         "keywords": [ast.dump(keyword) for keyword in call.keywords]}),
+                    "call_binding": _call_binding(target_signature, call),
                 }
             call_edges[(module_path, owner)] = (target_module, target_name)
             try:
@@ -259,6 +311,8 @@ class ImportedAliasRepair:
                              for name, value in contract["bindings"].items())
         alias, original, target = (quote(contract[key])
                                    for key in ("replacement", "previous", "target_binding"))
+        binding = contract["call_binding"]
+        literal = lambda values: "[" + ", ".join(quote(value) for value in values) + "]"
         lean = (
             f"-- theorem:{OPERATOR} property:source-alias-argument-preservation "
             f"claim:closed-local-alias-binding contract:{self.contract_id} consequence:{consequence}\n"
@@ -266,25 +320,50 @@ class ImportedAliasRepair:
             "  | [] => none\n"
             "  | (name, entity) :: rest => if key == name then some entity else lookupBinding key rest\n"
             f"def sourceBindings : List (String × String) := [{bindings}]\n"
+            f"def positionalParameters : List String := {literal(binding['positional_parameters'])}\n"
+            f"def keywordParameters : List String := {literal(binding['keyword_parameters'])}\n"
+            f"def requiredParameters : List String := {literal(binding['required_parameters'])}\n"
+            f"def positionalArgumentCount : Nat := {binding['positional_argument_count']}\n"
+            f"def keywordArguments : List String := {literal(binding['keyword_arguments'])}\n"
+            "def suppliedParameters : List String := positionalParameters.take positionalArgumentCount ++ keywordArguments\n"
+            "def declaredCallBinds : Bool :=\n"
+            "  decide (positionalArgumentCount ≤ positionalParameters.length) &&\n"
+            "  keywordArguments.all (fun name => keywordParameters.contains name) &&\n"
+            "  requiredParameters.all (fun name => suppliedParameters.contains name) &&\n"
+            "  suppliedParameters.all (fun name => suppliedParameters.count name == 1)\n"
             f"def repairCall (args : List String) : String × List String := ({alias}, args)\n"
             f"theorem resolved_alias : lookupBinding (repairCall []).1 sourceBindings = some {target} := by decide\n"
             f"theorem original_unbound : lookupBinding {original} sourceBindings = none := by decide\n"
             "theorem retained_arguments (args : List String) : (repairCall args).2 = args := by rfl\n"
+            "theorem declared_call_binds : declaredCallBinds = true := by decide\n"
             "#print axioms resolved_alias\n#print axioms original_unbound\n#print axioms retained_arguments\n"
+            "#print axioms declared_call_binds\n"
         )
         lookup = '""'
         for name, entity in reversed(tuple(contract["bindings"].items())):
             lookup = f"(ite (= key {quote(name)}) {quote(entity)} {lookup})"
+        def member(name, population):
+            return "(or false " + " ".join(f"(= {quote(name)} {quote(item)})" for item in population) + ")"
+
+        supplied = (binding["positional_parameters"][:binding["positional_argument_count"]]
+                    + binding["keyword_arguments"])
+        binding_clauses = [f"(<= {binding['positional_argument_count']} {len(binding['positional_parameters'])})"]
+        binding_clauses.extend(member(name, binding["keyword_parameters"]) for name in binding["keyword_arguments"])
+        binding_clauses.extend(member(name, supplied) for name in binding["required_parameters"])
+        binding_clauses.extend(f"(not (= {quote(name)} {quote(other)}))"
+                               for index, name in enumerate(supplied) for other in supplied[index + 1:])
         smt = ("(set-logic QF_SLIA)\n"
                f"(define-fun lookupBinding ((key String)) String {lookup})\n"
+               f"(define-fun declaredCallBinds () Bool (and {' '.join(binding_clauses)}))\n"
                "(declare-const args String)\n"
                "(define-fun retainedArgs ((value String)) String value)\n"
                f"(assert (or (not (= (lookupBinding {alias}) {target})) "
-               f"(not (= (lookupBinding {original}) \"\")) (not (= (retainedArgs args) args))))\n"
+               f"(not (= (lookupBinding {original}) \"\")) (not (= (retainedArgs args) args)) "
+               "(not declaredCallBinds)))\n"
                "(check-sat)\n")
         return {"lean": lean, "smt": smt,
                 "expected_axioms": [f"'{name}' does not depend on any axioms"
-                                    for name in ("resolved_alias", "original_unbound", "retained_arguments")]}
+                                    for name in ("resolved_alias", "original_unbound", "retained_arguments", "declared_call_binds")]}
 
     def reconstruct(self, request, subject):
         contract, sources = self.to_dict(), self.sources()
@@ -303,8 +382,9 @@ class ImportedAliasRepair:
         # Independent replacement-tree check: only the nominated call head changes.
         tree = ast.parse(before)
         function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == subject)
-        _require(isinstance(function.body[0].value, ast.Call))
-        function.body[0].value.func.id = contract["replacement"]
+        expression = _return_expression(function)
+        _require(isinstance(expression, ast.Call))
+        expression.func.id = contract["replacement"]
         _require(ast.dump(tree) == ast.dump(ast.parse(after)))
         self.validate_candidate(after)
         return after

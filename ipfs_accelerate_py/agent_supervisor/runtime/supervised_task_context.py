@@ -35,6 +35,7 @@ def prepare_supervised_task_context(
     code_empty_population=None,
     code_query_text: str = "",
     semantic_program_paths: Sequence[str] | None = None,
+    semantic_defer_task_data: bool = False,
     semantic_max_symbols: int = 256,
     semantic_context_input_tokens: int = 8192,
     semantic_worker_query: str = "",
@@ -111,6 +112,7 @@ def prepare_supervised_task_context(
         worker_query=semantic_worker_query,
         worker_max_bytes=semantic_worker_max_bytes,
         program_paths=semantic_program_paths,
+        defer_task_data=semantic_defer_task_data,
     )
     blocks = output / "semantic/blocks"
 

@@ -428,6 +428,7 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
 
 
 def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
+        provider_profile: str | None = None,
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -443,6 +444,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         disable_intent_autoencoder: bool = False,
         intent_requirement_contract: Path | None = None,
         task_profile: Path | None = None) -> dict:
+    from .benchmark_provider_profile import resolve_provider_profile
+    provider_selection = resolve_provider_profile(provider_profile)
     budget = execution_budget(resource_profile)
     if timeout_seconds is None:
         timeout_seconds = budget["driver_seconds"]
@@ -489,6 +492,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     work_deadline = deadline - reserved_cleanup_seconds
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
+              "provider_profile": provider_selection,
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -521,8 +525,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
 
     def isolated_planner(prompt, *, repository, provider, model, reasoning_effort,
                          timeout, max_new_tokens, trace_path):
-        if provider != "codex_cli":
-            raise ValueError("benchmark planner route differs from the native baseline")
+        if (provider, model, reasoning_effort) != tuple(provider_selection[key] for key in
+                ("provider", "model", "reasoning_effort")):
+            raise ValueError("benchmark planner route differs from selected provider profile")
         planner_tree = WORKTREES / ("planner-" + uuid.uuid4().hex)
         subprocess.run(["git", "-C", str(repository), "-c", "core.hooksPath=/dev/null",
                         "worktree", "add", "--detach", str(planner_tree), "HEAD"],
@@ -531,6 +536,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "--purpose", "planning",
                 "--timeout", str(min(timeout, remaining(20))),
                 "--max-output-tokens", str(max_new_tokens)]
+        if provider_selection["provider"] != "codex_cli":
+            argv += ["--provider", provider_selection["provider"]]
         process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, cwd=planner_tree)
         try:
@@ -575,6 +582,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
                 intent_requirement_contract=intent_requirement_contract,
+                **({"provider_profile": provider_profile} if provider_profile is not None else {}),
                 **({"task_profile": generic_profile} if generic_profile is not None else {}),
                 **({"resource_profile": resource_profile} if resource_profile is not None else {}))
             report["intent_preplanning"] = prepared["intent_preplanning"]
@@ -646,10 +654,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
-        implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
-            reasoning=preparation.REASONING,
+        implementation = implementation_argv(router=ROUTER, model=provider_selection["model"],
+            reasoning=provider_selection["reasoning_effort"],
             timeout=remaining() if provider_free_candidate else min(300, remaining(25)),
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
+        if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
+            implementation += ["--provider", provider_selection["provider"]]
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
             instruction_context = prepare_public_instruction_context(repository=Path("/app"),
@@ -806,6 +816,8 @@ def main():
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--arm", choices=["full", "no-index"], required=True)
     parser.add_argument("--timeout-seconds", type=int)
+    from .benchmark_provider_profile import PROVIDER_PROFILES
+    parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES)
     parser.add_argument("--resource-profile", choices=PROFILES)
     parser.add_argument("--model-snapshot", type=Path)
     parser.add_argument("--model-revision", default="")

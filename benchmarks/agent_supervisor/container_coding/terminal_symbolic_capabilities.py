@@ -35,6 +35,7 @@ _REASONS = frozenset({
     "ambiguous_header_candidates", "no_supported_header_candidate",
     "local_operator_does_not_cover_declared_outputs",
     "operator_proof_bounds_exceeded",
+    "doctor_task_data_contract_unavailable",
 })
 _SUPPORT = {
     ".supervisor-instruction.md": "instruction",
@@ -90,6 +91,16 @@ def _partition(result, *, hashes, task_cid, manifest_cid):
     keys = {"schema", "manifest_cid", "task_cid", "profile_sha256", "program_paths",
             "harness_support", "partition_cid", "execution_authority", "proof_authority",
             "completion_authority"}
+    data_names = set()
+    if type(partition) is dict and "task_profile" in partition:
+        from .terminal_task_profile import DATA_SCHEMA, task_profile_bytes, validate_task_profile, task_profile_index_paths
+        profile = validate_task_profile(partition["task_profile"])
+        _require(profile["schema"] == DATA_SCHEMA
+            and hashlib.sha256(task_profile_bytes(profile)).hexdigest() == hashes.get(".supervisor-task-profile.json")
+            and set(profile["input_paths"]) | set(_SUPPORT) == set(hashes)
+            and task_profile_index_paths(profile) == partition.get("program_paths"))
+        data_names = {item["path"] for item in profile["data_inputs"]}
+        keys.add("task_profile")
     _require(type(partition) is dict and set(partition) == keys
              and partition["schema"] == "doctor-terminal-source-partition@1"
              and partition["task_cid"] == task_cid and partition["manifest_cid"] == manifest_cid
@@ -97,21 +108,25 @@ def _partition(result, *, hashes, task_cid, manifest_cid):
                  "execution_authority", "proof_authority", "completion_authority")))
     paths, support = partition["program_paths"], partition["harness_support"]
     _require(type(paths) is list and len(paths) <= 1024
-             and type(support) is list and len(support) == len(_SUPPORT))
+             and type(support) is list and len(support) == len(_SUPPORT) + len(data_names))
     _require(len(set(map(_path, paths))) == len(paths))
     seen = set()
     for row in support:
         _require(type(row) is dict and set(row) == {"path", "role", "sha256"})
         name = _path(row["path"])
-        _require(name in _SUPPORT and name not in seen and row["role"] == _SUPPORT[name]
+        _require(name in set(_SUPPORT) | data_names and name not in seen
+                 and row["role"] == (_SUPPORT[name] if name in _SUPPORT else "task_data")
                  and name in hashes and row["sha256"] == hashes[name])
         seen.add(name)
     _require(not seen.intersection(paths) and seen | set(paths) == set(hashes)
              and partition["profile_sha256"] == hashes[".supervisor-task-profile.json"]
              and partition["partition_cid"] == content_identity({
                  key: value for key, value in partition.items() if key != "partition_cid"}))
-    return {"program_input_count": len(paths), "harness_support_count": len(support),
-            "partition_cid": partition["partition_cid"]}
+    result = {"program_input_count": len(paths), "harness_support_count": len(_SUPPORT),
+              "partition_cid": partition["partition_cid"]}
+    if "task_profile" in partition:
+        result["task_data_input_count"] = len(data_names)
+    return result
 
 
 def _prover(path):
@@ -223,6 +238,8 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
         gaps.append("empty_program_context_required")
     if "unsupported_or_incomplete_source_inventory" in reasons:
         gaps.append("semantic_source_coverage_incomplete")
+    if partition is not None and partition.get("task_data_input_count", 0):
+        gaps.append("task_data_semantic_contract_unavailable")
     if not header:
         gaps.append("task_behavior_contract_not_selected")
     if not header and (effects.get("create", 0) or nonpython or set(effects) != {"modify"}):
