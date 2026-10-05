@@ -1,0 +1,40 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 29 items
+
+test/api/test_agent_supervisor_managed_daemon_identity.py ......FF...... [ 48%]
+......                                                                   [ 68%]
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py .........  [100%]
+
+=================================== FAILURES ===================================
+______ test_shared_adoption_refuses_legacy_child_without_exact_proc_argv _______
+test/api/test_agent_supervisor_managed_daemon_identity.py:807: in test_shared_adoption_refuses_legacy_child_without_exact_proc_argv
+    with pytest.raises(
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'legacy supervised child exact command is unproven'
+E     Actual message: 'identity-protected child lacks its dedicated process session'
+________ test_shared_adoption_recovers_live_identity_without_pid_marker ________
+test/api/test_agent_supervisor_managed_daemon_identity.py:870: in test_shared_adoption_recovers_live_identity_without_pid_marker
+    child = adopt_supervised_child(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py:2122: in adopt_supervised_child
+    admission_birth = admitted_session_birth() if identity_path is not None else None
+                      ^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py:2117: in admitted_session_birth
+    raise RuntimeError("identity-protected child lacks its dedicated process session")
+E   RuntimeError: identity-protected child lacks its dedicated process session
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/existing-owner-join-01.xml -
+============================= slowest 10 durations =============================
+2.14s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_direct_managed_daemon_identity_requires_direct_child
+0.05s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_shared_adopt_or_launch_is_serialized_for_one_scope
+0.05s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_supervisor_loop_preserves_markers_when_termination_is_unproven
+0.04s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_supervisor_loop_stops_on_typed_fail_closed_child_exit
+0.01s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_shared_launcher_commits_identity_before_raw_pid_marker
+0.01s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_adopted_child_exit_is_proven_before_identity_markers_are_cleared
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_shared_adoption_refuses_legacy_child_without_exact_proc_argv
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_shared_adoption_recovers_live_identity_without_pid_marker
+======================== 2 failed, 27 passed in 22.25s =========================

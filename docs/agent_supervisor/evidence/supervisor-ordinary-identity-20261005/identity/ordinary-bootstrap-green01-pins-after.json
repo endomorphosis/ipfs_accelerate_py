@@ -1,0 +1,17 @@
+{
+  "source_and_test_unchanged": true,
+  "before": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "test/api/test_ordinary_supervisor_child_identity.py": "b7fe26a23c0f668babe129f960c8698f18dc9fec3a28596465ffba248cef9d6b",
+    "test/api/test_agent_supervisor_production_policy_transport.py": "5a6a7a3622ee27774fc753577ebf9a67c0602fbbbbc552c50ca7ff04aedb6f19",
+    "test/api/test_agent_supervisor_production_provider_cli.py": "946508bb0ced878edbd0ac9f555f63a8268d63bebb0368bf160e5bd0959394b4"
+  },
+  "after": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "test/api/test_ordinary_supervisor_child_identity.py": "b7fe26a23c0f668babe129f960c8698f18dc9fec3a28596465ffba248cef9d6b",
+    "test/api/test_agent_supervisor_production_policy_transport.py": "5a6a7a3622ee27774fc753577ebf9a67c0602fbbbbc552c50ca7ff04aedb6f19",
+    "test/api/test_agent_supervisor_production_provider_cli.py": "946508bb0ced878edbd0ac9f555f63a8268d63bebb0368bf160e5bd0959394b4"
+  }
+}

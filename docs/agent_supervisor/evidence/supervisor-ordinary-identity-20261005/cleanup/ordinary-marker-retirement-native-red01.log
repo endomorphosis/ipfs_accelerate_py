@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 1 item
+
+test/api/test_ordinary_supervisor_child_fence.py F                       [100%]
+
+=================================== FAILURES ===================================
+_ test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker _
+test/api/test_ordinary_supervisor_child_fence.py:226: in test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker
+    assert clear_child_pid_file(child) is False
+E   AssertionError: assert True is False
+E    +  where True = clear_child_pid_file(SupervisedChild(pid=547871, command=('/home/barberb/.local/bin/python', '/tmp/pytest-of-barberb/pytest-1337/test_nativ...time_ticks=19942287, boot_id='82e446b4-5572-47d2-a5ea-4259f31bb2d9', parent_pid=544270), owned_process_group_id=547871))
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-marker-retirement-native-red01.xml -
+============================= slowest 10 durations =============================
+2.19s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker
+============================== 1 failed in 13.33s ==============================

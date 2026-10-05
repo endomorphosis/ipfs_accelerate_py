@@ -189,7 +189,7 @@ START or new Terminal-Bench score were produced by this qualification.
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
-| P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
+| P0 | Symbolic decomposition in generic benchmark profiles | The shared requirement adapter, obligation compiler, symbolic planner, critic and formal-plan validator already handle reviewed multiple operations. Generic preparation and several execution wrappers still require one task. Add the bounded reviewed profile, then per-task context and explicit native execution scope described below. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
 | P1 | Authenticated live-provider qualification of optional independent review | Operator policy transport and the native reviewed-effect, merge, and restart path are connected below. Qualify authenticated Grok implementation and independent Codex review with real provider usage receipts; the local qualification uses authored responses and adds no live provider or benchmark score claim. |
 | P1 | Source/data and language coverage | `analysis/program_ast_adapters.py`, exhaustive corpus inventory, scoped Doctor diagnostics. Preserve all hashes and unresolved frontiers. Parsing, tokenization and vector hits do not establish executable semantics. |
@@ -661,6 +661,76 @@ review. Eight broader validation failures reproduced on the unchanged baseline
 and are excluded from this selection; both runs are retained in the evidence.
 No new Ruff diagnostics were introduced. This qualification does not produce
 new model weights, live-provider results or benchmark scores.
+
+## Ordinary child ownership and bounded decomposition (2026-10-05)
+
+The [ordinary child qualification](evidence/supervisor-ordinary-identity-20261005/qualification.json)
+records the observed adoption and shutdown gaps, their native controls, and the
+final source-pinned checks. Ordinary non-plan-bound supervisor loops configure
+the existing child identity owner with exact launch arguments and owner scope.
+Native adoption also verifies the observed dedicated session and process group.
+Appended resource or execution options, altered bootstrap arguments, birth drift
+and foreign scope cannot satisfy that owner. Exact live legacy migration remains
+available through its existing native argument and birth checks. Cleanup does
+not create an identity from process-list matches.
+
+Supervisor validation-worker configuration now carries the same explicit
+integer through CLI, configuration and child arguments, bounded to 1–256.
+Cleanup uses the recorded owner fence. Ambiguous ownership retains custody and
+reports blocked cleanup. Completed-task release requires quiescence before
+clearing active state, and signal shutdown preserves unresolved child state.
+Native process tests use only their own benign sessions; no model providers,
+training or decoder-weight changes are involved.
+
+The merged final selection passes **649 distinct tests**, with no failures,
+errors or skips. Every passing case has an AST seal in a fresh catalog;
+source, dataset and retained-asset hashes stayed unchanged during the run.
+The 55 new adoption, CLI and cleanup controls are included in that total.
+The 29 failures from the broader unchanged-base owner diagnostic remain
+separate: 19 reference absent APIs and 10 reflect legacy behavior or fixtures.
+The selection retains 29 previously passing owner controls; two synthetic
+adoption fixtures were updated to model the newly required native session
+observations. No retired APIs were restored. Actual kernel PID reuse was not
+forced, and the existing process fence does not provide cgroup containment
+for workers that escaped before its first census. No executable test-owned
+process was observed in the final audited fixture roots.
+
+The [decomposition survey](evidence/supervisor-ordinary-identity-20261005/decomposition-survey.json)
+qualified 127 existing checks on the unchanged `39f88fee` baseline: 38 shared
+requirement/ordered-planner checks and 89 generic wrapper checks. Those counts
+are separate from the child qualification. The shared planner already projects
+two independently reviewed tasks through the actual obligation compiler, critic,
+formal compiler and native dependency rows. The generic wrapper still signs one
+specification, fixes its task budget to one and reconstructs one task during
+replay. Ten related context, dispatch, execution or indexed-qualification guards
+also retain singleton requirements. Increasing the budget alone would leave
+those joins incomplete.
+
+The next planning increment is an explicit `terminal-public-task-profile@2`
+with at most 16 reviewed task/operation bindings. Bind the original instruction
+hash and requirement-contract CID, unique task identities, disjoint output
+ownership with exact union coverage, operation and requirement dependencies,
+and each task's validation and acceptance keys. Preserve the current profile
+bytes and default path. Preparation must sign all canonical specifications and
+reconstruct them exactly during replay before using the existing symbolic
+selection, signed admission and transactional materialization. This increment
+would qualify administrative scheduling; context and execution refusals remain
+until their own joins are qualified.
+
+The following increment binds each task to its source revision, dependency wave
+and native world context, including verified source successors after earlier
+changes. Each context retains its selected IR family, schema/version, decoder
+task, dimension, token/span budget and frozen asset identities. CodebaseIR,
+SecurityIR, LegalIR and IntentIR keep separate inventories and checkpoints,
+with parallel 8D, 384D and 768D selections. Bind each context to its selected
+DuckDB/DuckLake database and Hugging Face artifact revision, preserving the
+embeddings and decoder assets already used for that selection. The execution
+increment then uses an explicit multi-task native scope, isolated worktrees and
+leases, independent
+validation/review, merge currentness and durable completion. Its controls must
+cover parallel independent tasks, dependency-aware readiness and cold restart
+before claiming parallel execution. These profile and execution increments
+remain planned; this child-ownership change does not implement them.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 

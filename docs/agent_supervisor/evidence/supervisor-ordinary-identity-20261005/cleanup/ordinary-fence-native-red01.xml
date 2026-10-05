@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="12" skipped="0" tests="12" time="20.369" timestamp="2026-10-05T06:06:57.396206+00:00" hostname="spark-b271"><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]" time="2.223"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[weak_argv]" time="0.701"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope]" time="0.648"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_birth]" time="0.733"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[changed_command]" time="0.752"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[corrupt]" time="0.736"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]" time="0.772"><failure message="assert False is True">test/api/test_ordinary_supervisor_child_fence.py:147: in test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers
+    assert result["terminated"] is True
+E   assert False is True</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True]" time="0.731"><failure message="assert False is True">test/api/test_ordinary_supervisor_child_fence.py:147: in test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers
+    assert result["terminated"] is True
+E   assert False is True</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_native_cleanup_clears_only_exact_owned_dead_birth" time="0.755"><failure message="assert False&#10; +  where False = all(&lt;generator object test_native_cleanup_clears_only_exact_owned_dead_birth.&lt;locals&gt;.&lt;genexpr&gt; at 0xe4fcae397ac0&gt;)">test/api/test_ordinary_supervisor_child_fence.py:161: in test_native_cleanup_clears_only_exact_owned_dead_birth
+    assert all(value is None for value in _markers(supervisor).values())
+E   assert False
+E    +  where False = all(&lt;generator object test_native_cleanup_clears_only_exact_owned_dead_birth.&lt;locals&gt;.&lt;genexpr&gt; at 0xe4fcae397ac0&gt;)</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven" time="0.802"><failure message="FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-barberb/pytest-1322/test_completed_leftover_preser0/repo/state/task-state.json'">test/api/test_ordinary_supervisor_child_fence.py:173: in test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+    before_state = supervisor.config.state_path.read_bytes()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/pathlib.py:1021: in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/pathlib.py:1015: in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pytest-of-barberb/pytest-1322/test_completed_leftover_preser0/repo/state/task-state.json'</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_signal_shutdown_projects_actual_blocked_native_cleanup[missing]" time="0.744"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:193: in test_signal_shutdown_projects_actual_blocked_native_cleanup
+    assert cleanup["quiesced"] is False
+E   assert True is False</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_fence" name="test_signal_shutdown_projects_actual_blocked_native_cleanup[foreign_scope]" time="0.652"><failure message="assert True is False">test/api/test_ordinary_supervisor_child_fence.py:193: in test_signal_shutdown_projects_actual_blocked_native_cleanup
+    assert cleanup["quiesced"] is False
+E   assert True is False</failure></testcase></testsuite></testsuites>

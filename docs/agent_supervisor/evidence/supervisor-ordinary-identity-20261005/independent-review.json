@@ -1,0 +1,24 @@
+{
+  "schema": "ordinary-supervisor-independent-review@1",
+  "reviewer": "/root/independent_review_supervisor",
+  "source_commit": "de1e0034b",
+  "created_utc": "2026-10-05T06:51:09.315408+00:00",
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "test/api/test_ordinary_supervisor_shutdown_reconcile.py": "7687257b7260a93f52e87d90820d333d967c843d20d21ee99cec2c41219ec08c"
+  },
+  "blocking_findings_remaining": [],
+  "corrected_finding": "Actual signal-finally reconciliation was unconditional after blocked cleanup; two native controls confirmed the mutation and the lazy quiescence gate now preserves state.",
+  "review_scope": [
+    "ordinary versus typed owner environment",
+    "exact native argv, observed dedicated session/group and process birth",
+    "same-boot dead leader strict process fence and session quiescence",
+    "completed-state release and durable marker retirement",
+    "canonical --implement versus protected-path abbreviations",
+    "actual signal-finally reconciliation and two real native controls"
+  ],
+  "qualification_limit": "Independent source review complements the separate frozen behavioral run; it does not supply execution or completion authority.",
+  "source_edits_by_reviewer": false,
+  "completion_authority": false
+}

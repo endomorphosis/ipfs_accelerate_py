@@ -1,0 +1,196 @@
+{
+  "schema": "ordinary-supervisor-native-custody-audit@1",
+  "baseline_revision": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "baseline_source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "600b1d1f9a0ad2c268597187fd707b7b0c4b680cdc0f7f800147c1023ecdf857",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157"
+  },
+  "native_tests": 23,
+  "status": "all_owned_controls_pass",
+  "final_test_path": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_ordinary_supervisor_child_fence.py",
+  "final_test_sha256": "34910bcb10818c5696b135c8e8a992075ced8a5b26924e4abf4decd8a2fa4d32",
+  "records": [
+    {
+      "tag": "ordinary-fence-native-red02",
+      "description": "Twelve native cleanup/caller controls against unchanged 39f88 source; corrected native fixture supersedes red01 fixture errors.",
+      "is_unchanged_39f88_source": true,
+      "source_unchanged_during_run": true,
+      "exit_code": 1,
+      "test_count": 12,
+      "failures": [
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]",
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[weak_argv]",
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope]",
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_birth]",
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[changed_command]",
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[corrupt]",
+        "test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]",
+        "test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True]",
+        "test_native_cleanup_clears_only_exact_owned_dead_birth",
+        "test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven",
+        "test_signal_shutdown_projects_actual_blocked_native_cleanup[missing]",
+        "test_signal_shutdown_projects_actual_blocked_native_cleanup[foreign_scope]"
+      ],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "600b1d1f9a0ad2c268597187fd707b7b0c4b680cdc0f7f800147c1023ecdf857",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "c32f1d2c0fb51a5127cc8a5f28d2ab43b2d8daf714256bd5c46c5a2fc875b8e9"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "6792aceed2310e386475af21d2e74cb51a1e643c37938ea10e200ce87e5e59e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "600b1d1f9a0ad2c268597187fd707b7b0c4b680cdc0f7f800147c1023ecdf857",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "c32f1d2c0fb51a5127cc8a5f28d2ab43b2d8daf714256bd5c46c5a2fc875b8e9"
+      },
+      "seal": "/dev/shm/ordinary-fence-native-f86aa81c4d3549b0a23f23bcd8099afb.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-red02.json"
+    },
+    {
+      "tag": "ordinary-orphan-adoption-native-red01",
+      "description": "Source-frozen intermediate diagnostic: dead exact leader with later live worker was archived and adoption returned None.",
+      "is_unchanged_39f88_source": false,
+      "source_unchanged_during_run": true,
+      "exit_code": 1,
+      "test_count": 1,
+      "failures": [
+        "test_native_adoption_retains_orphan_identity_while_later_owned_worker_is_live"
+      ],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "7f673f17d873899b1abb328d282e535d7b549c0bc20ca0a74b39365e24e9f7fc",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "abc2e308f2dfdfaf29783b553a3bad9d0897efded6389412e343324cc0797b73"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "7f673f17d873899b1abb328d282e535d7b549c0bc20ca0a74b39365e24e9f7fc",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "abc2e308f2dfdfaf29783b553a3bad9d0897efded6389412e343324cc0797b73"
+      },
+      "seal": "/dev/shm/ordinary-orphan-native-89cc22cf8de94b5d961cba6345022b3e.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-orphan-adoption-native-red01.json"
+    },
+    {
+      "tag": "ordinary-marker-retirement-native-red01",
+      "description": "Source-frozen intermediate diagnostic: actual native launched handle lost custody markers while later worker survived leader exit.",
+      "is_unchanged_39f88_source": false,
+      "source_unchanged_during_run": true,
+      "exit_code": 1,
+      "test_count": 1,
+      "failures": [
+        "test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker"
+      ],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "202c35e004ca6bbda0a29c78f5b2a25c5d143b1d39963111894c45db72d4766d",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "886777a88a12762548d3e30c0f4902e15792412203f7a9c681cbd11eea6d0cb2"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "202c35e004ca6bbda0a29c78f5b2a25c5d143b1d39963111894c45db72d4766d",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "886777a88a12762548d3e30c0f4902e15792412203f7a9c681cbd11eea6d0cb2"
+      },
+      "seal": "/dev/shm/ordinary-retirement-native-9fd080d918244ae2b0e12348f87a34cd.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-marker-retirement-native-red01.json"
+    },
+    {
+      "tag": "ordinary-boot-custody-native-red01",
+      "description": "Source-frozen intermediate diagnostic: boot-only sidecar mismatch retained real start ticks and native cleanup terminated the child.",
+      "is_unchanged_39f88_source": false,
+      "source_unchanged_during_run": true,
+      "exit_code": 1,
+      "test_count": 1,
+      "failures": [
+        "test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_boot]"
+      ],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "202c35e004ca6bbda0a29c78f5b2a25c5d143b1d39963111894c45db72d4766d",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "84b25c634ff69ae3fe7251fb6534c3ead8a4180f85d3c2aa185465ceb14c11e3",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "202c35e004ca6bbda0a29c78f5b2a25c5d143b1d39963111894c45db72d4766d",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+      },
+      "seal": "/dev/shm/ordinary-boot-native-cd7099427fb74c47933f1c17a564ce3e.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-boot-custody-native-red01.json"
+    },
+    {
+      "tag": "ordinary-fence-native-green01",
+      "description": "Coherent-source diagnostic: 22 passed; one new positive fixture incorrectly expected native retained task identity to be cleared.",
+      "is_unchanged_39f88_source": false,
+      "source_unchanged_during_run": true,
+      "exit_code": 1,
+      "test_count": 23,
+      "failures": [
+        "test_completed_leftover_releases_native_state_only_after_owned_session_fence"
+      ],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+      },
+      "seal": "/dev/shm/ordinary-fence-native-606afed2282441f38648d093b0e3e1b7.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-green01.json"
+    },
+    {
+      "tag": "ordinary-fence-native-green02",
+      "description": "Final corrected 23 native controls pass with unchanged source/test pins and fresh AST seal.",
+      "is_unchanged_39f88_source": false,
+      "source_unchanged_during_run": true,
+      "exit_code": 0,
+      "test_count": 23,
+      "failures": [],
+      "before_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "34910bcb10818c5696b135c8e8a992075ced8a5b26924e4abf4decd8a2fa4d32"
+      },
+      "after_pins": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "test/api/test_ordinary_supervisor_child_fence.py": "34910bcb10818c5696b135c8e8a992075ced8a5b26924e4abf4decd8a2fa4d32"
+      },
+      "seal": "/dev/shm/ordinary-fence-native-a3e1b4b461c54620b6eb1f813c7c069b.duckdb",
+      "metadata_path": "/home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-green02.json"
+    }
+  ],
+  "execution_scope": {
+    "native_children": "All signalled children and surviving workers were created by the private native test fixtures; teardown verifies retained birth identity.",
+    "providers": "No provider calls, downloads, training or publication.",
+    "state": "Actual PortalTaskState save/load via native authority, not a JSON-state surrogate.",
+    "signals": "Actual strict process-tree fence and native procfs birth/argv/session observations; no admission or signal owner mocks.",
+    "pid_reuse": "Durable birth/tick mismatch is tested against a live native child. Actual kernel PID reuse is not forced.",
+    "adoption_policy": "Existing exact-argv legacy adoption may establish an absent sidecar; cleanup does not mint ownership or use process-list matches as signal authority.",
+    "process_fence_limit": "Existing userspace dedicated-group fence does not provide cgroup containment for descendants that escaped both ancestry and captured kernel groups before the first census."
+  }
+}

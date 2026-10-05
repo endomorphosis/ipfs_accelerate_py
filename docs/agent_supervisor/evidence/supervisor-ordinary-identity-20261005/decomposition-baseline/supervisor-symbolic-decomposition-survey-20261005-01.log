@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 38 items
+
+test/api/test_intent_requirement_adapter.py ............................ [ 73%]
+......                                                                   [ 89%]
+test/api/test_intent_symbolic_planning_ordered.py ....                   [100%]
+
+- generated xml file: /dev/shm/supervisor-symbolic-decomposition-survey-20261005-01.xml -
+============================= slowest 10 durations =============================
+3.92s call     test/api/test_intent_symbolic_planning_ordered.py::test_ordered_outputs_require_both_real_public_checks
+2.38s call     test/api/test_intent_symbolic_planning_ordered.py::test_ordered_signed_operations_project_exact_native_dependencies
+0.56s setup    test/api/test_intent_symbolic_planning_ordered.py::test_ordered_outputs_require_both_real_public_checks
+0.53s setup    test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[reverse]
+0.52s setup    test/api/test_intent_symbolic_planning_ordered.py::test_ordered_signed_operations_project_exact_native_dependencies
+0.51s setup    test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[drop]
+0.18s call     test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[reverse]
+0.18s call     test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[drop]
+0.03s call     test/api/test_intent_requirement_adapter.py::test_exact_reviewed_native_operation_generates_real_open_symbolic_obligations
+0.03s call     test/api/test_intent_requirement_adapter.py::test_grounded_dependency_becomes_and_premise_and_concrete_task_dependency
+============================= 38 passed in 27.09s ==============================

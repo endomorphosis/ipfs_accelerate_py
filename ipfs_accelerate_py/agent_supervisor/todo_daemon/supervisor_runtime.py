@@ -1760,6 +1760,7 @@ def write_supervised_child_identity(
     command: Sequence[str],
     owner_scope: Mapping[str, str],
     require_direct_child: bool = False,
+    expected_process_birth: ProcessBirthIdentity | None = None,
 ) -> SupervisedChildIdentity:
     """Capture and atomically persist the exact birth identity of ``pid``."""
 
@@ -1775,6 +1776,13 @@ def write_supervised_child_identity(
         raise RuntimeError("supervised child process identity unavailable")
     if require_direct_child and process_birth.parent_pid != os.getpid():
         raise RuntimeError("supervised child is not owned by this launcher")
+    if expected_process_birth is not None and (
+        process_birth.pid, process_birth.start_time_ticks, process_birth.boot_id
+    ) != (
+        expected_process_birth.pid, expected_process_birth.start_time_ticks,
+        expected_process_birth.boot_id,
+    ):
+        raise RuntimeError("supervised child birth changed before identity capture")
     identity = SupervisedChildIdentity(
         process_birth=process_birth,
         command=tuple(str(part) for part in command),
@@ -2024,6 +2032,23 @@ def supervised_child_command_matches(command_line: str, command: Sequence[str]) 
     return all(fragment in command_line for fragment in required_fragments)
 
 
+def _supervised_child_identity_session_quiesced(
+    identity: SupervisedChildIdentity,
+) -> bool:
+    """Prove the recorded leader and its dedicated kernel custody gone."""
+
+    if supervised_child_identity_liveness(identity) is not OwnerLiveness.DEAD:
+        return False
+    from .core import _process_identity_snapshot
+
+    census = _process_identity_snapshot()
+    return bool(census.available and not any(
+        state != "Z" and (group == identity.process_birth.pid
+                          or session == identity.process_birth.pid)
+        for state, _parent, group, session, _start in census.processes.values()
+    ))
+
+
 def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     """Return a live matching child from the PID marker instead of launching a duplicate."""
 
@@ -2050,12 +2075,17 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
                 raise RuntimeError(
                     "orphaned supervised child identity is invalid"
                 )
+            if (identity.command != tuple(spec.command)
+                    or dict(identity.owner_scope) != owner_scope):
+                raise RuntimeError("orphaned supervised child ownership identity mismatch")
             liveness = supervised_child_identity_liveness(identity)
             if liveness is OwnerLiveness.UNKNOWN:
                 raise RuntimeError(
                     "orphaned supervised child identity liveness is unknown"
                 )
             if liveness is OwnerLiveness.DEAD:
+                if not _supervised_child_identity_session_quiesced(identity):
+                    raise RuntimeError("orphaned supervised child ownership session is not proven quiescent")
                 for path in (child_pid_path, identity_path):
                     if not path.exists() and not path.is_symlink():
                         continue
@@ -2078,13 +2108,30 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             pid = identity.process_birth.pid
     if not pid or not pid_alive(pid):
         return None
-    command_line = process_args(pid)
-    if not supervised_child_command_matches(command_line, spec.command):
+    def admitted_session_birth() -> ProcessBirthIdentity:
+        try:
+            birth = read_process_birth(int(pid))
+            if (birth is None or owner_liveness(birth) is not OwnerLiveness.ALIVE
+                    or os.getsid(int(pid)) != int(pid)
+                    or os.getpgid(int(pid)) != int(pid)):
+                raise RuntimeError("identity-protected child lacks its dedicated process session")
+        except OSError as error:
+            raise RuntimeError("identity-protected child dedicated process session is unproven") from error
+        return birth
+
+    admission_birth = admitted_session_birth() if identity_path is not None else None
+    if identity_path is None and not supervised_child_command_matches(
+        process_args(pid), spec.command
+    ):
         return None
     if identity_path is not None and owner_scope is not None:
         identity = load_supervised_child_identity(identity_path)
         process_argv = read_process_command_argv(int(pid))
+        if process_argv != tuple(spec.command):
+            raise RuntimeError("supervised child ownership identity mismatch")
         if identity is None:
+            if identity_path.exists() or identity_path.is_symlink():
+                raise RuntimeError("supervised child ownership identity mismatch")
             # A live legacy child is migratable only when it already matches
             # the exact desired command. A config-mismatched legacy PID is
             # rejected by the implementation supervisor before this point.
@@ -2092,11 +2139,17 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
                 raise RuntimeError(
                     "legacy supervised child exact command is unproven"
                 )
+            current_birth = admitted_session_birth()
+            if (current_birth.pid, current_birth.start_time_ticks, current_birth.boot_id) != (
+                admission_birth.pid, admission_birth.start_time_ticks, admission_birth.boot_id
+            ):
+                raise RuntimeError("supervised child birth changed during admission")
             identity = write_supervised_child_identity(
                 identity_path,
                 pid=int(pid),
                 command=spec.command,
                 owner_scope=owner_scope,
+                expected_process_birth=admission_birth,
             )
         if (
             identity.process_birth.pid != int(pid)
@@ -2108,6 +2161,12 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             raise RuntimeError("supervised child ownership identity mismatch")
         if process_argv != identity.command:
             raise RuntimeError("supervised child command identity mismatch")
+        current_birth = admitted_session_birth()
+        if (current_birth.pid, current_birth.start_time_ticks, current_birth.boot_id) != (
+            identity.process_birth.pid, identity.process_birth.start_time_ticks,
+            identity.process_birth.boot_id,
+        ):
+            raise RuntimeError("supervised child birth changed during admission")
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path = spec.resolve(spec.log_path)
     if latest_log_path is not None:
@@ -2178,8 +2237,11 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
         child_pid_path
     )
     identity = load_supervised_child_identity(identity_path)
+    identity_required = (
+        child.identity_path is not None if isinstance(child, SupervisedChild)
+        else _configured_child_identity_path(child) is not None
+    )
     if isinstance(child, SupervisedChild):
-        identity_required = child.identity_path is not None
         if (
             (identity_required and identity is None)
             or (
@@ -2191,6 +2253,15 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
             )
         ):
             return False
+    if identity_required and (
+        identity is None
+        or not _supervised_child_identity_session_quiesced(identity)
+        or (isinstance(child, SupervisedChildSpec) and (
+            identity.command != tuple(child.command)
+            or dict(identity.owner_scope) != _configured_child_owner_scope(child)
+        ))
+    ):
+        return False
     try:
         current = child_pid_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:

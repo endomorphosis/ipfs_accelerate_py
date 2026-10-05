@@ -1,0 +1,48 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 2 items
+
+test/api/test_ordinary_supervisor_shutdown_reconcile.py .F               [100%]
+
+=================================== FAILURES ===================================
+_ test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[] __
+test/api/test_ordinary_supervisor_shutdown_reconcile.py:86: in test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence
+    assert reconciliation["reconciled"] is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+ERROR    ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:implementation_supervisor.py:16466 Could not reconcile interrupted implementation during supervisor shutdown
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py", line 11121, in run_forever
+    self._run_forever_loop()
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/test_ordinary_supervisor_shutdown_reconcile.py", line 62, in deliver_sigterm_at_scheduler_entry
+    os.kill(os.getpid(), signal.SIGTERM)
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py", line 11112, in request_stop
+    raise SystemExit(128 + signum)
+SystemExit: 143
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py", line 16463, in _reconcile_interrupted_implementation_after_shutdown
+    daemon = self._build_worktree_reconciliation_daemon()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py", line 16001, in _build_worktree_reconciliation_daemon
+    return PortalImplementationDaemon(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 5509, in __init__
+    self.resolved_merge_target_branch = self._main_branch_name()
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py", line 47927, in _main_branch_name
+    raise RuntimeError(
+RuntimeError: Configured merge target branch does not exist: implementation/tasks
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-signal-reconcile-native-red01.xml -
+============================= slowest 10 durations =============================
+2.36s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]
+0.95s call     test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_shutdown_reconcile.py::test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]
+========================= 1 failed, 1 passed in 11.67s =========================

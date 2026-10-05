@@ -786,6 +786,14 @@ def test_shared_adoption_refuses_legacy_child_without_exact_proc_argv(
     pid_path.write_text("445\n", encoding="utf-8")
     command = ("python", "worker.py", "--state-dir", "state")
     monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda _pid: True)
+    # This observer fixture represents a dedicated live session; the argv
+    # observation below is deliberately unavailable and must still refuse.
+    birth = ProcessBirthIdentity(pid=445, start_time_ticks=102,
+                                 boot_id="boot-test", parent_pid=17)
+    monkeypatch.setattr(supervisor_runtime, "read_process_birth", lambda _pid: birth)
+    monkeypatch.setattr(supervisor_runtime, "owner_liveness", lambda _birth: OwnerLiveness.ALIVE)
+    monkeypatch.setattr(supervisor_runtime.os, "getsid", lambda pid: pid)
+    monkeypatch.setattr(supervisor_runtime.os, "getpgid", lambda pid: pid)
     monkeypatch.setattr(
         supervisor_runtime,
         "process_args",
@@ -806,7 +814,7 @@ def test_shared_adoption_refuses_legacy_child_without_exact_proc_argv(
 
     with pytest.raises(
         RuntimeError,
-        match="legacy supervised child exact command is unproven",
+        match="supervised child ownership identity mismatch",
     ):
         adopt_supervised_child(
             SupervisedChildSpec(
@@ -851,6 +859,12 @@ def test_shared_adoption_recovers_live_identity_without_pid_marker(
         encoding="utf-8",
     )
     monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda _pid: True)
+    # Complete the native observer model for this synthetic dedicated PID.
+    monkeypatch.setattr(supervisor_runtime, "read_process_birth",
+                        lambda _pid: identity.process_birth)
+    monkeypatch.setattr(supervisor_runtime, "owner_liveness", lambda _birth: OwnerLiveness.ALIVE)
+    monkeypatch.setattr(supervisor_runtime.os, "getsid", lambda pid: pid)
+    monkeypatch.setattr(supervisor_runtime.os, "getpgid", lambda pid: pid)
     monkeypatch.setattr(
         supervisor_runtime,
         "supervised_child_identity_liveness",

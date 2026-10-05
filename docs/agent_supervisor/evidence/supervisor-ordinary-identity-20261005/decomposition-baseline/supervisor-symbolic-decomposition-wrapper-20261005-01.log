@@ -1,0 +1,25 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 89 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [  1%]
+........................................................................ [ 82%]
+                                                                         [ 82%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 83%]
+...............                                                          [100%]
+
+- generated xml file: /dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.xml -
+============================= slowest 10 durations =============================
+3.03s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_selection_admits_unchanged_initial_context
+2.74s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_selects_and_materializes_without_planner_provider
+2.70s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[symbolic]
+2.69s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[descriptor]
+2.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[provider]
+2.60s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[world]
+1.83s call     benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_actual_generic_source_indexes_and_world_bind_task_inputs
+1.70s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_requirements_gate_entry_point_and_survive_native_storage
+1.65s call     benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_empty_task_prepares_native_absence_without_source_vectors
+1.48s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_needs_no_provider_callable
+============================= 89 passed in 40.65s ==============================

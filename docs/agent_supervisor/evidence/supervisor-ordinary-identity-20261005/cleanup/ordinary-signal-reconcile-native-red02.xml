@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="13.077" timestamp="2026-10-05T06:44:38.156750+00:00" hostname="spark-b271"><testcase classname="test.api.test_ordinary_supervisor_shutdown_reconcile" name="test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[missing]" time="2.525"><failure message="AssertionError: assert {'heartbeat_a...key': '', ...} == {'heartbeat_a...8392518', ...}&#10;  &#10;  Omitting 55 identical items, use -vv to show&#10;  Differing items:&#10;  {'heartbeat_at': '2026-10-05T06:44:49.874108+00:00'} != {'heartbeat_at': ''}&#10;  {'active_task_cid': ''} != {'active_task_cid': 'baguqeeraesrfwgx4pbbtsee63ylabmauhve3kegtqudokgrvicpzxkbzeuma'}&#10;  {'active_attempt': 0} != {'active_attempt': 2}&#10;  {'last_implementation_task_id': 'ORD-001'} != {'last_implementation_task_id': ''}...&#10;  &#10;  ...Full output truncated (10 lines hidden), use '-vv' to show">test/api/test_ordinary_supervisor_shutdown_reconcile.py:82: in test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence
+    assert asdict(after_state) == before_state
+E   AssertionError: assert {'heartbeat_a...key': '', ...} == {'heartbeat_a...8392518', ...}
+E     
+E     Omitting 55 identical items, use -vv to show
+E     Differing items:
+E     {'heartbeat_at': '2026-10-05T06:44:49.874108+00:00'} != {'heartbeat_at': ''}
+E     {'active_task_cid': ''} != {'active_task_cid': 'baguqeeraesrfwgx4pbbtsee63ylabmauhve3kegtqudokgrvicpzxkbzeuma'}
+E     {'active_attempt': 0} != {'active_attempt': 2}
+E     {'last_implementation_task_id': 'ORD-001'} != {'last_implementation_task_id': ''}...
+E     
+E     ...Full output truncated (10 lines hidden), use '-vv' to show</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_shutdown_reconcile" name="test_actual_signal_finally_reconciles_only_after_native_daemon_quiescence[]" time="1.172" /></testsuite></testsuites>

@@ -1,0 +1,59 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-c",
+    "pytest.ini",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py"
+  ],
+  "catalog_file_count": 993,
+  "catalog_scope_limitation": "The benchmark implementation helper terminal_indexed_preparation.py is not in this AST catalog. Its separately retained read-only SHA256 matches the current HEAD blob. Do not claim complete AST tracing for that helper.",
+  "command": "env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.duckdb python -B -m pytest --noconftest --import-mode=importlib -c pytest.ini -q --tb=short --color=no -o log_cli=false --junitxml=/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.xml benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py > /dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.log 2>&1",
+  "completion_authority_seal_count": 0,
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "datasets_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "duration_seconds": 40.65,
+  "explicit_environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-symbolic-decomposition-wrapper-20261005-01.duckdb",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "files": {
+    "log": {
+      "bytes": 2672,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.log",
+      "sha256": "3adf29dd8f82c12434d0eebec7581cbe6ef8a2597b84bb94f8b5e97f2e58bb57"
+    },
+    "xml": {
+      "bytes": 16967,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.xml",
+      "sha256": "ac9cb8e209440dd219e4567718a66f308243794397436412389c573c9c659f12"
+    }
+  },
+  "head": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "inherited_environment_not_recorded": true,
+  "passed": 89,
+  "raw_database_copied": false,
+  "source_pin_catalog": "/home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/decomposition-baseline/supervisor-symbolic-decomposition-wrapper-20261005-01.source-pins.json",
+  "success_seal_count": 89,
+  "totals": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 89
+  }
+}

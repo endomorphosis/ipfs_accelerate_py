@@ -1,0 +1,215 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-ordinary-identity-baseline-20261005
+configfile: pytest.ini
+collected 58 items
+
+test/api/test_agent_supervisor_managed_daemon_identity.py .FFFFFFFF..... [ 24%]
+.......FF.......                                                         [ 51%]
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py FFF....... [ 68%]
+..                                                                       [ 72%]
+test/api/test_supervised_child_retained_birth.py FFFFFFFFFFFFFFFF        [100%]
+
+=================================== FAILURES ===================================
+__ test_authority_arg_change_fences_recorded_owned_daemon_before_replacement ___
+test/api/test_agent_supervisor_managed_daemon_identity.py:191: in test_authority_arg_change_fences_recorded_owned_daemon_before_replacement
+    assert result["reason"] == "obsolete_owned_managed_daemon_fenced"
+E   AssertionError: assert 'managed_pid_command_mismatch' == 'obsolete_own...daemon_fenced'
+E     
+E     - obsolete_owned_managed_daemon_fenced
+E     + managed_pid_command_mismatch
+________________ test_pid_reuse_identity_mismatch_never_signals ________________
+test/api/test_agent_supervisor_managed_daemon_identity.py:233: in test_pid_reuse_identity_mismatch_never_signals
+    assert result["reason"] == "managed_daemon_pid_reused"
+E   AssertionError: assert 'managed_pid_command_mismatch' == 'managed_daemon_pid_reused'
+E     
+E     - managed_daemon_pid_reused
+E     + managed_pid_command_mismatch
+_________ test_pid_reuse_with_matching_daemon_blocks_duplicate_launch __________
+test/api/test_agent_supervisor_managed_daemon_identity.py:273: in test_pid_reuse_with_matching_daemon_blocks_duplicate_launch
+    assert result == {
+E   AssertionError: assert {'repaired': ...id': 223, ...} == {'repaired': ...mon.pid', ...}
+E     
+E     Omitting 2 identical items, use -vv to show
+E     Differing items:
+E     {'repaired': True} != {'repaired': False}
+E     {'reason': 'managed_pid_command_mismatch_replaced_with_matching_daemon'} != {'reason': 'matching_managed_daemon_ownership_unproven'}
+E     Left contains 1 more item:
+E     {'replacement_pid': 223}...
+E     
+E     ...Full output truncated (4 lines hidden), use '-vv' to show
+_______ test_live_legacy_config_mismatch_blocks_without_unlink_or_signal _______
+test/api/test_agent_supervisor_managed_daemon_identity.py:304: in test_live_legacy_config_mismatch_blocks_without_unlink_or_signal
+    assert result["blocked"] is True
+           ^^^^^^^^^^^^^^^^^
+E   KeyError: 'blocked'
+_______ test_exact_desired_legacy_child_is_migrated_to_identity_sidecar ________
+test/api/test_agent_supervisor_managed_daemon_identity.py:341: in test_exact_desired_legacy_child_is_migrated_to_identity_sidecar
+    assert result["repaired"] is True
+E   assert False is True
+_ test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch _
+test/api/test_agent_supervisor_managed_daemon_identity.py:391: in test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch
+    assert result["repaired"] is True
+E   assert False is True
+______ test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch _______
+test/api/test_agent_supervisor_managed_daemon_identity.py:443: in test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch
+    assert result["recorded_pid_reconciled"] == stale_pid
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'recorded_pid_reconciled'
+____________ test_shutdown_recovers_orphan_identity_before_fencing _____________
+test/api/test_agent_supervisor_managed_daemon_identity.py:507: in test_shutdown_recovers_orphan_identity_before_fencing
+    assert result["terminated"] is True
+E   assert False is True
+____________ test_run_forever_honors_unproven_managed_daemon_block _____________
+test/api/test_agent_supervisor_managed_daemon_identity.py:1197: in test_run_forever_honors_unproven_managed_daemon_block
+    with pytest.raises(RuntimeError, match="managed_daemon_ownership_unproven"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'managed_daemon_ownership_unproven'
+E     Actual message: 'Configured merge target branch does not exist: implementation/todo'
+___________ test_adopted_process_numeric_signal_methods_are_disabled ___________
+test/api/test_agent_supervisor_managed_daemon_identity.py:1204: in test_adopted_process_numeric_signal_methods_are_disabled
+    with pytest.raises(RuntimeError, match="ownership fence"):
+E   Failed: DID NOT RAISE RuntimeError
+_______ test_reparented_nondumpable_daemon_session_prevents_false_death ________
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py:211: in test_reparented_nondumpable_daemon_session_prevents_false_death
+    monkeypatch.setattr(
+E   AttributeError: <module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' from '/home/barberb/lift_coding/.worktrees/supervisor-ordinary-identity-baseline-20261005/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py'> has no attribute '_kernel_session_members_once'
+______ test_forged_managed_daemon_sidecar_is_unknown_and_never_signalled _______
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py:234: in test_forged_managed_daemon_sidecar_is_unknown_and_never_signalled
+    binding = _binding(tmp_path, root)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py:119: in _binding
+    return runner._ManagedDaemonKernelFence(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' has no attribute '_ManagedDaemonKernelFence'
+_________ test_exact_kernel_bound_daemon_is_fenced_by_birth_and_group __________
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py:273: in test_exact_kernel_bound_daemon_is_fenced_by_birth_and_group
+    binding = _binding(tmp_path, root)
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py:119: in _binding
+    return runner._ManagedDaemonKernelFence(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner' has no attribute '_ManagedDaemonKernelFence'
+_ test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[missing] __
+test/api/test_supervised_child_retained_birth.py:42: in test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal
+    assert runtime.supervised_child_is_proven_dead(child) is (marker == 'missing')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[malformed] _
+test/api/test_supervised_child_retained_birth.py:42: in test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal
+    assert runtime.supervised_child_is_proven_dead(child) is (marker == 'missing')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[replacement] _
+test/api/test_supervised_child_retained_birth.py:42: in test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal
+    assert runtime.supervised_child_is_proven_dead(child) is (marker == 'missing')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_________ test_absent_markers_do_not_prove_live_or_unknown_birth_dead __________
+test/api/test_supervised_child_retained_birth.py:55: in test_absent_markers_do_not_prove_live_or_unknown_birth_dead
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_birth] _
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+___ test_incomplete_frozen_handle_cannot_replace_missing_identity[wrong_pid] ___
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+__ test_incomplete_frozen_handle_cannot_replace_missing_identity[zero_birth] ___
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_boot] __
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_record] _
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+__ test_incomplete_frozen_handle_cannot_replace_missing_identity[wrong_group] __
+test/api/test_supervised_child_retained_birth.py:80: in test_incomplete_frozen_handle_cannot_replace_missing_identity
+    assert runtime.supervised_child_is_proven_dead(replace(child, **changes[change])) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_____ test_dead_original_birth_still_requires_absent_owned_group[present] ______
+test/api/test_supervised_child_retained_birth.py:97: in test_dead_original_birth_still_requires_absent_owned_group
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+___ test_dead_original_birth_still_requires_absent_owned_group[unavailable] ____
+test/api/test_supervised_child_retained_birth.py:97: in test_dead_original_birth_still_requires_absent_owned_group
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_unavailable_marker_is_not_completed_cleanup[PermissionError-identity_path] _
+test/api/test_supervised_child_retained_birth.py:116: in test_unavailable_marker_is_not_completed_cleanup
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+_ test_unavailable_marker_is_not_completed_cleanup[PermissionError-child_pid_path] _
+test/api/test_supervised_child_retained_birth.py:116: in test_unavailable_marker_is_not_completed_cleanup
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+___ test_unavailable_marker_is_not_completed_cleanup[OSError-identity_path] ____
+test/api/test_supervised_child_retained_birth.py:116: in test_unavailable_marker_is_not_completed_cleanup
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+___ test_unavailable_marker_is_not_completed_cleanup[OSError-child_pid_path] ___
+test/api/test_supervised_child_retained_birth.py:116: in test_unavailable_marker_is_not_completed_cleanup
+    assert runtime.supervised_child_is_proven_dead(child) is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime' has no attribute 'supervised_child_is_proven_dead'. Did you mean: 'supervised_child_succeeded'?
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/existing-owner-baseline-01.xml -
+============================= slowest 10 durations =============================
+2.04s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_direct_managed_daemon_identity_requires_direct_child
+0.87s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_run_forever_honors_unproven_managed_daemon_block
+0.72s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_live_legacy_config_mismatch_blocks_without_unlink_or_signal
+0.72s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_pid_reuse_with_matching_daemon_blocks_duplicate_launch
+0.71s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch
+0.68s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_shutdown_recovers_orphan_identity_before_fencing
+0.68s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_exact_desired_legacy_child_is_migrated_to_identity_sidecar
+0.66s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_pid_reuse_identity_mismatch_never_signals
+0.65s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch
+0.64s call     test/api/test_agent_supervisor_managed_daemon_identity.py::test_authority_arg_change_fences_recorded_owned_daemon_before_replacement
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_authority_arg_change_fences_recorded_owned_daemon_before_replacement
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_pid_reuse_identity_mismatch_never_signals
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_pid_reuse_with_matching_daemon_blocks_duplicate_launch
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_live_legacy_config_mismatch_blocks_without_unlink_or_signal
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_exact_desired_legacy_child_is_migrated_to_identity_sidecar
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_orphaned_live_identity_reconstructs_pid_marker_without_duplicate_launch
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_live_identity_repairs_wrong_raw_pid_without_duplicate_launch
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_shutdown_recovers_orphan_identity_before_fencing
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_run_forever_honors_unproven_managed_daemon_block
+FAILED test/api/test_agent_supervisor_managed_daemon_identity.py::test_adopted_process_numeric_signal_methods_are_disabled
+FAILED test/api/test_agent_supervisor_managed_daemon_kernel_fence.py::test_reparented_nondumpable_daemon_session_prevents_false_death
+FAILED test/api/test_agent_supervisor_managed_daemon_kernel_fence.py::test_forged_managed_daemon_sidecar_is_unknown_and_never_signalled
+FAILED test/api/test_agent_supervisor_managed_daemon_kernel_fence.py::test_exact_kernel_bound_daemon_is_fenced_by_birth_and_group
+FAILED test/api/test_supervised_child_retained_birth.py::test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[missing]
+FAILED test/api/test_supervised_child_retained_birth.py::test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[malformed]
+FAILED test/api/test_supervised_child_retained_birth.py::test_dead_frozen_birth_does_not_authorize_marker_cleanup_or_signal[replacement]
+FAILED test/api/test_supervised_child_retained_birth.py::test_absent_markers_do_not_prove_live_or_unknown_birth_dead
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_birth]
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[wrong_pid]
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[zero_birth]
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_boot]
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[missing_record]
+FAILED test/api/test_supervised_child_retained_birth.py::test_incomplete_frozen_handle_cannot_replace_missing_identity[wrong_group]
+FAILED test/api/test_supervised_child_retained_birth.py::test_dead_original_birth_still_requires_absent_owned_group[present]
+FAILED test/api/test_supervised_child_retained_birth.py::test_dead_original_birth_still_requires_absent_owned_group[unavailable]
+FAILED test/api/test_supervised_child_retained_birth.py::test_unavailable_marker_is_not_completed_cleanup[PermissionError-identity_path]
+FAILED test/api/test_supervised_child_retained_birth.py::test_unavailable_marker_is_not_completed_cleanup[PermissionError-child_pid_path]
+FAILED test/api/test_supervised_child_retained_birth.py::test_unavailable_marker_is_not_completed_cleanup[OSError-identity_path]
+FAILED test/api/test_supervised_child_retained_birth.py::test_unavailable_marker_is_not_completed_cleanup[OSError-child_pid_path]
+======================== 29 failed, 29 passed in 45.87s ========================
