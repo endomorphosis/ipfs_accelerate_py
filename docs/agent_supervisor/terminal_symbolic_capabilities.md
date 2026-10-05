@@ -164,9 +164,10 @@ checkpoint and cached GTE-small snapshot. A new regression rejects changes to
 original source bindings during declaration before a prepared task can be
 published. Empty repositories can prepare an explicit signed create task, but
 source indexing still refuses an absent program population; zero-symbol source
-files also remain outside the current vector qualification contract. Resource
-profile wiring, IntentAction384 selection and full header-v3 orchestration are
-separate retained integrations still requiring recovery and qualification.
+files also remain outside the current vector qualification contract. The subsequent
+`bc4e6fdf2` repair restores resource-profile wiring, IntentAction384 selection and
+header-v3 orchestration. Its separate contract qualification below retains the
+source revisions and limits; those integrations are no longer recovery gaps.
 
 The repair integration uses an explicitly authored IntentIR contract and lexical
 vector-index ablation. It traverses actual prompt preparation, initial indexing,
@@ -187,11 +188,11 @@ START or new Terminal-Bench score were produced by this qualification.
 
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
-| P0 | Remaining retained runtime integration | Recover the retained resource-profile, IntentAction384 and header-v3 validator/entry-point wiring against current interfaces. Preserve repository-preview and source-unit routes, then qualify each complete path before treating retained tests or model assets as available runtime features. |
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
 | P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
-| P1 | Honest empty-source and zero-symbol context | Existing manifest, corpus inventory and native empty-intent-world capture. Extend initial context, replay, audits and successor refresh together. Do not invent code symbols or remove a guard without a replacement schema. |
+| P1 | Honest empty-source and zero-symbol context | Reuse the signed source partition, corpus inventory and native empty-intent-world capture. The complete contract and acceptance path below cover initial context, replay, audits and successor refresh together. |
 | P1 | Independent behavioral contracts for newly created code | `analysis/required_behavior_synthesis.py`, `proof/missing_input_synthesis.py`, `analysis/tactician_guided_behavior_synthesis.py`. Preserve source precedence and unresolved clauses; inferred formulas are nominations until independently grounded. |
+| P1 | Optional independent model review through the live daemon | Add explicit policy initialization and CLI transport in `todo_daemon/implementation_daemon.py`, then qualify the joined reviewed-effect path against its native effect owner. The seven retained optional integration failures remain open; current provider authorization does not supply review evidence. |
 | P1 | Source/data and language coverage | `analysis/program_ast_adapters.py`, exhaustive corpus inventory, scoped Doctor diagnostics. Preserve all hashes and unresolved frontiers. Parsing, tokenization and vector hits do not establish executable semantics. |
 | P2 | Build/install/training and generated-artifact stages | Native task admission, validation and capability machinery. Bind commands, dependencies, environment identities, budgets and produced artifacts. Static file publication does not describe these workflows. |
 | P2 | Git state, services/VMs and alternate input roots | Existing source/task admission and process supervision. Add explicit effects and immutable capture profiles rather than broadening filesystem scope implicitly. |
@@ -223,6 +224,63 @@ new program bytes; it does not pretend the original program hashes are still
 current. Newly created outputs remain outside that old scope pending independent
 successor admission. Empty or non-Python program populations explicitly abstain
 before checkpoint consumption. A general source-empty context remains unfinished.
+
+## Empty-source and zero-symbol implementation contract
+
+The 2026-10-05 audit of `26812b9267e765ed5792552befea2710bc04b3c6`
+distinguishes a repository with no declared program inputs from a successfully
+parsed program file containing no qualified symbols. Both remain implementation
+gaps. Preparation already permits the first case, but indexing refuses it;
+lexical and learned preflight also refuse the second. Removing those guards
+alone would admit incomplete scans or classify generated smoke as task code.
+
+The implementation must preserve these bindings:
+
+1. Reuse `runtime/terminal_source_partition.py` to independently reproduce the
+   signed instruction, profile and generated smoke. Keep their exact bytes in
+   the complete manifest. Its explicit `program_paths` alone drive semantic
+   scans and code retrieval; the three support files retain their support roles.
+2. Add a separate retrieval artifact with explicit `no_program_inputs` or
+   `zero_qualified_symbols` disposition. The latter requires a complete,
+   successful native scan of every declared program input. Unsupported language,
+   parser failure, truncation or missing coverage remains unavailable.
+3. Bind exact source hashes, partition, task and query to content-addressed
+   `source_population_cid`, `query_id` and `result_id`. Set `index_id` to null,
+   retain no vector configuration, vector rows or retrieval hits, and record
+   zero embedding calls. Native vector configuration requires a positive
+   dimension; a dummy lexical dimension would invent an embedding policy.
+   Proof, execution, completion, omission and equivalence authority remain false.
+4. Capture an actual cold native semantic root using only the program subset.
+   Retain required raw support text and freshness of the entire signed manifest.
+   Empty program input produces zero program symbols and fact capsules, rather
+   than semantic claims derived from the harness.
+5. Authenticate the same artifact union throughout creation, saved replay,
+   planner admission, admitted reuse, warm rebind, worker context, final audit
+   and successor publication. Keep the existing `code-retrieval-context`
+   evidence kind, so the three required context kinds remain available.
+6. Refresh only the authenticated original input scope. Newly created outputs
+   remain explicitly outside that scope until a separate authenticated scope
+   transition admits them. An empty observation cannot authorize output effects,
+   declare task completion or justify skipping verification.
+
+| Existing owner | Required change |
+| --- | --- |
+| `terminal_task_profile.py`, `terminal_initial_context.py`, `terminal_indexed_preparation.py` | Admit an explicit empty program population after signed partition replay; preserve complete support/source inventories in both initial and direct admitted preparation. |
+| `runtime/semantic_context_runtime.py` | Capture, replay and refresh an explicit program subset while retaining the full manifest and required raw support. |
+| `runtime/code_retrieval_context.py` | Validate the closed empty/vector artifact union, exact query/task/partition identity, complete native scan and current source bytes. Reject an empty marker over code containing qualified symbols. |
+| `terminal_context_rebind.py`, `terminal_context_audit.py` | Bind the population CID when vector identity is null; authenticate the empty schema before accepting null identity. |
+| `terminal_container_supervisor.py`, `entrypoints/admitted_benchmark_runtime.py` | Select an explicit empty publication policy rather than a lexical or learned vector policy. |
+| `runtime/published_task_context.py` | Refresh empty observations without assuming a native vector snapshot/query; retain the original scope and independently bind successor source changes. |
+
+Acceptance requires both a signed create-only task with zero program inputs and
+a parsed comment-only Python input to traverse native initial capture, planning,
+admitted world capture, warm rebind, actual worker-prompt reconstruction, final
+audit and successor refresh. Tests must reject changed support or source bytes,
+forged empty markers, unexpected hits, true authority flags and incomplete scans.
+They must record zero model calls, zero fabricated symbols and no automatic task
+completion. Ordinary symbol-bearing lexical and pinned learned routes must retain
+their current replay and asset selection. This plan creates no decoder checkpoint
+and does not merge the separate IR families, schemas, tasks or 8D/384D/768D paths.
 
 
 ## Runtime contract repairs and current model defaults (2026-10-04)
@@ -261,3 +319,48 @@ remain unresolved: the daemon lacks policy CLI/initialization and the joined
 reviewed-effect path. Retired SQL-inbox and HMAC-profile fixtures also remain
 outside this qualification. GitHub hosted datasets checks could not start because
 the account was locked for billing; local test results are independent of CI.
+
+## Intent replay input currentness (2026-10-05)
+
+The [replay qualification](evidence/supervisor-intent-replay-20261005/qualification.json)
+records **242 distinct passing tests, zero errors or skips**, in the final
+complete selection on unchanged production/test and asset pins. There are
+44 new cases. Thirteen new planner regressions all fail against original
+runtime commit `26812b9267e765ed5792552befea2710bc04b3c6`; the original source-drift
+case reaches its authored provider, whereas the corrected path stops before
+provider dispatch. The separate 20-case effect-adapter baseline records 18
+failures and two passing controls. Baseline review corrected one test fixture
+that raised an unrelated `KeyError` before mutating an actual declared input
+domain; the corrected controls require the intended `ValueError`. These
+controls use no paid model calls.
+
+Intent384 preparation and saved validation now retain original canonical bytes
+and pass detached reports to numerical verification. Mutating a verifier's
+input, returning that same mutated object, rehashing it, or replacing saved
+advice through a caller reference cannot change accepted planner contract slots.
+Saved selection retains its original configuration and advice bytes through
+both load and summary replay. Optional failures deliver the exact original
+planner request without the candidate. Signed source or preparation drift
+prevents a provider call, even without initial indexed context or a requirement
+contract.
+
+The Intent/code effect adapter validates and captures the complete source and
+prediction join before external Intent replay. Original Intent advice, supplied
+Security advice, source rows and selected configuration remain bound throughout
+callbacks and publication. Generated association verification also compares
+detached inputs against a fixed original identity. The Security checkpoint and
+advice digest retain supplied-inference provenance; this consumer claims no
+independent Security inference. Unsupported, refuted and no-enabled-input
+dispositions preserve their existing meaning and false authority flags.
+
+The qualification consumes the retained IntentAction384 checkpoint with SHA256
+`4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd`;
+its 384,106 bytes remain unchanged. Six live native Lake checks preserve
+satisfied, refuted and no-enabled-input outcomes. The first run selected an
+elan shim, which the native owner correctly rejected before executing a process.
+Those six checks pass after selecting the installed native Lean 4.33.1/Lake
+binary; both runs and the exact refusal diagnostic remain in the evidence.
+AST sealing stayed enabled with fresh private catalogs and no completion
+authority. No decoder training, downloads or new benchmark score were produced.
+The general empty-source contract and optional independent-review wiring remain
+pending as described above.

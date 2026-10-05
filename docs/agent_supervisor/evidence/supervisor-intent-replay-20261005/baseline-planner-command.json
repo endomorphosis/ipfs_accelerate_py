@@ -1,0 +1,32 @@
+{
+  "command": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/tmp/intent384-planner-red-20261005-owlby1ew/tests.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+    "-k",
+    "verifier_cannot_replace or verifier_contract_mutation or summary_replay_cannot_use or selection_changed_by_replay or summary_replay_source"
+  ],
+  "baseline_commit": "26812b9267e765ed5792552befea2710bc04b3c6",
+  "baseline_worktree": "/tmp/intent384-planner-baseline-20261005-deujv3ar",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "test_source": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/tmp/intent384-planner-baseline-20261005-deujv3ar:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/intent384-planner-red-seal-5cxjlbr_/ast-seal.duckdb",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  }
+}

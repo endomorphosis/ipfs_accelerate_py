@@ -1,0 +1,199 @@
+{
+  "asset_pins_after": {
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json": {
+      "bytes": 331,
+      "sha256": "55d31c015d31b2aea8623ca0a3ec347f7265f33282074b83f1c9833614b8ca5d"
+    }
+  },
+  "asset_pins_before": {
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json": {
+      "bytes": 331,
+      "sha256": "55d31c015d31b2aea8623ca0a3ec347f7265f33282074b83f1c9833614b8ca5d"
+    }
+  },
+  "asset_pins_unchanged": true,
+  "ast_seal_enabled": true,
+  "ast_seal_tables": [
+    "pytest_ast_file_hash",
+    "pytest_ast_seal"
+  ],
+  "baseline_commit": "26812b9267e765ed5792552befea2710bc04b3c6",
+  "checkpoint_training_steps": 0,
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-intent-replay-20261005/native-lake/focused-tests.xml",
+    "test/api/semantic_state/test_intent_code_effect_advisor.py",
+    "test/api/semantic_state/test_intent_action_effect_selection.py",
+    "-k",
+    "test_real_owner_and_lake_preserve_authored_boundary_dispositions or test_generated_selection_runs_live_lake"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "datasets_commit_after": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "datasets_tracked_status_after": "",
+  "download_calls": 0,
+  "elapsed_seconds": 22.234,
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/supervisor-intent-replay-seal-6o92ja_z/seal.duckdb",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "IR384_TEST_INTENT_ACTION_CONFIG": "/home/barberb/lift_coding/artifacts/intent384-startup-20261002/context-03/intent-config.json",
+    "IR384_TEST_INTENT_ACTION_INSTRUCTION": "the calculator must compute result; requires left > 0; ensures result = old(right) + old(left) and returned.",
+    "IR384_TEST_LAKE_EXECUTABLE": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.33.1/bin/lake",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "exit_code": 0,
+  "junit_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 6
+  },
+  "paid_provider_calls": 0,
+  "passed_nodeids": [
+    "api.semantic_state.test_intent_code_effect_advisor::test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]",
+    "api.semantic_state.test_intent_code_effect_advisor::test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted]",
+    "api.semantic_state.test_intent_code_effect_advisor::test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases]",
+    "api.semantic_state.test_intent_action_effect_selection::test_generated_selection_runs_live_lake[+-left > 0-satisfied]",
+    "api.semantic_state.test_intent_action_effect_selection::test_generated_selection_runs_live_lake[--left > 0-refuted]",
+    "api.semantic_state.test_intent_action_effect_selection::test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases]"
+  ],
+  "schema": "supervisor-intent-replay-run/v1",
+  "selected_intent": {
+    "checkpoint_path": "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176",
+    "checkpoint_sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd",
+    "embedding_snapshot_path": null,
+    "schema": "supervisor-intent-action-384-config/v1"
+  },
+  "selection_reason": "Rerun the six live native proof checks after correcting explicit Lake selection from rejected elan shim to installed native binary.",
+  "source_pins_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 60810,
+      "sha256": "0a0e1ad1316c5da44459877e86cba0344773f15a29eda482b7468b6a5dcf7e4c"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": {
+      "bytes": 17692,
+      "sha256": "6309010468a608e71ce1b61f73e79195e8dd3e9d26910b2858d6b5834614cfbe"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": {
+      "bytes": 7955,
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": {
+      "bytes": 20563,
+      "sha256": "ba25daecc00692217c1cf6eda935f9dd6efad5e90812544e04059e12d7a88f8b"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": {
+      "bytes": 20871,
+      "sha256": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_source_unit_advice.py": {
+      "bytes": 9729,
+      "sha256": "f80d34432d606e78a76868edc87318a467ff7983475fbfd7882f5466e8bba72b"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": {
+      "bytes": 10975,
+      "sha256": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_advisor_selection.py": {
+      "bytes": 8211,
+      "sha256": "a5b5274a5f70d5b82bd6bc2f3e5cc3225db1c2aca2862551130adce861ddc939"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py": {
+      "bytes": 23884,
+      "sha256": "09b837bfdc5de9b9b06dbfc44ce9fee4061a6400776aee05145d51c34caf1136"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_384_advisor.py": {
+      "bytes": 22444,
+      "sha256": "ccde4f6e5cbfa0143e2077e753c8a0ab1d2d58ae6cfc7cda85e0c2d97ffda8c1"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_action_effect_selection.py": {
+      "bytes": 7083,
+      "sha256": "5af9714777124e563282397ade0efe4b5b869489edbadd3f4a321c2156d2faef"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_code_effect_advisor.py": {
+      "bytes": 28564,
+      "sha256": "2166db4af2c6b72b2b03126dcbbb5eca57111abc58364c6286cfe0db7cb39aa3"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_supervised_intent_code_effect_context.py": {
+      "bytes": 4313,
+      "sha256": "509c4255fdf0499465603eeda50d2d3efa3874f2d1c6f27a52e2d762bf23bbe6"
+    }
+  },
+  "source_pins_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 60810,
+      "sha256": "0a0e1ad1316c5da44459877e86cba0344773f15a29eda482b7468b6a5dcf7e4c"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": {
+      "bytes": 17692,
+      "sha256": "6309010468a608e71ce1b61f73e79195e8dd3e9d26910b2858d6b5834614cfbe"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": {
+      "bytes": 7955,
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py": {
+      "bytes": 20563,
+      "sha256": "ba25daecc00692217c1cf6eda935f9dd6efad5e90812544e04059e12d7a88f8b"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": {
+      "bytes": 20871,
+      "sha256": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/benchmarks/agent_supervisor/container_coding/test_terminal_source_unit_advice.py": {
+      "bytes": 9729,
+      "sha256": "f80d34432d606e78a76868edc87318a467ff7983475fbfd7882f5466e8bba72b"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_384_advisor.py": {
+      "bytes": 10975,
+      "sha256": "e316aec6d7a965a6df5877c04bca38d8c9e8e0050263aaf65334abe8f7ef6ccb"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_advisor_selection.py": {
+      "bytes": 8211,
+      "sha256": "a5b5274a5f70d5b82bd6bc2f3e5cc3225db1c2aca2862551130adce861ddc939"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py": {
+      "bytes": 23884,
+      "sha256": "09b837bfdc5de9b9b06dbfc44ce9fee4061a6400776aee05145d51c34caf1136"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_384_advisor.py": {
+      "bytes": 22444,
+      "sha256": "ccde4f6e5cbfa0143e2077e753c8a0ab1d2d58ae6cfc7cda85e0c2d97ffda8c1"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_action_effect_selection.py": {
+      "bytes": 7083,
+      "sha256": "5af9714777124e563282397ade0efe4b5b869489edbadd3f4a321c2156d2faef"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_intent_code_effect_advisor.py": {
+      "bytes": 28564,
+      "sha256": "2166db4af2c6b72b2b03126dcbbb5eca57111abc58364c6286cfe0db7cb39aa3"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test/api/semantic_state/test_supervised_intent_code_effect_context.py": {
+      "bytes": 4313,
+      "sha256": "509c4255fdf0499465603eeda50d2d3efa3874f2d1c6f27a52e2d762bf23bbe6"
+    }
+  },
+  "source_pins_unchanged": true
+}

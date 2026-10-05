@@ -1,0 +1,562 @@
+
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[source] FAILED [  5%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[prediction] FAILED [ 10%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[security_checkpoint] FAILED [ 15%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[intent] FAILED [ 20%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[configuration] FAILED [ 25%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_change_the_detached_replay_advice FAILED [ 30%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[source_fields] FAILED [ 35%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[source_hash] FAILED [ 40%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[prediction_join] FAILED [ 45%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[security_size] FAILED [ 50%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[intent_size] FAILED [ 55%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[source] FAILED [ 60%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[prediction] FAILED [ 65%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[security_checkpoint] FAILED [ 70%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[intent] FAILED [ 75%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[configuration] FAILED [ 80%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_association_verifier_cannot_redefine_its_comparison_reference[changed-effect_binding] FAILED [ 85%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_association_verifier_cannot_redefine_its_comparison_reference[changed-source_identity] FAILED [ 90%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_association_verifier_cannot_redefine_its_comparison_reference[original-effect_binding] PASSED [ 95%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_multi_source_success_retains_original_supplied_security_identity PASSED [100%]
+
+=================================== FAILURES ===================================
+___ test_intent_callback_cannot_replace_inputs_before_source_capture[source] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf0350865b170>
+change = 'source'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+        values = _second_population(args())
+        gate = owner(monkeypatch)
+        captured = []
+        def changed(advice, *, instruction):
+            assert advice is not values["intent_advice"]
+            captured.append(deepcopy(advice))
+            _change_caller_inputs(values, change)
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert len(captured) == 1 and gate.calls == []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:185: AssertionError
+_ test_intent_callback_cannot_replace_inputs_before_source_capture[prediction] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032efa6d5b0>
+change = 'prediction'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+        values = _second_population(args())
+        gate = owner(monkeypatch)
+        captured = []
+        def changed(advice, *, instruction):
+            assert advice is not values["intent_advice"]
+            captured.append(deepcopy(advice))
+            _change_caller_inputs(values, change)
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert len(captured) == 1 and gate.calls == []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:185: AssertionError
+_ test_intent_callback_cannot_replace_inputs_before_source_capture[security_checkpoint] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b21d79e0>
+change = 'security_checkpoint'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+        values = _second_population(args())
+        gate = owner(monkeypatch)
+        captured = []
+        def changed(advice, *, instruction):
+            assert advice is not values["intent_advice"]
+            captured.append(deepcopy(advice))
+            _change_caller_inputs(values, change)
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert len(captured) == 1 and gate.calls == []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:185: AssertionError
+___ test_intent_callback_cannot_replace_inputs_before_source_capture[intent] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220daf0>
+change = 'intent'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+        values = _second_population(args())
+        gate = owner(monkeypatch)
+        captured = []
+        def changed(advice, *, instruction):
+            assert advice is not values["intent_advice"]
+            captured.append(deepcopy(advice))
+            _change_caller_inputs(values, change)
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert len(captured) == 1 and gate.calls == []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:185: AssertionError
+_ test_intent_callback_cannot_replace_inputs_before_source_capture[configuration] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220e210>
+change = 'configuration'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+        values = _second_population(args())
+        gate = owner(monkeypatch)
+        captured = []
+        def changed(advice, *, instruction):
+            assert advice is not values["intent_advice"]
+            captured.append(deepcopy(advice))
+            _change_caller_inputs(values, change)
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert len(captured) == 1 and gate.calls == []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:185: AssertionError
+________ test_intent_callback_cannot_change_the_detached_replay_advice _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220ea50>
+
+    def test_intent_callback_cannot_change_the_detached_replay_advice(monkeypatch):
+        values = _second_population(args())
+        before = deepcopy(values)
+        gate = owner(monkeypatch)
+        def changed(advice, *, instruction):
+            advice["report"]["candidate_intent_ir"] = {"callback": "changed intent"}
+            advice["advice_sha256"] = subject._sha(subject._wire(advice))
+            return advice
+        monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "intent_advice_replay"
+E       AssertionError: assert ('contract_int...tation_advice' == 'fail_open_unavailable'
+E         
+E         - fail_open_unavailable
+E         + contract_interpretation_advice)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:209: AssertionError
+_ test_populations_are_bounded_and_validated_before_intent_callback[source_fields] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220e6f0>
+change = 'source_fields'
+
+    @pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+    def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+        values = args()
+        if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+        elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+        elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+        elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+        else: values["intent_advice"]["oversized"] = "x" * 278_528
+        monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+        gate = owner(monkeypatch)
+        before = deepcopy(values)
+>       report = subject.prepare_intent_code_effect_advice(**values)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py:246: in prepare_intent_code_effect_advice
+    candidate, intent_checkpoint = _intent(instruction, intent_advice)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('The agent must preserve the result.', {'status': 'semantic_candidate_advice', 'advice_sha256': 'cccccccccccccccccccc...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'candidate_intent_ir': {'authored_transport_fixture': 'unchanged'}}})
+
+>   monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: invalid input reached Intent replay
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:221: Failed
+_ test_populations_are_bounded_and_validated_before_intent_callback[source_hash] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220fef0>
+change = 'source_hash'
+
+    @pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+    def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+        values = args()
+        if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+        elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+        elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+        elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+        else: values["intent_advice"]["oversized"] = "x" * 278_528
+        monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+        gate = owner(monkeypatch)
+        before = deepcopy(values)
+>       report = subject.prepare_intent_code_effect_advice(**values)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py:246: in prepare_intent_code_effect_advice
+    candidate, intent_checkpoint = _intent(instruction, intent_advice)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('The agent must preserve the result.', {'status': 'semantic_candidate_advice', 'advice_sha256': 'cccccccccccccccccccc...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'candidate_intent_ir': {'authored_transport_fixture': 'unchanged'}}})
+
+>   monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: invalid input reached Intent replay
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:221: Failed
+_ test_populations_are_bounded_and_validated_before_intent_callback[prediction_join] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220e7e0>
+change = 'prediction_join'
+
+    @pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+    def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+        values = args()
+        if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+        elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+        elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+        elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+        else: values["intent_advice"]["oversized"] = "x" * 278_528
+        monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+        gate = owner(monkeypatch)
+        before = deepcopy(values)
+>       report = subject.prepare_intent_code_effect_advice(**values)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py:246: in prepare_intent_code_effect_advice
+    candidate, intent_checkpoint = _intent(instruction, intent_advice)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('The agent must preserve the result.', {'status': 'semantic_candidate_advice', 'advice_sha256': 'cccccccccccccccccccc...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'candidate_intent_ir': {'authored_transport_fixture': 'unchanged'}}})
+
+>   monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: invalid input reached Intent replay
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:221: Failed
+_ test_populations_are_bounded_and_validated_before_intent_callback[security_size] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220faa0>
+change = 'security_size'
+
+    @pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+    def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+        values = args()
+        if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+        elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+        elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+        elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+        else: values["intent_advice"]["oversized"] = "x" * 278_528
+        monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+        gate = owner(monkeypatch)
+        before = deepcopy(values)
+>       report = subject.prepare_intent_code_effect_advice(**values)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py:246: in prepare_intent_code_effect_advice
+    candidate, intent_checkpoint = _intent(instruction, intent_advice)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('The agent must preserve the result.', {'status': 'semantic_candidate_advice', 'advice_sha256': 'cccccccccccccccccccc...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'candidate_intent_ir': {'authored_transport_fixture': 'unchanged'}}})
+
+>   monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: invalid input reached Intent replay
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:221: Failed
+_ test_populations_are_bounded_and_validated_before_intent_callback[intent_size] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220eb40>
+change = 'intent_size'
+
+    @pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+    def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+        values = args()
+        if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+        elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+        elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+        elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+        else: values["intent_advice"]["oversized"] = "x" * 278_528
+        monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+        gate = owner(monkeypatch)
+        before = deepcopy(values)
+>       report = subject.prepare_intent_code_effect_advice(**values)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:224: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/runtime/intent_code_effect_advisor.py:246: in prepare_intent_code_effect_advice
+    candidate, intent_checkpoint = _intent(instruction, intent_advice)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = ('The agent must preserve the result.', {'status': 'semantic_candidate_advice', 'advice_sha256': 'cccccccccccccccccccc...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'})
+
+>   monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: invalid input reached Intent replay
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:221: Failed
+_ test_first_association_callback_cannot_change_next_contract_population[source] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b220c350>
+change = 'source'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        gate = owner(monkeypatch)
+        original = builder.build_intent_action_association
+        calls = []
+        def changed(*arguments, **options):
+            association = original(*arguments, **options)
+            calls.append(arguments[2])
+            if len(calls) == 1:
+                _change_caller_inputs(values, change)
+            return association
+        monkeypatch.setattr(builder, "build_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+E       AssertionError: assert (['def compute...d original\n'] == ['def compute... threshold\n']
+E         
+E         Left contains 3 more items, first extra item: 'def compute(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n'
+E         
+E         Full diff:
+E           [
+E               'def compute(capacity: int, threshold: int) -> int:\n'
+E               '    return capacity + threshold\n',...
+E         
+E         ...Full output truncated (13 lines hidden), use '-vv' to show)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:251: AssertionError
+----------------------------- Captured stdout call -----------------------------
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+_ test_first_association_callback_cannot_change_next_contract_population[prediction] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b0aaf0b0>
+change = 'prediction'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        gate = owner(monkeypatch)
+        original = builder.build_intent_action_association
+        calls = []
+        def changed(*arguments, **options):
+            association = original(*arguments, **options)
+            calls.append(arguments[2])
+            if len(calls) == 1:
+                _change_caller_inputs(values, change)
+            return association
+        monkeypatch.setattr(builder, "build_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+E       AssertionError: assert (['def compute... threshold\n'] == ['def compute... threshold\n']
+E         
+E         Left contains one more item: 'def compute(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n'
+E         
+E         Full diff:
+E           [
+E               'def compute(capacity: int, threshold: int) -> int:\n'
+E               '    return capacity + threshold\n',...
+E         
+E         ...Full output truncated (3 lines hidden), use '-vv' to show)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:251: AssertionError
+_ test_first_association_callback_cannot_change_next_contract_population[security_checkpoint] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b0b42c90>
+change = 'security_checkpoint'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        gate = owner(monkeypatch)
+        original = builder.build_intent_action_association
+        calls = []
+        def changed(*arguments, **options):
+            association = original(*arguments, **options)
+            calls.append(arguments[2])
+            if len(calls) == 1:
+                _change_caller_inputs(values, change)
+            return association
+        monkeypatch.setattr(builder, "build_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+E       AssertionError: assert (['def compute...inal input\n'] == ['def compute... threshold\n']
+E         
+E         Left contains 3 more items, first extra item: 'def compute(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n'
+E         
+E         Full diff:
+E           [
+E               'def compute(capacity: int, threshold: int) -> int:\n'
+E               '    return capacity + threshold\n',...
+E         
+E         ...Full output truncated (11 lines hidden), use '-vv' to show)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:251: AssertionError
+_ test_first_association_callback_cannot_change_next_contract_population[intent] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b0827500>
+change = 'intent'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        gate = owner(monkeypatch)
+        original = builder.build_intent_action_association
+        calls = []
+        def changed(*arguments, **options):
+            association = original(*arguments, **options)
+            calls.append(arguments[2])
+            if len(calls) == 1:
+                _change_caller_inputs(values, change)
+            return association
+        monkeypatch.setattr(builder, "build_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+E       AssertionError: assert (['def compute...inal input\n'] == ['def compute... threshold\n']
+E         
+E         Left contains 3 more items, first extra item: 'def compute(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n'
+E         
+E         Full diff:
+E           [
+E               'def compute(capacity: int, threshold: int) -> int:\n'
+E               '    return capacity + threshold\n',...
+E         
+E         ...Full output truncated (11 lines hidden), use '-vv' to show)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:251: AssertionError
+_ test_first_association_callback_cannot_change_next_contract_population[configuration] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b08273b0>
+change = 'configuration'
+
+    @pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+    def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        gate = owner(monkeypatch)
+        original = builder.build_intent_action_association
+        calls = []
+        def changed(*arguments, **options):
+            association = original(*arguments, **options)
+            calls.append(arguments[2])
+            if len(calls) == 1:
+                _change_caller_inputs(values, change)
+            return association
+        monkeypatch.setattr(builder, "build_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+E       AssertionError: assert (['def compute...inal input\n'] == ['def compute... threshold\n']
+E         
+E         Left contains 3 more items, first extra item: 'def compute(capacity: int, threshold: int) -> int:\n    return capacity + threshold\n'
+E         
+E         Full diff:
+E           [
+E               'def compute(capacity: int, threshold: int) -> int:\n'
+E               '    return capacity + threshold\n',...
+E         
+E         ...Full output truncated (11 lines hidden), use '-vv' to show)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:251: AssertionError
+_ test_association_verifier_cannot_redefine_its_comparison_reference[changed-effect_binding] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b0826300>
+returned = 'changed', change = 'effect_binding'
+
+    @pytest.mark.parametrize("returned,change", [("changed", "effect_binding"), ("changed", "source_identity"), ("original", "effect_binding")])
+    def test_association_verifier_cannot_redefine_its_comparison_reference(monkeypatch, returned, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        before = deepcopy(values)
+        gate = owner(monkeypatch)
+        def changed(association, *arguments, **options):
+            original = deepcopy(association)
+            if change == "effect_binding":
+                association["effect_bindings"][0]["expression_id"] = "contract:returned"
+            else:
+                association["intent_candidate_sha256"] = "0" * 64
+            return association if returned == "changed" else original
+        monkeypatch.setattr(builder, "verify_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "datasets_action_association"
+E       AssertionError: assert ('contract_int...tation_advice' == 'fail_open_unavailable'
+E         
+E         - fail_open_unavailable
+E         + contract_interpretation_advice)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:275: AssertionError
+_ test_association_verifier_cannot_redefine_its_comparison_reference[changed-source_identity] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf032b08253a0>
+returned = 'changed', change = 'source_identity'
+
+    @pytest.mark.parametrize("returned,change", [("changed", "effect_binding"), ("changed", "source_identity"), ("original", "effect_binding")])
+    def test_association_verifier_cannot_redefine_its_comparison_reference(monkeypatch, returned, change):
+        from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+        values = _action_population(monkeypatch)
+        before = deepcopy(values)
+        gate = owner(monkeypatch)
+        def changed(association, *arguments, **options):
+            original = deepcopy(association)
+            if change == "effect_binding":
+                association["effect_bindings"][0]["expression_id"] = "contract:returned"
+            else:
+                association["intent_candidate_sha256"] = "0" * 64
+            return association if returned == "changed" else original
+        monkeypatch.setattr(builder, "verify_intent_action_association", changed)
+        report = subject.prepare_intent_code_effect_advice(**values)
+>       assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "datasets_action_association"
+E       AssertionError: assert ('contract_int...tation_advice' == 'fail_open_unavailable'
+E         
+E         - fail_open_unavailable
+E         + contract_interpretation_advice)
+
+test/api/semantic_state/test_intent_code_effect_advisor.py:275: AssertionError
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/baseline-02.xml -
+=========================== short test summary info ============================
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[source]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[prediction]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[security_checkpoint]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[intent]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[configuration]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_change_the_detached_replay_advice
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[source_fields]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[source_hash]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[prediction_join]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[security_size]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_populations_are_bounded_and_validated_before_intent_callback[intent_size]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[source]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[prediction]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[security_checkpoint]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[intent]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[configuration]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_association_verifier_cannot_redefine_its_comparison_reference[changed-effect_binding]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_association_verifier_cannot_redefine_its_comparison_reference[changed-source_identity]
+================= 18 failed, 2 passed, 48 deselected in 2.98s ==================

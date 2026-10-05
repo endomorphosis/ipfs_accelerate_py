@@ -131,6 +131,167 @@ def test_explicit_contract_joins_separate_originals_without_changing_either_advi
     assert not result["all_selected_contracts_checked"] and not result["selected_bounded_effects_satisfied"]
 
 
+def _second_population(values):
+    source = values["source_rows"][0]["source_text"] + "\n# second original input\n"
+    checksum = subject._sha(source.encode())
+    values["source_rows"].append(dict(id="other.py", source_text=source, source_sha256=checksum))
+    security = values["security_advice"]
+    security["source_hashes"]["other.py"] = checksum
+    security["input_bindings"].append(dict(source_id="other.py", inference_id="input-1", source_sha256=checksum))
+    prediction = deepcopy(security["inference"]["rows"][0])
+    prediction.update(id="input-1", source_sha256=checksum)
+    security["inference"]["rows"].append(prediction)
+    contract = deepcopy(values["config"]["contracts"][0])
+    contract.update(id="contract:second", source_id="other.py")
+    values["config"]["contracts"].append(contract)
+    return values
+
+
+def _change_caller_inputs(values, change):
+    if change == "source":
+        source = values["source_rows"][1]
+        source["source_text"] += "# callback changed original\n"
+        checksum = subject._sha(source["source_text"].encode())
+        source["source_sha256"] = checksum
+        security = values["security_advice"]
+        security["source_hashes"][source["id"]] = checksum
+        security["input_bindings"][1]["source_sha256"] = checksum
+        security["inference"]["rows"][1]["source_sha256"] = checksum
+    elif change == "prediction":
+        values["security_advice"]["inference"]["rows"][1]["candidate_ir"] = {"callback": "changed prediction"}
+    elif change == "security_checkpoint":
+        security = values["security_advice"]
+        security["inference"]["checkpoint_sha256"] = "d" * 64
+        security["checkpoint_selection"]["checkpoint_sha256"] = "d" * 64
+    elif change == "intent":
+        values["intent_advice"]["advice_sha256"] = "d" * 64
+    else:
+        domains = values["config"]["contracts"][1]["input_domains"]
+        domains[next(iter(domains))]["lower"] = 0
+
+
+@pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+def test_intent_callback_cannot_replace_inputs_before_source_capture(monkeypatch, change):
+    values = _second_population(args())
+    gate = owner(monkeypatch)
+    captured = []
+    def changed(advice, *, instruction):
+        assert advice is not values["intent_advice"]
+        captured.append(deepcopy(advice))
+        _change_caller_inputs(values, change)
+        return advice
+    monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert len(captured) == 1 and gate.calls == []
+    assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "intent_advice_replay"
+    assert report["native"] is None and report["continue_planning"]
+    assert all(report[key] is False for key in subject.FALSE)
+    # Callbacks own their original mutations; the consumer never rewrites them.
+    if change == "source":
+        assert "callback changed original" in values["source_rows"][1]["source_text"]
+    elif change == "prediction":
+        assert values["security_advice"]["inference"]["rows"][1]["candidate_ir"] == {"callback": "changed prediction"}
+    elif change == "configuration":
+        domains = values["config"]["contracts"][1]["input_domains"]
+        assert domains[next(iter(domains))]["lower"] == 0 and report["error_type"] == "ValueError"
+
+
+def test_intent_callback_cannot_change_the_detached_replay_advice(monkeypatch):
+    values = _second_population(args())
+    before = deepcopy(values)
+    gate = owner(monkeypatch)
+    def changed(advice, *, instruction):
+        advice["report"]["candidate_intent_ir"] = {"callback": "changed intent"}
+        advice["advice_sha256"] = subject._sha(subject._wire(advice))
+        return advice
+    monkeypatch.setattr(intent_owner, "validate_intent_advice", changed)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "intent_advice_replay"
+    assert values == before and gate.calls == [] and report["native"] is None
+
+
+@pytest.mark.parametrize("change", ["source_fields", "source_hash", "prediction_join", "security_size", "intent_size"])
+def test_populations_are_bounded_and_validated_before_intent_callback(monkeypatch, change):
+    values = args()
+    if change == "source_fields": values["source_rows"][0]["target"] = "not an input"
+    elif change == "source_hash": values["source_rows"][0]["source_text"] += "# unbound\n"
+    elif change == "prediction_join": values["security_advice"]["input_bindings"][0]["source_id"] = "foreign.py"
+    elif change == "security_size": values["security_advice"]["oversized"] = "x" * subject.MAX_BYTES
+    else: values["intent_advice"]["oversized"] = "x" * 278_528
+    monkeypatch.setattr(subject, "_intent", lambda *args: pytest.fail("invalid input reached Intent replay"))
+    gate = owner(monkeypatch)
+    before = deepcopy(values)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert report["status"] == "fail_open_unavailable" and report["native"] is None
+    assert gate.calls == [] and values == before
+
+
+def _action_population(monkeypatch):
+    from test.api.semantic_state.test_intent_action_effect_selection import inputs, authored_transport
+    candidate, values = inputs()
+    authored_transport(monkeypatch, candidate)
+    return _second_population(values)
+
+
+@pytest.mark.parametrize("change", ["source", "prediction", "security_checkpoint", "intent", "configuration"])
+def test_first_association_callback_cannot_change_next_contract_population(monkeypatch, change):
+    from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+    values = _action_population(monkeypatch)
+    gate = owner(monkeypatch)
+    original = builder.build_intent_action_association
+    calls = []
+    def changed(*arguments, **options):
+        association = original(*arguments, **options)
+        calls.append(arguments[2])
+        if len(calls) == 1:
+            _change_caller_inputs(values, change)
+        return association
+    monkeypatch.setattr(builder, "build_intent_action_association", changed)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert calls == [values["source_rows"][0]["source_text"]] and gate.calls == []
+    assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "datasets_action_association"
+    assert report["native"] is None and report["continue_planning"]
+    assert all(report[key] is False for key in subject.FALSE)
+    if change == "configuration":
+        domains = values["config"]["contracts"][1]["input_domains"]
+        assert domains[next(iter(domains))]["lower"] == 0 and report["error_type"] == "ValueError"
+
+
+@pytest.mark.parametrize("returned,change", [("changed", "effect_binding"), ("changed", "source_identity"), ("original", "effect_binding")])
+def test_association_verifier_cannot_redefine_its_comparison_reference(monkeypatch, returned, change):
+    from ipfs_datasets_py.logic.formalization.autoencoder import intent_action_association as builder
+    values = _action_population(monkeypatch)
+    before = deepcopy(values)
+    gate = owner(monkeypatch)
+    def changed(association, *arguments, **options):
+        original = deepcopy(association)
+        if change == "effect_binding":
+            association["effect_bindings"][0]["expression_id"] = "contract:returned"
+        else:
+            association["intent_candidate_sha256"] = "0" * 64
+        return association if returned == "changed" else original
+    monkeypatch.setattr(builder, "verify_intent_action_association", changed)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert report["status"] == "fail_open_unavailable" and report["failure_stage"] == "datasets_action_association"
+    assert values == before and gate.calls == [] and report["native"] is None
+    assert not report.get("association_replay_verified", False)
+
+
+def test_multi_source_success_retains_original_supplied_security_identity(monkeypatch, validate_transport):
+    values = _second_population(args())
+    before = deepcopy(values)
+    gate = owner(monkeypatch)
+    report = subject.prepare_intent_code_effect_advice(**values)
+    assert report["status"] == "contract_interpretation_advice" and values == before
+    assert report["selected_contract_count"] == 2
+    assert report["security_advice_sha256"] == subject._sha(subject._wire(before["security_advice"]))
+    assert report["intent_advice_sha256"] == before["intent_advice"]["advice_sha256"]
+    assert report["security_checkpoint_sha256"] == PIN and report["intent_checkpoint_sha256"] == INTENT_PIN
+    assert [row["code_source_text"] for row in gate.calls[0][1]] == [row["source_text"] for row in before["source_rows"]]
+    assert report["fresh_security_inference_replayed"] is False
+    assert report["security_inference_provenance"] == "supplied inference identity; no independent numerical replay"
+
+
 @pytest.mark.parametrize("effect_status", ["satisfied", "refuted", "no_enabled_cases"])
 def test_live_checks_keep_positive_negative_and_empty_dispositions_distinct(monkeypatch, validate_transport, effect_status):
     gate = owner(monkeypatch, effect_status=effect_status)

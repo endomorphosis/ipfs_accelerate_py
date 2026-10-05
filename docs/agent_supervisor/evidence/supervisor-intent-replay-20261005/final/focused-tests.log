@@ -1,0 +1,44 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 243 items / 1 deselected / 242 selected
+
+test/api/semantic_state/test_intent_384_advisor.py ..................... [  8%]
+................................                                         [ 21%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py . [ 22%]
+.........................................                                [ 39%]
+test/api/semantic_state/test_intent_code_effect_advisor.py ............. [ 44%]
+......................................................                   [ 66%]
+test/api/semantic_state/test_intent_action_effect_selection.py ......... [ 70%]
+........                                                                 [ 73%]
+test/api/semantic_state/test_supervised_intent_code_effect_context.py .. [ 74%]
+...                                                                      [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 76%]
+................                                                         [ 83%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 83%]
+...............                                                          [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_unit_advice.py . [ 90%]
+.................                                                        [ 97%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 97%]
+......                                                                   [100%]
+
+=============================== warnings summary ===============================
+test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct
+  /home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py:209: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+    if model.get_sentence_embedding_dimension() != 384:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-intent-replay-20261005/final/focused-tests.xml -
+============================= slowest 10 durations =============================
+4.07s call     test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct
+3.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world
+3.52s call     benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_authored_fixture_context_uses_real_native_admission_and_full_index
+3.43s call     test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]
+3.15s call     test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[--left > 0-refuted]
+3.13s call     test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases]
+3.11s call     test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases]
+3.08s call     test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[+-left > 0-satisfied]
+3.07s call     test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted]
+2.89s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_selection_admits_unchanged_initial_context
+=========== 242 passed, 1 deselected, 1 warning in 144.49s (0:02:24) ===========

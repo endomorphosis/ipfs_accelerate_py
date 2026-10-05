@@ -168,7 +168,7 @@ def _sources(source_rows, advice):
             "prediction and original source hash differ")
         joined[sid] = (sources[sid], by_id[iid])
         seen.add(iid)
-    return joined, inference["checkpoint_sha256"]
+    return deepcopy(joined), inference["checkpoint_sha256"]
 
 
 def _validate_native(native, rows):
@@ -243,9 +243,26 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
             "bounded optional advice budget required")
         selected = _selection(config)
         stage = "intent_advice_replay"
-        candidate, intent_checkpoint = _intent(instruction, intent_advice)
+        _require(type(instruction) is str and 0 < len(instruction.encode()) <= 65536,
+            "exact original instruction required")
+        _require(type(intent_advice) is dict, "bounded original Intent advice required")
+        intent_wire = _wire(intent_advice)
+        intent_maximum = (1_048_576 if intent_advice.get("schema") ==
+            "supervisor-intent-action-384-advice/v1" else 278_528)
+        _require(len(intent_wire) <= intent_maximum, "bounded original Intent advice required")
+        intent_snapshot = deepcopy(intent_advice)
         stage = "source_prediction_join"
         joined, code_checkpoint = _sources(source_rows, security_advice)
+        security_wire = _wire(security_advice)
+        captured_inputs = ((intent_advice, intent_wire), (security_advice, security_wire),
+            (source_rows, _wire(source_rows)), (config, _wire(selected)))
+        def require_current_inputs():
+            _require(all(_wire(value) == captured for value, captured in captured_inputs),
+                "original Intent/code inputs changed during checking")
+        stage = "intent_advice_replay"
+        candidate, intent_checkpoint = _intent(instruction, intent_snapshot)
+        _require(_wire(intent_snapshot) == intent_wire, "Intent replay changed its supplied advice")
+        require_current_inputs()
         rows, bindings = [], []
         for item in selected["contracts"]:
             _require(item["source_id"] in joined, "selected contract source is outside captured inference")
@@ -259,10 +276,21 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
                     input_parameter_mapping=deepcopy(item["input_parameter_mapping"]))
                 before_binding = _wire([arguments, options])
                 association = builder.build_intent_action_association(*arguments, **options)
-                verified = builder.verify_intent_action_association(association, *arguments, **options)
-                _require(_wire(association) == _wire(verified)
-                    and before_binding == _wire([arguments, options]),
+                _require(before_binding == _wire([arguments, options]),
                     "generated association changed predictions or caller declarations")
+                require_current_inputs()
+                _require(type(association) is dict and len(_wire(association)) <= MAX_BYTES,
+                    "bounded generated association required")
+                association_wire = _wire(association)
+                association = deepcopy(association)
+                replay_association = deepcopy(association)
+                replay_arguments, replay_options = deepcopy(arguments), deepcopy(options)
+                verified = builder.verify_intent_action_association(
+                    replay_association, *replay_arguments, **replay_options)
+                _require(association_wire == _wire(replay_association) == _wire(verified)
+                    and before_binding == _wire([replay_arguments, replay_options]),
+                    "generated association changed predictions or caller declarations")
+                require_current_inputs()
             else:
                 association = item["association"]
             rows.append(dict(id=item["id"], intent_source_text=instruction, intent_candidate_ir=deepcopy(candidate),
@@ -271,9 +299,9 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
             bindings.append(dict(id=item["id"], source_id=item["source_id"], inference_id=prediction["id"]))
         before = _wire(rows)
         result = _base("contract_interpretation_advice")
-        result.update(instruction_sha256=_sha(instruction.encode()), intent_advice_sha256=intent_advice["advice_sha256"],
+        result.update(instruction_sha256=_sha(instruction.encode()), intent_advice_sha256=intent_snapshot["advice_sha256"],
             intent_checkpoint_sha256=intent_checkpoint, security_checkpoint_sha256=code_checkpoint,
-            security_advice_sha256=_sha(_wire(security_advice)), selected_contract_count=len(rows),
+            security_advice_sha256=_sha(security_wire), selected_contract_count=len(rows),
             input_bindings=bindings)
         if selected["schema"] == ACTION_CONFIG_SCHEMA:
             result.update(association_profile=builder.PROFILE, association_replay_verified=True,
@@ -295,6 +323,7 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
             _require(native == execution.to_dict(), "live contract receipt differs")
             result["live_build_verified"] = True
         _require(_wire(rows) == before, "native contract changed an input candidate or interpretation")
+        require_current_inputs()
         stage = "datasets_contract_result"
         _validate_native(native, rows)
         by_id = {row["id"]: row for row in bindings}
@@ -311,6 +340,7 @@ def prepare_intent_code_effect_advice(*, instruction=None, intent_advice=None,
             result["status"] = "contract_no_enabled_inputs"
         stage = "contract_advice_serialization"
         _require(len(_wire(result)) <= maximum_bytes, "optional contract advice exceeds byte budget")
+        require_current_inputs()
         return result
     except Exception as error:
         return dict(_base("fail_open_unavailable"), failure_stage=stage, error_type=type(error).__name__)

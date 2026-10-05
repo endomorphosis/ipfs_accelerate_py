@@ -1,0 +1,76 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 243 items / 1 deselected / 242 selected
+
+test/api/semantic_state/test_intent_384_advisor.py ..................... [  8%]
+................................                                         [ 21%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py . [ 22%]
+.........................................                                [ 39%]
+test/api/semantic_state/test_intent_code_effect_advisor.py ............. [ 44%]
+...................................................FFF                   [ 66%]
+test/api/semantic_state/test_intent_action_effect_selection.py ......... [ 70%]
+.....FFF                                                                 [ 73%]
+test/api/semantic_state/test_supervised_intent_code_effect_context.py .. [ 74%]
+...                                                                      [ 76%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 76%]
+................                                                         [ 83%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 83%]
+...............                                                          [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source_unit_advice.py . [ 90%]
+.................                                                        [ 97%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 97%]
+......                                                                   [100%]
+
+=================================== FAILURES ===================================
+_ test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied] __
+test/api/semantic_state/test_intent_code_effect_advisor.py:448: in test_real_owner_and_lake_preserve_authored_boundary_dispositions
+    assert result["live_build_verified"] and result["all_selected_contracts_checked"]
+E   assert (True and False)
+__ test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted] ___
+test/api/semantic_state/test_intent_code_effect_advisor.py:448: in test_real_owner_and_lake_preserve_authored_boundary_dispositions
+    assert result["live_build_verified"] and result["all_selected_contracts_checked"]
+E   assert (True and False)
+_ test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases] _
+test/api/semantic_state/test_intent_code_effect_advisor.py:448: in test_real_owner_and_lake_preserve_authored_boundary_dispositions
+    assert result["live_build_verified"] and result["all_selected_contracts_checked"]
+E   assert (True and False)
+________ test_generated_selection_runs_live_lake[+-left > 0-satisfied] _________
+test/api/semantic_state/test_intent_action_effect_selection.py:116: in test_generated_selection_runs_live_lake
+    assert report["live_build_verified"] and report["all_selected_contracts_checked"]
+E   assert (True and False)
+_________ test_generated_selection_runs_live_lake[--left > 0-refuted] __________
+test/api/semantic_state/test_intent_action_effect_selection.py:116: in test_generated_selection_runs_live_lake
+    assert report["live_build_verified"] and report["all_selected_contracts_checked"]
+E   assert (True and False)
+_____ test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases] _____
+test/api/semantic_state/test_intent_action_effect_selection.py:116: in test_generated_selection_runs_live_lake
+    assert report["live_build_verified"] and report["all_selected_contracts_checked"]
+E   assert (True and False)
+=============================== warnings summary ===============================
+test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct
+  /home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py:209: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+    if model.get_sentence_embedding_dimension() != 384:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-intent-replay-20261005/focused-tests.xml -
+============================= slowest 10 durations =============================
+3.80s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world
+3.71s call     test/api/semantic_state/test_intent_384_advisor.py::test_real_effect_checkpoint_replay_keeps_learned_and_bound_documents_distinct
+3.29s call     benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_authored_fixture_context_uses_real_native_admission_and_full_index
+3.12s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_selection_admits_unchanged_initial_context
+2.42s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_selects_and_materializes_without_planner_provider
+2.39s call     test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]
+2.39s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[world]
+2.37s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[provider]
+2.36s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_valid_replacement_initial_descriptor_cannot_change_selection_during_planning[symbolic]
+2.32s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_context_drift_during_selection_prevents_admission[descriptor]
+=========================== short test summary info ============================
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted]
+FAILED test/api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases]
+FAILED test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[+-left > 0-satisfied]
+FAILED test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[--left > 0-refuted]
+FAILED test/api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases]
+====== 6 failed, 236 passed, 1 deselected, 1 warning in 127.20s (0:02:07) ======

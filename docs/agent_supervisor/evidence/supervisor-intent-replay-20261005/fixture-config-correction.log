@@ -1,0 +1,6 @@
+
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[configuration] PASSED [ 50%]
+test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[configuration] PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/fixture-config-correction-01.xml -
+============================== 2 passed in 1.79s ===============================

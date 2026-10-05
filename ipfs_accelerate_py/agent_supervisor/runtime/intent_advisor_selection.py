@@ -57,7 +57,7 @@ def _selection(selection):
         "bounded absolute Intent384 configuration path required")
     _require(checksum is None or (advisor._hash(checksum) and path is not None and selection["enabled"]),
         "exact selected configuration digest required")
-    return selection
+    return deepcopy(selection)
 
 
 def prepare_intent_384_selection(*, instruction, config_path, enabled=True):
@@ -81,31 +81,45 @@ def prepare_intent_384_selection(*, instruction, config_path, enabled=True):
     return advice, selection, time.monotonic_ns() - started
 
 
+def _require_current_selection(*, path, selection, captured):
+    _require(advisor._wire(_selection(selection)) == advisor._wire(captured["selection"]),
+        "Intent384 startup selection changed during numerical replay")
+    _require(_read(path, advisor.MAX_BYTES) == captured["advice_bytes"],
+        "saved advice changed during numerical replay")
+    if captured["config_bytes"] is not None:
+        _require(_read(captured["selection"]["config_path"], MAX_CONFIG_BYTES) == captured["config_bytes"],
+            "selected configuration changed during numerical replay")
+
+
+def _load_verified_selection(*, path, expected_sha256, instruction, selection):
+    selected = _selection(selection)
+    _require(advisor._hash(expected_sha256), "independent saved advice digest required")
+    raw = _read(path, advisor.MAX_BYTES)
+    _require(advisor._sha(raw) == expected_sha256, "saved Intent384 advice changed")
+    advice = _json(raw)
+    config_raw = None
+    if selected["enabled"] and selected["config_sha256"] is not None:
+        config_raw = _read(selected["config_path"], MAX_CONFIG_BYTES)
+        _require(advisor._sha(config_raw) == selected["config_sha256"],
+            "selected Intent384 configuration changed")
+        config = advisor._config(_json(config_raw))
+        if advice.get("report") is not None:
+            _require(advice.get("config") == config, "saved advice changed its selected checkpoint configuration")
+    else:
+        _require(advice.get("report") is None and advice.get("status") == (
+            "fail_open_unavailable" if selected["enabled"] else "disabled"),
+            "unselected model cannot supply active saved advice")
+    captured = dict(selection=selected, advice_bytes=raw, config_bytes=config_raw)
+    checked = advisor.validate_intent_384_advice(advice, instruction=instruction)
+    _require_current_selection(path=path, selection=selection, captured=captured)
+    return checked, captured
+
+
 def load_intent_384_selection(*, path, expected_sha256, instruction, selection):
     """Reject stale files, source or numerical predictions without blocking planning."""
     try:
-        selection = _selection(selection)
-        _require(advisor._hash(expected_sha256), "independent saved advice digest required")
-        raw = _read(path, advisor.MAX_BYTES)
-        _require(advisor._sha(raw) == expected_sha256, "saved Intent384 advice changed")
-        advice = _json(raw)
-        config_raw = None
-        if selection["enabled"] and selection["config_sha256"] is not None:
-            config_raw = _read(selection["config_path"], MAX_CONFIG_BYTES)
-            _require(advisor._sha(config_raw) == selection["config_sha256"],
-                "selected Intent384 configuration changed")
-            config = advisor._config(_json(config_raw))
-            if advice.get("report") is not None:
-                _require(advice.get("config") == config, "saved advice changed its selected checkpoint configuration")
-        else:
-            _require(advice.get("report") is None and advice.get("status") == (
-                "fail_open_unavailable" if selection["enabled"] else "disabled"),
-                "unselected model cannot supply active saved advice")
-        checked = advisor.validate_intent_384_advice(advice, instruction=instruction)
-        _require(_read(path, advisor.MAX_BYTES) == raw, "saved advice changed during numerical replay")
-        if config_raw is not None:
-            _require(_read(selection["config_path"], MAX_CONFIG_BYTES) == config_raw,
-                "selected configuration changed during numerical replay")
+        checked, _ = _load_verified_selection(path=path, expected_sha256=expected_sha256,
+            instruction=instruction, selection=selection)
         return checked
     except Exception as error:
         return _fallback(instruction, error)
@@ -136,4 +150,18 @@ def intent_384_planner_summary(advice, *, instruction, maximum_bytes=8192):
         return None, _fallback(instruction, error)
 
 
-__all__ = ["prepare_intent_384_selection", "load_intent_384_selection", "intent_384_planner_summary"]
+def load_intent_384_planner_summary(*, path, expected_sha256, instruction, selection, maximum_bytes=8192):
+    """Replay saved advice and retain its file/selection binding through summary replay."""
+    try:
+        advice, captured = _load_verified_selection(path=path, expected_sha256=expected_sha256,
+            instruction=instruction, selection=selection)
+        summary, checked = intent_384_planner_summary(advice,
+            instruction=instruction, maximum_bytes=maximum_bytes)
+        _require_current_selection(path=path, selection=selection, captured=captured)
+        return summary, checked
+    except Exception as error:
+        return None, _fallback(instruction, error)
+
+
+__all__ = ["prepare_intent_384_selection", "load_intent_384_selection", "intent_384_planner_summary",
+    "load_intent_384_planner_summary"]

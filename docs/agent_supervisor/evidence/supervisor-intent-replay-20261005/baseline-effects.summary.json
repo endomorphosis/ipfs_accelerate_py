@@ -1,0 +1,27 @@
+{
+  "exit_code": 1,
+  "tests": 20,
+  "passed": 2,
+  "failed": [
+    "test_intent_callback_cannot_replace_inputs_before_source_capture[source]",
+    "test_intent_callback_cannot_replace_inputs_before_source_capture[prediction]",
+    "test_intent_callback_cannot_replace_inputs_before_source_capture[security_checkpoint]",
+    "test_intent_callback_cannot_replace_inputs_before_source_capture[intent]",
+    "test_intent_callback_cannot_replace_inputs_before_source_capture[configuration]",
+    "test_intent_callback_cannot_change_the_detached_replay_advice",
+    "test_populations_are_bounded_and_validated_before_intent_callback[source_fields]",
+    "test_populations_are_bounded_and_validated_before_intent_callback[source_hash]",
+    "test_populations_are_bounded_and_validated_before_intent_callback[prediction_join]",
+    "test_populations_are_bounded_and_validated_before_intent_callback[security_size]",
+    "test_populations_are_bounded_and_validated_before_intent_callback[intent_size]",
+    "test_first_association_callback_cannot_change_next_contract_population[source]",
+    "test_first_association_callback_cannot_change_next_contract_population[prediction]",
+    "test_first_association_callback_cannot_change_next_contract_population[security_checkpoint]",
+    "test_first_association_callback_cannot_change_next_contract_population[intent]",
+    "test_first_association_callback_cannot_change_next_contract_population[configuration]",
+    "test_association_verifier_cannot_redefine_its_comparison_reference[changed-effect_binding]",
+    "test_association_verifier_cannot_redefine_its_comparison_reference[changed-source_identity]"
+  ],
+  "errors": [],
+  "skipped": []
+}

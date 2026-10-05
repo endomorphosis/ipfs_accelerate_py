@@ -17,7 +17,7 @@ PROBE = "the calculator must compute result; requires true; ensures result = old
 PIN = "a" * 64
 
 
-def _plan(state, prepared, monkeypatch):
+def _plan(state, prepared, monkeypatch, *, should_qualify=True):
     native_run = subprocess.run
     def version(argv, *args, **kwargs):
         if argv == ["codex", "--version"]:
@@ -29,8 +29,11 @@ def _plan(state, prepared, monkeypatch):
         prompts.append(prompt)
         return dict(text=_proposal_json(prepared), observation={}, execution_receipt=None)
     result = preparation.plan(state=state, provider_callable=provider)
-    assert result["qualified"] and result["provider_calls"] == 1 and len(prompts) == 1, result
-    return result, prompts[0]
+    if should_qualify:
+        assert result["qualified"] and result["provider_calls"] == 1 and len(prompts) == 1, result
+    else:
+        assert not result["qualified"] and result["provider_calls"] == 0 and not prompts, result
+    return result, prompts[0] if prompts else None
 
 
 def _original_prompt(prepared):
@@ -110,6 +113,137 @@ def test_saved_candidate_replays_current_config_and_learned_contract_summary(tmp
     assert PROBE not in summary and "embedding" not in summary and "source_text" not in summary
     assert all(payload[key] is False for key in advisor.FALSE)
     assert selected[0].read_bytes() and values["selection"]["config_sha256"] == advisor._sha(selected[0].read_bytes())
+
+
+def _mutating_contract_verifier(owner, *, rehash, mutate_on=1):
+    verify = owner.verify_intent_action_inference
+    calls = []
+    def changed(report, source, **options):
+        verify(report, source, **options)
+        calls.append("verify")
+        if len(calls) == mutate_on:
+            report["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] = "subtract"
+            if rehash:
+                report.pop("report_sha256")
+                report["report_sha256"] = advisor._sha(advisor._wire(report))
+        return report
+    owner.verify_intent_action_inference = changed
+
+
+@pytest.mark.parametrize("rehash", [False, True])
+@pytest.mark.parametrize("boundary", ["saved_load", "planner_summary"])
+def test_verifier_cannot_replace_audited_contract_during_saved_selection(tmp_path, selected, boundary, rehash):
+    values = saved(tmp_path, selected)
+    original_file = values["path"].read_bytes()
+    original_selection = deepcopy(values["selection"])
+    advice = subject.load_intent_384_selection(**values)
+    original_advice = deepcopy(advice)
+    assert advice["status"] == "semantic_candidate_advice"
+    _mutating_contract_verifier(selected[2], rehash=rehash)
+    if boundary == "saved_load":
+        rejected = subject.load_intent_384_selection(**values)
+        summary, checked = subject.intent_384_planner_summary(rejected, instruction=PROBE)
+        assert checked == rejected
+    else:
+        summary, rejected = subject.intent_384_planner_summary(advice, instruction=PROBE)
+    assert summary is None and rejected["status"] == "fail_open_unavailable"
+    assert rejected["continue_planning"] and rejected["raw_instruction_preserved"]
+    assert rejected["report"] is None and rejected["candidate_intent_ir"] is None
+    assert advice == original_advice
+    assert values["path"].read_bytes() == original_file and values["selection"] == original_selection
+
+
+@pytest.mark.parametrize("rehash", [False, True])
+def test_verifier_contract_mutation_preserves_original_provider_planning(original, selected, monkeypatch, rehash):
+    root, instruction, state = original
+    instruction.write_text(PROBE)
+    prepared = preparation.prepare(repository=root, instruction=instruction, state=state,
+        intent_action_384_config=selected[0])
+    assert prepared["intent_preplanning"]["status"] == "semantic_candidate_advice"
+    _mutating_contract_verifier(selected[2], rehash=rehash, mutate_on=2)
+    result, prompt = _plan(state, prepared, monkeypatch)
+    assert prompt == _original_prompt(prepared)
+    assert result["intent_preplanning"]["status"] == "fail_open_unavailable"
+    assert not result["intent_preplanning"]["supplied_to_router"]
+    assert (root / preparation.INSTRUCTION).read_text() == PROBE
+
+
+@pytest.mark.parametrize("artifact", ["configuration", "saved_advice"])
+def test_summary_replay_cannot_use_selection_files_changed_after_saved_load(original, selected, monkeypatch, artifact):
+    root, instruction, state = original
+    instruction.write_text(PROBE)
+    prepared = preparation.prepare(repository=root, instruction=instruction, state=state,
+        intent_action_384_config=selected[0])
+    verify = selected[2].verify_intent_action_inference
+    replay_calls = []
+    def changed(report, source, **options):
+        checked = verify(report, source, **options)
+        replay_calls.append("verify")
+        if len(replay_calls) == 2:
+            path = selected[0] if artifact == "configuration" else state / "intent-advice.json"
+            path.write_bytes(path.read_bytes() + b"\n")
+        return checked
+    selected[2].verify_intent_action_inference = changed
+    result, prompt = _plan(state, prepared, monkeypatch)
+    assert replay_calls == ["verify", "verify"]
+    assert prompt == _original_prompt(prepared)
+    assert result["intent_preplanning"]["status"] == "fail_open_unavailable"
+    assert not result["intent_preplanning"]["supplied_to_router"]
+    assert (root / preparation.INSTRUCTION).read_text() == PROBE
+
+
+def test_summary_replay_source_drift_stops_planning_before_provider(original, selected, monkeypatch):
+    root, instruction, state = original
+    instruction.write_text(PROBE)
+    prepared = preparation.prepare(repository=root, instruction=instruction, state=state,
+        intent_action_384_config=selected[0])
+    historical_manifest = deepcopy(prepared["manifest"])
+    original_prepared_bytes = (state / "prepared.json").read_bytes()
+    verify = selected[2].verify_intent_action_inference
+    replay_calls = []
+    changed_source = "def application():\n    return 'changed during optional replay'\n"
+    def changed(report, source, **options):
+        checked = verify(report, source, **options)
+        replay_calls.append("verify")
+        if len(replay_calls) == 2:
+            (root / "bottle.py").write_text(changed_source)
+        return checked
+    selected[2].verify_intent_action_inference = changed
+    result, prompt = _plan(state, prepared, monkeypatch, should_qualify=False)
+    assert replay_calls == ["verify", "verify"] and prompt is None
+    assert not (state / "planner-provider-request.json").exists()
+    assert prepared["manifest"] == historical_manifest
+    assert (state / "prepared.json").read_bytes() == original_prepared_bytes
+    assert (root / preparation.INSTRUCTION).read_text() == PROBE
+    assert (root / "bottle.py").read_text() == changed_source
+    assert not (state / "admission.json").exists()
+
+
+@pytest.mark.parametrize("field", ["enabled", "config_path", "config_sha256", "extra_field"])
+def test_selection_changed_by_replay_callback_cannot_supply_saved_advice(tmp_path, selected, field):
+    values = saved(tmp_path, selected)
+    original_file = values["path"].read_bytes()
+    alternative_config = tmp_path / "alternative-config.json"
+    alternative_config.write_bytes(selected[0].read_bytes())
+    verify = selected[2].verify_intent_action_inference
+    def changed(report, source, **options):
+        checked = verify(report, source, **options)
+        if field == "enabled":
+            values["selection"][field] = False
+        elif field == "config_path":
+            values["selection"][field] = str(alternative_config)
+        elif field == "config_sha256":
+            values["selection"][field] = "0" * 64
+        else:
+            values["selection"]["trust_saved"] = True
+        return checked
+    selected[2].verify_intent_action_inference = changed
+    rejected = subject.load_intent_384_selection(**values)
+    summary, checked = subject.intent_384_planner_summary(rejected, instruction=PROBE)
+    assert summary is None and checked == rejected
+    assert rejected["status"] == "fail_open_unavailable" and rejected["continue_planning"]
+    assert rejected["report"] is None and rejected["candidate_intent_ir"] is None
+    assert values["path"].read_bytes() == original_file
 
 
 @pytest.mark.parametrize("change", ["missing", "malformed", "oversized", "symlink", "duplicate", "unknown_field", "wrong_hash"])

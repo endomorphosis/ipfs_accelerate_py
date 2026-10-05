@@ -1,0 +1,143 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/intent384-planner-baseline-20261005-deujv3ar
+configfile: pytest.ini
+collected 42 items / 29 deselected / 13 selected
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py F [  7%]
+FFFFFFFFFFFF                                                             [100%]
+
+=================================== FAILURES ===================================
+_ test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-False] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:146: in test_verifier_cannot_replace_audited_contract_during_saved_selection
+    assert checked == rejected
+E   AssertionError: assert {'schema': 's...es': 104, ...} == {'advice_sha2...': False, ...}
+E     
+E     Omitting 23 identical items, use -vv to show
+E     Differing items:
+E     {'config': None} != {'config': {'checkpoint_path': '/models/intent.json', 'checkpoint_sha256': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'embedding_snapshot_path': '/models/gte', 'schema': 'supervisor-intent-action-384-config/v1'}}
+E     {'advice_sha256': '35fb9be6775222ebd308bdea28bc05a8ffc4895de140682a6056c41cf262b19a'} != {'advice_sha256': '583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41'}
+E     {'numerical_replay_verified': False} != {'numerical_replay_verified': True}
+E     {'raw_cand...
+E     
+E     ...Full output truncated (10 lines hidden), use '-vv' to show
+_ test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-True] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:146: in test_verifier_cannot_replace_audited_contract_during_saved_selection
+    assert checked == rejected
+E   AssertionError: assert {'schema': 's...es': 104, ...} == {'advice_sha2...': False, ...}
+E     
+E     Omitting 23 identical items, use -vv to show
+E     Differing items:
+E     {'config': None} != {'config': {'checkpoint_path': '/models/intent.json', 'checkpoint_sha256': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'embedding_snapshot_path': '/models/gte', 'schema': 'supervisor-intent-action-384-config/v1'}}
+E     {'advice_sha256': '35fb9be6775222ebd308bdea28bc05a8ffc4895de140682a6056c41cf262b19a'} != {'advice_sha256': '583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41'}
+E     {'numerical_replay_verified': False} != {'numerical_replay_verified': True}
+E     {'raw_cand...
+E     
+E     ...Full output truncated (10 lines hidden), use '-vv' to show
+_ test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-False] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:149: in test_verifier_cannot_replace_audited_contract_during_saved_selection
+    assert summary is None and rejected["status"] == "fail_open_unavailable"
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+_ test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-True] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:149: in test_verifier_cannot_replace_audited_contract_during_saved_selection
+    assert summary is None and rejected["status"] == "fail_open_unavailable"
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+_ test_verifier_contract_mutation_preserves_original_provider_planning[False] __
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:165: in test_verifier_contract_mutation_preserves_original_provider_planning
+    assert prompt == _original_prompt(prepared)
+E   assert '{"acceptance...version":"1"}' == '{"acceptance...version":"1"}'
+E     
+E     Skipping 2862 identical leading characters in diff, use -v to show
+E     -  success."],"directory_scope":"","policy_roots":["baguqeeramb34yvqyuyfrvq3gj746gt7ovwygusjfrogp2hq3v7qckpohaoua","baguqeerao4qac6syltt4jpxoynzgpcecrtpsmmuyu6t64dtegnce5oehp2vq","baguqeeraw6egsr3mrwzlv3j5yikhntpertxdosijvsymvvvsd6o5qahd5rmq","baguqeerayn4yn2izc5hvbqdfjdypup57qru47v7epple6rurmr63infnmfja"],"protected_paths":["docs/architecture/agent_supervisor_self_improvement.objectives.md","docs/architecture/agent_supervisor_self_improvement.todo.md"],"shell_allowed":false,"validation_commands":[["pytho...
+E     
+E     ...Full output truncated (3 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_verifier_contract_mutatio0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_verifier_contract_mutatio0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+__ test_verifier_contract_mutation_preserves_original_provider_planning[True] __
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:165: in test_verifier_contract_mutation_preserves_original_provider_planning
+    assert prompt == _original_prompt(prepared)
+E   assert '{"acceptance...version":"1"}' == '{"acceptance...version":"1"}'
+E     
+E     Skipping 2862 identical leading characters in diff, use -v to show
+E     -  success."],"directory_scope":"","policy_roots":["baguqeeradixk3be5pwhttfrd2jckarl6ww4arff7p5wy6m3ahaeh3gbs5rpq","baguqeerapal6eozlccft55vttthyk3rjvo2fhv6htcyfqr6ytfdutgha4n5a","baguqeerau5h4wseg4aawxai7f2ejprbkoynx727c4kd7v4wghk6hx7t4n5ma","baguqeerayn4yn2izc5hvbqdfjdypup57qru47v7epple6rurmr63infnmfja"],"protected_paths":["docs/architecture/agent_supervisor_self_improvement.objectives.md","docs/architecture/agent_supervisor_self_improvement.todo.md"],"shell_allowed":false,"validation_commands":[["pytho...
+E     
+E     ...Full output truncated (3 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_verifier_contract_mutatio1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_verifier_contract_mutatio1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_summary_replay_cannot_use_selection_files_changed_after_saved_load[configuration] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:189: in test_summary_replay_cannot_use_selection_files_changed_after_saved_load
+    assert prompt == _original_prompt(prepared)
+E   assert '{"acceptance...version":"1"}' == '{"acceptance...version":"1"}'
+E     
+E     Skipping 2862 identical leading characters in diff, use -v to show
+E     -  success."],"directory_scope":"","policy_roots":["baguqeera3rx5t42td3nthnlsgywhlnp2r3pw2bdufxlytnkvnxs53kyw3wea","baguqeera45zxtzbwq2jdivtccavvabdyqt2rlpyfhzilbugngqv2nxkm6cja","baguqeerasqvhstd5t6ux52clbhdbmj6w2ugp6atvx5skrfx5vrsgy656uteq","baguqeerayn4yn2izc5hvbqdfjdypup57qru47v7epple6rurmr63infnmfja"],"protected_paths":["docs/architecture/agent_supervisor_self_improvement.objectives.md","docs/architecture/agent_supervisor_self_improvement.todo.md"],"shell_allowed":false,"validation_commands":[["pytho...
+E     
+E     ...Full output truncated (3 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_summary_replay_cannot_use0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_summary_replay_cannot_use0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_ test_summary_replay_cannot_use_selection_files_changed_after_saved_load[saved_advice] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:189: in test_summary_replay_cannot_use_selection_files_changed_after_saved_load
+    assert prompt == _original_prompt(prepared)
+E   assert '{"acceptance...version":"1"}' == '{"acceptance...version":"1"}'
+E     
+E     Skipping 2862 identical leading characters in diff, use -v to show
+E     -  success."],"directory_scope":"","policy_roots":["baguqeerad3jgzwwmmz6xs55636sg7enze7jjucfulnhe33hdwwblacnwf6na","baguqeeralhgiwwtp4oouop6cyspjccjs7y36qblz6fivrfzrijkc7rxjogga","baguqeerawq5x4jymizxmhetqomepbq5gfb24rv4xgwmrbiuli7vi6t6owkkq","baguqeerayn4yn2izc5hvbqdfjdypup57qru47v7epple6rurmr63infnmfja"],"protected_paths":["docs/architecture/agent_supervisor_self_improvement.objectives.md","docs/architecture/agent_supervisor_self_improvement.todo.md"],"shell_allowed":false,"validation_commands":[["pytho...
+E     
+E     ...Full output truncated (3 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_summary_replay_cannot_use1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-1140/test_summary_replay_cannot_use1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+_______ test_summary_replay_source_drift_stops_planning_before_provider ________
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:212: in test_summary_replay_source_drift_stops_planning_before_provider
+    result, prompt = _plan(state, prepared, monkeypatch, should_qualify=False)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:35: in _plan
+    assert not result["qualified"] and result["provider_calls"] == 0 and not prompts, result
+E   AssertionError: {'schema': 'terminal-indexed-planner-result@1', 'qualified': False, 'provider': 'codex_cli', 'model': 'gpt-6.1-sol', ...}
+E   assert (not False and 1 == 0)
+_ test_selection_changed_by_replay_callback_cannot_supply_saved_advice[enabled] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:243: in test_selection_changed_by_replay_callback_cannot_supply_saved_advice
+    assert summary is None and checked == rejected
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+_ test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_path] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:243: in test_selection_changed_by_replay_callback_cannot_supply_saved_advice
+    assert summary is None and checked == rejected
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+_ test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_sha256] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:243: in test_selection_changed_by_replay_callback_cannot_supply_saved_advice
+    assert summary is None and checked == rejected
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+_ test_selection_changed_by_replay_callback_cannot_supply_saved_advice[extra_field] _
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py:243: in test_selection_changed_by_replay_callback_cannot_supply_saved_advice
+    assert summary is None and checked == rejected
+E   assert ('{"advice_sha256":"583a8f1ea454f81521aa469b1becad6ad1a2203507849122c9f00b917172af41","association_inferred":false,"aut...truction_is_proof":false,"source_executed":false,"source_semantics_verified":false,"whole_instruction_verified":false}' is None)
+-- generated xml file: /tmp/intent384-planner-red-20261005-owlby1ew/tests.xml --
+============================= slowest 10 durations =============================
+1.21s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[False]
+1.05s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[configuration]
+1.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[True]
+1.00s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[saved_advice]
+0.38s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_source_drift_stops_planning_before_provider
+0.05s call     benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-False]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_source_drift_stops_planning_before_provider
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[False]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[configuration]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[True]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-False]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[saved_load-True]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-False]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_cannot_replace_audited_contract_during_saved_selection[planner_summary-True]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[False]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_verifier_contract_mutation_preserves_original_provider_planning[True]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[configuration]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_cannot_use_selection_files_changed_after_saved_load[saved_advice]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_summary_replay_source_drift_stops_planning_before_provider
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[enabled]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_path]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[config_sha256]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py::test_selection_changed_by_replay_callback_cannot_supply_saved_advice[extra_field]
+====================== 13 failed, 29 deselected in 13.20s ======================

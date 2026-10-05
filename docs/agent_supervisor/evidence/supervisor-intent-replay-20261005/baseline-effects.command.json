@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib, tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/baseline-02.xml",
+    "-k",
+    "intent_callback_cannot_replace_inputs_before_source_capture or intent_callback_cannot_change_the_detached_replay_advice or populations_are_bounded_and_validated_before_intent_callback or first_association_callback_cannot_change_next_contract_population or association_verifier_cannot_redefine_its_comparison_reference or multi_source_success_retains_original_supplied_security_identity",
+    "test/api/semantic_state/test_intent_code_effect_advisor.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/intent-code-effect-currentness-baseline-20261005",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/intent-code-effect-currentness-baseline-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/baseline-02.duckdb"
+  },
+  "accelerate_baseline": "26812b9267e765ed5792552befea2710bc04b3c6",
+  "production_source_sha256": "33440293b980bec487fb442130a744283f7d0f6372209b042c98c2768cb4c993",
+  "test_sha256": "9ccb03c711740bea0d5018efbd4ba09f76551dcd374461716551450d50e09416"
+}

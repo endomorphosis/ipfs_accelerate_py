@@ -629,13 +629,12 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         selected_source_unit = {}
     if "intent_action_384_selection" in selected_intent:
         from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import (
-            load_intent_384_selection, intent_384_planner_summary,
+            load_intent_384_planner_summary,
         )
-        intent_advice = load_intent_384_selection(path=state / "intent-advice.json",
+        intent_summary, intent_advice = load_intent_384_planner_summary(path=state / "intent-advice.json",
             expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"],
-            selection=selected_intent["intent_action_384_selection"])
-        intent_summary, intent_advice = intent_384_planner_summary(intent_advice,
-            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+            selection=selected_intent["intent_action_384_selection"],
+            maximum_bytes=_config(repository).max_summary_bytes)
     else:
         intent_advice = load_intent_advice(path=state / "intent-advice.json",
             expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
@@ -700,16 +699,18 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         nonlocal observation, calls, execution_receipt, model_request_sha256, requirement_bindings
         if calls:
             raise RuntimeError("one planner provider call maximum")
+        current_prepared = _load_prepared(state)
+        if current_prepared != prepared:
+            raise ValueError("preparation changed before planner provider dispatch")
         if initial is not None:
-            current = load_initial_context(state=state, prepared=_load_prepared(state), require_empty_owner=True)
+            current = load_initial_context(state=state, prepared=current_prepared, require_empty_owner=True)
             _require_same_initial_selection(current, initial)
         if requirement_contract is not None:
             from ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage import (
                 build_intent_plan_provider_request,
             )
             # The exact source and signed ledger must remain fresh at dispatch.
-            current = _load_prepared(state)
-            if current.get("intent_requirement_contract") != requirement_contract:
+            if current_prepared.get("intent_requirement_contract") != requirement_contract:
                 raise ValueError("intent requirement contract changed before planning")
             prompt = build_intent_plan_provider_request(prompt, requirement_contract)
             if len(prompt.encode("utf-8")) > _config(repository).max_provider_request_bytes:

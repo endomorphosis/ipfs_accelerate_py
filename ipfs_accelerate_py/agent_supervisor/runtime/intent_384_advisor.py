@@ -123,10 +123,13 @@ def prepare_intent_384_advice(*, instruction, config=None):
         selected = _config(config)
         stage = "datasets_inference"
         owner = _owner()
-        report = owner.prepare_intent_action_inference(instruction, **_options(selected))
+        report = deepcopy(owner.prepare_intent_action_inference(instruction, **_options(selected)))
         stage = "datasets_numerical_replay"
-        checked = owner.verify_intent_action_inference(report, instruction, **_options(selected))
-        _require(_wire(checked) == _wire(report), "shared inference replay differs")
+        report_wire = _wire(report)
+        replay_input = deepcopy(report)
+        checked = owner.verify_intent_action_inference(replay_input, instruction, **_options(selected))
+        _require(_wire(replay_input) == report_wire and _wire(checked) == report_wire,
+            "shared inference replay differs")
         stage = "datasets_result"
         _report(report, instruction, selected)
         active = report["status"] == "source_supported_action_contract"
@@ -151,6 +154,8 @@ def validate_intent_384_advice(advice, *, instruction):
     baseline = _finish(_base(instruction, "disabled"))
     _require(type(advice) is dict and set(advice) == set(baseline) and len(_wire(advice)) <= MAX_BYTES,
         "closed bounded Intent384 advice required")
+    caller_advice, advice_wire = advice, _wire(advice)
+    advice = deepcopy(advice)
     _require(advice["schema"] == SCHEMA and advice["advice_sha256"] ==
         _sha(_wire({key: value for key, value in advice.items() if key != "advice_sha256"})),
         "Intent384 advice digest differs")
@@ -175,8 +180,12 @@ def validate_intent_384_advice(advice, *, instruction):
         return deepcopy(advice)
     config = _config(advice["config"])
     report = _report(advice["report"], instruction, config)
-    checked = _owner().verify_intent_action_inference(report, instruction, **_options(config))
-    _require(_wire(checked) == _wire(report), "Intent384 numerical replay differs from saved report")
+    report_wire = _wire(report)
+    replay_input = deepcopy(report)
+    checked = _owner().verify_intent_action_inference(replay_input, instruction, **_options(config))
+    _require(_wire(replay_input) == report_wire and _wire(checked) == report_wire,
+        "Intent384 numerical replay differs from saved report")
+    _require(_wire(caller_advice) == advice_wire, "Intent384 saved advice changed during numerical replay")
     active = report["status"] == "source_supported_action_contract"
     raw = report.get("raw_candidate_ir")
     native = report.get("native_intent_ir") if active else None

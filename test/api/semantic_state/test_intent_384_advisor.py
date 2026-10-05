@@ -152,6 +152,104 @@ def test_owner_transport_cannot_silently_drop_identity_or_authority_fields(monke
     assert result["status"] == "fail_open_unavailable" and result["failure_stage"] == "datasets_result"
 
 
+def _owner_with_contract(monkeypatch):
+    shared = owner(monkeypatch)
+    original = shared.report
+    def authored_report(*args, **kwargs):
+        report = original(*args, **kwargs)
+        report["binding"]["source_audit"] = {"candidate_contract": {"equation": {"operator": "add"}}}
+        return finish(report)
+    shared.report = authored_report
+    return shared
+
+
+@pytest.mark.parametrize("phase", ["prepare", "saved"])
+@pytest.mark.parametrize("returned,rehash", [("changed", False), ("changed", True), ("original", True)])
+def test_numerical_replay_cannot_mutate_its_contract_input(monkeypatch, phase, returned, rehash):
+    shared = _owner_with_contract(monkeypatch)
+    advice = subject.prepare_intent_384_advice(instruction=INSTRUCTION, config=config())
+    before = deepcopy(advice)
+    def changed(report, *args, **kwargs):
+        original = deepcopy(report)
+        report["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] = "subtract"
+        if rehash:
+            finish(report)
+        return report if returned == "changed" else original
+    shared.verify_intent_action_inference = changed
+    if phase == "prepare":
+        result = subject.prepare_intent_384_advice(instruction=INSTRUCTION, config=config())
+        assert result["status"] == "fail_open_unavailable"
+        assert result["failure_stage"] == "datasets_numerical_replay"
+        assert result["report"] is None and result["candidate_intent_ir"] is None
+        assert result["numerical_replay_verified"] is False and result["continue_planning"]
+    else:
+        with pytest.raises(ValueError, match="numerical replay differs"):
+            subject.validate_intent_384_advice(advice, instruction=INSTRUCTION)
+    assert advice == before
+
+
+@pytest.mark.parametrize("change", ["contract", "authority", "configuration"])
+def test_caller_advice_changed_during_replay_cannot_be_accepted(monkeypatch, change):
+    shared = _owner_with_contract(monkeypatch)
+    advice = subject.prepare_intent_384_advice(instruction=INSTRUCTION, config=config())
+    def changed(report, *args, **kwargs):
+        assert report is not advice["report"]
+        if change == "contract":
+            advice["report"]["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] = "subtract"
+            finish(advice["report"])
+        elif change == "authority":
+            advice["proof_authority"] = True
+        else:
+            advice["config"]["checkpoint_path"] = "/models/replaced.json"
+        resign(advice)
+        return deepcopy(report)
+    shared.verify_intent_action_inference = changed
+    with pytest.raises(ValueError, match="saved advice changed during numerical replay"):
+        subject.validate_intent_384_advice(advice, instruction=INSTRUCTION)
+    # The caller retains its own mutated object; validation must not rewrite it.
+    assert advice["advice_sha256"] == subject._sha(subject._wire(
+        {key: value for key, value in advice.items() if key != "advice_sha256"}))
+
+
+def test_preparation_detaches_producer_report_before_replay(monkeypatch):
+    shared = _owner_with_contract(monkeypatch)
+    prepare = shared.prepare_intent_action_inference
+    retained = {}
+    def capture(*args, **kwargs):
+        report = prepare(*args, **kwargs)
+        retained["report"] = report
+        return report
+    def changed(report, *args, **kwargs):
+        assert report is not retained["report"]
+        retained["report"]["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] = "subtract"
+        finish(retained["report"])
+        return deepcopy(report)
+    shared.prepare_intent_action_inference = capture
+    shared.verify_intent_action_inference = changed
+    advice = subject.prepare_intent_384_advice(instruction=INSTRUCTION, config=config())
+    assert advice["status"] == "semantic_candidate_advice" and advice["numerical_replay_verified"]
+    assert advice["report"]["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] == "add"
+    assert retained["report"]["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] == "subtract"
+    assert advice["report"]["report_sha256"] == subject._sha(subject._wire(
+        {key: value for key, value in advice["report"].items() if key != "report_sha256"}))
+
+
+def test_mutated_replay_cannot_supply_planner_contract_slots(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import intent_384_planner_summary
+    shared = _owner_with_contract(monkeypatch)
+    advice = subject.prepare_intent_384_advice(instruction=INSTRUCTION, config=config())
+    before = deepcopy(advice)
+    def changed(report, *args, **kwargs):
+        report["binding"]["source_audit"]["candidate_contract"]["equation"]["operator"] = "subtract"
+        return finish(report)
+    shared.verify_intent_action_inference = changed
+    summary, result = intent_384_planner_summary(advice, instruction=INSTRUCTION)
+    assert summary is None and result["status"] == "fail_open_unavailable"
+    assert result["continue_planning"] and result["raw_instruction_preserved"]
+    assert all(result[key] is False for key in subject.FALSE)
+    assert advice == before
+
+
 @pytest.mark.parametrize("change", ["raw_candidate", "native_candidate", "report_native", "raw_hash", "native_hash", "instruction", "authority", "scope", "replay_claim", "extra"])
 def test_rehashed_saved_advice_cannot_replace_either_candidate_or_provenance(monkeypatch, change):
     owner(monkeypatch)

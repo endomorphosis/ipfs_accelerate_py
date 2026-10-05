@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib, tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/fixture-config-correction-01.xml",
+    "test/api/semantic_state/test_intent_code_effect_advisor.py::test_intent_callback_cannot_replace_inputs_before_source_capture[configuration]",
+    "test/api/semantic_state/test_intent_code_effect_advisor.py::test_first_association_callback_cannot_change_next_contract_population[configuration]"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-empty-context-20261005/intent-code-effect-currentness/fixture-config-correction-01.duckdb",
+    "IR384_TEST_LAKE_EXECUTABLE": "/home/barberb/.elan/toolchains/leanprover--lean4---v4.33.1/bin/lake"
+  }
+}

@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/test
+configfile: pytest.ini
+collected 85 items / 79 deselected / 6 selected
+
+test/api/semantic_state/test_intent_code_effect_advisor.py ...           [ 50%]
+test/api/semantic_state/test_intent_action_effect_selection.py ...       [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-intent-replay-20261005/native-lake/focused-tests.xml -
+============================= slowest 10 durations =============================
+6.35s call     api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[satisfied]
+3.14s call     api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[+-left > 0-satisfied]
+3.04s call     api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[*-left > 2-no_enabled_cases]
+2.97s call     api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[no_enabled_cases]
+2.97s call     api/semantic_state/test_intent_code_effect_advisor.py::test_real_owner_and_lake_preserve_authored_boundary_dispositions[refuted]
+2.94s call     api/semantic_state/test_intent_action_effect_selection.py::test_generated_selection_runs_live_lake[--left > 0-refuted]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+====================== 6 passed, 79 deselected in 21.97s =======================
