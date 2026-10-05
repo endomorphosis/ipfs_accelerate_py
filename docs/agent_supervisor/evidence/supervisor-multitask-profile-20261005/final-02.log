@@ -1,0 +1,55 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 510 items
+
+test/api/test_intent_requirement_adapter.py ............................ [  5%]
+......                                                                   [  6%]
+test/api/test_intent_symbolic_planning.py ...................            [ 10%]
+test/api/test_intent_symbolic_planning_ordered.py ....                   [ 11%]
+test/api/test_intent_requirement_admission.py .......................... [ 16%]
+...........                                                              [ 18%]
+test/api/test_agent_supervisor_local_planning_admission.py ............  [ 20%]
+test/api/test_local_completion_bridge.py ...........                     [ 22%]
+test/api/test_intent_requirement_observation.py ........................ [ 27%]
+...                                                                      [ 28%]
+test/api/test_intent_requirement_observation_native.py ................. [ 31%]
+...                                                                      [ 32%]
+test/api/test_intent_requirement_worker_context.py ..................... [ 36%]
+............                                                             [ 38%]
+test/api/test_codebase_inventory_evidence_admission.py ...............   [ 41%]
+test/api/test_doctor_imported_alias_workflow.py ........................ [ 46%]
+...........................                                              [ 51%]
+test/api/test_terminal_doctor_dispatch.py ...........                    [ 53%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 53%]
+........................................................................ [ 68%]
+....................................................                     [ 78%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 78%]
+........................................                                 [ 86%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 86%]
+...............                                                          [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 89%]
+................                                                         [ 92%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 92%]
+......                                                                   [ 94%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 94%]
+...........                                                              [ 96%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 96%]
+..                                                                       [ 97%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 99%]
+....                                                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/final-02.xml -
+============================= slowest 10 durations =============================
+7.21s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+5.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]
+5.38s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]
+5.23s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+5.06s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]
+4.90s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]
+4.74s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]
+4.68s call     test/api/test_intent_symbolic_planning.py::test_real_native_publication_replays_symbolic_selection_against_original_baseline
+4.13s call     test/api/test_intent_requirement_observation_native.py::test_actual_claim_failure_missing_output_stale_and_completion_remain_distinct[complete]
+4.12s call     test/api/test_intent_requirement_observation_native.py::test_actual_claim_failure_missing_output_stale_and_completion_remain_distinct[done]
+======================= 510 passed in 602.00s (0:10:01) ========================

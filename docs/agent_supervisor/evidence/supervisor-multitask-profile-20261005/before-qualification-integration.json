@@ -1,0 +1,10 @@
+{
+  "schema": "supervisor-multitask-before-qualification-integration@1",
+  "owned_implementation_commit": "15eb32b497d1e9f242c7f0b713b2c9093eabcd1a",
+  "integrated_upstream_commit": "689642234aad95cd13518f5c193288b06a5f8abd",
+  "qualified_merge_commit": "6ce047f0bf75ad4ca6969784ed79ec4f2a3cd5ca",
+  "upstream_scope": "Documentation-only Codex eigenvalue baseline and retained evidence.",
+  "all_reviewed_source_and_test_bytes_match": true,
+  "documentation_patch_saved_before_merge": true,
+  "completion_authority": false
+}

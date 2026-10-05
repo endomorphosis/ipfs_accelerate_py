@@ -1,0 +1,112 @@
+{
+  "schema": "supervisor-multitask-profile-qualification@1",
+  "implementation_baseline": "7dda779c99ffc25166459277a6358dcf78caee29",
+  "owned_implementation_commit": "15eb32b497d1e9f242c7f0b713b2c9093eabcd1a",
+  "qualified_source_base_commit": "6ce047f0bf75ad4ca6969784ed79ec4f2a3cd5ca",
+  "source_binding_note": "Final source base also has the explicitly pinned test-only Doctor fixture correction. All seven reviewed production/profile/native-test files match the independently reviewed committed implementation.",
+  "phase": "reviewed administrative planning, admission and native storage",
+  "public_profile_schema": "terminal-public-task-profile@3",
+  "prepared_schema": "terminal-indexed-public-preparation@2",
+  "final_run": "final-02.qualification.json",
+  "counts": {
+    "passed": 510,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "distinct_passing_cases": 510,
+  "selection": "final-selection-02.json",
+  "ast_sealing": {
+    "records": 510,
+    "closure_files_min": 977,
+    "closure_files_max": 1039,
+    "any_completion_authority": false
+  },
+  "current_source_pins": "final-02-before.json",
+  "manually_pinned_source_and_test_files": 63,
+  "source_assets_and_datasets_pins_unchanged": true,
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "retained_assets": {
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  },
+  "retained_assets_scope": "These four previously used assets remain byte-identical. This does not inventory all models or claim training/inference from them in this control-path qualification.",
+  "new_profile_and_native_controls": 93,
+  "preserved_legacy_profile_controls": 73,
+  "baseline": {
+    "run": "baseline-01.qualification.json",
+    "counts": {
+      "passed": 183,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    },
+    "all_baseline_nodes_retained": true
+  },
+  "focused_native": {
+    "run": "native-integration-final.qualification.json",
+    "counts": {
+      "passed": 41,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    }
+  },
+  "focused_fixture_and_real_retrieval": {
+    "run": "fixture-retrieval-01.qualification.json",
+    "counts": {
+      "passed": 26,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    }
+  },
+  "historical_diagnostics": "intermediate-diagnostics.json",
+  "count_scope": "Only final-02 distinct nodes contribute to the final total. Baseline, focused and diagnostic selections overlap and are not added.",
+  "independent_review": "publication-independent-review.json",
+  "original_binding_failure": {
+    "record": "owner-binding-red.json",
+    "source_snapshot": "local_planning_admission-owner-red.py",
+    "scope": "Intermediate new @3 profile/preparation against the original 7dda native owner, not an unchanged full baseline with @3 support."
+  },
+  "native_process_audit": "final-02.native-process-audit.json",
+  "limitations": [
+    "Requirement interpretations and operations are authored reviewed candidates; these controls do not measure decoder reconstruction or autoformalization quality.",
+    "Two currentness race controls inject a source edit around the actual compiler/native insertion boundary; the rest of their production path and rollback are real.",
+    "AST seals are local evidence with no completion authority; manual owner bindings separately include benchmark helpers.",
+    "Per-task contexts and reviewed-profile execution remain refused. No parallel worker execution is qualified.",
+    "Structural smoke bounds are per file/task, not a qualified aggregate multi-task completion bound; serialized admission ceilings also apply."
+  ],
+  "remaining_plan": [
+    "Per-task source/dependency-wave contexts with separate IR family/schema/version/decoder task and parallel 8D/384D/768D identities, token/span budgets, database and pinned ModelManager/Hugging Face assets.",
+    "Verified predecessor source successors, unchanged embedding-cache reuse and actual context cold-restart qualification.",
+    "Isolated native multi-task worktree leases, validation/review, merge currentness and durable completion before execution admission."
+  ],
+  "paid_provider_calls": 0,
+  "training_or_downloads": false,
+  "new_model_weights": false,
+  "new_benchmark_score": false,
+  "completion_authority": false,
+  "hosted_ci": "Not qualified by these local runs.",
+  "test_only_fixture_commit": "4bc3966e38e5c26f5394f8ba14a713b7923e8f64",
+  "local_documentation_gates": {
+    "record": "documentation-gates.json",
+    "returncode": 0,
+    "allowlisted_documentation_files": 46,
+    "version": "0.0.45"
+  }
+}

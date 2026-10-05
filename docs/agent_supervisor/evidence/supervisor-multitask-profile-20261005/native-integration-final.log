@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 41 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [  2%]
+........................................                                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-native-20261005/native-integration-final.xml -
+============================= slowest 10 durations =============================
+4.99s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+3.64s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_contract_substitution_is_refused_by_materialization_and_native_replay
+3.44s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[True]
+3.39s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[False]
+2.67s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_task_insert_rolls_back_native_transaction
+0.67s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_graph_compilation_refuses_admission
+0.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_administrative_profile_refuses_unqualified_task_context_paths[initial_context]
+0.49s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_source_profile_cannot_hide_a_multitask_declaration[malformed]
+0.49s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_genuinely_resigned_contract_cannot_substitute_signed_profile_identity
+0.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_real_per_task_checks_do_not_require_later_join_output
+============================= 41 passed in 40.47s ==============================

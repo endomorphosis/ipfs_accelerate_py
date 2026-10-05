@@ -1,0 +1,45 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 35 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [  2%]
+...........................FF..F..                                       [100%]
+
+=================================== FAILURES ===================================
+____ test_independently_resigned_smoke_cannot_replace_canonical_task_checks ____
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py:417: in test_independently_resigned_smoke_cannot_replace_canonical_task_checks
+    with pytest.raises(ValueError, match="structural check"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'structural check'
+E     Actual message: 'acceptance must retain declared validation references'
+__________ test_resigned_manifest_cannot_drop_native_planning_inputs ___________
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py:431: in test_resigned_manifest_cannot_drop_native_planning_inputs
+    with pytest.raises(ValueError, match="symbolic planning inputs"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'symbolic planning inputs'
+E     Actual message: 'acceptance must retain declared validation references'
+__ test_administrative_plan_cannot_consume_a_singleton_initial_context_marker __
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py:452: in test_administrative_plan_cannot_consume_a_singleton_initial_context_marker
+    with pytest.raises(ValueError, match="administrative planning only"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'administrative planning only'
+E     Actual message: 'reviewed multi-task preparation cannot reuse an unqualified initial task context'
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-native-20261005/native-integration-02.xml -
+============================= slowest 10 durations =============================
+4.56s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+3.38s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_contract_substitution_is_refused_by_materialization_and_native_replay
+3.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[True]
+3.15s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[False]
+0.64s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_administrative_profile_refuses_unqualified_task_context_paths[initial_context]
+0.57s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_genuinely_resigned_contract_cannot_substitute_signed_profile_identity
+0.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_real_per_task_checks_do_not_require_later_join_output
+0.47s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_three_reviewed_tasks_prepare_without_changing_original_sources
+0.46s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_mutated_preparation_cannot_enter_planning_or_native_storage[dependencies]
+0.44s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_administrative_profile_refuses_unqualified_task_context_paths[context]
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_independently_resigned_smoke_cannot_replace_canonical_task_checks
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_manifest_cannot_drop_native_planning_inputs
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_administrative_plan_cannot_consume_a_singleton_initial_context_marker
+======================== 3 failed, 32 passed in 35.07s =========================

@@ -1,0 +1,64 @@
+{
+  "schema": "supervisor-multitask-intermediate-diagnostics@1",
+  "runs": [
+    {
+      "xml": "native-integration-01.xml",
+      "causes": [
+        "Missing contract object leaked AttributeError in runtime validator; fixed with explicit object guard and four refusal controls.",
+        "Revocation fixture passed an unsupported repository_cid argument; fixture corrected."
+      ],
+      "counts": {
+        "passed": 29,
+        "failure": 2,
+        "error": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "xml": "native-integration-02.xml",
+      "causes": [
+        "Re-authored missing-planning-input cases retained evidence CIDs that the existing declaration guard rejected before the intended profile guard; fixture clears those references.",
+        "Stray-context refusal regex differed from the actual refusal message; fixture corrected."
+      ],
+      "counts": {
+        "passed": 32,
+        "failure": 3,
+        "error": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "qualification": "final-01.qualification.json",
+      "counts": {
+        "passed": 492,
+        "failure": 3,
+        "error": 0,
+        "skipped": 0
+      },
+      "causes": [
+        "All three Doctor-driver failures are identical on unchanged 7dda779 baseline. The fully authored context bundle lacked authentication fields expected by the production retrieval-policy selector. The routing fixture now mocks that explicit boundary; no production authentication change."
+      ],
+      "baseline_confirmation": "baseline-doctor-dispatch-01.qualification.json",
+      "baseline_counts": {
+        "passed": 8,
+        "failure": 3,
+        "error": 0,
+        "skipped": 0
+      },
+      "identical_failure_nodes": [
+        "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]",
+        "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]",
+        "test.api.test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]"
+      ],
+      "test_only_fix": {
+        "path": "test/api/test_terminal_doctor_dispatch.py",
+        "sha256": "54c913cffcc517516c9d30a2749191c5169c908cb446a53eec12c8587f0401d5"
+      },
+      "subsequent_independent_real_selector_checks": "fixture-retrieval-01.qualification.json"
+    }
+  ],
+  "later_frozen_native_run": "native-integration-final.qualification.json",
+  "count_scope": "Intermediate diagnostics do not contribute to final passing qualification totals.",
+  "completion_authority": false,
+  "later_frozen_broad_run": "final-02.qualification.json"
+}
