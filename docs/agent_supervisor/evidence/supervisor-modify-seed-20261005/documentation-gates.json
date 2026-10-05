@@ -1,0 +1,29 @@
+{
+  "workflow_sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763",
+  "checks": [
+    {
+      "name": "Supervisor primary-doc vocabulary",
+      "exit_code": 0,
+      "seconds": 0.033777904987800866,
+      "output": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n"
+    },
+    {
+      "name": "Maintained-surface relative links",
+      "exit_code": 0,
+      "seconds": 0.09423945800517686,
+      "output": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n"
+    },
+    {
+      "name": "Packaging version pin alignment",
+      "exit_code": 0,
+      "seconds": 0.030108135018963367,
+      "output": "OK: packaging pins aligned at 0.0.45\n"
+    },
+    {
+      "name": "Closeout navigation markers",
+      "exit_code": 0,
+      "seconds": 0.00411140700452961,
+      "output": "OK: closeout navigation markers present\n"
+    }
+  ]
+}

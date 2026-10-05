@@ -566,3 +566,55 @@ by preflight v2. Direct-lane advisory guidance without a trusted exact task
 projection remains refused. This focused qualification does not establish that
 every archived legacy suite passes. It uses no paid providers and produces no
 new Terminal-Bench reward or token score.
+
+## Existing-output retry replay (2026-10-05)
+
+An accepted prior attempt can now replay a MODIFY to an existing declared
+scoped output through both dependency preflights and reach provider command
+construction. The existing v2 present-target configuration supplies the baseline
+contract. A new version-2 prior-seed handoff carries exact before/after SHA256 and
+Git blob identities; ADD-only handoffs retain their version-1 shape. Accepted
+proposal source, replay gate, task identity, board namespace and baseline receipt
+must agree. Missing or foreign source-event namespaces cannot mint this new
+MODIFY handoff.
+
+Preflight checks the actual baseline commit/tree and selected file blob,
+including baseline-pinned nested gitlinks. It rechecks root and child HEADs and
+rereads the candidate after Git verification. Git reads disable caller overrides,
+replacement objects and lazy fetch, with output, depth and elapsed-time limits.
+CRLF, Unicode and missing final newlines retain their exact bytes. Renames,
+binary entries, source/blob mismatches and unchanged-content mode-only entries
+cannot supply MODIFY attestations. An unchanged validation target can still use
+its baseline contract when the prior attempt changed another declared output.
+These digests bind a private daemon handoff; they are not independent proof or
+completion authority.
+
+The [frozen final qualification](evidence/supervisor-modify-seed-20261005/final.json)
+records **404 distinct passing tests**: 390 joined checks and 14 native lifecycle
+checks, with no failures, errors or skips in that selection. One known baseline
+failure is explicitly deselected below. Source/test hashes remain unchanged
+against datasets commit `987cf856b2b902aa68c4587bb492b19b932b5d30`, and all passing
+cases have fresh AST seals with false completion authority. The native checks
+include signed START/observe/STOP, constructor cleanup and an authored symbolic
+repair with refreshed indexes. No test-owned process remained in the audited
+roots.
+
+The [end-to-end evidence](evidence/supervisor-modify-seed-20261005/e2e.json)
+reproduces the original present-target digest refusal on pristine commit
+`39f88fee698cbb85af167ac49a3ec9fe6a0de799`. The corrected case uses real Git,
+accepted proposal gates, prompt compilation and the ephemeral implementation
+owner, with a deterministic dependency-environment probe and a stop at provider
+command construction. Candidate drift prevents that dispatch. The
+[contract evidence](evidence/supervisor-modify-seed-20261005/contract.json)
+also records malformed/resealed carriers, baseline and namespace mismatches,
+nested checkout drift, and resource bounds. Focused counts overlap the final
+selection and must not be added to it.
+
+The existing `test_v2_auto_repairs_undeclared_same_board_pytest_task` expectation
+still fails on the pristine base: detection-only preflight does not synthesize
+contracts for undeclared tasks. Archived v3/v4/v5 configuration suites import
+schema constants absent from that base; their collection errors are retained in
+the evidence. They are separate from the new version-2 prior-seed handoff.
+Direct-lane guidance without an exact trusted task projection remains
+unsupported. This qualification uses no paid models and produces no new
+Terminal-Bench reward or token score.
