@@ -172,6 +172,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
+    failure_phase = "provider_invocation"
     try:
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
@@ -183,12 +184,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             side_effecting=True,
             task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
         )
+        failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
         if observation.get("exit_code") != 0:
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
             raise RuntimeError("coding router returned an empty response")
         if encoded is not None:
+            failure_phase = "semantic_response_decode"
             from .semantic_router_translation import decode_semantic_router_response
             decoded = decode_semantic_router_response(response=output, encoded=encoded,
                                                       repository=semantic_repository)
@@ -197,7 +200,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["status"] = "provider_returned"
         return output, receipt
     except BaseException as error:
-        receipt.update(status="failed", error_type=type(error).__name__)
+        receipt.update(status="failed", error_type=type(error).__name__, failure_phase=failure_phase)
+        if failure_phase == "semantic_response_decode":
+            from .semantic_router_translation import SemanticTranslationError
+            # The closed projection never serializes model text or arbitrary
+            # exception messages. Candidate rejection remains unchanged.
+            if type(error) is SemanticTranslationError:
+                receipt["semantic_response_failure"] = {
+                    "phase": failure_phase, "reason_code": error.reason_code,
+                }
         raise
     finally:
         observation = get_last_cli_observation(provider)

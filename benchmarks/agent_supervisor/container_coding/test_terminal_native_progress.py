@@ -182,6 +182,9 @@ def test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence(tmp_pat
     monkeypatch.setattr(driver, "_final_context_audit", lambda *args, **kwargs: None)
     monkeypatch.setattr(driver, "_native_diagnostics", lambda *args, **kwargs: {})
     monkeypatch.setattr(driver, "_refresh_completed_context", lambda *args, **kwargs: None)
+    # Context preparation and completion refresh are authored doubles in this
+    # driver-loop test; retrieval nominations require their real signed bundle.
+    monkeypatch.setattr(driver, "_published_retrieval_options", lambda **kwargs: {})
     monkeypatch.setattr(driver.preparation, "prepare", lambda **kwargs: {"intent_preplanning": {}})
     monkeypatch.setattr(driver.preparation, "initial_context", lambda **kwargs: {})
     monkeypatch.setattr(driver.preparation, "plan", lambda **kwargs: {"qualified": True})

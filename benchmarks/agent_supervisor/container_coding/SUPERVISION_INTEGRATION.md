@@ -285,9 +285,12 @@ findings still abstain.
 
 `full_supervisor_benchmark.py` prepares and executes one-shot Harbor trials for
 the `full` and `no-index` arms. Both use the original task Dockerfile and hidden
-verifier, Codex 0.158.0 through the shared model router, gpt-5.6-sol with high
-reasoning, and the native baseline's 300-second agent limit. Planning and cold
-index construction count against that limit. Native Codex's separate adapter
+verifier and Codex 0.158.0 through the shared model router, with `gpt-6.1-sol`
+and high reasoning in the current comparison profile. Historical trials retain
+their recorded models. The default agent limit is 300 seconds; the explicit
+`source384-5cpu-16gib-extended@1` development profile allows 840 seconds of
+supervisor work, 60 seconds of cleanup and a 960-second outer agent limit.
+Planning and cold indexing count against the supervisor work budget. Native Codex's separate adapter
 is retained in `native_codex_baseline.py`.
 
 The local container profile uses an owner UID for native state and signing,

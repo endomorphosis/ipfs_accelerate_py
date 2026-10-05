@@ -38,8 +38,10 @@ Build a new archive with generic `terminal-source384-config@1` for these tasks.
 The previous `@2` header-applicability selection and reviewed Bottle intent
 contract are task-specific. The generic route invokes the symbolic doctor with
 no header contract; unsupported repairs become explicit residual work through
-`ipfs_accelerate_py.llm_router`. The qualified route remains `codex_cli`, model
-`gpt-5.6-sol`, high reasoning and CLI `0.158.0`. Planning and coding usage both
+`ipfs_accelerate_py.llm_router`. The current comparison route pins `codex_cli`, model
+`gpt-6.1-sol`, high reasoning and CLI `0.158.0`. The retained three-task pilot
+used `gpt-5.6-sol`; changing the model starts a different experiment. This
+container profile does not yet deploy the general supervisor's Grok route. Planning and coding usage both
 count. The worker permits at most 300 seconds per coding provider call; this is
 separate from the 840-second supervisor work budget and 60-second cleanup reserve.
 Missing token usage stays unknown, and no hard dollar/token ceiling is enforced.
@@ -49,9 +51,11 @@ the disposable task container when needed. It installs UV in an isolated harness
 virtual environment, preserving the original task interpreter. Inputs may not
 be links or special files. Native source/scan limits remain enforced: at most 252
 original files, 262144 bytes per scanned file and the existing 4 MB source-total
-bound. The vector route requires actual supported source and at most 64 files;
-source-less tasks currently refuse full indexing explicitly. The no-index route
-can prepare them, but is a different arm.
+bound. The nonempty vector route requires supported source and at most 64 files.
+An explicit empty or zero-symbol retrieval population is available, but selecting
+Source384, legacy security inference or local autoencoder training with that
+population still refuses preparation until independent decoder abstention is
+bound. Empty-context and no-index configurations need their own task qualification.
 
 Other limitations remain explicit: workers cannot install system-wide packages,
 files outside `/app` are not covered, write effects are exact create/modify paths,

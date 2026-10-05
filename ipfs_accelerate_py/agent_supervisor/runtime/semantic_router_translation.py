@@ -51,8 +51,74 @@ INSTRUCTIONS = (
 )
 
 
+# Only owner-authored diagnostics are projected into provider usage receipts.
+# Unknown exception text may contain source or provider data and stays private.
+_ERROR_REASON_CODES = {
+    "ambiguous translation mapping": "mapping_ambiguous",
+    "capsule differs from verified producer": "capsule_producer_mismatch",
+    "duplicate translation key": "duplicate_key",
+    "explicit semantic program selection differs": "program_selection_mismatch",
+    "explicit semantic program selection requires its versioned schema": "program_selection_schema_invalid",
+    "historical replay cannot decode operational references": "historical_decode_forbidden",
+    "historical semantic program reconstruction differs": "historical_program_mismatch",
+    "invalid producer block identity": "producer_block_identity_invalid",
+    "invalid translation alias": "alias_invalid",
+    "invalid translation table identity or authority": "table_identity_or_authority_invalid",
+    "malformed reserved translation response": "response_reserved_envelope_malformed",
+    "native compiled context JSON required": "native_context_json_invalid",
+    "native prompt did not round-trip exactly": "native_prompt_round_trip_mismatch",
+    "native prompt exceeds translation bound": "native_prompt_size_exceeded",
+    "native prompt has no semantic context nomination": "semantic_nomination_missing",
+    "native prompt is not canonical compiled context": "native_context_noncanonical",
+    "native prompt reconstruction differs": "native_prompt_reconstruction_mismatch",
+    "native semantic chunk binding differs": "native_chunk_binding_mismatch",
+    "native structured payload required": "response_structured_payload_missing",
+    "nominated semantic artifact differs from native prompt": "nominated_artifact_mismatch",
+    "noncanonical translation path": "path_noncanonical",
+    "nonregular or oversized translation input": "input_type_or_size_invalid",
+    "provider response exceeds translation bound": "response_size_exceeded",
+    "raw semantic source differs from retained bytes": "raw_source_mismatch",
+    "reference response requires a bounded list": "response_reference_list_invalid",
+    "response translation table is stale or foreign": "response_table_stale_or_foreign",
+    "restored semantic bytes differ": "restored_semantic_mismatch",
+    "retained semantic source binding differs": "retained_source_binding_mismatch",
+    "semantic artifact nomination is ambiguous": "semantic_nomination_ambiguous",
+    "semantic identifier scope exceeds bound": "identifier_scope_exceeded",
+    "semantic manifest differs from complete producer source inventory": "producer_inventory_mismatch",
+    "semantic producer belongs to another repository": "producer_repository_mismatch",
+    "semantic raw sources escape producer inventory": "raw_source_inventory_escape",
+    "semantic reference coverage differs": "reference_coverage_mismatch",
+    "semantic repository must be canonical": "repository_noncanonical",
+    "semantic source scope identity differs": "source_scope_mismatch",
+    "semantic task/schema/source binding differs": "semantic_binding_mismatch",
+    "semantic translation source is stale": "source_stale",
+    "source changed during translation": "source_changed_during_translation",
+    "structured response must remain a native candidate": "response_candidate_authority_invalid",
+    "structured response task/root/table binding differs": "response_envelope_binding_mismatch",
+    "translated provider prompt exceeds bound": "provider_prompt_size_exceeded",
+    "translated response failed native candidate grammar": "response_native_grammar_invalid",
+    "translated wire or mapping was tampered": "wire_or_mapping_mismatch",
+    "translation exceeds byte bound": "translation_size_exceeded",
+    "translation exceeds structure bound": "translation_structure_exceeded",
+    "translation input changed during read": "input_changed_during_read",
+    "translation table differs from current producer": "table_producer_mismatch",
+    "translation table exceeds entry bound": "table_entries_exceeded",
+    "unknown or ambiguous semantic reference": "reference_unknown_or_ambiguous",
+    "unknown semantic response alias": "response_alias_unknown",
+    "unknown semantic response identifier": "response_identifier_unknown",
+    "unsupported translation table fields": "table_fields_unsupported",
+}
+
+
 class SemanticTranslationError(ValueError):
     """A source, task, producer or reversible representation binding failed."""
+
+    @property
+    def reason_code(self) -> str:
+        """Return a closed diagnostic code without exporting exception text."""
+        if len(self.args) == 1 and type(self.args[0]) is str:
+            return _ERROR_REASON_CODES.get(self.args[0], "unclassified")
+        return "unclassified"
 
 
 def _sha(value: str | bytes) -> str:
