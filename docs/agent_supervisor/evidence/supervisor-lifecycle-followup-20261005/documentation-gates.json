@@ -1,0 +1,90 @@
+{
+  "all_2665_qualified_source_bindings_unchanged": true,
+  "command": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "content_sha256": "7514f1296281f19336515db6ab32100c5dd4a4a11854fef239d81a02e67bcb8b",
+  "created_utc": "2026-10-05T06:36:51.002030+00:00",
+  "exit_code": 0,
+  "gate_implementation_and_primary_inputs": [
+    {
+      "bytes": 2854,
+      "path": "scripts/docs/run_documentation_gates.py",
+      "sha256": "9cca5cafba0c5b68a6caa88ebf0aa8cb8dd443d57aa9fdae6c437886d47bc12e"
+    },
+    {
+      "bytes": 2845,
+      "path": "scripts/docs/check_agent_supervisor_docs.py",
+      "sha256": "09580aa9a8707ce8da278d5b7fef4055e1945e53266c0fc4437e516eda1fed87"
+    },
+    {
+      "bytes": 10445,
+      "path": "scripts/docs/check_current_docs_links.py",
+      "sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e"
+    },
+    {
+      "bytes": 3479,
+      "path": ".github/workflows/documentation-gates.yml",
+      "sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+    },
+    {
+      "bytes": 37272,
+      "path": "pyproject.toml",
+      "sha256": "f9b2597c80a08b838a6c81cb9eb3a713d3b3256036fecffaf942b18a9585b3c5"
+    },
+    {
+      "bytes": 20065,
+      "path": "setup.py",
+      "sha256": "93af5252ba66c3ff506bdd326a44586be41af77c930952b74f0b232f82d33d0b"
+    },
+    {
+      "bytes": 40208,
+      "path": "ipfs_accelerate_py/__init__.py",
+      "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+    },
+    {
+      "bytes": 9136,
+      "path": "docs/INDEX.md",
+      "sha256": "cac96a98e15a05f2df10777aca74526a5277a9289127220d2513c4b8936019d3"
+    },
+    {
+      "bytes": 15652,
+      "path": "docs/development/DOCUMENTATION_CURRENT_STATE.md",
+      "sha256": "ac1ecc6cd8cf35463754bc7127da1d8b6efb0fb87c0f57c32871c4db00c69e9a"
+    },
+    {
+      "bytes": 22999,
+      "path": "docs/development/DOCUMENTATION_VALIDATION_2026_08.md",
+      "sha256": "bc33fe2795fe773853697f0645bef505ff9169048b70da091229799b7fc5c6c6"
+    },
+    {
+      "bytes": 45917,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "afe4c74e08298084125a97e09a947b61113485ef32bb58415fdbc38ffdcf64df"
+    }
+  ],
+  "github_actions": {
+    "annotations": [
+      {
+        "annotation_level": "failure",
+        "message": "The job was not started because your account is locked due to a billing issue.",
+        "path": ".github"
+      }
+    ],
+    "check_run_id": 111643248208,
+    "conclusion": "failure",
+    "reported_as_passed": false,
+    "url": "https://github.com/endomorphosis/ipfs_accelerate_py/actions/runs/37272815903/job/111643248208"
+  },
+  "qualification": {
+    "bytes": 3875,
+    "path": "final.json",
+    "sha256": "a5e1ad745cd25bd1dc08da98ded9a4d4b252332a7f01d3285d08c92e657af160"
+  },
+  "revision_under_test": "0553613c6266677bf56950058c45faafa5807ac3",
+  "schema": "supervisor-lifecycle-documentation-gates/v1",
+  "status": "local_documentation_gates_passed_hosted_job_not_started",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+}
