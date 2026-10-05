@@ -23,7 +23,7 @@ import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    PROFILES, admission_environment, execution_budget, native_start_timeout_ms,
+    PROFILES, admission_environment, execution_budget, native_start_timeout_ms, planner_timeout_seconds,
 )
 from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
@@ -612,7 +612,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         before = time.monotonic()
         try:
             planned = preparation.plan(state=state, provider_callable=isolated_planner,
-                                       timeout_seconds=min(90, remaining(30)))
+                                       timeout_seconds=min(planner_timeout_seconds(resource_profile), remaining(30)))
         finally:
             report["phases"]["planning_seconds"] = time.monotonic() - before
         report["planning"] = planned

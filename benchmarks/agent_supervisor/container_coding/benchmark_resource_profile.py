@@ -8,7 +8,9 @@ import math
 
 SOURCE384_PROFILE = "source384-5cpu-12gib@1"
 EXTENDED_SOURCE384_PROFILE = "source384-5cpu-16gib-extended@1"
-PROFILES = (SOURCE384_PROFILE, EXTENDED_SOURCE384_PROFILE)
+PLANNER180_SOURCE384_PROFILE = "source384-5cpu-16gib-planner180@1"
+EXTENDED_PROFILES = (EXTENDED_SOURCE384_PROFILE, PLANNER180_SOURCE384_PROFILE)
+PROFILES = (SOURCE384_PROFILE, *EXTENDED_PROFILES)
 SOURCE384_ENVIRONMENT = dict(override_cpus=5, override_memory_mb=12288,
     cpu_enforcement_policy="limit", memory_enforcement_policy="limit")
 
@@ -17,7 +19,7 @@ def resource_environment(profile):
     if profile not in PROFILES:
         raise ValueError("unknown benchmark resource profile")
     result = dict(SOURCE384_ENVIRONMENT)
-    if profile == EXTENDED_SOURCE384_PROFILE:
+    if profile in EXTENDED_PROFILES:
         result["override_memory_mb"] = 16384
     return result
 
@@ -25,13 +27,19 @@ def resource_environment(profile):
 def execution_budget(profile=None):
     if profile not in (None, *PROFILES):
         raise ValueError("unknown benchmark resource profile")
-    if profile == EXTENDED_SOURCE384_PROFILE:
+    if profile in EXTENDED_PROFILES:
         return dict(driver_seconds=900, cleanup_seconds=60, source384_seconds=180,
                     harbor_seconds=960, exec_seconds=910, qualification_seconds=600,
                     qualification_exec_seconds=630, native_start_seconds=120)
     return dict(driver_seconds=285, cleanup_seconds=40, source384_seconds=90,
                 harbor_seconds=300, exec_seconds=295, qualification_seconds=270,
                 qualification_exec_seconds=300, native_start_seconds=20)
+
+
+def planner_timeout_seconds(profile=None):
+    """An explicit planner allowance within the unchanged enclosing work budget."""
+    execution_budget(profile)
+    return 180 if profile == PLANNER180_SOURCE384_PROFILE else 90
 
 
 def native_start_timeout_ms(profile=None, *, remaining_work_seconds):
@@ -46,7 +54,7 @@ def native_start_timeout_ms(profile=None, *, remaining_work_seconds):
     if (type(remaining_work_seconds) not in (int, float)
             or not math.isfinite(remaining_work_seconds) or remaining_work_seconds < 0):
         raise ValueError("remaining work must be finite non-negative seconds")
-    if profile != EXTENDED_SOURCE384_PROFILE:
+    if profile not in EXTENDED_PROFILES:
         return None
     timeout = int(min(budget["native_start_seconds"], remaining_work_seconds) * 1000)
     if timeout < 2000:
@@ -58,7 +66,7 @@ def admission_environment(profile=None):
     execution_budget(profile)  # Reject unknown profiles even without admission changes.
     return ({"IPFS_DATASETS_PROOF_RESOURCE_PROFILE": "local-benchmark@1",
              "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/opt/ipfs-supervisor/state/resource-scheduler.json"}
-            if profile == EXTENDED_SOURCE384_PROFILE else {})
+            if profile in EXTENDED_PROFILES else {})
 
 
 def apply_resource_profile(config, profile=None):

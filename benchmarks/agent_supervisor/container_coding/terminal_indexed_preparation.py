@@ -188,7 +188,14 @@ def _load_prepared(state):
             or str(repository) != manifest["repository"]):
         raise ValueError("preparation differs from exact signed public input and task declarations")
     selected = _prepared_provider(prepared)
-    policy = PromptWorkflowRequest.from_dict(prepared["request"]).planning_policy
+    request = PromptWorkflowRequest.from_dict(prepared["request"])
+    from .benchmark_resource_profile import planner_timeout_seconds
+    planner_limit = planner_timeout_seconds(prepared.get("resource_profile"))
+    if (type(prepared.get("planner_timeout_seconds")) is not int
+            or prepared["planner_timeout_seconds"] != planner_limit
+            or request.budget.max_latency_ms != planner_limit * 1000):
+        raise ValueError("prepared planner deadline differs from the signed resource-profile budget")
+    policy = request.planning_policy
     if (policy.provider_preferences != (selected["provider"],)
             or policy.model_preferences != (selected["model"],)):
         raise ValueError("provider profile differs from signed planning preferences")
@@ -251,8 +258,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     restored. Public instruction/check files become immutable signed inputs.
     """
     provider_selection = resolve_provider_profile(provider_profile)
-    from .benchmark_resource_profile import execution_budget
+    from .benchmark_resource_profile import execution_budget, planner_timeout_seconds
     execution = execution_budget(resource_profile)
+    planner_limit = planner_timeout_seconds(resource_profile)
     started = time.monotonic()
     if (type(disable_intent_autoencoder) is not bool or type(enable_source_unit_autoencoder) is not bool
             or type(source_unit_project_logic_families) is not bool):
@@ -415,7 +423,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     allowlist = RepositoryAllowlist.from_roots([repository])
     budget = PromptWorkflowBudget(max_files=256 if task_profile is not None else 8, max_scan_bytes=8388608, max_file_bytes=262144,
         max_symbols=1024, max_prompt_tokens=32768, max_provider_tokens=4096,
-        max_latency_ms=90000, max_goals=2, max_tasks=len(specs), max_evidence=16,
+        max_latency_ms=planner_limit * 1000, max_goals=2, max_tasks=len(specs), max_evidence=16,
         max_graph_depth=4, max_serialized_bytes=1048576, max_rescue_actions=1)
     request = PromptWorkflowRequest(
         prompt_source=PromptSource.inline(text, redacted_metadata={
@@ -441,7 +449,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
     request = replace(request, program_root=details.receipt.program_root)
     details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist, previous=details)
-    config, scan = _config(repository, provider_profile=provider_profile), details.receipt
+    config, scan = _config(repository, timeout_seconds=planner_limit, provider_profile=provider_profile), details.receipt
     evidence = _select_evidence(request, scan, config)
     if multitask:
         for task_spec in specs:
@@ -466,7 +474,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "request": request.to_dict(), "scan": scan.to_dict(), "constraints": constraints,
         "spec": spec, **{key: provider_selection[key] for key in ("provider", "model", "reasoning_effort")},
         **({"provider_profile": provider_selection["id"]} if provider_profile is not None else {}),
-        "planner_timeout_seconds": 90, "max_total_agent_seconds": execution["harbor_seconds"],
+        "planner_timeout_seconds": planner_limit, "max_total_agent_seconds": execution["harbor_seconds"],
         "resource_profile": resource_profile,
         "planning_and_cold_index_overhead_included": True,
         "provider_calls": 0, "report_preseeded": False, "benchmark_success": None,
@@ -657,7 +665,7 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repos
     return result
 
 
-def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repository_preview=None) -> dict:
+def plan(state: Path, *, provider_callable=None, timeout_seconds: int | None = None, repository_preview=None) -> dict:
     """Select v2 operations symbolically, otherwise call the qualified router once.
 
     The callable receives pinned provider/model/reasoning/timeout options and
@@ -668,10 +676,13 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
     outer_started = time.monotonic()
     if not callable(provider_callable) and not (Path(state) / "prepared.json").is_file():
         raise ValueError("planning requires an independently qualified isolated worker router callable")
-    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 90:
-        raise ValueError("planner timeout must be an integer from 1 to 90 seconds within the overall trial budget")
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
+    planner_limit = prepared["planner_timeout_seconds"]
+    if timeout_seconds is None:
+        timeout_seconds = planner_limit
+    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= planner_limit:
+        raise ValueError(f"planner timeout must be an integer from 1 to {planner_limit} seconds within the signed overall trial budget")
     if (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3":
         from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import applicability_budget
         left = timeout_seconds - (time.monotonic() - outer_started)

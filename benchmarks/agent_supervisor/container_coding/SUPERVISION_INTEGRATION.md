@@ -293,6 +293,15 @@ supervisor work, 60 seconds of cleanup and a 960-second outer agent limit.
 Planning and cold indexing count against the supervisor work budget. Native Codex's separate adapter
 is retained in `native_codex_baseline.py`.
 
+The separate `source384-5cpu-16gib-planner180@1` profile keeps the extended
+profile's 5 CPUs, 16 GiB memory, 900-second driver limit, 840-second work window,
+and 60-second cleanup reserve. It allows planning up to 180 seconds; all prior
+profiles retain 90 seconds. The signed planning request records this limit,
+and the driver still caps the actual call at the remaining work time less a
+30-second reserve. It does not enable setup-cache or warm-recovery policies.
+Use this explicit profile consistently across comparison arms; a longer
+planning allowance is a distinct experiment, not a result under prior limits.
+
 The local container profile uses an owner UID for native state and signing,
 and a separate worker UID for model tools, candidate validation, and automatic
 materialization commands. Root-owned launchers and the signed runtime bind
