@@ -744,7 +744,7 @@ unchanged capability gate and all 160 cases, matching the container dependency
 pin. The first diagnostic code alone does not identify the substantive failure;
 the complete capability report does.
 
-The latest retained eigenvalue trial failed in planning before native START:
+The latest completed eigenvalue trial at the initial audit failed in planning before native START:
 the isolated router exited unsuccessfully and returned no response. Its official
 reward remains zero. Two earlier Codex CLI 0.158 health checks failed while a
 0.160 host check succeeded; this observation does not prove version causality or
@@ -780,3 +780,12 @@ operator coverage remain improvements; the selected Codex container arm does
 not depend on their completion. GitHub's account billing lock prevents hosted
 CI from starting but does not prevent local Harbor execution. This assessment
 makes no new provider calls and records no new official task success.
+
+The [merged qualification](evidence/terminal-bench-finish-readiness-20261005/merged-qualification.json)
+records **215 passing tests**, zero failures or skips, after incorporating the
+independently qualified ordinary-supervisor custody changes. All 2,870 source
+bindings match the tested commit and remain unchanged. Earlier selections
+overlap this run and are not added to its count. A separate owner has started
+fresh eigenvalue trial 03 with CLI 0.160.0 and a new archive; the retained
+[observation](evidence/terminal-bench-finish-readiness-20261005/trial-03-observation.json)
+has no completed receipt or official reward yet. Its outcome remains pending.
