@@ -561,9 +561,10 @@ the [donor checks](evidence/supervisor-recovery-routing-20261005/retained-donor.
 [bounded status checks](evidence/supervisor-recovery-routing-20261005/bounded-status.json)
 overlap the final selection and must not be added to its count.
 
-Prior-attempt MODIFY seeding into already-existing outputs remains unsupported
-by preflight v2. Direct-lane advisory guidance without a trusted exact task
-projection remains refused. This focused qualification does not establish that
+At that qualification, prior-attempt MODIFY seeding into existing outputs was
+unsupported by preflight v2; the next section records its implementation.
+Direct-lane advisory guidance without a trusted exact task projection remains
+refused. This focused qualification does not establish that
 every archived legacy suite passes. It uses no paid providers and produces no
 new Terminal-Bench reward or token score.
 

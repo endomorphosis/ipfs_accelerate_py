@@ -4,25 +4,25 @@
     {
       "name": "Supervisor primary-doc vocabulary",
       "exit_code": 0,
-      "seconds": 0.033777904987800866,
+      "seconds": 0.019311980984639376,
       "output": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n"
     },
     {
       "name": "Maintained-surface relative links",
       "exit_code": 0,
-      "seconds": 0.09423945800517686,
+      "seconds": 0.10993400900042616,
       "output": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n"
     },
     {
       "name": "Packaging version pin alignment",
       "exit_code": 0,
-      "seconds": 0.030108135018963367,
+      "seconds": 0.017822652007453144,
       "output": "OK: packaging pins aligned at 0.0.45\n"
     },
     {
       "name": "Closeout navigation markers",
       "exit_code": 0,
-      "seconds": 0.00411140700452961,
+      "seconds": 0.0029445300169754773,
       "output": "OK: closeout navigation markers present\n"
     }
   ]
