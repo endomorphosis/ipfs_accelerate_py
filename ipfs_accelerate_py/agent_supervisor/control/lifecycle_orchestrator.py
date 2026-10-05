@@ -985,7 +985,28 @@ class _SagaState:
     def from_dict(cls, payload: Mapping[str, Any]) -> "_SagaState":
         if payload.get("schema") != LIFECYCLE_SAGA_SCHEMA:
             raise ValueError("unsupported lifecycle saga schema")
-        return cls(
+        _positive_int(payload.get("revision", 0), "revision", allow_zero=True)
+        _positive_int(
+            payload.get("health_window_started_at_ms", 0),
+            "health_window_started_at_ms",
+            allow_zero=True,
+        )
+        if not isinstance(payload.get("old_tree_fenced", False), bool):
+            raise TypeError("old_tree_fenced must be a boolean")
+        if not isinstance(payload.get("intent"), Mapping):
+            raise TypeError("lifecycle saga intent must be an object")
+        for name in ("old_tree", "new_tree", "receipt"):
+            if payload.get(name) is not None and not isinstance(payload[name], Mapping):
+                raise ValueError(f"{name} must be an object or null")
+        for name in ("observed_effects", "compensation"):
+            values = payload.get(name, ())
+            if not isinstance(values, (list, tuple)) or any(
+                not isinstance(item, str) or not item.strip() for item in values
+            ):
+                raise ValueError(f"{name} must be a sequence of non-empty strings")
+        if not isinstance(payload.get("failure_code", ""), str):
+            raise TypeError("failure_code must be text")
+        state = cls(
             intent=LifecycleTransitionIntent.from_dict(payload["intent"]),
             phase=LifecycleSagaPhase(payload.get("phase", "")),
             revision=payload.get("revision", 0),
@@ -1010,6 +1031,29 @@ class _SagaState:
                 else None
             ),
         )
+        for name in ("fencing_epoch", "expected_revision", "health_window_ms", "created_at_ms"):
+            _positive_int(getattr(state.intent, name), name, allow_zero=True)
+        _positive_int(state.intent.deadline_ms, "deadline_ms")
+        for tree in (state.old_tree, state.new_tree):
+            if tree is not None and (
+                tree.profile_id != state.intent.profile_id
+                or tree.run_id != state.intent.run_id
+            ):
+                raise ValueError("lifecycle saga process tree binding mismatch")
+        if state.new_tree is not None and any(
+            member.fencing_epoch != state.intent.fencing_epoch
+            for member in state.new_tree.members
+        ):
+            raise ValueError("lifecycle saga new process fence mismatch")
+        if state.receipt is not None and (
+            state.phase is not LifecycleSagaPhase.COMMITTED
+            or state.receipt.phase is not LifecycleSagaPhase.COMMITTED
+            or state.receipt.intent != state.intent
+        ):
+            raise ValueError("lifecycle saga receipt binding mismatch")
+        if state.phase is LifecycleSagaPhase.COMMITTED and state.receipt is None:
+            raise ValueError("committed lifecycle saga receipt is absent")
+        return state
 
 
 class LifecycleSagaStore:
@@ -1043,13 +1087,15 @@ class LifecycleSagaStore:
             return ()
         try:
             lines = self.path.read_text(encoding="utf-8").splitlines()
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise TransactionConflictError("lifecycle saga journal is unreadable") from exc
         for line in lines:
             try:
                 raw = json.loads(line)
+                if not isinstance(raw, Mapping):
+                    raise TypeError("lifecycle saga record must be an object")
                 state = _SagaState.from_dict(raw)
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError) as exc:
                 raise TransactionConflictError(
                     "lifecycle saga journal contains an invalid record"
                 ) from exc
@@ -1087,6 +1133,11 @@ class LifecycleSagaStore:
             stream.write(encoded + "\n")
             stream.flush()
             os.fsync(stream.fileno())
+        directory_fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
 
 class LifecycleOrchestrator:
@@ -1278,6 +1329,23 @@ class LifecycleOrchestrator:
         if len(tree.roots) != 1:
             raise SplitBrainError("multiple process roots exist for the requested run/profile")
 
+    def _assert_startup_root(
+        self,
+        expected: ProcessTreeSnapshot,
+        observed: ProcessTreeSnapshot,
+    ) -> None:
+        self._assert_single_tree(expected, allow_empty=False)
+        self._assert_single_tree(observed, allow_empty=False)
+        # Owner death can reparent the same OS process. Preserve every other
+        # identity field, including boot, PID/start time, run markers and fence.
+        expected_root = replace(
+            expected.roots[0],
+            parent_pid=observed.roots[0].parent_pid,
+            identity_id="",
+        )
+        if expected_root.identity_id != observed.roots[0].identity_id:
+            raise ProcessIdentityMismatch("resumed startup observes a different process root")
+
     def _prove_absent(
         self,
         profile: LifecycleProfile,
@@ -1361,9 +1429,9 @@ class LifecycleOrchestrator:
             self._assert_single_tree(current, allow_empty=False)
             if state.new_tree is None:
                 raise SplitBrainError("a process tree appeared before the authorized launch")
-            expected_ids = {item.identity_id for item in state.new_tree.members}
-            if not expected_ids.issubset({item.identity_id for item in current.members}):
-                raise ProcessIdentityMismatch("resumed startup observes a different process tree")
+            # The exact launched root must survive. Its descendants may finish
+            # or be replaced naturally while the owner is interrupted.
+            self._assert_startup_root(state.new_tree, current)
         elif state.phase is LifecycleSagaPhase.PARTIAL_FAILURE and state.new_tree is not None:
             # Prior health compensation proved the unhealthy tree absent.
             # Retain the old-tree fence checkpoint but create a fresh identity.
@@ -1430,7 +1498,15 @@ class LifecycleOrchestrator:
                 ),
             )
 
-        healthy_since = state.health_window_started_at_ms
+        # Persisted wall time does not prove health while no owner observed the
+        # process. A resumed owner must observe a complete fresh health window.
+        if state.health_window_started_at_ms:
+            state = self._advance(
+                state,
+                LifecycleSagaPhase.VERIFYING_HEALTH,
+                health_window_started_at_ms=0,
+            )
+        healthy_since = 0
         while self._remaining_ms(deadline) > 0:
             observed = self._process.snapshot(profile)
             try:
@@ -1444,6 +1520,8 @@ class LifecycleOrchestrator:
                     )
                 healthy_since = 0
             else:
+                if state.new_tree is not None:
+                    self._assert_startup_root(state.new_tree, observed)
                 now_ms = self._clock_ms()
                 if self._process.healthy(
                     profile,
@@ -1560,9 +1638,16 @@ class LifecycleOrchestrator:
         else:
             if not state.old_tree_fenced:
                 state = self._stop_old(state, profile, deadline, require_running=True)
-            # A restart always revalidates absence immediately before launch.
+            # Before a fresh launch, the entire run must be absent. After the
+            # launch checkpoint, its new tree is expected to be alive: prove
+            # only the exact old identities absent, then validate the new root.
             old_tree = state.old_tree or self._process.snapshot(profile)
-            absent, _observed = self._prove_absent(profile, old_tree)
+            if state.new_tree is None:
+                absent, _observed = self._prove_absent(profile, old_tree)
+            else:
+                absent = not any(
+                    self._process.identity_alive(member) for member in old_tree.members
+                )
             if not absent:
                 raise ProcessTreeNotFenced(
                     "old process tree was not fenced before restart launch",

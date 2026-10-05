@@ -131,7 +131,11 @@ def _request(
         "parameters": {
             "target_id": "supervisor:fixture",
             "reason": "operator maintenance",
-            "requested_state": operation.value,
+            **(
+                {"requested_state": operation.value}
+                if operation is not Operation.RESTART
+                else {}
+            ),
         },
         "expected_effects": (effect,),
         "dry_run": dry_run,
@@ -170,7 +174,7 @@ def _command(operation: Operation, *, dry_run: bool) -> LifecycleCommand:
         action=LifecycleAction(operation.value),
         target_id="supervisor:fixture",
         reason="operator maintenance",
-        requested_state=operation.value,
+        requested_state=operation.value if operation is not Operation.RESTART else "",
         dry_run=dry_run,
     )
 

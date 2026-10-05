@@ -566,3 +566,43 @@ by preflight v2. Direct-lane advisory guidance without a trusted exact task
 projection remains refused. This focused qualification does not establish that
 every archived legacy suite passes. It uses no paid providers and produces no
 new Terminal-Bench reward or token score.
+
+## Supervisor restart, preflight and staged patch recovery (2026-10-05)
+
+Supervisor provider execution continues through the canonical `llm_router`.
+Routing regression coverage distinguishes same-provider model retries from
+cross-provider fallback and verifies the shared Codex command owner, isolated
+worker dispatch and proposal subprocess boundary.
+
+An interrupted START or RESTART resumes only the recorded launched root. The
+root may be reparented after its supervisor exits, and its descendants may
+finish naturally; PID start time, boot, run, launch profile and fence remain
+checked. RESTART verifies that the recorded old process identities are gone
+without mistaking the surviving new process for an unfenced old tree. A resumed
+owner observes a fresh health window, and root replacement during that window
+is rejected. Malformed saga records are rejected before process effects.
+
+The daemon checkpoint API now writes a bounded, versioned JSON envelope with a
+record digest, atomic replacement, and file and directory fsync. Reload verifies
+the envelope and current attempt, plan, tree and fence bindings. In-memory
+legacy callers retain the typed stale-stop interface; persisted checkpoints use
+the new envelope rather than Python repr.
+
+Dependency-preflight persistence uses a one-second lock-acquisition deadline
+across thread and process locks. Contention publishes the existing failed
+infrastructure receipt and defers dispatch. The store remains retryable, and a
+subsequent successful attempt persists and rereads the canonical receipt before
+returning. Other artifact-store consumers retain their existing behavior unless
+they configure a lock deadline.
+
+The shared Git patch collector captures final contents against HEAD, covering
+staged and unstaged edits together. New files use nonmutating no-index diffs;
+collection preserves the real index, HEAD and working files. Literal filenames,
+binary patches and CRLF/CR text replay are covered, including the legal-parser
+adapter's full patch output. Failed reads and undecodable text stop collection
+before a partial or altered patch is returned.
+
+The [follow-up qualification](evidence/supervisor-lifecycle-followup-20261005/final.json)
+records the frozen source bindings, selected regression cases, independent
+review and the unchanged-baseline validation failures. This qualification does
+not produce new model weights, live-provider results or benchmark scores.

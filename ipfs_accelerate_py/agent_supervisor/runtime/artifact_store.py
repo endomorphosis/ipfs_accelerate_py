@@ -696,9 +696,17 @@ class BoundedArtifactStore:
         clock: Callable[[], float] = time.time,
         eviction_observer: Callable[[Mapping[str, Any]], None] | None = None,
         refresh_on_lock: bool = False,
+        lock_timeout_seconds: float | None = None,
     ) -> None:
         if type(refresh_on_lock) is not bool:
             raise TypeError("refresh_on_lock must be a boolean")
+        if lock_timeout_seconds is not None and (
+            isinstance(lock_timeout_seconds, bool)
+            or not isinstance(lock_timeout_seconds, (int, float))
+            or lock_timeout_seconds <= 0
+            or not math.isfinite(lock_timeout_seconds)
+        ):
+            raise ValueError("lock_timeout_seconds must be positive and finite")
         if quotas is not None and quota is not None:
             raise ValueError("pass quotas or quota, not both")
         selected_quota = quotas if quotas is not None else quota
@@ -727,6 +735,7 @@ class BoundedArtifactStore:
         self._clock = clock
         self._eviction_observer = eviction_observer
         self._refresh_on_lock = refresh_on_lock
+        self._lock_timeout_seconds = lock_timeout_seconds
         self._thread_lock = _bounded_store_lock(self.lock_path)
         self._metrics_lock = threading.Lock()
         self._metric_values = {name: 0 for name in ArtifactStoreMetrics.__dataclass_fields__}
@@ -749,6 +758,11 @@ class BoundedArtifactStore:
 
     @contextmanager
     def _locked(self, *, deadline: float | None = None) -> Iterator[None]:
+        # Apply the same budget to both the thread and process locks. The
+        # explicit shutdown deadline continues to take precedence; other store
+        # users retain their existing blocking behavior unless they opt in.
+        if deadline is None and self._lock_timeout_seconds is not None:
+            deadline = time.monotonic() + self._lock_timeout_seconds
         acquired = self._thread_lock.acquire(
             timeout=-1 if deadline is None else max(0.0, deadline - time.monotonic())
         )

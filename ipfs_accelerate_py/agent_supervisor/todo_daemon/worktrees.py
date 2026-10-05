@@ -60,14 +60,18 @@ def _run_command_with_timeout(
     *,
     cwd: Path,
     timeout_seconds: int,
+    preserve_output_newlines: bool = False,
 ) -> CommandResult:
     normalized_timeout = max(1, int(timeout_seconds))
+    options = {"preserve_output_newlines": True} if preserve_output_newlines else {}
     try:
-        return run_command_fn(tuple(command), cwd=cwd, timeout_seconds=normalized_timeout)
+        return run_command_fn(
+            tuple(command), cwd=cwd, timeout_seconds=normalized_timeout, **options
+        )
     except TypeError as exc:
         if "timeout_seconds" not in str(exc):
             raise
-        return run_command_fn(tuple(command), cwd=cwd, timeout=normalized_timeout)
+        return run_command_fn(tuple(command), cwd=cwd, timeout=normalized_timeout, **options)
 
 
 def _trace_key(label: Optional[str], name: str) -> str:
@@ -203,13 +207,16 @@ def worktree_diff(
     run_command_fn: CommandRunner = run_command,
     trace_result_formatter: TraceResultFormatter = _compact_trace_result,
 ) -> str:
-    """Return a binary Git diff for a normalized worktree path subset.
+    """Collect selected final file contents against HEAD without changing the index.
 
-    Untracked files are staged with intent-to-add before diffing so callers can
-    harvest new complete-file changes without accepting the whole worktree.
+    Comparing to HEAD includes both staged and unstaged edits. Untracked files
+    use independent no-index diffs instead of intent-to-add, preserving even a
+    partially staged provider checkout when collection fails or is retried.
     """
 
-    normalized_paths = unique_worktree_paths(paths)
+    # Git names are literal POSIX paths. Shared normalization for other daemon
+    # metadata would strip spaces or reinterpret a backslash in a real filename.
+    normalized_paths = list(dict.fromkeys(str(path) for path in paths if str(path)))
     if not normalized_paths:
         if raw_trace is not None:
             raw_trace[_trace_key(label, "status")] = {"skipped": True, "reason": "no_paths"}
@@ -217,41 +224,75 @@ def worktree_diff(
             raw_trace[_trace_key(label, "git_diff")] = {"skipped": True, "reason": "no_paths"}
         return ""
 
+    for path in normalized_paths:
+        if Path(path).is_absolute() or ".." in Path(path).parts or "\x00" in path:
+            raise ValueError(f"Worktree diff path is unsafe: {path!r}")
+    pathspecs = tuple(f":(top,literal){'' if path == '.' else path}" for path in normalized_paths)
+    # Disable optional index refreshes and external diff/textconv processes.
+    # Explicit prefixes and no color keep the result consumable by git apply,
+    # regardless of the provider's local diff presentation configuration.
+    git = ("git", "--no-optional-locks")
+    diff_flags = ("--binary", "--full-index", "--no-ext-diff", "--no-textconv",
+                  "--no-color", "--src-prefix=a/", "--dst-prefix=b/")
+
     status_result = _run_command_with_timeout(
         run_command_fn,
-        ("git", "status", "--porcelain", "--", *normalized_paths),
+        (*git, "status", "--porcelain", "-z", "--untracked-files=all", "--", *pathspecs),
         cwd=worktree_path,
         timeout_seconds=timeout_seconds,
+        preserve_output_newlines=True,
     )
     if raw_trace is not None:
         raw_trace[_trace_key(label, "status")] = trace_result_formatter(status_result, 12000)
+    if not status_result.ok:
+        return ""
 
-    untracked_paths = untracked_paths_from_git_status(status_result.stdout)
+    untracked_result = _run_command_with_timeout(
+        run_command_fn,
+        (*git, "ls-files", "--others", "--exclude-standard", "-z", "--", *pathspecs),
+        cwd=worktree_path,
+        timeout_seconds=timeout_seconds,
+        preserve_output_newlines=True,
+    )
+    if raw_trace is not None:
+        raw_trace[_trace_key(label, "untracked_status")] = trace_result_formatter(untracked_result, 12000)
+    if not untracked_result.ok:
+        return ""
+    untracked_paths = [path for path in untracked_result.stdout.split("\x00") if path]
     if raw_trace is not None:
         raw_trace[_trace_key(label, "untracked_paths")] = untracked_paths
 
-    if untracked_paths:
-        add_intent = _run_command_with_timeout(
-            run_command_fn,
-            ("git", "add", "-N", "--", *untracked_paths),
-            cwd=worktree_path,
-            timeout_seconds=timeout_seconds,
-        )
-        if raw_trace is not None:
-            raw_trace[_trace_key(label, "git_add_intent_to_add")] = trace_result_formatter(
-                add_intent,
-                12000,
-            )
-
     diff_result = _run_command_with_timeout(
         run_command_fn,
-        ("git", "diff", "--binary", "--", *normalized_paths),
+        (*git, "diff", *diff_flags, "--no-renames", "HEAD", "--", *pathspecs),
         cwd=worktree_path,
         timeout_seconds=timeout_seconds,
+        preserve_output_newlines=True,
     )
     if raw_trace is not None:
         raw_trace[_trace_key(label, "git_diff")] = trace_result_formatter(diff_result, 20000)
-    return diff_result.stdout if diff_result.ok else ""
+    if not diff_result.ok:
+        return ""
+    parts = [diff_result.stdout]
+    for path in untracked_paths:
+        result = _run_command_with_timeout(
+            run_command_fn,
+            (*git, "diff", "--no-index", *diff_flags, "--", "/dev/null", path),
+            cwd=worktree_path,
+            timeout_seconds=timeout_seconds,
+            preserve_output_newlines=True,
+        )
+        if raw_trace is not None:
+            raw_trace.setdefault(_trace_key(label, "untracked_diffs"), []).append(
+                trace_result_formatter(result, 20000)
+            )
+        # A no-index comparison returns one for a successfully observed delta.
+        # Git also returns one for some read failures (such as a file removed
+        # after discovery); those diagnostics must not yield a partial patch.
+        if result.returncode not in (0, 1) or result.stderr or (result.returncode == 1 and not result.stdout):
+            return ""
+        parts.append(result.stdout)
+    return "".join(parts)
 
 
 def worktree_file_edits(
