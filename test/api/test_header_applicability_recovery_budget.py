@@ -283,7 +283,10 @@ def test_native_runtime_keeps_scope_and_stop(runtime_scope_observations, admitte
     assert {row["phase"] for row in startup["observations"]} == {
         "control_validation", "launch_validation", "bootstrap_validation"}
     assert all(row["status"] == "completed" for row in startup["observations"])
-    assert runtime.request(Operation.STOP).bounds.timeout_ms == 20_000
+    # The shared native fixture selects a 30-second STOP bound independently
+    # of the extended 120-second START/replay budget.
+    assert runtime.timeout_ms == 30_000
+    assert runtime.request(Operation.STOP).bounds.timeout_ms == 30_000
     with owner.applicability_budget(.001):
         time.sleep(.02)
         with pytest.raises(TimeoutError):
@@ -296,7 +299,7 @@ def test_native_runtime_keeps_scope_and_stop(runtime_scope_observations, admitte
         actual_native_start=True, actual_native_bootstrap=True, actual_native_stop=True,
         constructor_scope_captured_before_verification=True,
         bootstrap_thread_scope_observed=True, default_replay_cap_outside_scope=45.,
-        selected_replay_cap=120., stop_timeout_ms=20_000,
+        selected_replay_cap=120., stop_timeout_ms=30_000,
         actual_pre_request_delay_seconds=2.1, start_request_timeout_ms=started.bounds.timeout_ms,
         lifecycle_uses_original_start_deadline=True,
         expired_caller_scope_did_not_block_stop=True, all_child_processes_reaped=True,
