@@ -1,0 +1,506 @@
+{
+  "billing_total_verified": false,
+  "candidate_recovery": {
+    "container_was_deleted_before_diagnosis": true,
+    "final_filesystem_independently_recovered": false,
+    "fixed_lapack_workspace_doubles": 4096,
+    "full_code_exported_in_bounded_report": false,
+    "function_names": [
+      "_load_native",
+      "find_dominant_eigenvalue_and_eigenvector"
+    ],
+    "implementation_summary": [
+      "Import-time compilation of a small C extension, cached in a temporary directory outside /app.",
+      "Resolve NumPy DGEEV symbol and distinguish ILP64 from LP64.",
+      "Accept finite, real native-endian float64 square matrices of size 1 through 10; copy input into a stack column-major buffer.",
+      "Compute eigenvalues and all right eigenvectors, select the eigenvalue with greatest complex modulus, and return its normalized vector."
+    ],
+    "method": "Reconstruct literal code from one successful tool heredoc writing /app/eigen.py. No later tool write to that file was observed.",
+    "native_source_bytes": 5055,
+    "native_source_sha256": "d8170e7d0d18ada83d45c0feadc8a8af2672be1ff2cde91d070931c6f2a38aab",
+    "private_binding": {
+      "bytes": 7886,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/.private/native-eigen-final.py",
+      "sha256": "d9caf44bb241e0f256538b98192c1d87b8f2578ad7e0d7e7a0bb90615c672022"
+    },
+    "source_tool_index": 8,
+    "successful_write_command_sha256": "f03a5ee548b036c7ee9f6c9bfce852cf721a4f54b9bc6f3b49dcfb7d78f51ca6"
+  },
+  "candidate_tool_coverage": {
+    "all_observed_timing_sizes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "completed_command_count": 11,
+    "custom_probe_size9": {
+      "candidate_microseconds": 9.3,
+      "numpy_microseconds": 15.66,
+      "reported_speedup": 1.69
+    },
+    "custom_probe_timing_sizes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "interpretation": "The supplied evaluator covers even sizes. A separate candidate-authored public probe also timed sizes 1 through 9, including size 9 at 9.30 microseconds versus 15.66 microseconds for NumPy. These observed checks did not establish the later official size-9 timing gate. Data, layout, warming, and timing noise remain unisolated.",
+    "native_candidate_write_count": 1,
+    "supplied_evaluator_omits_size9": true,
+    "supplied_evaluator_timing_sizes": [
+      2,
+      4,
+      6,
+      8,
+      10
+    ]
+  },
+  "coverage_metadata_correction": {
+    "observed_at_utc": "2026-10-05T15:48:12.567990+00:00",
+    "prior_report_archive": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/native-runtime-diagnosis.before-coverage-correction.json",
+    "prior_report_sha256": "f4357942d583abb30271c81846d5e2e6552b5d144158f1229ce904d9636a0675",
+    "reason": "Correct earlier blanket size-9 coverage-gap label; supplied evaluator was even-only, but custom public probe included size 9. Official failure evidence and candidate bindings are unchanged."
+  },
+  "diagnosis": {
+    "aggregated_ctrf_summary": {
+      "failed": 1,
+      "other": 0,
+      "passed": 2,
+      "pending": 0,
+      "skipped": 0,
+      "start": 1791212040.220691,
+      "stop": 1791212040.4885256,
+      "tests": 3
+    },
+    "aggregated_test_families": [
+      {
+        "duration_seconds": 0.000572139018913731,
+        "message": null,
+        "name": "test_outputs.py::test_eigen_pair",
+        "status": "passed"
+      },
+      {
+        "duration_seconds": 0.00017641900922171772,
+        "message": null,
+        "name": "test_outputs.py::test_dominance_eigenvalue",
+        "status": "passed"
+      },
+      {
+        "duration_seconds": 0.05527962101041339,
+        "message": "The test failed in the call phase due to an assertion error",
+        "name": "test_outputs.py::test_speedup",
+        "status": "failed"
+      }
+    ],
+    "attribution": "The official eigenpair and dominant-eigenvalue families passed. The only recorded failure is the speed inequality for size 9. This does not prove correctness for all possible inputs.",
+    "candidate_divided_by_required_bound": 1.1964389587222797,
+    "candidate_seconds_per_call": 1.8856488168239594e-05,
+    "excess_percent_above_required_bound": 19.64389587222797,
+    "excess_seconds_per_call": 3.095978172495961e-06,
+    "failed_case": "test_speedup[9]",
+    "observed_correctness_gate_failed": false,
+    "observed_dominant_modulus_gate_failed": false,
+    "official_assertion_summary": [
+      "E       AssertionError: 0.000019 seconds/call > 0.000016 seconds/call",
+      "E       assert 1.8856488168239594e-05 < 1.5760509995743632e-05",
+      "FAILED ../tests/test_outputs.py::test_speedup[9] - AssertionError: 0.000019 s...",
+      "========================= 1 failed, 26 passed in 0.27s ========================="
+    ],
+    "official_reward": {
+      "reward": 0.0
+    },
+    "parameterized_stdout_fail_count": 1,
+    "parameterized_stdout_pass_count": 26,
+    "reason_code": "native_candidate_speed_gate_not_met",
+    "required_strict_upper_bound_seconds_per_call": 1.5760509995743632e-05,
+    "root_cause_beyond_timing_inequality": "unknown",
+    "size9_public_timing_seen": true
+  },
+  "dollar_cost": null,
+  "evidence_bindings": [
+    {
+      "bytes": 3318,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/verifier/ctrf.json",
+      "sha256": "99f366300e576d188be3f2975421cf0ae93a9a9405a869c2dbc097531e884810"
+    },
+    {
+      "bytes": 7373,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/verifier/test-stdout.txt",
+      "sha256": "7797e384f431f1050b0e5340e1a6d1d55be04ddc87aded0c740af856599fc896"
+    },
+    {
+      "bytes": 40068,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/jobs/native-codex-largest-eigenval/largest-eigenval__EKNbpC4/agent/codex.txt",
+      "sha256": "74a4a7ffc8d8432e0423d3364ec34cb386ccdb687b9090a6da766dd53b4a1d16"
+    },
+    {
+      "bytes": 7528,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+      "sha256": "2a72916e8f312022f9af04bc4637e397a5ddc50770f169d3ff00a68fef6d1dd1"
+    }
+  ],
+  "limits": [
+    "CTRF reports three aggregated families; stdout reports 27 parameterized outcomes. These counts describe different groupings.",
+    "The generated source is reconstructed from tool history, not retrieved from the deleted final container.",
+    "Public probe success cannot establish hidden verifier robustness or causal performance behavior.",
+    "No new execution was performed by this audit."
+  ],
+  "observed_at_utc": "2026-10-05T15:32:19.373155+00:00",
+  "public_tool_outcomes": [
+    {
+      "command_sha256": "f03a5ee548b036c7ee9f6c9bfce852cf721a4f54b9bc6f3b49dcfb7d78f51ca6",
+      "exit_code": 0,
+      "observed_public_matrix_sizes": [
+        2,
+        4,
+        6,
+        8,
+        10
+      ],
+      "output_sha256": "f59eaa863192c8190b9eef78e925ca259b368b5a8df8c67cb332fdc2ee848e18",
+      "reported_candidate_correctness_cases": null,
+      "seed_labels": [],
+      "timing_metadata": [
+        {
+          "matrix_size": 2,
+          "reference": false,
+          "seconds_rounded_in_original_output": 2e-06
+        },
+        {
+          "matrix_size": 2,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.8e-05
+        },
+        {
+          "matrix_size": 4,
+          "reference": false,
+          "seconds_rounded_in_original_output": 5e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": true,
+          "seconds_rounded_in_original_output": 2.1e-05
+        },
+        {
+          "matrix_size": 6,
+          "reference": false,
+          "seconds_rounded_in_original_output": 9e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": true,
+          "seconds_rounded_in_original_output": 2.6e-05
+        },
+        {
+          "matrix_size": 8,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1.5e-05
+        },
+        {
+          "matrix_size": 8,
+          "reference": true,
+          "seconds_rounded_in_original_output": 3.2e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": false,
+          "seconds_rounded_in_original_output": 2.3e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": true,
+          "seconds_rounded_in_original_output": 4e-05
+        }
+      ],
+      "tool_index": 8
+    },
+    {
+      "command_sha256": "cb5391cab93c03639e7a4c03a3ad12e111a6ed21f80ea1d907db7dc340a2aaa7",
+      "exit_code": 0,
+      "observed_public_matrix_sizes": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "output_sha256": "942deadf76dd6fbc64bd64c2ef914d824b200dcaa103160f081e7398a258e385",
+      "reported_candidate_correctness_cases": 20153,
+      "seed_labels": [],
+      "timing_metadata": [
+        {
+          "matrix_size": 1,
+          "native_microseconds_rounded": 0.22,
+          "numpy_microseconds_rounded": 6.7,
+          "observed_speedup_rounded": 29.93
+        },
+        {
+          "matrix_size": 2,
+          "native_microseconds_rounded": 0.98,
+          "numpy_microseconds_rounded": 7.22,
+          "observed_speedup_rounded": 7.39
+        },
+        {
+          "matrix_size": 3,
+          "native_microseconds_rounded": 1.78,
+          "numpy_microseconds_rounded": 8.1,
+          "observed_speedup_rounded": 4.56
+        },
+        {
+          "matrix_size": 4,
+          "native_microseconds_rounded": 2.61,
+          "numpy_microseconds_rounded": 8.88,
+          "observed_speedup_rounded": 3.4
+        },
+        {
+          "matrix_size": 5,
+          "native_microseconds_rounded": 3.66,
+          "numpy_microseconds_rounded": 9.98,
+          "observed_speedup_rounded": 2.72
+        },
+        {
+          "matrix_size": 6,
+          "native_microseconds_rounded": 4.8,
+          "numpy_microseconds_rounded": 11.14,
+          "observed_speedup_rounded": 2.32
+        },
+        {
+          "matrix_size": 7,
+          "native_microseconds_rounded": 6.14,
+          "numpy_microseconds_rounded": 12.46,
+          "observed_speedup_rounded": 2.03
+        },
+        {
+          "matrix_size": 8,
+          "native_microseconds_rounded": 7.54,
+          "numpy_microseconds_rounded": 13.9,
+          "observed_speedup_rounded": 1.84
+        },
+        {
+          "matrix_size": 9,
+          "native_microseconds_rounded": 9.3,
+          "numpy_microseconds_rounded": 15.66,
+          "observed_speedup_rounded": 1.69
+        }
+      ],
+      "tool_index": 9
+    },
+    {
+      "command_sha256": "527bb7b71470ffeb91b11f7171900e5db45278682d4dbbaf22a385b2a21ea661",
+      "exit_code": 0,
+      "observed_public_matrix_sizes": [
+        2,
+        4,
+        6,
+        8,
+        10
+      ],
+      "output_sha256": "585a6278bda5791a6408666b976b6ad662c6e171962844d6ac1a3a7610f486ed",
+      "reported_candidate_correctness_cases": null,
+      "seed_labels": [
+        17,
+        104,
+        829
+      ],
+      "timing_metadata": [
+        {
+          "matrix_size": 2,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1e-06
+        },
+        {
+          "matrix_size": 2,
+          "reference": true,
+          "seconds_rounded_in_original_output": 7e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": false,
+          "seconds_rounded_in_original_output": 3e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": true,
+          "seconds_rounded_in_original_output": 9e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": false,
+          "seconds_rounded_in_original_output": 5e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 8,
+          "reference": false,
+          "seconds_rounded_in_original_output": 8e-06
+        },
+        {
+          "matrix_size": 8,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.4e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.7e-05
+        },
+        {
+          "matrix_size": 2,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1e-06
+        },
+        {
+          "matrix_size": 2,
+          "reference": true,
+          "seconds_rounded_in_original_output": 7e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": false,
+          "seconds_rounded_in_original_output": 2e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": true,
+          "seconds_rounded_in_original_output": 9e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": false,
+          "seconds_rounded_in_original_output": 5e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 8,
+          "reference": false,
+          "seconds_rounded_in_original_output": 8e-06
+        },
+        {
+          "matrix_size": 8,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.4e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.7e-05
+        },
+        {
+          "matrix_size": 2,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1e-06
+        },
+        {
+          "matrix_size": 2,
+          "reference": true,
+          "seconds_rounded_in_original_output": 7e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": false,
+          "seconds_rounded_in_original_output": 2e-06
+        },
+        {
+          "matrix_size": 4,
+          "reference": true,
+          "seconds_rounded_in_original_output": 9e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": false,
+          "seconds_rounded_in_original_output": 5e-06
+        },
+        {
+          "matrix_size": 6,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 8,
+          "reference": false,
+          "seconds_rounded_in_original_output": 8e-06
+        },
+        {
+          "matrix_size": 8,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.4e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": false,
+          "seconds_rounded_in_original_output": 1.1e-05
+        },
+        {
+          "matrix_size": 10,
+          "reference": true,
+          "seconds_rounded_in_original_output": 1.7e-05
+        }
+      ],
+      "tool_index": 10
+    }
+  ],
+  "retained_failed_usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 132608,
+    "input_tokens": 154292,
+    "output_tokens": 7458,
+    "reasoning_output_tokens": 3135,
+    "total_tokens": 161750
+  },
+  "schema": "native-eigenvalue-bounded-failure-diagnosis@1",
+  "scope": {
+    "benchmark_reruns": 0,
+    "container_launches": 0,
+    "generated_candidate_recovered_to_private_artifact_only": true,
+    "hidden_reference_source_bodies_read": false,
+    "hidden_test_source_bodies_read": false,
+    "original_task_or_source_modified": false,
+    "private_reasoning_fields_inspected": false,
+    "provider_calls": 0,
+    "raw_transcript_exported": false,
+    "report_and_private_candidate_only_writes": true
+  },
+  "status": "Exact official failing gate identified; deeper timing mechanism remains unresolved.",
+  "symbolic_followups": [
+    "Bind a public task contract that preserves dominant modulus, eigenpair residual, input preservation, dtypes, complex pairs, normalization, and supported sizes.",
+    "Use deterministic admission checks for candidate source and native ABI; avoid treating syntax or finite input checks as an eigenproblem proof.",
+    "Before a fresh benchmark trial, evaluate independently chosen public matrices for every supported size, including odd sizes, and retain repeated timing distributions under explicit thread and warm-up controls.",
+    "A deterministic candidate selector may reject or retain implementations using these public checks without another LLM call; official verifier observations must not become hidden training inputs."
+  ],
+  "task": "largest-eigenval",
+  "trial": "largest-eigenval__EKNbpC4"
+}

@@ -1,0 +1,15 @@
+{
+  "base_commit": "689642234aad95cd13518f5c193288b06a5f8abd",
+  "isolated_disposable_artifacts": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005",
+  "new_model_weights": false,
+  "original_root_branch": "chore/fmt-check-main",
+  "original_root_head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+  "original_root_index_bytes": 692628,
+  "original_root_index_matches_prior_binding": true,
+  "original_root_index_sha256": "80b0426031778d38c8b762a273739e08edbf2ce2b18690efb4f541fa6de120a4",
+  "original_root_source_or_index_edited": false,
+  "schema": "largest-eigenval-workspace-preservation@1",
+  "task_branch": "codex/terminal-eigenvalue-symbolic-diagnosis-20261005",
+  "task_checkout": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005",
+  "training_changes": false
+}

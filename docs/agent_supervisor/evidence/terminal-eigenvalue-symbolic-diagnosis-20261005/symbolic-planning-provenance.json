@@ -1,0 +1,128 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+    "--task",
+    "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval",
+    "--artifact",
+    "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-02"
+  ],
+  "earlier_local_attempt": {
+    "artifact": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-01",
+    "export_error": "mappingproxy task export was not JSON serializable; corrected using dict(task), then rerun in a fresh scratch repository",
+    "export_exit_code": 1,
+    "planning_qualified": true,
+    "provider_calls": 0
+  },
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "duckdb": "1.5.5",
+    "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+  },
+  "exit_code": 0,
+  "official_trial_launched": false,
+  "producer": {
+    "bytes": 13129,
+    "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+  },
+  "production_source_changed": false,
+  "qualification": {
+    "bytes": 8176,
+    "sha256": "f3eacad2e7a91f765ee9b637d5d6c43a5ab8dc29404c1aff21382378efd77e4c"
+  },
+  "recorded_at_utc": "2026-10-05T15:48:23.145631+00:00",
+  "schema": "largest-eigenval-native-planning-provenance@1",
+  "scope": "Source readback plus native local administrative planner qualification; optional autoencoder preprocessing disabled.",
+  "source_bindings": {
+    "benchmarks.agent_supervisor.container_coding.terminal_indexed_preparation": {
+      "bytes": 61291,
+      "owner": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler": {
+      "bytes": 160096,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      "sha256": "9c0505757b56c52ccc4937cafe56f95e6eb255ef5acc5a3402d11526fc25909d"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator": {
+      "bytes": 131911,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      "sha256": "a87cb299e6e77a182a2dd1941100b4f8b080824db7d7575fc6063efcb70a2023"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.intent_requirement_adapter": {
+      "bytes": 27522,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning": {
+      "bytes": 15697,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler": {
+      "bytes": 135680,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.plan_critic": {
+      "bytes": 104897,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "sha256": "6f566deb7e3d23a32789a42799a896fa60c8ed6cca4a7854c082b02a5c3f0ff2"
+    },
+    "ipfs_accelerate_py.agent_supervisor.planning.symbolic_candidate_planner": {
+      "bytes": 77845,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "sha256": "4a51d33888c34a24cd0a8733bcb5272c7927f1b3f61186f8322445ba72b7e7ee"
+    },
+    "ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage": {
+      "bytes": 23035,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission": {
+      "bytes": 89042,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository": {
+      "bytes": 433395,
+      "owner": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    "ipfs_datasets_py.logic.intent_ir.formalize.requirements": {
+      "bytes": 29936,
+      "owner": "datasets",
+      "path": "ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+    },
+    "ipfs_datasets_py.logic.intent_ir.schema": {
+      "bytes": 27163,
+      "owner": "datasets",
+      "path": "ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+    }
+  },
+  "source_heads": {
+    "accelerate": "689642234aad95cd13518f5c193288b06a5f8abd",
+    "datasets": "987cf856b2b902aa68c4587bb492b19b932b5d30"
+  },
+  "stdout": {
+    "planning_seconds": 1.5409817160107195,
+    "planning_strategy": "intent_symbolic",
+    "provider_calls": 0,
+    "requirements": 8,
+    "status": "qualified",
+    "tasks": 1
+  }
+}

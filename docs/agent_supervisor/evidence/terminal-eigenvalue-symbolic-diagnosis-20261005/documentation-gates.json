@@ -1,0 +1,39 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "bounded_receipt_consistency_checks_passed": true,
+  "evidence": {
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md": {
+      "bytes": 10573,
+      "sha256": "82884df36fc4123a83c6236dbaeaed63f814c4af7b14d55d2b5650cbda555b62"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay.json": {
+      "bytes": 22797,
+      "sha256": "10cf70965733b463f810ac783b0c5d757a756c00a6bdfc528c17dfcc63f52b1a"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py": {
+      "bytes": 13129,
+      "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-qualification.json": {
+      "bytes": 8176,
+      "sha256": "f3eacad2e7a91f765ee9b637d5d6c43a5ab8dc29404c1aff21382378efd77e4c"
+    },
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": {
+      "bytes": 58951,
+      "sha256": "04146bdefad8a9fac5205eaa2a351f83aa40229e27ca9b85caff86f17e4ef898"
+    }
+  },
+  "exit_code": 0,
+  "native_planning_qualified_zero_provider_calls": true,
+  "new_evidence_readme_and_capabilities_relative_link_errors": [],
+  "prior_native_runtime_qualification_retained": "560 passed, 7 documented skips; not rerun or summed here",
+  "production_source_changes": false,
+  "public_replay_review_checks_passed": 14,
+  "recorded_at_utc": "2026-10-05T15:57:23.516724+00:00",
+  "schema": "largest-eigenval-diagnosis-documentation-gates@1",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+}

@@ -1,0 +1,74 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 10573,
+      "sha256": "82884df36fc4123a83c6236dbaeaed63f814c4af7b14d55d2b5650cbda555b62"
+    },
+    "documentation-gates.json": {
+      "bytes": 1949,
+      "sha256": "b50a0b2bd57c1aed8d274c6fe46306e041e02608e33423fbfc2ef7d241b92e02"
+    },
+    "historical-phase-accounting.json": {
+      "bytes": 1815,
+      "sha256": "2d561886f6d6ec5421744e7aa734c88da3abe8bcc2a090f73fd97fe511219624"
+    },
+    "incoming-numeric-proof-scope.json": {
+      "bytes": 5159,
+      "sha256": "21f73d30d06800098a9a9617f17851055995950fb4fd798ecb5478356815036f"
+    },
+    "native-runtime-diagnosis.json": {
+      "bytes": 17122,
+      "sha256": "b5c30f90ad44ceefb2d516e4b57a65302f6ec1160e01e006cd689642e9799a33"
+    },
+    "public-replay-frozen-inputs.json": {
+      "bytes": 2898,
+      "sha256": "485a7037ec858b90b9d99124e91b4acd38e913379c02fb2591eca1034eb75f00"
+    },
+    "public-replay-plan.json": {
+      "bytes": 1401,
+      "sha256": "d0ab020a9384ef57da8a06e92b9512235119edadbb9311f4260e9a33317fc4b0"
+    },
+    "public-replay-runtime-receipt.json": {
+      "bytes": 8993,
+      "sha256": "ef580670c2a6e2c3dbec82bcb220e9b76238f72f0ccf55b0900183bff5230d6b"
+    },
+    "public-replay.Dockerfile": {
+      "bytes": 282,
+      "sha256": "cf92dfa075000d7a4810066bf58820d6c36ef09891918aad773d2b1c9aea4fc9"
+    },
+    "public-replay.json": {
+      "bytes": 22797,
+      "sha256": "10cf70965733b463f810ac783b0c5d757a756c00a6bdfc528c17dfcc63f52b1a"
+    },
+    "qualify_symbolic_planning.py": {
+      "bytes": 13129,
+      "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+    },
+    "replay_public.py": {
+      "bytes": 12297,
+      "sha256": "6a1618acbd6d7f8b446da7207df0d5e0c897274bb85872cfd42844d4c0ceeee1"
+    },
+    "run_public_diagnostic.py": {
+      "bytes": 6517,
+      "sha256": "21831ae28781330ec9fa49ac9d706163ab170233b7a2943f1f08eea691d2045b"
+    },
+    "symbolic-planning-independent-review.json": {
+      "bytes": 12353,
+      "sha256": "a4967450b1bb39af41f909dbca78a759304d024046c897749d21678558a94199"
+    },
+    "symbolic-planning-provenance.json": {
+      "bytes": 6004,
+      "sha256": "0fa029177fa6324c712c92b4877e5f41703fdbb1fdd71e9fc8d8a242cd7858d1"
+    },
+    "symbolic-planning-qualification.json": {
+      "bytes": 8176,
+      "sha256": "f3eacad2e7a91f765ee9b637d5d6c43a5ab8dc29404c1aff21382378efd77e4c"
+    },
+    "workspace-preservation.json": {
+      "bytes": 841,
+      "sha256": "90833b18861e229a75f6b654425af1c03f40c4752caa0f1cbd8474363e22a362"
+    }
+  },
+  "schema": "bounded-eigenval-symbolic-diagnosis-evidence-manifest@1",
+  "scope": "Reviewed diagnosis, administrative qualification and public diagnostic measurements; no weights, source-bearing benchmark contract, private candidate or owner key."
+}
