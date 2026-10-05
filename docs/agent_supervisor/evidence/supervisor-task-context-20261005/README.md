@@ -111,3 +111,10 @@ pinned datasets checkout and thirteen retained files stayed unchanged. The
 witnesses are retained; overlapping development/baseline runs are not added.
 The scoped final native-process audit observed no live matching fixture process
 or unavailable recorded worker and sent no signals.
+
+The [publication integration](publication-integration.json) preserves the
+independent incoming documentation qualification and rechecks all 65 committed
+source/test bindings, thirteen retained files and pinned datasets against the
+frozen run. Only documentation changed after the source commit. The
+[local documentation gates](documentation-gates.json) passed for all 46
+allowlisted files at packaging version 0.0.45. Hosted CI is a separate check.

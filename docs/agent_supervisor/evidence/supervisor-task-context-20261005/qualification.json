@@ -136,5 +136,12 @@
   "completion_authority": false,
   "proof_authority": false,
   "hosted_ci": "Not qualified by these local runs; publication readback will inspect the actual hosted check.",
-  "source_binding_note": "Final regression ran on the unchanged 5ab baseline plus the four frozen new files. All 65 manual source/test bindings were then verified in the committed source tree; later publication merges are documentation-only."
+  "source_binding_note": "Final regression ran on the unchanged 5ab baseline plus the four frozen new files. All 65 manual source/test bindings were then verified in the committed source tree; later publication merges are documentation-only.",
+  "publication_integration": "publication-integration.json",
+  "local_documentation_gates": {
+    "record": "documentation-gates.json",
+    "returncode": 0,
+    "allowlisted_documentation_files": 46,
+    "version": "0.0.45"
+  }
 }

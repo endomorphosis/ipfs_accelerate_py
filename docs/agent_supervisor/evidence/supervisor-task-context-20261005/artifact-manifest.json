@@ -3,8 +3,8 @@
   "scope": "Bounded metadata, raw qualification logs/XML/commands and owner witnesses only; no databases, private keys or model weights. Manifest excludes itself.",
   "files": {
     "README.md": {
-      "bytes": 6967,
-      "sha256": "40581e7f0501838314ee1ddb46352afc4abec1d5734c7bcd4f2669ef81aa602b"
+      "bytes": 7417,
+      "sha256": "7cd74a11890cc9726599a9f72f4d0e663555794d8dc35f31df865feb8d27c80b"
     },
     "audit_native_processes.py": {
       "bytes": 2579,
@@ -49,6 +49,14 @@
     "development-diagnostics.json": {
       "bytes": 3392,
       "sha256": "c786c531b01e080f1823f986199860b2b54bdb750110c1260bc3cc1b8c4bfbc7"
+    },
+    "documentation-gates.json": {
+      "bytes": 518,
+      "sha256": "fde39c02e129515a4e389de3c271077ec44bd5a2569327f7fe25e908cacbc373"
+    },
+    "documentation-gates.log": {
+      "bytes": 200,
+      "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
     },
     "final-01-after.json": {
       "bytes": 15790,
@@ -190,9 +198,17 @@
       "bytes": 1220,
       "sha256": "fc2487ec1a9ec5ab0d6ff041d0c58a30c540b60771df5b4e0b6e695d2e1418bd"
     },
+    "publication-incoming.json": {
+      "bytes": 2991,
+      "sha256": "09283634b64e9739c02eb28233818fd916dce7aa8cdcdfce107fc4dd2b336fe9"
+    },
+    "publication-integration.json": {
+      "bytes": 989,
+      "sha256": "5b10a4c12195bb41496a5ae20c3a051e060a4cedf7ef7320b9acfd7eada13294"
+    },
     "qualification.json": {
-      "bytes": 8125,
-      "sha256": "c7f59622d91bd8e2632f9ff42244d7c389640b31f128beab34746b01e2dae4cd"
+      "bytes": 8354,
+      "sha256": "420cb1dd519609fbe7d3a9cfc5afbb441fe7581437f0a46fc7dcbc580bc3afb3"
     },
     "retain_final_evidence.py": {
       "bytes": 8795,
