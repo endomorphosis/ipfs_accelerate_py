@@ -223,6 +223,7 @@ from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+    SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA_V2,
     canonical_project_dependency_preflight_receipt_bytes,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
@@ -361,6 +362,7 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+DEPENDENCY_PREFLIGHT_ARTIFACT_LOCK_TIMEOUT_SECONDS = 1.0
 PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS = 2.0
 PROVIDER_RUNNER_BIRTH_POLL_SECONDS = 0.005
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
@@ -30374,7 +30376,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         baseline_receipt: Mapping[str, Any],
         seed_apply: Mapping[str, Any],
     ) -> dict[str, Any] | None:
-        """Bind a replayed absent output to its accepted proposal receipt."""
+        """Bind replayed output bytes to their accepted proposal receipt."""
 
         if (
             seed_apply.get("applied") is not True
@@ -30394,6 +30396,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ):
             return None
         identity = self._identity_for_task(task)
+        versioned_outputs = any(
+            isinstance(output, Mapping)
+            and output.get("change_kind") == "modify"
+            for output in seeded_outputs
+        )
+        if versioned_outputs and (
+            proposal_authority.get("board_namespace") != identity.board_namespace
+        ):
+            return None
         proposal_id = str(proposal_gate.get("proposal_id") or "").strip()
         proposal_receipt_id = str(
             proposal_gate.get("receipt_id") or ""
@@ -30441,7 +30452,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ):
             return None
         body: dict[str, Any] = {
-            "schema": SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+            "schema": (
+                SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA_V2
+                if versioned_outputs
+                else SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA
+            ),
             "board_namespace": identity.board_namespace,
             "canonical_task_cid": identity.canonical_task_cid,
             "baseline_receipt": dict(baseline_receipt),
@@ -34497,6 +34512,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             event_cid = str(event.get("canonical_task_cid") or "").strip()
             event_key = str(event.get("canonical_task_key") or "").strip()
+            if (
+                "board_namespace" in event
+                and event["board_namespace"] != expected_identity.board_namespace
+            ):
+                continue
             if event_cid != expected_cid:
                 continue
             if event_key and event_key != expected_key:
@@ -34566,6 +34586,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "task_id": task.task_id,
                 "canonical_task_cid": event_cid,
                 "canonical_task_key": event_key,
+                "board_namespace": event.get("board_namespace", ""),
                 "proposal_id": proposal_id,
                 "receipt_id": receipt_id,
                 "event_id": str(event.get("event_id") or ""),
@@ -40571,12 +40592,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         proposal_validation: Any,
         task: PortalTask,
     ) -> list[dict[str, str]]:
-        """Project exact added task outputs without retaining candidate source."""
+        """Project accepted output preimages/postimages without retaining source.
+
+        ADD-only callers keep the original wire format. Any MODIFY requires
+        typed rows for every output and the versioned handoff's Git baseline
+        checks. A rename, binary entry, rejected proposal or source/blob
+        mismatch cannot supply an output attestation.
+        """
+
+        if getattr(proposal_validation, "accepted", None) is not True:
+            return []
+
+        def source_digest(source: Any, blob_id: str) -> str:
+            if type(source) is not str or not re.fullmatch(
+                r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id
+            ):
+                return ""
+            try:
+                raw = source.encode("utf-8", errors="strict")
+            except UnicodeError:
+                return ""
+            framed = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+            actual = (
+                hashlib.sha1(framed).hexdigest()
+                if len(blob_id) == 40
+                else hashlib.sha256(framed).hexdigest()
+            )
+            return hashlib.sha256(raw).hexdigest() if actual == blob_id else ""
 
         proposal = getattr(proposal_validation, "proposal", None)
         entries = tuple(getattr(proposal, "candidate_diff", ()) or ())
         declared_outputs = set(task_declared_output_paths(task))
         attestations: list[dict[str, str]] = []
+        seen_paths: set[str] = set()
         for entry in entries:
             change_kind = str(
                 getattr(
@@ -40590,25 +40638,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             source = getattr(entry, "after_source", None)
             blob_id = str(getattr(entry, "after_blob_id", "") or "")
             if not (
-                change_kind == "add"
+                change_kind in {"add", "modify"}
                 and path in declared_outputs
-                and not str(getattr(entry, "old_path", "") or "")
-                and getattr(entry, "before_source", None) is None
-                and not str(getattr(entry, "before_blob_id", "") or "")
-                and isinstance(source, str)
                 and not bool(getattr(entry, "binary", False))
-                and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
             ):
                 continue
-            attestations.append(
-                {
-                    "path": path,
-                    "sha256": hashlib.sha256(
-                        source.encode("utf-8", errors="strict")
-                    ).hexdigest(),
-                    "git_blob_id": blob_id,
-                }
-            )
+            after_sha256 = source_digest(source, blob_id)
+            if not after_sha256:
+                continue
+            before_source = getattr(entry, "before_source", None)
+            before_blob_id = str(getattr(entry, "before_blob_id", "") or "")
+            old_path = str(getattr(entry, "old_path", "") or "")
+            before_sha256 = ""
+            if change_kind == "add":
+                if old_path or before_source is not None or before_blob_id:
+                    continue
+            else:
+                before_sha256 = source_digest(before_source, before_blob_id)
+                if (
+                    old_path != path
+                    or not before_sha256
+                    or len(before_blob_id) != len(blob_id)
+                    or before_sha256 == after_sha256
+                ):
+                    continue
+            if path in seen_paths:
+                return []
+            seen_paths.add(path)
+            attestations.append({
+                "path": path,
+                "change_kind": change_kind,
+                "before_sha256": before_sha256,
+                "before_git_blob_id": before_blob_id,
+                "sha256": after_sha256,
+                "git_blob_id": blob_id,
+            })
+        if not any(item["change_kind"] == "modify" for item in attestations):
+            attestations = [
+                {key: item[key] for key in ("path", "sha256", "git_blob_id")}
+                for item in attestations
+            ]
         return sorted(attestations, key=lambda item: item["path"])
 
     def _detach_in_process_proposal_validation(
@@ -66987,6 +67056,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._dependency_preflight_artifact_store = BoundedArtifactStore(
                 self.dependency_preflight_artifact_store_path,
                 refresh_on_lock=True,
+                lock_timeout_seconds=DEPENDENCY_PREFLIGHT_ARTIFACT_LOCK_TIMEOUT_SECONDS,
             )
         store = self._dependency_preflight_artifact_store
         reference = store.put_blob(

@@ -118,6 +118,9 @@ def test_ordinary_default_route_retains_cross_provider_fallback(
     result = llm_router.generate_text(
         "ordinary prompt",
         provider_instance=_FailingProvider(calls),
+        # Isolate provider failover: allocation may supply a default model,
+        # whose same-provider retry has a separate contract below.
+        disable_model_retry=True,
     )
 
     assert result == "alternate-result"
@@ -142,10 +145,37 @@ def test_remote_fallback_can_be_enabled_without_local_fallback(
         provider_instance=_FailingProvider(calls),
         allow_local_fallback=False,
         allow_cross_provider_fallback=True,
+        disable_model_retry=True,
     )
 
     assert result == "alternate-result"
     assert calls == ["primary", "alternate"]
+
+
+def test_ordinary_route_retains_same_provider_default_model_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models: list[str | None] = []
+    monkeypatch.setattr(llm_router, "_response_cache_enabled", lambda: False)
+    monkeypatch.setattr(
+        llm_router,
+        "_iter_unpinned_optional_providers",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("successful primary model retry must not fail over")
+        ),
+    )
+
+    result = llm_router.generate_text(
+        "recover the ordinary primary model",
+        provider="codex_cli",
+        model_name="requested-model",
+        provider_instance=_DefaultModelFallbackProvider(models),
+        allow_local_fallback=False,
+        allow_cross_provider_fallback=True,
+    )
+
+    assert result == "default-model-result"
+    assert models == ["requested-model", None]
 
 
 def test_remote_fallback_remains_default_when_local_fallback_is_disabled(
@@ -165,6 +195,7 @@ def test_remote_fallback_remains_default_when_local_fallback_is_disabled(
         provider="codex_cli",
         provider_instance=_FailingProvider(calls),
         allow_local_fallback=False,
+        disable_model_retry=True,
     )
 
     assert result == "alternate-result"
@@ -192,6 +223,7 @@ def test_exact_provider_does_not_consume_cross_provider_cached_response(
             deps=deps,
             allow_local_fallback=False,
             allow_cross_provider_fallback=True,
+            disable_model_retry=True,
         )
         == "alternate-result"
     )

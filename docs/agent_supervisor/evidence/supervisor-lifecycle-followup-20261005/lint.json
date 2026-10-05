@@ -1,0 +1,853 @@
+{
+  "baseline_diagnostics": [
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 30,
+        "row": 864
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 33,
+              "row": 864
+            },
+            "location": {
+              "column": 17,
+              "row": 864
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `payload_bytes`"
+      },
+      "location": {
+        "column": 17,
+        "row": 864
+      },
+      "message": "Local variable `payload_bytes` is assigned to but never used",
+      "noqa_row": 864,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 25,
+        "row": 72
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..context.context_compiler import (\n    ContextCompilationReceipt,\n    ContextCompileResult,\n    ContextCompiler,\n    ContextDeltaBudgetError,\n    ContextDeltaResult,\n    ContextExpansionCancelled,\n    RequiredContextOverflowError,\n    RetryContextResult,\n    build_text_context_references,\n    compile_retry_context,\n    render_context_capsule,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 73
+            },
+            "location": {
+              "column": 1,
+              "row": 60
+            }
+          }
+        ],
+        "message": "Remove unused import: `..context.context_compiler.render_retry_context`"
+      },
+      "location": {
+        "column": 5,
+        "row": 72
+      },
+      "message": "`..context.context_compiler.render_retry_context` imported but unused",
+      "noqa_row": 72,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 33,
+        "row": 199
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..task_sources.task_source import (\n    MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,\n    ActivePlanBinding,\n    ActivePlanRevisionError,\n    CanonicalTaskSource,\n    CompiledClaimPreconditions,\n    TaskSourceConflictError,\n    DualTaskSource,\n    MissingActivePlanRevisionError,\n    PlanRuntimeDispatchDecision,\n    TaskSourceError,\n    TaskSourceIdentity,\n    TaskSourceIntegrityError,\n    TaskSourceTask,\n    bind_active_plan_revision,\n    compiled_claim_preconditions,\n    evaluate_plan_runtime_dispatch,\n    load_active_plan_binding_from_store,\n    open_task_source,\n    order_ready_by_fairness_and_critical_path,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 200
+            },
+            "location": {
+              "column": 1,
+              "row": 179
+            }
+          }
+        ],
+        "message": "Remove unused import: `..task_sources.task_source.recompute_readiness_statuses`"
+      },
+      "location": {
+        "column": 5,
+        "row": 199
+      },
+      "message": "`..task_sources.task_source.recompute_readiness_statuses` imported but unused",
+      "noqa_row": 199,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 41,
+        "row": 204
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..runtime.resource_scheduler import (\n    CapacityDriftAction,\n    CapacityDriftDecision,\n    evaluate_capacity_drift,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 206
+            },
+            "location": {
+              "column": 1,
+              "row": 201
+            }
+          }
+        ],
+        "message": "Remove unused import: `..runtime.resource_scheduler.admit_compiled_execution_assignments`"
+      },
+      "location": {
+        "column": 5,
+        "row": 204
+      },
+      "message": "`..runtime.resource_scheduler.admit_compiled_execution_assignments` imported but unused",
+      "noqa_row": 204,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 40,
+        "row": 245
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..validation.validation_commands import (\n    build_validation_commands,\n    infer_validation_impact_paths,\n    normalize_validation_command_text,\n    rewrite_validation_command,\n    split_validation_commands,\n    validation_command_repository_root,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 249
+            },
+            "location": {
+              "column": 1,
+              "row": 241
+            }
+          }
+        ],
+        "message": "Remove unused import: `..validation.validation_commands.rewrite_shell_makefile_ignore_check`"
+      },
+      "location": {
+        "column": 5,
+        "row": 245
+      },
+      "message": "`..validation.validation_commands.rewrite_shell_makefile_ignore_check` imported but unused",
+      "noqa_row": 245,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 24,
+        "row": 14205
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "_ack",
+            "end_location": {
+              "column": 24,
+              "row": 14205
+            },
+            "location": {
+              "column": 21,
+              "row": 14205
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `ack`"
+      },
+      "location": {
+        "column": 21,
+        "row": 14205
+      },
+      "message": "Local variable `ack` is assigned to but never used",
+      "noqa_row": 14205,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 39,
+        "row": 18064
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 42,
+              "row": 18064
+            },
+            "location": {
+              "column": 9,
+              "row": 18064
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `validation_obsolescence_rearms`"
+      },
+      "location": {
+        "column": 9,
+        "row": 18064
+      },
+      "message": "Local variable `validation_obsolescence_rearms` is assigned to but never used",
+      "noqa_row": 18064,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 34,
+        "row": 20903
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 1,
+              "row": 20904
+            },
+            "location": {
+              "column": 1,
+              "row": 20903
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `operator_prepared_outputs`"
+      },
+      "location": {
+        "column": 9,
+        "row": 20903
+      },
+      "message": "Local variable `operator_prepared_outputs` is assigned to but never used",
+      "noqa_row": 20903,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 37,
+        "row": 21122
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 40,
+              "row": 21122
+            },
+            "location": {
+              "column": 17,
+              "row": 21122
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `dependency_preflight`"
+      },
+      "location": {
+        "column": 17,
+        "row": 21122
+      },
+      "message": "Local variable `dependency_preflight` is assigned to but never used",
+      "noqa_row": 21122,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 31,
+        "row": 61139
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..control.profile_authority import (\n            resolve_local_profile_state_paths,\n            resolve_reviewer_local_profile_state,\n            sign_profile_binding,\n        )",
+            "end_location": {
+              "column": 10,
+              "row": 61143
+            },
+            "location": {
+              "column": 9,
+              "row": 61138
+            }
+          }
+        ],
+        "message": "Remove unused import: `..control.profile_authority.load_local_profile`"
+      },
+      "location": {
+        "column": 13,
+        "row": 61139
+      },
+      "message": "`..control.profile_authority.load_local_profile` imported but unused",
+      "noqa_row": 61139,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 32,
+        "row": 64783
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 1,
+              "row": 64784
+            },
+            "location": {
+              "column": 1,
+              "row": 64783
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `projection_name`"
+      },
+      "location": {
+        "column": 17,
+        "row": 64783
+      },
+      "message": "Local variable `projection_name` is assigned to but never used",
+      "noqa_row": 64783,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 80,
+        "row": 78496
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 78496
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 78496,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 71,
+        "row": 78498
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 78498
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 78498,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 91,
+        "row": 500
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 500
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 500,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    }
+  ],
+  "baseline_revision": "39f88fee698cbb85af167ac49a3ec9fe6a0de799",
+  "current_diagnostics": [
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 30,
+        "row": 878
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 33,
+              "row": 878
+            },
+            "location": {
+              "column": 17,
+              "row": 878
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `payload_bytes`"
+      },
+      "location": {
+        "column": 17,
+        "row": 878
+      },
+      "message": "Local variable `payload_bytes` is assigned to but never used",
+      "noqa_row": 878,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 25,
+        "row": 72
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..context.context_compiler import (\n    ContextCompilationReceipt,\n    ContextCompileResult,\n    ContextCompiler,\n    ContextDeltaBudgetError,\n    ContextDeltaResult,\n    ContextExpansionCancelled,\n    RequiredContextOverflowError,\n    RetryContextResult,\n    build_text_context_references,\n    compile_retry_context,\n    render_context_capsule,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 73
+            },
+            "location": {
+              "column": 1,
+              "row": 60
+            }
+          }
+        ],
+        "message": "Remove unused import: `..context.context_compiler.render_retry_context`"
+      },
+      "location": {
+        "column": 5,
+        "row": 72
+      },
+      "message": "`..context.context_compiler.render_retry_context` imported but unused",
+      "noqa_row": 72,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 33,
+        "row": 199
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..task_sources.task_source import (\n    MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,\n    ActivePlanBinding,\n    ActivePlanRevisionError,\n    CanonicalTaskSource,\n    CompiledClaimPreconditions,\n    TaskSourceConflictError,\n    DualTaskSource,\n    MissingActivePlanRevisionError,\n    PlanRuntimeDispatchDecision,\n    TaskSourceError,\n    TaskSourceIdentity,\n    TaskSourceIntegrityError,\n    TaskSourceTask,\n    bind_active_plan_revision,\n    compiled_claim_preconditions,\n    evaluate_plan_runtime_dispatch,\n    load_active_plan_binding_from_store,\n    open_task_source,\n    order_ready_by_fairness_and_critical_path,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 200
+            },
+            "location": {
+              "column": 1,
+              "row": 179
+            }
+          }
+        ],
+        "message": "Remove unused import: `..task_sources.task_source.recompute_readiness_statuses`"
+      },
+      "location": {
+        "column": 5,
+        "row": 199
+      },
+      "message": "`..task_sources.task_source.recompute_readiness_statuses` imported but unused",
+      "noqa_row": 199,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 41,
+        "row": 204
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..runtime.resource_scheduler import (\n    CapacityDriftAction,\n    CapacityDriftDecision,\n    evaluate_capacity_drift,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 206
+            },
+            "location": {
+              "column": 1,
+              "row": 201
+            }
+          }
+        ],
+        "message": "Remove unused import: `..runtime.resource_scheduler.admit_compiled_execution_assignments`"
+      },
+      "location": {
+        "column": 5,
+        "row": 204
+      },
+      "message": "`..runtime.resource_scheduler.admit_compiled_execution_assignments` imported but unused",
+      "noqa_row": 204,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 40,
+        "row": 245
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..validation.validation_commands import (\n    build_validation_commands,\n    infer_validation_impact_paths,\n    normalize_validation_command_text,\n    rewrite_validation_command,\n    split_validation_commands,\n    validation_command_repository_root,\n)",
+            "end_location": {
+              "column": 2,
+              "row": 249
+            },
+            "location": {
+              "column": 1,
+              "row": 241
+            }
+          }
+        ],
+        "message": "Remove unused import: `..validation.validation_commands.rewrite_shell_makefile_ignore_check`"
+      },
+      "location": {
+        "column": 5,
+        "row": 245
+      },
+      "message": "`..validation.validation_commands.rewrite_shell_makefile_ignore_check` imported but unused",
+      "noqa_row": 245,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 24,
+        "row": 14206
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "_ack",
+            "end_location": {
+              "column": 24,
+              "row": 14206
+            },
+            "location": {
+              "column": 21,
+              "row": 14206
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `ack`"
+      },
+      "location": {
+        "column": 21,
+        "row": 14206
+      },
+      "message": "Local variable `ack` is assigned to but never used",
+      "noqa_row": 14206,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 39,
+        "row": 18065
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 42,
+              "row": 18065
+            },
+            "location": {
+              "column": 9,
+              "row": 18065
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `validation_obsolescence_rearms`"
+      },
+      "location": {
+        "column": 9,
+        "row": 18065
+      },
+      "message": "Local variable `validation_obsolescence_rearms` is assigned to but never used",
+      "noqa_row": 18065,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 34,
+        "row": 20904
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 1,
+              "row": 20905
+            },
+            "location": {
+              "column": 1,
+              "row": 20904
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `operator_prepared_outputs`"
+      },
+      "location": {
+        "column": 9,
+        "row": 20904
+      },
+      "message": "Local variable `operator_prepared_outputs` is assigned to but never used",
+      "noqa_row": 20904,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 37,
+        "row": 21123
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 40,
+              "row": 21123
+            },
+            "location": {
+              "column": 17,
+              "row": 21123
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `dependency_preflight`"
+      },
+      "location": {
+        "column": 17,
+        "row": 21123
+      },
+      "message": "Local variable `dependency_preflight` is assigned to but never used",
+      "noqa_row": 21123,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "F401",
+      "end_location": {
+        "column": 31,
+        "row": 61140
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from ..control.profile_authority import (\n            resolve_local_profile_state_paths,\n            resolve_reviewer_local_profile_state,\n            sign_profile_binding,\n        )",
+            "end_location": {
+              "column": 10,
+              "row": 61144
+            },
+            "location": {
+              "column": 9,
+              "row": 61139
+            }
+          }
+        ],
+        "message": "Remove unused import: `..control.profile_authority.load_local_profile`"
+      },
+      "location": {
+        "column": 13,
+        "row": 61140
+      },
+      "message": "`..control.profile_authority.load_local_profile` imported but unused",
+      "noqa_row": 61140,
+      "url": "https://docs.astral.sh/ruff/rules/unused-import"
+    },
+    {
+      "cell": null,
+      "code": "F841",
+      "end_location": {
+        "column": 32,
+        "row": 64784
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": {
+        "applicability": "unsafe",
+        "edits": [
+          {
+            "content": "",
+            "end_location": {
+              "column": 1,
+              "row": 64785
+            },
+            "location": {
+              "column": 1,
+              "row": 64784
+            }
+          }
+        ],
+        "message": "Remove assignment to unused variable `projection_name`"
+      },
+      "location": {
+        "column": 17,
+        "row": 64784
+      },
+      "message": "Local variable `projection_name` is assigned to but never used",
+      "noqa_row": 64784,
+      "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 80,
+        "row": 78498
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 78498
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 78498,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 71,
+        "row": 78500
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 78500
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 78500,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    },
+    {
+      "cell": null,
+      "code": "E402",
+      "end_location": {
+        "column": 91,
+        "row": 541
+      },
+      "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "fix": null,
+      "location": {
+        "column": 1,
+        "row": 541
+      },
+      "message": "Module level import not at top of file",
+      "noqa_row": 541,
+      "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file"
+    }
+  ],
+  "files": [
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+    "test/api/test_agent_supervisor_control_lifecycle.py",
+    "test/api/test_agent_supervisor_daemon_checkpoints.py",
+    "test/api/test_agent_supervisor_lifecycle_orchestrator.py",
+    "test/api/test_llm_router_exact_provider_fallback.py",
+    "test/api/test_supervisor_preflight_persistence_deadline.py",
+    "test/api/test_supervisor_staged_file_patching.py"
+  ],
+  "introduced_diagnostics": [],
+  "schema": "supervisor-followup-lint-delta/v1",
+  "status": "passed_no_new_diagnostics"
+}

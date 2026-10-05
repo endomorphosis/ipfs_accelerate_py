@@ -179,6 +179,11 @@ def command_runner_from_legacy_function(
         parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == "environment"
         for parameter in parameters
     )
+    supports_output_newlines = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        or parameter.name == "preserve_output_newlines"
+        for parameter in parameters
+    )
     if not supports_environment:
         raise ValidationRuntimeError("legacy validation runner must accept an environment keyword")
 
@@ -190,6 +195,7 @@ def command_runner_from_legacy_function(
         stdin: str | None = None,
         input_text: str | None = None,
         environment: Mapping[str, object] | None = None,
+        preserve_output_newlines: bool = False,
     ) -> CommandResult:
         kwargs: dict[str, Any] = {"cwd": cwd, timeout_parameter: timeout_seconds}
         stdin_value = input_text if input_text is not None else stdin
@@ -197,6 +203,10 @@ def command_runner_from_legacy_function(
             kwargs[stdin_parameter] = stdin_value
         if environment is not None:
             kwargs["environment"] = environment
+        if preserve_output_newlines:
+            if not supports_output_newlines:
+                raise ValidationRuntimeError("legacy runner must preserve exact output newlines")
+            kwargs["preserve_output_newlines"] = True
         return command_result_from_object(run_command_fn(command, **kwargs))
 
     return run_command_adapter
@@ -685,8 +695,14 @@ def run_command(
     timeout_seconds: Optional[int] = None,
     stdin: Optional[str] = None,
     environment: Optional[Mapping[str, object]] = None,
+    preserve_output_newlines: bool = False,
 ) -> CommandResult:
-    """Run a command with captured output and process-group timeout cleanup."""
+    """Capture a command with process-group timeout cleanup.
+
+    Patch collectors can request exact UTF-8 stdout without universal-newline
+    translation. Undecodable patch bytes fail closed instead of being replaced.
+    The ordinary text runner remains unchanged unless this option is requested.
+    """
 
     effective_timeout = timeout_seconds if timeout_seconds is not None else timeout
     if effective_timeout is None:
@@ -698,7 +714,7 @@ def run_command(
     )
     if command and Path(command[0]).name == "git":
         process_environment = git_subprocess_environment(process_environment)
-    process: Optional[subprocess.Popen[str]] = None
+    process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = None
     try:
         process = subprocess.Popen(
             list(command),
@@ -707,10 +723,14 @@ def run_command(
             stdin=subprocess.PIPE if stdin is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            text=not preserve_output_newlines,
             start_new_session=True,
         )
-        stdout, stderr = process.communicate(input=stdin, timeout=effective_timeout)
+        input_value = stdin.encode("utf-8") if preserve_output_newlines and stdin is not None else stdin
+        stdout, stderr = process.communicate(input=input_value, timeout=effective_timeout)
+        if preserve_output_newlines:
+            stdout = stdout.decode("utf-8") if isinstance(stdout, bytes) else stdout
+            stderr = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
         return CommandResult(tuple(command), process.returncode, stdout or "", stderr or "")
     except subprocess.TimeoutExpired as exc:
         if process is not None:
@@ -741,7 +761,9 @@ def run_command(
         else:
             stdout = exc.stdout or ""
             stderr = exc.stderr or ""
-        stdout = stdout if isinstance(stdout, str) else stdout.decode("utf-8", errors="replace")
+        stdout = stdout if isinstance(stdout, str) else stdout.decode(
+            "utf-8", errors="strict" if preserve_output_newlines else "replace"
+        )
         stderr = stderr if isinstance(stderr, str) else stderr.decode("utf-8", errors="replace")
         timeout_message = f"Command timed out after {effective_timeout}s"
         return CommandResult(
