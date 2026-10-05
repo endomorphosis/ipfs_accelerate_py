@@ -1,0 +1,14 @@
+{
+  "source_files": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8",
+    "benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846"
+  },
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "datasets_tracked_status": ""
+}

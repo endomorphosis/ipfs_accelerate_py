@@ -126,6 +126,16 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         alias.symlink_to(model.name, target_is_directory=True)
     events = []
     task = SimpleNamespace(task_cid='task-cid', task_key='TASK', status='completed', revision=4)
+    # This driver fixture authors its context and mocks the policy-selection
+    # boundary too; real authenticated retrieval is covered by the native
+    # published-empty-task-context tests.
+    authored_bundle = {'bound': True}
+    expected_bundle = authored_bundle if arm == 'full' else None
+    expected_policy = ('local-safetensors-symbols@1' if learned else
+        'lexical-tfidf-symbols@1' if arm == 'full' else None)
+    expected_artifacts = {'result': '.runtime/terminal-vectors/result.json',
+        'manifest': '.runtime/terminal-vectors/model-manifest.json',
+        'model_snapshot': str(model)} if learned else None
     monkeypatch.setattr(driver, 'ROOT', root)
     monkeypatch.setattr(driver.os, 'geteuid', lambda: 1000)
     monkeypatch.setattr(driver.signal, 'signal', lambda *_: None)
@@ -144,8 +154,18 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
     monkeypatch.setattr(driver.preparation, 'plan', lambda **_: {'qualified': True})
     def context(**_):
         events.append('context')
-        return {'context_bundle': {'bound': True}}
+        return {'context_bundle': authored_bundle}
     monkeypatch.setattr(driver.preparation, 'context', context)
+    def retrieval_options(*, repository, bundle, task, model_snapshot):
+        events.append('retrieval_options')
+        assert repository == Path('/app')
+        assert bundle is expected_bundle
+        assert task is authored_task
+        assert model_snapshot == (alias if learned else None)
+        return dict(published_retrieval_policy=expected_policy,
+                    published_learned_artifacts=expected_artifacts)
+    authored_task = task
+    monkeypatch.setattr(driver, '_published_retrieval_options', retrieval_options)
     monkeypatch.setattr(driver, 'verify_local_benchmark_admission', lambda *_args, **_kwargs:
         {'graph': SimpleNamespace(tasks=[task]), 'manifest': {'repository_cid': 'repository',
             'sources': {driver.preparation.INSTRUCTION: {'sha256': 'b' * 64}}}})
@@ -170,11 +190,9 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         argv = shlex.split(kwargs['implementation_command'])
         assert ('--doctor-candidate-artifact' in argv) == (route == 'doctor_candidate')
         assert ('--semantic-repository' in argv) == (arm == 'full' and route == 'model_router')
-        if learned:
-            assert kwargs['published_retrieval_policy'] == 'local-safetensors-symbols@1'
-            assert kwargs['published_learned_artifacts']['model_snapshot'] == str(model)
-        else:
-            assert kwargs['published_learned_artifacts'] is None
+        assert kwargs['context_bundle'] is expected_bundle
+        assert kwargs['published_retrieval_policy'] == expected_policy
+        assert kwargs['published_learned_artifacts'] == expected_artifacts
         return SimpleNamespace(state=state, start=lambda: response, stop=lambda: response,
             observe=lambda: {}, close=lambda: None, profile=object(),
             process=SimpleNamespace(snapshot=lambda _: SimpleNamespace(members=[])))
@@ -187,6 +205,8 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
     assert result['implementation_route'] == route
     assert result['provider_invocations'] == []
     assert ('unreceipted_provider_attempt' in result) == (route == 'model_router')
+    assert events.count('retrieval_options') == 1
+    assert events.index('owner') < events.index('retrieval_options') < events.index('runtime')
     if arm == 'full':
         assert events.index('initial_context') < events.index('context')
         assert events.index('context') < events.index('doctor') < events.index('owner') < events.index('runtime')

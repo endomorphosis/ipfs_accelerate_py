@@ -1,0 +1,27 @@
+{
+  "schema": "supervisor-multitask-final-selection@1",
+  "selections": [
+    "test/api/test_intent_requirement_adapter.py",
+    "test/api/test_intent_symbolic_planning.py",
+    "test/api/test_intent_symbolic_planning_ordered.py",
+    "test/api/test_intent_requirement_admission.py",
+    "test/api/test_agent_supervisor_local_planning_admission.py",
+    "test/api/test_local_completion_bridge.py",
+    "test/api/test_intent_requirement_observation.py",
+    "test/api/test_intent_requirement_observation_native.py",
+    "test/api/test_intent_requirement_worker_context.py",
+    "test/api/test_codebase_inventory_evidence_admission.py",
+    "test/api/test_doctor_imported_alias_workflow.py",
+    "test/api/test_terminal_doctor_dispatch.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py"
+  ],
+  "scope": "New reviewed profile and actual nativeowner controls; unchanged ordered/general planning+completion/IR inventory owners and legacy benchmark context/dispatch refusals. No provider generation or model training.",
+  "counts_overlap_baseline_and_diagnostics": true,
+  "completion_authority": false
+}

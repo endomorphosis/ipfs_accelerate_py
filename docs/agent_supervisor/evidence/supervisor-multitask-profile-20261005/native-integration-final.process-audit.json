@@ -1,0 +1,9 @@
+{
+  "schema": "terminal-multitask-native-process-observation@1",
+  "native_root": "/tmp/multitask-native-final-66bc4790b1954b4f9c821af0a2eac944",
+  "scope": "Executable processes with native fixture root in observed argv or current working directory",
+  "matching_executable_processes": [],
+  "signal_calls": 0,
+  "execution_authority": false,
+  "completion_authority": false
+}

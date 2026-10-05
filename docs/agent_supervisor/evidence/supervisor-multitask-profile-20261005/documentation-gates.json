@@ -1,0 +1,25 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "returncode": 0,
+  "source_commit": "4bc3966e38e5c26f5394f8ba14a713b7923e8f64",
+  "elapsed_seconds": 0.17896767798811197,
+  "source_pins_unchanged": true,
+  "input_pins": {
+    "scripts/docs/run_documentation_gates.py": "9cca5cafba0c5b68a6caa88ebf0aa8cb8dd443d57aa9fdae6c437886d47bc12e",
+    "scripts/docs/check_agent_supervisor_docs.py": "09580aa9a8707ce8da278d5b7fef4055e1945e53266c0fc4437e516eda1fed87",
+    "scripts/docs/check_current_docs_links.py": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e",
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": "661073e1d0f61efdde3391e6d933f22d9544ef574064605cba4bd5cd11336034",
+    "pyproject.toml": "f9b2597c80a08b838a6c81cb9eb3a713d3b3256036fecffaf942b18a9585b3c5",
+    "setup.py": "93af5252ba66c3ff506bdd326a44586be41af77c930952b74f0b232f82d33d0b",
+    "ipfs_accelerate_py/__init__.py": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+    "docs/INDEX.md": "cac96a98e15a05f2df10777aca74526a5277a9289127220d2513c4b8936019d3",
+    "docs/development/DOCUMENTATION_CURRENT_STATE.md": "ac1ecc6cd8cf35463754bc7127da1d8b6efb0fb87c0f57c32871c4db00c69e9a",
+    "docs/development/DOCUMENTATION_VALIDATION_2026_08.md": "bc33fe2795fe773853697f0645bef505ff9169048b70da091229799b7fc5c6c6"
+  },
+  "allowlisted_documentation_files": 46,
+  "version": "0.0.45",
+  "completion_authority": false
+}

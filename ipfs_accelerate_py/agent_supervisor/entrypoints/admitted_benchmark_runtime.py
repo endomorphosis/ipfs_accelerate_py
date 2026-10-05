@@ -368,7 +368,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     or worker_worktree_root.stat().st_mode & 0o022):
                 raise ValueError("worker_worktree_root must be an existing exact owner-controlled directory")
         verified = verify_local_benchmark_admission(admission, initial=True)
-        from ..runtime.local_planning_admission import INVENTORY_MANIFEST_SCHEMAS
+        from ..runtime.local_planning_admission import (
+            INVENTORY_MANIFEST_SCHEMAS, _verify_multitask_profile_sources,
+        )
+        if _verify_multitask_profile_sources(verified["manifest"]) is not None:
+            raise ValueError("reviewed multi-task profile permits administrative planning only; native execution scope is unqualified")
         if verified["manifest"]["schema"] in INVENTORY_MANIFEST_SCHEMAS and inventory_execution_scope is None:
             raise ValueError("inventory admission requires an exact native inventory execution scope")
         if refresh_context_on_completion and len(verified["graph"].tasks) != 1:

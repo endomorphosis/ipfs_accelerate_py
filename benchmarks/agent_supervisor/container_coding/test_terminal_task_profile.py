@@ -1,4 +1,7 @@
 """Generic public declarations through native Git, signing, indexing and smoke."""
+from copy import deepcopy
+import hashlib
+import json
 import os
 import subprocess
 
@@ -6,6 +9,7 @@ import pytest
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
 from benchmarks.agent_supervisor.container_coding import terminal_task_profile as profiles
+from ipfs_accelerate_py.agent_supervisor.runtime import terminal_task_profile as owner
 
 
 def profile(text="Implement public_source and write result.py.\n", inputs=("source.py",), output="result.py"):
@@ -313,3 +317,200 @@ def test_actual_generic_source_indexes_and_world_bind_task_inputs(tmp_path):
         "instruction_only": False, "source_semantics_verified": False}
     assert result["world_task_count"] == 0
     assert result["provider_calls"] == 0
+
+
+@pytest.mark.parametrize("mixed,profile_digest,smoke_digest,spec_digest", [
+    (True, "8c3a9518fb8ed888bb24fc1f23e48deaa8b79b13514819c9cdea2ff754bdec47",
+     "488e32462a4d2bf595b50bccc37cf74f1be351461b7ee2ab040f74527fdd8549",
+     "2df2f197bf9187bf708b12124a03bcb8ac3d18266e1029708fbcf38a2ebb55c9"),
+    (False, "93a47f93d1aa4a4de018f403328196f75232080c1599acf238353ee2d394e42b",
+     "779b97b174ae07b680dbe08e3a9e2ca00ed8e52caf0ba3df742399d58aa71301",
+     "e9015b0824cd21ed1b82f04f4d2046fa7dd9822422ba0b7e0e7bb090a5f76f95"),
+])
+def test_version_one_bytes_preserve_frozen_published_baseline(mixed, profile_digest, smoke_digest, spec_digest):
+    # Golden bytes were generated from the unchanged 7dda779c9 owner, before
+    # this profile increment, including its fixed structural acceptance text.
+    declared = profile(inputs=("source.py",) if mixed else ())
+    if mixed:
+        declared["outputs"].insert(0, {"path": "source.py", "effect": "modify", "media_type": "text/x-python"})
+    assert hashlib.sha256(owner.task_profile_bytes(declared)).hexdigest() == profile_digest
+    assert hashlib.sha256(owner.task_profile_smoke(declared).encode()).hexdigest() == smoke_digest
+    spec = owner.task_profile_spec(declared, policy_cid="fixture")
+    raw = json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(raw).hexdigest() == spec_digest
+    assert owner.task_profile_specs(declared, policy_cid="fixture") == [spec]
+    assert set(owner.validate_task_profile(declared)) == {"schema", "instruction_sha256", "input_paths", "outputs"}
+
+
+def multitask_profile(count=2):
+    from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
+    declared = profile(inputs=())
+    declared.update(schema=owner.MULTITASK_SCHEMA,
+                    intent_requirement_contract_cid=cid_for_dag_json({"reviewed": "structural-fixture"}),
+                    outputs=[], tasks=[])
+    for index in range(count):
+        path, key = f"result_{index:02d}.py", f"task:{index:02d}"
+        declared["outputs"].append({"path": path, "effect": "create", "media_type": "text/x-python"})
+        declared["tasks"].append({"task_key": key, "operation_id": f"operation:{index:02d}",
+            "output_paths": [path], "dependencies": [], "validation_key": f"check:{index:02d}",
+            "criterion_key": f"criterion:{index:02d}"})
+    return declared
+
+
+@pytest.mark.parametrize("count", [2, 16])
+def test_multi_task_profile_canonicalizes_bounded_population(count):
+    declared = multitask_profile(count)
+    declared["tasks"].reverse()
+    declared["outputs"].reverse()
+    declared["tasks"][0]["dependencies"] = ["task:00"]
+    canonical = owner.validate_task_profile(declared)
+    assert canonical == owner.validate_task_profile(canonical)
+    assert canonical["tasks"][0]["task_key"] == "task:00"
+    assert len(owner.task_profile_specs(canonical, policy_cid="fixture")) == count
+    assert owner.task_profile_bytes(declared) == owner.task_profile_bytes(canonical)
+
+
+@pytest.mark.parametrize("mutation", ["one_task", "too_many", "unknown_top", "unknown_task", "empty_outputs",
+    "duplicate_ownership", "unowned_output", "extra_output", "unknown_dependency", "self_dependency",
+    "duplicate_dependency", "cycle", "duplicate_task", "duplicate_operation", "duplicate_validation",
+    "duplicate_criterion", "bad_task_key", "oversize_key", "invalid_cid", "boolean_cid", "reserved_version"])
+def test_multi_task_profile_refuses_ambiguous_or_unbounded_bindings(mutation):
+    declared = multitask_profile(17 if mutation == "too_many" else 2)
+    if mutation == "one_task": declared["tasks"].pop()
+    elif mutation == "unknown_top": declared["completion_authority"] = True
+    elif mutation == "unknown_task": declared["tasks"][0]["proof_authority"] = True
+    elif mutation == "empty_outputs": declared["tasks"][0]["output_paths"] = []
+    elif mutation == "duplicate_ownership": declared["tasks"][1]["output_paths"] = declared["tasks"][0]["output_paths"][:]
+    elif mutation == "unowned_output": declared["outputs"].append({"path": "unowned.py", "effect": "create", "media_type": "text/x-python"})
+    elif mutation == "extra_output": declared["tasks"][0]["output_paths"].append("extra.py")
+    elif mutation == "unknown_dependency": declared["tasks"][0]["dependencies"] = ["task:absent"]
+    elif mutation == "self_dependency": declared["tasks"][0]["dependencies"] = ["task:00"]
+    elif mutation == "duplicate_dependency": declared["tasks"][1]["dependencies"] = ["task:00", "task:00"]
+    elif mutation == "cycle":
+        declared["tasks"][0]["dependencies"] = ["task:01"]
+        declared["tasks"][1]["dependencies"] = ["task:00"]
+    elif mutation.startswith("duplicate_"):
+        name = {"duplicate_task": "task_key", "duplicate_operation": "operation_id",
+                "duplicate_validation": "validation_key", "duplicate_criterion": "criterion_key"}[mutation]
+        declared["tasks"][1][name] = declared["tasks"][0][name]
+    elif mutation == "bad_task_key": declared["tasks"][0]["task_key"] = "task with spaces"
+    elif mutation == "oversize_key": declared["tasks"][0]["criterion_key"] = "x" * 129
+    elif mutation == "invalid_cid": declared["intent_requirement_contract_cid"] = "not-a-cid"
+    elif mutation == "boolean_cid": declared["intent_requirement_contract_cid"] = True
+    elif mutation == "reserved_version": declared["schema"] = "terminal-public-task-profile@2"
+    with pytest.raises(ValueError):
+        owner.validate_task_profile(declared)
+
+
+def test_multi_task_disjoint_ownership_covers_modify_outputs_too():
+    declared = multitask_profile()
+    declared["input_paths"] = [item["path"] for item in declared["outputs"]]
+    for output in declared["outputs"]: output["effect"] = "modify"
+    specs = owner.task_profile_specs(declared, policy_cid="fixture")
+    assert all(spec["outputs"][0]["effect"] == "modify" for spec in specs)
+    assert set(specs[0]["scope_paths"]) == {owner.INSTRUCTION, owner.PROFILE, owner.SMOKE,
+                                           "result_00.py", "result_01.py"}
+    declared["tasks"][1]["output_paths"] = declared["tasks"][0]["output_paths"][:]
+    with pytest.raises(ValueError, match="disjoint"):
+        owner.validate_task_profile(declared)
+
+
+def test_multi_task_specs_keep_closed_per_task_structural_checks():
+    declared = multitask_profile()
+    specs = owner.task_profile_specs(declared, policy_cid="fixture")
+    assert set(specs[0]) == {"task_key", "scope_paths", "dependencies", "outputs", "validations", "acceptance"}
+    assert "result_01.py" not in specs[0]["scope_paths"]
+    assert specs[0]["validations"] == [{"validation_key": "check:00",
+        "argv": ["python3", "-I", "-B", owner.SMOKE, "--task", "task:00"],
+        "cwd": ".", "expected_exit_codes": [0], "policy_cid": "fixture"}]
+    assert specs[0]["acceptance"][0]["evidence_cids"] == []
+    assert specs[0]["acceptance"][0]["validation_keys"] == ["check:00"]
+    assert specs[0]["acceptance"][0]["criterion"].endswith("benchmark correctness remains unverified")
+    with pytest.raises(ValueError, match="singleton"):
+        owner.task_profile_spec(declared, policy_cid="fixture")
+
+
+@pytest.mark.parametrize("selector", [[], ["--task"], ["--task", "missing"],
+    ["task:00"], ["--task", "task:00", "extra"], ["--task=task:00"]])
+def test_multi_task_smoke_refuses_missing_or_nonexact_task_selector(tmp_path, selector):
+    declared = multitask_profile()
+    for output in declared["outputs"]: (tmp_path / output["path"]).write_text("pass\n")
+    (tmp_path / owner.SMOKE).write_text(owner.task_profile_smoke(declared))
+    result = subprocess.run(["python3", "-I", "-B", owner.SMOKE, *selector], cwd=tmp_path,
+                            capture_output=True, timeout=10)
+    assert result.returncode != 0
+
+
+def test_multi_task_smoke_checks_only_selected_outputs_without_candidate_execution(tmp_path):
+    declared = multitask_profile()
+    (tmp_path / "result_00.py").write_text("open('EXECUTED','w').write('candidate')\nraise RuntimeError('candidate')\n")
+    (tmp_path / owner.SMOKE).write_text(owner.task_profile_smoke(declared))
+    specs = owner.task_profile_specs(declared, policy_cid="fixture")
+    selected = subprocess.run(specs[0]["validations"][0]["argv"], cwd=tmp_path, capture_output=True, timeout=10)
+    missing = subprocess.run(specs[1]["validations"][0]["argv"], cwd=tmp_path, capture_output=True, timeout=10)
+    assert selected.returncode == 0 and missing.returncode != 0
+    assert not (tmp_path / "EXECUTED").exists()
+
+
+def reviewed_multi_task_profile(*, ordered=False):
+    from test.api.test_intent_requirement_adapter import prepared
+    from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
+    from ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage import validate_intent_requirement_contract
+    contract, _ = prepared(two=True, ordered=ordered)
+    contract["source_path"] = owner.INSTRUCTION
+    contract = validate_intent_requirement_contract(contract)
+    source = "".join(unit["text"] for unit in contract["ledger"]["source_units"])
+    outputs = [deepcopy(output) for operation in contract["symbolic_operations"]["operations"]
+               for output in operation["outputs"]]
+    op_tasks = {op["operation_id"]: op["task_key"] for op in contract["symbolic_operations"]["operations"]}
+    declared = {"schema": owner.MULTITASK_SCHEMA, "instruction_sha256": owner.instruction_sha256(source),
+        "input_paths": [item["path"] for item in outputs], "outputs": outputs,
+        "intent_requirement_contract_cid": cid_for_dag_json(contract), "tasks": []}
+    for index, operation in enumerate(contract["symbolic_operations"]["operations"]):
+        declared["tasks"].append({"task_key": operation["task_key"], "operation_id": operation["operation_id"],
+            "output_paths": [item["path"] for item in operation["outputs"]],
+            "dependencies": [op_tasks[key] for key in operation["dependency_operation_ids"]],
+            "validation_key": operation["validation_keys"][0], "criterion_key": f"criterion:{index}"})
+    return source, contract, declared
+
+
+@pytest.mark.parametrize("ordered", [False, True])
+def test_multi_task_contract_joins_exact_atomic_reviewed_operations(ordered):
+    source, contract, declared = reviewed_multi_task_profile(ordered=ordered)
+    assert owner.validate_task_profile_contract(declared, contract, instruction=source) == contract
+    assert owner.validate_task_profile_contract(declared, contract) == contract
+
+
+@pytest.mark.parametrize("contract", [None, [], "reviewed-contract", True])
+def test_multi_task_contract_requires_an_actual_reviewed_object(contract):
+    with pytest.raises(ValueError, match="reviewed requirement contract"):
+        owner.validate_task_profile_contract(multitask_profile(), contract)
+
+
+@pytest.mark.parametrize("mutation", ["wrong_contract", "wrong_source_path", "wrong_instruction", "wrong_digest",
+    "wrong_operation", "wrong_task", "wrong_output", "wrong_validation", "missing_dependency", "extra_dependency",
+    "extra_operation_dependency", "schema_one"])
+def test_multi_task_contract_refuses_identity_effect_or_ordering_drift(mutation):
+    from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
+    source, contract, declared = reviewed_multi_task_profile(ordered=mutation == "missing_dependency")
+    if mutation == "wrong_contract": declared["intent_requirement_contract_cid"] = cid_for_dag_json({"different": True})
+    elif mutation == "wrong_source_path": contract["source_path"] = "other.md"
+    elif mutation == "wrong_instruction": source += "Extra instruction."
+    elif mutation == "wrong_digest": declared["instruction_sha256"] = "0" * 64
+    elif mutation == "wrong_operation": declared["tasks"][0]["operation_id"] = "operation:absent"
+    elif mutation == "wrong_task": declared["tasks"][0]["task_key"] = "task:other"
+    elif mutation == "wrong_output": declared["outputs"][0]["media_type"] = "text/plain"
+    elif mutation == "wrong_validation": declared["tasks"][0]["validation_key"] = "check:other"
+    elif mutation == "missing_dependency": declared["tasks"][1]["dependencies"] = []
+    elif mutation == "extra_dependency": declared["tasks"][1]["dependencies"] = [declared["tasks"][0]["task_key"]]
+    elif mutation == "extra_operation_dependency":
+        operations = contract["symbolic_operations"]["operations"]
+        operations[1]["dependency_operation_ids"] = [operations[0]["operation_id"]]
+        declared["tasks"][1]["dependencies"] = [declared["tasks"][0]["task_key"]]
+    elif mutation == "schema_one":
+        contract["schema"] = "intent-plan-requirement-contract@1"
+        del contract["symbolic_operations"]
+    if mutation in {"wrong_source_path", "extra_operation_dependency", "schema_one"}:
+        declared["intent_requirement_contract_cid"] = cid_for_dag_json(contract)
+    with pytest.raises(ValueError):
+        owner.validate_task_profile_contract(declared, contract, instruction=source)

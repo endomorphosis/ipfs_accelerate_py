@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -eu
+cd /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 PYTHONPATH=/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/dev/shm/multitask-native-final-6bba992c101c477494785f12d11e1dab.duckdb IPFS_ACCELERATE_PYTEST_SEAL=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 CUDA_VISIBLE_DEVICES= /home/barberb/.local/bin/python -B -m pytest -c pytest.ini --noconftest --import-mode=importlib -q --tb=short --show-capture=no --color=no -o log_cli=false --basetemp=/tmp/multitask-native-final-66bc4790b1954b4f9c821af0a2eac944 --junitxml=/home/barberb/lift_coding/artifacts/supervisor-multitask-native-20261005/native-integration-final.xml benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py

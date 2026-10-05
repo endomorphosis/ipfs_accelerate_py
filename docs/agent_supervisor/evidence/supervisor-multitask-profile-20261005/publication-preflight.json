@@ -1,0 +1,19 @@
+{
+  "schema": "supervisor-multitask-publication-preflight@1",
+  "qualified_source_commit": "4bc3966e38e5c26f5394f8ba14a713b7923e8f64",
+  "origin_main_before_publication": "689642234aad95cd13518f5c193288b06a5f8abd",
+  "qualified_commit_contains_origin_main": true,
+  "all_63_qualified_source_test_pins_match_git_objects": true,
+  "local_documentation_gates": "documentation-gates.json",
+  "required_status_contexts": [
+    "documentation-gates"
+  ],
+  "enforce_admins": false,
+  "publication_method": "Atomic non-force push of the owned topic and main after completed local qualification.",
+  "independent_review": "publication-independent-review.json",
+  "hosted_ci": "Not yet observed for the final documentation commit.",
+  "paid_provider_calls": 0,
+  "training_or_downloads": false,
+  "new_model_weights": false,
+  "completion_authority": false
+}

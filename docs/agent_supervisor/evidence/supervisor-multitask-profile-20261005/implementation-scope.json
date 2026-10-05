@@ -1,0 +1,80 @@
+{
+  "schema": "supervisor-multitask-profile-scope@1",
+  "implementation_baseline": "7dda779c99ffc25166459277a6358dcf78caee29",
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "public_profile_schema": "terminal-public-task-profile@3",
+  "prepared_schema": "terminal-indexed-public-preparation@2",
+  "schema_version_reason": "Concurrent terminal-expansion-20261005 worktree uses terminal-public-task-profile@2 for structured-data inputs; keep multi-task declarations distinct. This turn does not import that uncommitted worktree.",
+  "phase": "reviewed administrative planning, admission and native storage only",
+  "preserved_execution_refusals": [
+    "per-task initial context",
+    "singleton context",
+    "benchmark Doctor dispatch",
+    "native START",
+    "candidate runner and published context refresh"
+  ],
+  "baseline_source_bindings": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "sha256": "e0ead6bdb4d4710ae44f3ca323bb0748cbbcc9fac0512ecdca5c95ff1ff8f424"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": {
+      "sha256": "55be491102186a80cf90de6572cd508c3d727a48603204ffa35cbb3ddd6e10ef"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "sha256": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": {
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": {
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": {
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": {
+      "sha256": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py": {
+      "sha256": "f2b57e250ae4767689707291e95b5976743747317ef5be03946c40e0e2608c17"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": {
+      "sha256": "e375a0be14dcfe7579f917807f9308c7fa42024b67c11b1e0add18452dad0156"
+    },
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "sha256": "a8efc0edd0d1ba348dda4b5d6fedfbd62e1e50de91eb649e57f3ae6fb771ce1a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": {
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": {
+      "sha256": "8454ba8930e327a0e63f8ead2f76c472f60df280427bceed4a868d856b5b0279"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": {
+      "sha256": "44b804497a280f437270d0a5c2ac4e555a9d6b42a013c61c868c4bd72d938bcd"
+    },
+    "benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": {
+      "sha256": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py": {
+      "sha256": "bd189ee79921a9afd81b86ad95d9149b7c65e536400f80816bb853d5556b8474"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "sha256": "11e901d8e1123672f355b73ed1b27f5b69a99b8589d74df1b3dd92c3843a6ed1"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": {
+      "sha256": "17f416a45d873ba77ca10e11eb13b3f61ecd061f6e5ec3b63beba8230e455868"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+    }
+  },
+  "paid_provider_calls": 0,
+  "training_or_downloads": false,
+  "new_model_weights": false,
+  "completion_authority": false
+}

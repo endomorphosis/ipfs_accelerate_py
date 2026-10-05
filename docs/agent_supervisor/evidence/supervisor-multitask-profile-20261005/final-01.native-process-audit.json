@@ -1,0 +1,8 @@
+{
+  "fixture_root": "/tmp/ordinary-supervisor-final-01-d8bd96b518894c83b333a6b143277ddc",
+  "worker_marker_count": 0,
+  "matching_live_processes": [],
+  "unavailable_worker_observations": [],
+  "signal_calls": 0,
+  "scope": "Observed native argv or cwd under this exact run root, plus its recorded worker PIDs; zombies excluded. This is not a host-wide absence proof."
+}

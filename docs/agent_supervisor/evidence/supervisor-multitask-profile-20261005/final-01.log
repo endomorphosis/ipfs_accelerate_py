@@ -1,0 +1,73 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 495 items
+
+test/api/test_intent_requirement_adapter.py ............................ [  5%]
+......                                                                   [  6%]
+test/api/test_intent_symbolic_planning.py ...................            [ 10%]
+test/api/test_intent_symbolic_planning_ordered.py ....                   [ 11%]
+test/api/test_intent_requirement_admission.py .......................... [ 16%]
+...........                                                              [ 18%]
+test/api/test_agent_supervisor_local_planning_admission.py ............  [ 21%]
+test/api/test_local_completion_bridge.py ...........                     [ 23%]
+test/api/test_intent_requirement_observation.py ........................ [ 28%]
+...                                                                      [ 29%]
+test/api/test_intent_requirement_observation_native.py ................. [ 32%]
+...                                                                      [ 33%]
+test/api/test_intent_requirement_worker_context.py ..................... [ 37%]
+............                                                             [ 39%]
+test/api/test_codebase_inventory_evidence_admission.py ...............   [ 42%]
+test/api/test_doctor_imported_alias_workflow.py ........................ [ 47%]
+...........................                                              [ 53%]
+test/api/test_terminal_doctor_dispatch.py .......FF.F                    [ 55%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 55%]
+........................................................................ [ 70%]
+....................................................                     [ 80%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 80%]
+........................................                                 [ 88%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 89%]
+...............                                                          [ 92%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 92%]
+................                                                         [ 95%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 95%]
+......                                                                   [ 96%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 97%]
+...........                                                              [ 99%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 99%]
+..                                                                       [100%]
+
+=================================== FAILURES ===================================
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+_ test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True] _
+test/api/test_terminal_doctor_dispatch.py:186: in test_driver_selects_before_owner_and_preserves_provider_accounting
+    assert result['task_completed'], result
+E   AssertionError: {'schema': 'terminal-admitted-supervisor-run@1', 'arm': 'full', 'task_completed': False, 'official_reward': None, ...}
+E   assert False
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/final-01.xml -
+============================= slowest 10 durations =============================
+5.46s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]
+5.42s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]
+5.20s call     test/api/test_intent_symbolic_planning.py::test_real_native_publication_replays_symbolic_selection_against_original_baseline
+5.06s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]
+4.85s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+4.40s call     test/api/test_intent_requirement_observation_native.py::test_actual_claim_failure_missing_output_stale_and_completion_remain_distinct[done]
+4.17s call     test/api/test_intent_requirement_observation_native.py::test_actual_claim_failure_missing_output_stale_and_completion_remain_distinct[complete]
+4.15s call     test/api/test_intent_requirement_observation_native.py::test_actual_claim_failure_missing_output_stale_and_completion_remain_distinct[completed]
+4.14s call     test/api/test_intent_requirement_observation_native.py::test_real_publication_needs_exact_transition_and_owner_check_before_progress
+4.11s call     test/api/test_doctor_imported_alias_workflow.py::test_real_provers_native_impact_transaction_and_allocated_candidate
+=========================== short test summary info ============================
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]
+FAILED test/api/test_terminal_doctor_dispatch.py::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]
+================== 3 failed, 492 passed in 600.43s (0:10:00) ===================

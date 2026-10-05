@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 26 items
+
+test/api/test_terminal_doctor_dispatch.py ...........                    [ 42%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 84%]
+....                                                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-multitask-profile-20261005/fixture-retrieval-01.xml -
+============================= slowest 10 durations =============================
+9.00s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+4.83s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]
+4.73s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]
+3.18s call     test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+2.08s call     test/api/semantic_state/test_published_empty_task_context.py::test_admitted_owner_registers_empty_policy_without_vector_artifacts
+1.24s call     test/api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+0.90s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.89s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.54s setup    test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+0.51s setup    test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+============================= 26 passed in 49.09s ==============================
