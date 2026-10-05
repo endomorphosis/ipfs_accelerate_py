@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="21" skipped="0" tests="26" time="24.221" timestamp="2026-10-05T06:02:26.831691+00:00" hostname="spark-b271"><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy" time="2.118"><failure message="KeyError: 'IPFS_ACCELERATE_SUPERVISED_CHILD_IDENTITY_PATH'">test/api/test_ordinary_supervisor_child_identity.py:84: in test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+    assert configured.child_env[runtime.SUPERVISED_CHILD_IDENTITY_PATH_ENV] == str(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'IPFS_ACCELERATE_SUPERVISED_CHILD_IDENTITY_PATH'</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_appended_execution_policy_override[override0]" time="0.603"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_appended_execution_policy_override[override1]" time="0.662"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_appended_execution_policy_override[override2]" time="0.628"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_appended_execution_policy_override[override3]" time="0.624"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_recovers_only_exact_live_missing_marker[pid]" time="0.640"><failure message="assert (None is not None)">test/api/test_ordinary_supervisor_child_identity.py:131: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_recovers_only_exact_live_missing_marker[identity]" time="0.641"><failure message="assert (None is not None)">test/api/test_ordinary_supervisor_child_identity.py:131: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_changed_identity_without_touching_child[birth]" time="0.667"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_changed_identity_without_touching_child[boot]" time="0.658"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_changed_identity_without_touching_child[scope]" time="0.625"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_changed_identity_without_touching_child[command]" time="0.634"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_rejects_changed_identity_without_touching_child[malformed]" time="0.643"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_native_adoption_refuses_session_relaxation" time="0.638"><failure message="Failed: DID NOT RAISE RuntimeError">test/api/test_ordinary_supervisor_child_identity.py:172: in test_native_adoption_refuses_session_relaxation
+    with pytest.raises(RuntimeError, match="dedicated process session"):
+E   Failed: DID NOT RAISE RuntimeError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_validation_worker_cli_factory_and_child_argv_are_identical[1]" time="0.003"><failure message="SystemExit: 2">test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_validation_worker_cli_factory_and_child_argv_are_identical[4]" time="0.003"><failure message="SystemExit: 2">test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_validation_worker_cli_factory_and_child_argv_are_identical[256]" time="0.003"><failure message="SystemExit: 2">test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_cli_is_rejected[0]" time="0.002" /><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_cli_is_rejected[-1]" time="0.002" /><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_cli_is_rejected[257]" time="0.002" /><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_cli_is_rejected[1.5]" time="0.002" /><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_cli_is_rejected[true]" time="0.002" /><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_config_is_not_clamped[0]" time="0.604"><failure message="Failed: DID NOT RAISE ValueError">test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_config_is_not_clamped[-1]" time="0.679"><failure message="Failed: DID NOT RAISE ValueError">test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_config_is_not_clamped[257]" time="0.616"><failure message="Failed: DID NOT RAISE ValueError">test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_config_is_not_clamped[True]" time="0.667"><failure message="Failed: DID NOT RAISE ValueError">test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError</failure></testcase><testcase classname="test.api.test_ordinary_supervisor_child_identity" name="test_invalid_validation_worker_config_is_not_clamped[1.5]" time="0.661"><failure message="Failed: DID NOT RAISE ValueError">test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError</failure></testcase></testsuite></testsuites>

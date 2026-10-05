@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 28 items / 27 deselected / 1 selected
+
+test/api/test_ordinary_supervisor_child_identity.py F                    [100%]
+
+=================================== FAILURES ===================================
+_____ test_native_adoption_does_not_mint_identity_for_an_inherited_session _____
+test/api/test_ordinary_supervisor_child_identity.py:198: in test_native_adoption_does_not_mint_identity_for_an_inherited_session
+    with pytest.raises(RuntimeError, match="dedicated process session"):
+E   Failed: DID NOT RAISE RuntimeError
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/ordinary-session-red01.xml -
+============================= slowest 10 durations =============================
+2.16s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_does_not_mint_identity_for_an_inherited_session
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_does_not_mint_identity_for_an_inherited_session
+====================== 1 failed, 27 deselected in 11.80s =======================

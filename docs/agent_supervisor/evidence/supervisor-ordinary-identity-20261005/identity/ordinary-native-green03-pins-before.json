@@ -1,0 +1,5 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+  "test/api/test_ordinary_supervisor_child_identity.py": "2c797bf302e04fa070f9ce2a30ceca454ade429c28f0ddfae36bbc5045f697e6"
+}

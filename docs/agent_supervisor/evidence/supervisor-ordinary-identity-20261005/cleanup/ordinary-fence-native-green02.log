@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 23 items
+
+test/api/test_ordinary_supervisor_child_fence.py ....................... [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-green02.xml -
+============================= slowest 10 durations =============================
+2.20s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]
+1.08s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+0.89s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+0.86s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_uses_exact_live_sidecar_when_pid_marker_is_absent
+0.81s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True]
+0.78s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+0.76s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_keeps_worker_observations_until_native_quiescence[]
+0.72s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_preserves_corrupt_pid_marker_and_exact_live_sidecar
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_marker_retirement_preserves_launched_handle_with_dead_leader_and_live_worker
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_adoption_retains_orphan_identity_while_later_owned_worker_is_live
+============================= 23 passed in 29.96s ==============================

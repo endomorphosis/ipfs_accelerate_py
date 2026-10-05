@@ -1,0 +1,205 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 645 items
+
+test/api/test_ordinary_supervisor_child_identity.py .................... [  3%]
+........                                                                 [  4%]
+test/api/test_ordinary_supervisor_child_fence.py ....................... [  7%]
+                                                                         [  7%]
+test/api/test_agent_supervisor_process_tree_fencing.py .........         [  9%]
+test/api/test_agent_supervisor_bounded_process_fence.py .....            [ 10%]
+test/api/test_agent_supervisor_production_policy_transport.py FF........ [ 11%]
+.......................................................F..............FF [ 22%]
+FFFFFFFFFF..                                                             [ 24%]
+test/api/test_agent_supervisor_production_provider_cli.py .............. [ 26%]
+.......................F.                                                [ 30%]
+test/api/test_production_daemon_operator_options.py .................... [ 33%]
+.........                                                                [ 35%]
+test/api/test_production_independent_review_contract.py ................ [ 37%]
+..............                                                           [ 39%]
+test/api/test_supervisor_typed_recovery_join.py ........................ [ 43%]
+.....                                                                    [ 44%]
+test/api/test_supervisor_retained_donor_scopes.py ...........            [ 46%]
+test/api/test_prior_seed_guidance_replay.py ...............              [ 48%]
+test/api/test_agent_supervisor_plan_bound_preflight_recovery.py ....     [ 48%]
+test/api/test_agent_supervisor_dependency_preflight_recovery_store.py .. [ 49%]
+..................................................                       [ 57%]
+test/api/test_agent_supervisor_preflight_patch_recovery.py .........     [ 58%]
+test/api/test_supervisor_codex_command_owner.py ..................       [ 61%]
+test/api/test_supervisor_current_model_route.py ........                 [ 62%]
+test/api/test_agent_supervisor_managed_daemon_identity.py .............. [ 64%]
+......                                                                   [ 65%]
+test/api/test_agent_supervisor_managed_daemon_kernel_fence.py .........  [ 66%]
+test/api/test_supervisor_modify_seed_contract.py ....................... [ 70%]
+............                                                             [ 72%]
+test/api/test_supervisor_modify_seed_replay.py .....................     [ 75%]
+test/api/test_agent_supervisor_prior_attempt_seed.py ................... [ 78%]
+.............                                                            [ 80%]
+test/api/test_agent_supervisor_daemon_checkpoints.py ................... [ 83%]
+..........                                                               [ 85%]
+test/api/test_agent_supervisor_lifecycle_orchestrator.py ............... [ 87%]
+.......................                                                  [ 91%]
+test/api/test_agent_supervisor_control_lifecycle.py .................    [ 93%]
+test/api/test_supervisor_preflight_persistence_deadline.py ...........   [ 95%]
+test/api/test_supervisor_staged_file_patching.py ......................  [ 98%]
+test/api/test_llm_router_exact_provider_fallback.py ........             [100%]
+
+=================================== FAILURES ===================================
+_____ test_policy_defaults_match_current_policy_without_creating_authority _____
+test/api/test_agent_supervisor_production_policy_transport.py:77: in test_policy_defaults_match_current_policy_without_creating_authority
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e625d60f0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+___ test_operator_bounds_and_both_authority_bindings_survive_native_command ____
+test/api/test_agent_supervisor_production_policy_transport.py:84: in test_operator_bounds_and_both_authority_bindings_survive_native_command
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e625c9d30>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+__________ test_disabled_policy_does_not_adopt_policy_bearing_daemon ___________
+test/api/test_agent_supervisor_production_policy_transport.py:208: in test_disabled_policy_does_not_adopt_policy_bearing_daemon
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5d2f6e70>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-policy] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5d2f5310>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-context-budget-tokens] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e625d7740>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-timeout-seconds] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e62554440>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-review-authority-key-path] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5d27c5f0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-launch-authority-receipt-path] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5d29f7a0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-launch-authority-receipt-content-id] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e62541f70>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-policy] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e625d5cd0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-context-budget-tokens] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5d29ed20>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-timeout-seconds] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e622120c0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-review-authority-key-path] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5cb61eb0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-path] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e62213c80>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+_ test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-content-id] _
+test/api/test_agent_supervisor_production_policy_transport.py:269: in test_configured_policy_rejects_extra_abbreviated_selection
+    assert supervisor._managed_daemon_matches_command_line(shlex.join(command))
+E   assert False
+E    +  where False = _managed_daemon_matches_command_line('/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0')
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e62210bc0>._managed_daemon_matches_command_line
+E    +    and   '/home/barberb/.local/bin/python -P -c \'import sys\n(sys.argv[1:2] == [\'"\'"\'ipfs_accelerate_py.agent_supervisor.to...arget-branch implementation/todo --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0' = <function join at 0xe38efdb41080>(['/home/barberb/.local/bin/python', '-P', '-c', "import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.t...nraise SystemExit(main())", 'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon', '--interval', ...])
+E    +      where <function join at 0xe38efdb41080> = shlex.join
+___ test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption ____
+test/api/test_agent_supervisor_production_provider_cli.py:1571: in test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption
+    assert supervisor._managed_daemon_matches_command_line(command_line) is True
+E   assert False is True
+E    +  where False = _managed_daemon_matches_command_line("/home/barberb/.local/bin/python -P -c import sys\n(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon...et-branch implementation/runtime --implement --implementation-timeout 1800.0 --task-shard-count 1 --task-shard-index 0")
+E    +    where _managed_daemon_matches_command_line = <ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.PortalImplementationSupervisor object at 0xe38e5cb60320>._managed_daemon_matches_command_line
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-ordinary-identity-20261005/final-01.xml -
+============================= slowest 10 durations =============================
+2.54s call     test/api/test_production_independent_review_contract.py::test_live_implementation_validates_commits_and_signs_one_reviewed_effect
+2.13s call     test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+1.64s call     test/api/test_production_independent_review_contract.py::test_live_failed_validation_does_not_commit_or_issue_review_attestation
+1.20s call     test/api/test_agent_supervisor_preflight_patch_recovery.py::test_portal_retains_preflight_store_for_retry_after_contended_close
+1.13s call     test/api/test_llm_router_exact_provider_fallback.py::test_exact_provider_does_not_consume_cross_provider_cached_response
+1.03s call     test/api/test_agent_supervisor_production_provider_cli.py::test_native_process_timeout_kills_detached_descendant
+0.99s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_releases_native_state_only_after_owned_session_fence
+0.83s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_keeps_worker_observations_until_native_quiescence[]
+0.82s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+0.81s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_policy_defaults_match_current_policy_without_creating_authority
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_operator_bounds_and_both_authority_bindings_survive_native_command
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_disabled_policy_does_not_adopt_policy_bearing_daemon
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-policy]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-context-budget-tokens]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-timeout-seconds]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-review-authority-key-path]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-launch-authority-receipt-path]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[pair---production-provider-launch-authority-receipt-content-id]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-policy]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-context-budget-tokens]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-timeout-seconds]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-review-authority-key-path]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-path]
+FAILED test/api/test_agent_supervisor_production_policy_transport.py::test_configured_policy_rejects_extra_abbreviated_selection[equals---production-provider-launch-authority-receipt-content-id]
+FAILED test/api/test_agent_supervisor_production_provider_cli.py::test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption
+================== 16 failed, 629 passed in 344.03s (0:05:44) ==================

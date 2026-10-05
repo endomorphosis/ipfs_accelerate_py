@@ -1,0 +1,84 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 12 items
+
+test/api/test_ordinary_supervisor_child_fence.py FFFFFFFFFFFF            [100%]
+
+=================================== FAILURES ===================================
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[weak_argv] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_birth] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[changed_command] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[corrupt] _
+test/api/test_ordinary_supervisor_child_fence.py:138: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["quiesced"] is False
+E   assert True is False
+_ test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False] _
+test/api/test_ordinary_supervisor_child_fence.py:147: in test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers
+    assert result["terminated"] is True
+E   assert False is True
+_ test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True] _
+test/api/test_ordinary_supervisor_child_fence.py:147: in test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers
+    assert result["terminated"] is True
+E   assert False is True
+____________ test_native_cleanup_clears_only_exact_owned_dead_birth ____________
+test/api/test_ordinary_supervisor_child_fence.py:161: in test_native_cleanup_clears_only_exact_owned_dead_birth
+    assert all(value is None for value in _markers(supervisor).values())
+E   assert False
+E    +  where False = all(<generator object test_native_cleanup_clears_only_exact_owned_dead_birth.<locals>.<genexpr> at 0xe65864b0b370>)
+_ test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven _
+test/api/test_ordinary_supervisor_child_fence.py:177: in test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+    assert result["released"] is False
+E   assert True is False
+_____ test_signal_shutdown_projects_actual_blocked_native_cleanup[missing] _____
+test/api/test_ordinary_supervisor_child_fence.py:194: in test_signal_shutdown_projects_actual_blocked_native_cleanup
+    assert cleanup["quiesced"] is False
+E   assert True is False
+__ test_signal_shutdown_projects_actual_blocked_native_cleanup[foreign_scope] __
+test/api/test_ordinary_supervisor_child_fence.py:194: in test_signal_shutdown_projects_actual_blocked_native_cleanup
+    assert cleanup["quiesced"] is False
+E   assert True is False
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-fence-native-red02.xml -
+============================= slowest 10 durations =============================
+2.24s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]
+0.98s call     test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+0.77s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True]
+0.76s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_clears_only_exact_owned_dead_birth
+0.72s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[corrupt]
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[weak_argv]
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope]
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_projects_actual_blocked_native_cleanup[missing]
+0.71s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+0.70s call     test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_projects_actual_blocked_native_cleanup[foreign_scope]
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[missing]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[weak_argv]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[foreign_scope]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_birth]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[changed_command]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[corrupt]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[False]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_fences_exact_birth_and_later_worker_then_clears_owned_markers[True]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_clears_only_exact_owned_dead_birth
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_completed_leftover_preserves_active_state_when_native_cleanup_is_unproven
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_projects_actual_blocked_native_cleanup[missing]
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_signal_shutdown_projects_actual_blocked_native_cleanup[foreign_scope]
+============================= 12 failed in 19.78s ==============================

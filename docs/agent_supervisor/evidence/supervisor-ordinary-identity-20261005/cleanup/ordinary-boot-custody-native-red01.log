@@ -1,0 +1,21 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 1 item
+
+test/api/test_ordinary_supervisor_child_fence.py F                       [100%]
+
+=================================== FAILURES ===================================
+_ test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_boot] _
+test/api/test_ordinary_supervisor_child_fence.py:143: in test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers
+    assert result["terminated"] is False
+E   assert True is False
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-next-gaps-20261005/ordinary-boot-custody-native-red01.xml -
+============================= slowest 10 durations =============================
+2.27s call     test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_boot]
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_fence.py::test_native_cleanup_refuses_unproven_or_changed_custody_and_preserves_markers[stale_boot]
+============================== 1 failed in 12.10s ==============================

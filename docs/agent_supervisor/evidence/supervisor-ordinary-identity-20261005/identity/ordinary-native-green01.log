@@ -1,0 +1,94 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 28 items
+
+test/api/test_ordinary_supervisor_child_identity.py FFFFFFFFFFFFF....... [ 71%]
+........                                                                 [100%]
+
+=================================== FAILURES ===================================
+____ test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy _____
+test/api/test_ordinary_supervisor_child_identity.py:95: in test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+    adopted = runtime.adopt_or_launch_supervised_child(
+ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py:2021: in adopt_or_launch_supervised_child
+    return launch_supervised_child(spec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py:1888: in launch_supervised_child
+    raise RuntimeError(
+E   RuntimeError: supervised child identity marker was not reconciled
+__ test_native_adoption_rejects_appended_execution_policy_override[override0] __
+test/api/test_ordinary_supervisor_child_identity.py:118: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override1] __
+test/api/test_ordinary_supervisor_child_identity.py:118: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override2] __
+test/api/test_ordinary_supervisor_child_identity.py:118: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override3] __
+test/api/test_ordinary_supervisor_child_identity.py:118: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_a_benign_bootstrap_that_only_contains_expected_argv _
+test/api/test_ordinary_supervisor_child_identity.py:131: in test_native_adoption_rejects_a_benign_bootstrap_that_only_contains_expected_argv
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+______ test_native_adoption_recovers_only_exact_live_missing_marker[pid] _______
+test/api/test_ordinary_supervisor_child_identity.py:144: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)
+____ test_native_adoption_recovers_only_exact_live_missing_marker[identity] ____
+test/api/test_ordinary_supervisor_child_identity.py:144: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)
+_ test_native_adoption_rejects_changed_identity_without_touching_child[birth] __
+test/api/test_ordinary_supervisor_child_identity.py:176: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_changed_identity_without_touching_child[boot] __
+test/api/test_ordinary_supervisor_child_identity.py:176: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[scope] __
+test/api/test_ordinary_supervisor_child_identity.py:176: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[command] _
+test/api/test_ordinary_supervisor_child_identity.py:176: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[malformed] _
+test/api/test_ordinary_supervisor_child_identity.py:176: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/ordinary-native-green01.xml -
+============================= slowest 10 durations =============================
+2.13s call     test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+0.65s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[malformed]
+0.65s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override3]
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[birth]
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_refuses_session_relaxation
+0.63s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_a_benign_bootstrap_that_only_contains_expected_argv
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[boot]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override1]
+0.62s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[scope]
+0.61s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[command]
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override0]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override1]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override2]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override3]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_a_benign_bootstrap_that_only_contains_expected_argv
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[pid]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[identity]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[birth]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[boot]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[scope]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[command]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[malformed]
+======================== 13 failed, 15 passed in 25.43s ========================

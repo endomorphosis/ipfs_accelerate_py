@@ -1,0 +1,15 @@
+{
+  "source_unchanged": true,
+  "before": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "test/api/test_ordinary_supervisor_child_identity.py": "6611f7601c5a8581f47e3d7171c6f31356743ff7b619072e34ab123f0fa6ceb2",
+    "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+  },
+  "after": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "f56f9682f19a2d3377429f2455a366889cc82b2d9feb395739c6c1881bc8da84",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "test/api/test_ordinary_supervisor_child_identity.py": "6611f7601c5a8581f47e3d7171c6f31356743ff7b619072e34ab123f0fa6ceb2",
+    "test/api/test_ordinary_supervisor_child_fence.py": "cc4011f2cb0e8fe56e68a51110f518f9547564bf791638290d288a836a9da712"
+  }
+}

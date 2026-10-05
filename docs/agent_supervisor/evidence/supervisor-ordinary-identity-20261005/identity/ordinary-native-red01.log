@@ -1,0 +1,631 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 26 items
+
+test/api/test_ordinary_supervisor_child_identity.py FFFFFFFFFFFFFFFF.... [ 76%]
+.FFFFF                                                                   [100%]
+
+=================================== FAILURES ===================================
+____ test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy _____
+test/api/test_ordinary_supervisor_child_identity.py:84: in test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+    assert configured.child_env[runtime.SUPERVISED_CHILD_IDENTITY_PATH_ENV] == str(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'IPFS_ACCELERATE_SUPERVISED_CHILD_IDENTITY_PATH'
+__ test_native_adoption_rejects_appended_execution_policy_override[override0] __
+test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override1] __
+test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override2] __
+test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_appended_execution_policy_override[override3] __
+test/api/test_ordinary_supervisor_child_identity.py:117: in test_native_adoption_rejects_appended_execution_policy_override
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+______ test_native_adoption_recovers_only_exact_live_missing_marker[pid] _______
+test/api/test_ordinary_supervisor_child_identity.py:131: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)
+____ test_native_adoption_recovers_only_exact_live_missing_marker[identity] ____
+test/api/test_ordinary_supervisor_child_identity.py:131: in test_native_adoption_recovers_only_exact_live_missing_marker
+    assert adopted is not None and adopted.pid == child.pid
+E   assert (None is not None)
+_ test_native_adoption_rejects_changed_identity_without_touching_child[birth] __
+test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+__ test_native_adoption_rejects_changed_identity_without_touching_child[boot] __
+test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[scope] __
+test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[command] _
+test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_ test_native_adoption_rejects_changed_identity_without_touching_child[malformed] _
+test/api/test_ordinary_supervisor_child_identity.py:163: in test_native_adoption_rejects_changed_identity_without_touching_child
+    with pytest.raises(RuntimeError, match="ownership identity mismatch"):
+E   Failed: DID NOT RAISE RuntimeError
+_______________ test_native_adoption_refuses_session_relaxation ________________
+test/api/test_ordinary_supervisor_child_identity.py:172: in test_native_adoption_refuses_session_relaxation
+    with pytest.raises(RuntimeError, match="dedicated process session"):
+E   Failed: DID NOT RAISE RuntimeError
+______ test_validation_worker_cli_factory_and_child_argv_are_identical[1] ______
+test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2
+----------------------------- Captured stderr call -----------------------------
+usage: __main__.py [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+                   [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+                   [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+                   [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256]
+                   [--once] [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+                   [--stale-seconds STALE_SECONDS]
+                   [--check-interval CHECK_INTERVAL]
+                   [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+                   [--max-restarts MAX_RESTARTS]
+                   [--max-task-attempts MAX_TASK_ATTEMPTS]
+                   [--daemon-interval DAEMON_INTERVAL]
+                   [--task-prefix TASK_PREFIX] [--state-prefix STATE_PREFIX]
+                   [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+                   [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+                   [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+                   [--quack-endpoint QUACK_ENDPOINT]
+                   [--state-store-id STATE_STORE_ID]
+                   [--state-store-generation STATE_STORE_GENERATION]
+                   [--state-schema-revision STATE_SCHEMA_REVISION]
+                   [--state-failover-policy {fail_closed,require_explicit_operator}]
+                   [--event-store-path EVENT_STORE_PATH]
+                   [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+                   [--export-profile EXPORT_PROFILE]
+                   [--explicit-legacy-task-source]
+                   [--implement | --no-implement]
+                   [--implementation-command IMPLEMENTATION_COMMAND]
+                   [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+                   [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+                   [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+                   [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+                   [--manual-completion-authority-revalidation-only]
+                   [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+                   [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+                   [--allow-reconciliation-only-llm-resolver]
+                   [--production-provider-policy {,grok-implement-codex-independent-review}]
+                   [--production-provider-context-budget-tokens PRODUCTION_PROVIDER_CONTEXT_BUDGET_TOKENS]
+                   [--production-provider-timeout-seconds PRODUCTION_PROVIDER_TIMEOUT_SECONDS]
+                   [--production-provider-review-authority-key-path PRODUCTION_PROVIDER_REVIEW_AUTHORITY_KEY_PATH]
+                   [--production-provider-launch-authority-receipt-path PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_PATH]
+                   [--production-provider-launch-authority-receipt-content-id PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_CONTENT_ID]
+                   [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+                   [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+                   [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+                   [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+                   [--merge-target-branch MERGE_TARGET_BRANCH]
+                   [--merge-queue-dir MERGE_QUEUE_DIR]
+                   [--daemon-script-path DAEMON_SCRIPT_PATH]
+                   [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+                   [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+                   [--reconciliation-only] [--fail-on-reconciliation-error]
+                   [--no-worktree-reconciliation]
+                   [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+                   [--worktree-reconciliation-dry-run]
+                   [--no-worktree-reconciliation-preflight]
+                   [--no-worktree-scan-cache]
+                   [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+                   [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+                   [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+                   [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+                   [--task-shard-count TASK_SHARD_COUNT]
+                   [--task-shard-index TASK_SHARD_INDEX]
+                   [--strict-task-sharding]
+                   [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+                   [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+                   [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+                   [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+                   [--no-retry-budget-guardrail]
+                   [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+                   [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+                   [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+                   [--merge-retry-budget MERGE_RETRY_BUDGET]
+                   [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+                   [--retry-budget-commit-outputs]
+                   [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+                   [--no-dependency-guardrail]
+                   [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+                   [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+                   [--dependency-guardrail-commit-outputs]
+                   [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+                   [--no-reconciliation-guardrail]
+                   [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+                   [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+                   [--reconciliation-guardrail-commit-outputs]
+                   [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+                   [--auto-commit-generated-dirty]
+                   [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+                   [--no-generated-dirty-submodule-gitlinks]
+                   [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+                   [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+                   [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+                   [--codebase-refill-scan]
+                   [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+                   [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+                   [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+                   [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+                   [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+                   [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+                   [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+                   [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+                   [--allow-unscoped-codebase-refill]
+                   [--codebase-scan-commit-outputs]
+                   [--allow-codebase-refill-with-objective-work]
+                   [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+                   [--objective-refill-scan] [--no-objective-task-janitor]
+                   [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+                   [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+                   [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+                   [--objective-mission-term OBJECTIVE_MISSION_TERM]
+                   [--objective-path OBJECTIVE_PATH]
+                   [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+                   [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+                   [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+                   [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+                   [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+                   [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+                   [--no-objective-goal-refinement]
+                   [--no-objective-goal-completion-reconcile]
+                   [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+                   [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+                   [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+                   [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+                   [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+                   [--no-objective-goal-migration]
+                   [--objective-goal-migration-preview]
+                   [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+                   [--objective-seed-interoperability-goals]
+                   [--objective-seed-launch-readiness-goals]
+                   [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+                   [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+                   [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+                   [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+                   [--objective-ensure-tracking-document]
+                   [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+                   [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+                   [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+                   [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+                   [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+                   [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+                   [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+                   [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+                   [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+                   [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+                   [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+                   [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+                   [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+                   [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+                   [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+                   [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+                   [--no-objective-ast-dataset]
+                   [--no-objective-todo-vector-index]
+                   [--log-level {DEBUG,INFO,WARNING,ERROR}]
+__main__.py: error: unrecognized arguments: --validation-max-workers 1
+______ test_validation_worker_cli_factory_and_child_argv_are_identical[4] ______
+test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2
+----------------------------- Captured stderr call -----------------------------
+usage: __main__.py [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+                   [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+                   [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+                   [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256]
+                   [--once] [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+                   [--stale-seconds STALE_SECONDS]
+                   [--check-interval CHECK_INTERVAL]
+                   [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+                   [--max-restarts MAX_RESTARTS]
+                   [--max-task-attempts MAX_TASK_ATTEMPTS]
+                   [--daemon-interval DAEMON_INTERVAL]
+                   [--task-prefix TASK_PREFIX] [--state-prefix STATE_PREFIX]
+                   [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+                   [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+                   [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+                   [--quack-endpoint QUACK_ENDPOINT]
+                   [--state-store-id STATE_STORE_ID]
+                   [--state-store-generation STATE_STORE_GENERATION]
+                   [--state-schema-revision STATE_SCHEMA_REVISION]
+                   [--state-failover-policy {fail_closed,require_explicit_operator}]
+                   [--event-store-path EVENT_STORE_PATH]
+                   [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+                   [--export-profile EXPORT_PROFILE]
+                   [--explicit-legacy-task-source]
+                   [--implement | --no-implement]
+                   [--implementation-command IMPLEMENTATION_COMMAND]
+                   [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+                   [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+                   [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+                   [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+                   [--manual-completion-authority-revalidation-only]
+                   [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+                   [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+                   [--allow-reconciliation-only-llm-resolver]
+                   [--production-provider-policy {,grok-implement-codex-independent-review}]
+                   [--production-provider-context-budget-tokens PRODUCTION_PROVIDER_CONTEXT_BUDGET_TOKENS]
+                   [--production-provider-timeout-seconds PRODUCTION_PROVIDER_TIMEOUT_SECONDS]
+                   [--production-provider-review-authority-key-path PRODUCTION_PROVIDER_REVIEW_AUTHORITY_KEY_PATH]
+                   [--production-provider-launch-authority-receipt-path PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_PATH]
+                   [--production-provider-launch-authority-receipt-content-id PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_CONTENT_ID]
+                   [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+                   [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+                   [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+                   [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+                   [--merge-target-branch MERGE_TARGET_BRANCH]
+                   [--merge-queue-dir MERGE_QUEUE_DIR]
+                   [--daemon-script-path DAEMON_SCRIPT_PATH]
+                   [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+                   [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+                   [--reconciliation-only] [--fail-on-reconciliation-error]
+                   [--no-worktree-reconciliation]
+                   [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+                   [--worktree-reconciliation-dry-run]
+                   [--no-worktree-reconciliation-preflight]
+                   [--no-worktree-scan-cache]
+                   [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+                   [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+                   [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+                   [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+                   [--task-shard-count TASK_SHARD_COUNT]
+                   [--task-shard-index TASK_SHARD_INDEX]
+                   [--strict-task-sharding]
+                   [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+                   [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+                   [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+                   [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+                   [--no-retry-budget-guardrail]
+                   [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+                   [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+                   [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+                   [--merge-retry-budget MERGE_RETRY_BUDGET]
+                   [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+                   [--retry-budget-commit-outputs]
+                   [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+                   [--no-dependency-guardrail]
+                   [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+                   [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+                   [--dependency-guardrail-commit-outputs]
+                   [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+                   [--no-reconciliation-guardrail]
+                   [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+                   [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+                   [--reconciliation-guardrail-commit-outputs]
+                   [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+                   [--auto-commit-generated-dirty]
+                   [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+                   [--no-generated-dirty-submodule-gitlinks]
+                   [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+                   [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+                   [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+                   [--codebase-refill-scan]
+                   [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+                   [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+                   [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+                   [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+                   [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+                   [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+                   [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+                   [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+                   [--allow-unscoped-codebase-refill]
+                   [--codebase-scan-commit-outputs]
+                   [--allow-codebase-refill-with-objective-work]
+                   [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+                   [--objective-refill-scan] [--no-objective-task-janitor]
+                   [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+                   [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+                   [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+                   [--objective-mission-term OBJECTIVE_MISSION_TERM]
+                   [--objective-path OBJECTIVE_PATH]
+                   [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+                   [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+                   [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+                   [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+                   [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+                   [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+                   [--no-objective-goal-refinement]
+                   [--no-objective-goal-completion-reconcile]
+                   [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+                   [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+                   [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+                   [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+                   [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+                   [--no-objective-goal-migration]
+                   [--objective-goal-migration-preview]
+                   [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+                   [--objective-seed-interoperability-goals]
+                   [--objective-seed-launch-readiness-goals]
+                   [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+                   [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+                   [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+                   [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+                   [--objective-ensure-tracking-document]
+                   [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+                   [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+                   [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+                   [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+                   [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+                   [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+                   [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+                   [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+                   [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+                   [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+                   [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+                   [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+                   [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+                   [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+                   [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+                   [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+                   [--no-objective-ast-dataset]
+                   [--no-objective-todo-vector-index]
+                   [--log-level {DEBUG,INFO,WARNING,ERROR}]
+__main__.py: error: unrecognized arguments: --validation-max-workers 4
+_____ test_validation_worker_cli_factory_and_child_argv_are_identical[256] _____
+test/api/test_ordinary_supervisor_child_identity.py:178: in test_validation_worker_cli_factory_and_child_argv_are_identical
+    supervisor, _configured, spec = _loop(tmp_path, "--validation-max-workers", workers)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_ordinary_supervisor_child_identity.py:37: in _loop
+    args = portal.parse_args([
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py:23370: in parse_args
+    args = parser.parse_args(argv)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/argparse.py:1911: in parse_args
+    self.error(msg % ' '.join(argv))
+/usr/lib/python3.12/argparse.py:2677: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+/usr/lib/python3.12/argparse.py:2664: in exit
+    _sys.exit(status)
+E   SystemExit: 2
+----------------------------- Captured stderr call -----------------------------
+usage: __main__.py [-h] [--state-owner-bootstrap-fd STATE_OWNER_BOOTSTRAP_FD]
+                   [--state-owner-client-id STATE_OWNER_CLIENT_ID]
+                   [--task-context-bundle-artifact TASK_CONTEXT_BUNDLE_ARTIFACT]
+                   [--task-context-bundle-sha256 TASK_CONTEXT_BUNDLE_SHA256]
+                   [--once] [--todo-path TODO_PATH] [--state-dir STATE_DIR]
+                   [--stale-seconds STALE_SECONDS]
+                   [--check-interval CHECK_INTERVAL]
+                   [--watchdog-startup-grace-seconds WATCHDOG_STARTUP_GRACE_SECONDS]
+                   [--max-restarts MAX_RESTARTS]
+                   [--max-task-attempts MAX_TASK_ATTEMPTS]
+                   [--daemon-interval DAEMON_INTERVAL]
+                   [--task-prefix TASK_PREFIX] [--state-prefix STATE_PREFIX]
+                   [--task-source-kind {,legacy-markdown,markdown,duckdb}]
+                   [--authority-mode {,legacy_markdown,embedded,embedded_exclusive,quack}]
+                   [--endpoint-secret-handle ENDPOINT_SECRET_HANDLE]
+                   [--quack-endpoint QUACK_ENDPOINT]
+                   [--state-store-id STATE_STORE_ID]
+                   [--state-store-generation STATE_STORE_GENERATION]
+                   [--state-schema-revision STATE_SCHEMA_REVISION]
+                   [--state-failover-policy {fail_closed,require_explicit_operator}]
+                   [--event-store-path EVENT_STORE_PATH]
+                   [--runtime-registry-path RUNTIME_REGISTRY_PATH]
+                   [--export-profile EXPORT_PROFILE]
+                   [--explicit-legacy-task-source]
+                   [--implement | --no-implement]
+                   [--implementation-command IMPLEMENTATION_COMMAND]
+                   [--implementation-protected-path IMPLEMENTATION_PROTECTED_PATH]
+                   [--manual-completion-authority-task-id MANUAL_COMPLETION_AUTHORITY_TASK_ID]
+                   [--manual-completion-authority-required-task-id MANUAL_COMPLETION_AUTHORITY_REQUIRED_TASK_ID]
+                   [--manual-completion-authority-epoch-id MANUAL_COMPLETION_AUTHORITY_EPOCH_ID]
+                   [--manual-completion-authority-revalidation-only]
+                   [--llm-merge-resolver-command LLM_MERGE_RESOLVER_COMMAND]
+                   [--llm-merge-resolver-timeout-seconds LLM_MERGE_RESOLVER_TIMEOUT_SECONDS]
+                   [--allow-reconciliation-only-llm-resolver]
+                   [--production-provider-policy {,grok-implement-codex-independent-review}]
+                   [--production-provider-context-budget-tokens PRODUCTION_PROVIDER_CONTEXT_BUDGET_TOKENS]
+                   [--production-provider-timeout-seconds PRODUCTION_PROVIDER_TIMEOUT_SECONDS]
+                   [--production-provider-review-authority-key-path PRODUCTION_PROVIDER_REVIEW_AUTHORITY_KEY_PATH]
+                   [--production-provider-launch-authority-receipt-path PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_PATH]
+                   [--production-provider-launch-authority-receipt-content-id PRODUCTION_PROVIDER_LAUNCH_AUTHORITY_RECEIPT_CONTENT_ID]
+                   [--implementation-timeout IMPLEMENTATION_TIMEOUT]
+                   [--implementation-max-timeout IMPLEMENTATION_MAX_TIMEOUT]
+                   [--implementation-log-stall-seconds IMPLEMENTATION_LOG_STALL_SECONDS]
+                   [--no-ephemeral-worktree] [--worktree-root WORKTREE_ROOT]
+                   [--merge-target-branch MERGE_TARGET_BRANCH]
+                   [--merge-queue-dir MERGE_QUEUE_DIR]
+                   [--daemon-script-path DAEMON_SCRIPT_PATH]
+                   [--supervisor-script-path SUPERVISOR_SCRIPT_PATH]
+                   [--worktree-submodule-path WORKTREE_SUBMODULE_PATH]
+                   [--reconciliation-only] [--fail-on-reconciliation-error]
+                   [--no-worktree-reconciliation]
+                   [--worktree-reconciliation-max-merges WORKTREE_RECONCILIATION_MAX_MERGES]
+                   [--worktree-reconciliation-dry-run]
+                   [--no-worktree-reconciliation-preflight]
+                   [--no-worktree-scan-cache]
+                   [--worktree-scan-cache-ttl-seconds WORKTREE_SCAN_CACHE_TTL_SECONDS]
+                   [--worktree-scan-cache-path WORKTREE_SCAN_CACHE_PATH]
+                   [--merge-reconciliation-max-merges MERGE_RECONCILIATION_MAX_MERGES]
+                   [--daemon-merged-worktree-cleanup-max DAEMON_MERGED_WORKTREE_CLEANUP_MAX]
+                   [--task-shard-count TASK_SHARD_COUNT]
+                   [--task-shard-index TASK_SHARD_INDEX]
+                   [--strict-task-sharding]
+                   [--external-reservation-manifest-path EXTERNAL_RESERVATION_MANIFEST_PATH]
+                   [--assume-completed-task-id ASSUME_COMPLETED_TASK_ID]
+                   [--execution-slice-task-id EXECUTION_SLICE_TASK_ID]
+                   [--execution-slice-task-cid EXECUTION_SLICE_TASK_CID]
+                   [--no-retry-budget-guardrail]
+                   [--retry-budget-discovery-dir RETRY_BUDGET_DISCOVERY_DIR]
+                   [--retry-budget-discovery-output-path RETRY_BUDGET_DISCOVERY_OUTPUT_PATH]
+                   [--validation-retry-budget VALIDATION_RETRY_BUDGET]
+                   [--merge-retry-budget MERGE_RETRY_BUDGET]
+                   [--implementation-retry-budget IMPLEMENTATION_RETRY_BUDGET]
+                   [--retry-budget-commit-outputs]
+                   [--retry-budget-commit-subject RETRY_BUDGET_COMMIT_SUBJECT]
+                   [--no-dependency-guardrail]
+                   [--dependency-guardrail-discovery-dir DEPENDENCY_GUARDRAIL_DISCOVERY_DIR]
+                   [--dependency-guardrail-discovery-output-path DEPENDENCY_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--dependency-guardrail-max-findings DEPENDENCY_GUARDRAIL_MAX_FINDINGS]
+                   [--dependency-guardrail-commit-outputs]
+                   [--dependency-guardrail-commit-subject DEPENDENCY_GUARDRAIL_COMMIT_SUBJECT]
+                   [--no-reconciliation-guardrail]
+                   [--reconciliation-guardrail-discovery-dir RECONCILIATION_GUARDRAIL_DISCOVERY_DIR]
+                   [--reconciliation-guardrail-discovery-output-path RECONCILIATION_GUARDRAIL_DISCOVERY_OUTPUT_PATH]
+                   [--reconciliation-guardrail-max-findings RECONCILIATION_GUARDRAIL_MAX_FINDINGS]
+                   [--reconciliation-guardrail-commit-outputs]
+                   [--reconciliation-guardrail-commit-subject RECONCILIATION_GUARDRAIL_COMMIT_SUBJECT]
+                   [--auto-commit-generated-dirty]
+                   [--generated-dirty-commit-subject GENERATED_DIRTY_COMMIT_SUBJECT]
+                   [--no-generated-dirty-submodule-gitlinks]
+                   [--generated-dirty-max-paths GENERATED_DIRTY_MAX_PATHS]
+                   [--generated-dirty-stale-lock-seconds GENERATED_DIRTY_STALE_LOCK_SECONDS]
+                   [--generated-dirty-path GENERATED_DIRTY_REPAIR_PATHS]
+                   [--codebase-refill-scan]
+                   [--codebase-scan-discovery-dir CODEBASE_SCAN_DISCOVERY_DIR]
+                   [--codebase-scan-discovery-output-path CODEBASE_SCAN_DISCOVERY_OUTPUT_PATH]
+                   [--codebase-scan-min-open-tasks CODEBASE_SCAN_MIN_OPEN_TASKS]
+                   [--codebase-scan-max-findings CODEBASE_SCAN_MAX_FINDINGS]
+                   [--codebase-scan-cooldown-seconds CODEBASE_SCAN_COOLDOWN_SECONDS]
+                   [--codebase-refill-timeout-seconds CODEBASE_REFILL_TIMEOUT_SECONDS]
+                   [--codebase-scan-depends-on CODEBASE_SCAN_DEPENDS_ON]
+                   [--codebase-scan-skip-prefix CODEBASE_SCAN_SKIP_PREFIX]
+                   [--allow-unscoped-codebase-refill]
+                   [--codebase-scan-commit-outputs]
+                   [--allow-codebase-refill-with-objective-work]
+                   [--codebase-scan-commit-subject CODEBASE_SCAN_COMMIT_SUBJECT]
+                   [--objective-refill-scan] [--no-objective-task-janitor]
+                   [--objective-task-janitor-max-blocked-tasks OBJECTIVE_TASK_JANITOR_MAX_BLOCKED_TASKS]
+                   [--objective-task-janitor-max-deprioritized-tasks OBJECTIVE_TASK_JANITOR_MAX_DEPRIORITIZED_TASKS]
+                   [--objective-task-janitor-max-reopened-goals OBJECTIVE_TASK_JANITOR_MAX_REOPENED_GOALS]
+                   [--objective-mission-term OBJECTIVE_MISSION_TERM]
+                   [--objective-path OBJECTIVE_PATH]
+                   [--objective-graph-path OBJECTIVE_GRAPH_PATH]
+                   [--objective-bundle-dir OBJECTIVE_BUNDLE_DIR]
+                   [--objective-dataset-dir OBJECTIVE_DATASET_DIR]
+                   [--objective-discovery-dir OBJECTIVE_DISCOVERY_DIR]
+                   [--objective-discovery-output-path OBJECTIVE_DISCOVERY_OUTPUT_PATH]
+                   [--objective-summary-prefix OBJECTIVE_SUMMARY_PREFIX]
+                   [--no-objective-goal-refinement]
+                   [--no-objective-goal-completion-reconcile]
+                   [--objective-goal-completion-todo-board OBJECTIVE_GOAL_COMPLETION_TODO_BOARD]
+                   [--objective-goal-completion-gate-path OBJECTIVE_GOAL_COMPLETION_GATE_PATH]
+                   [--objective-goal-completion-evidence-path OBJECTIVE_GOAL_COMPLETION_EVIDENCE_PATH]
+                   [--objective-goal-completion-artifact-refresh-command OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_COMMAND]
+                   [--objective-goal-completion-artifact-refresh-timeout-seconds OBJECTIVE_GOAL_COMPLETION_ARTIFACT_REFRESH_TIMEOUT_SECONDS]
+                   [--no-objective-goal-migration]
+                   [--objective-goal-migration-preview]
+                   [--objective-goal-migration-batch-size OBJECTIVE_GOAL_MIGRATION_BATCH_SIZE]
+                   [--objective-seed-interoperability-goals]
+                   [--objective-seed-launch-readiness-goals]
+                   [--objective-interoperability-focus OBJECTIVE_INTEROPERABILITY_FOCUS]
+                   [--objective-interoperability-component-path OBJECTIVE_INTEROPERABILITY_COMPONENT_PATH]
+                   [--objective-max-interoperability-goals OBJECTIVE_MAX_INTEROPERABILITY_GOALS]
+                   [--objective-max-launch-readiness-goals OBJECTIVE_MAX_LAUNCH_READINESS_GOALS]
+                   [--objective-ensure-tracking-document]
+                   [--objective-ultimate-goal OBJECTIVE_ULTIMATE_GOAL]
+                   [--objective-root-evidence OBJECTIVE_ROOT_EVIDENCE]
+                   [--objective-goal-prefix OBJECTIVE_GOAL_PREFIX]
+                   [--objective-root-goal-id OBJECTIVE_ROOT_GOAL_ID]
+                   [--objective-root-goal-title OBJECTIVE_ROOT_GOAL_TITLE]
+                   [--objective-tracking-document-title OBJECTIVE_TRACKING_DOCUMENT_TITLE]
+                   [--objective-scan-min-open-tasks OBJECTIVE_SCAN_MIN_OPEN_TASKS]
+                   [--objective-scan-max-findings OBJECTIVE_SCAN_MAX_FINDINGS]
+                   [--objective-scan-cooldown-seconds OBJECTIVE_SCAN_COOLDOWN_SECONDS]
+                   [--objective-refill-timeout-seconds OBJECTIVE_REFILL_TIMEOUT_SECONDS]
+                   [--objective-scan-depends-on OBJECTIVE_SCAN_DEPENDS_ON]
+                   [--objective-max-refinement-children OBJECTIVE_MAX_REFINEMENT_CHILDREN]
+                   [--objective-max-refinement-depth OBJECTIVE_MAX_REFINEMENT_DEPTH]
+                   [--objective-surplus-findings-per-goal OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL]
+                   [--objective-surplus-min-terms-per-todo OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO]
+                   [--objective-todo-vector-index-path OBJECTIVE_TODO_VECTOR_INDEX_PATH]
+                   [--no-objective-ast-dataset]
+                   [--no-objective-todo-vector-index]
+                   [--log-level {DEBUG,INFO,WARNING,ERROR}]
+__main__.py: error: unrecognized arguments: --validation-max-workers 256
+___________ test_invalid_validation_worker_config_is_not_clamped[0] ____________
+test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError
+___________ test_invalid_validation_worker_config_is_not_clamped[-1] ___________
+test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError
+__________ test_invalid_validation_worker_config_is_not_clamped[257] ___________
+test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError
+__________ test_invalid_validation_worker_config_is_not_clamped[True] __________
+test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError
+__________ test_invalid_validation_worker_config_is_not_clamped[1.5] ___________
+test/api/test_ordinary_supervisor_child_identity.py:194: in test_invalid_validation_worker_config_is_not_clamped
+    with pytest.raises(ValueError, match="validation.*workers"):
+E   Failed: DID NOT RAISE ValueError
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/artifacts/supervisor-independent-review-20261005/ordinary-native-red01.xml -
+============================= slowest 10 durations =============================
+2.12s call     test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+0.68s call     test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[-1]
+0.67s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[birth]
+0.67s call     test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[True]
+0.66s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override1]
+0.66s call     test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[1.5]
+0.66s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[boot]
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[malformed]
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[identity]
+0.64s call     test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[pid]
+=========================== short test summary info ============================
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_constructed_ordinary_loop_keeps_native_identity_and_exact_policy
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override0]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override1]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override2]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_appended_execution_policy_override[override3]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[pid]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_recovers_only_exact_live_missing_marker[identity]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[birth]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[boot]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[scope]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[command]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_rejects_changed_identity_without_touching_child[malformed]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_native_adoption_refuses_session_relaxation
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_validation_worker_cli_factory_and_child_argv_are_identical[1]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_validation_worker_cli_factory_and_child_argv_are_identical[4]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_validation_worker_cli_factory_and_child_argv_are_identical[256]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[0]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[-1]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[257]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[True]
+FAILED test/api/test_ordinary_supervisor_child_identity.py::test_invalid_validation_worker_config_is_not_clamped[1.5]
+======================== 21 failed, 5 passed in 24.26s =========================
