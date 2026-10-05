@@ -122,6 +122,7 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
         assert kwargs["provider"] == "grok_cli"
         assert kwargs["allow_local_fallback"] is kwargs["allow_cross_provider_fallback"] is False
         assert kwargs["grok_max_turns"] == (1 if purpose == "planning" else 128)
+        assert kwargs["grok_disallowed_tools"] == "search_tool,use_tool"
         assert ("run_terminal_cmd" in kwargs["grok_tools"]) is (purpose == "coding")
         assert kwargs["grok_permission_mode"] == ("dontAsk" if purpose == "planning" else "bypassPermissions")
         set_last_cli_observation("grok_cli", {"exit_code": 0, **native_grok_observation(envelope(), exit_code=0)})
@@ -137,6 +138,7 @@ def test_runner_uses_explicit_grok_tools_and_separate_accounting(routed_workspac
         "max_turns": 1 if purpose == "planning" else 128,
         "tools_profile": "none" if purpose == "planning" else "isolated_coding",
         "permission_mode": "dontAsk" if purpose == "planning" else "bypassPermissions",
+        "disallowed_tools": ["search_tool", "use_tool"],
     }
 
 
@@ -296,3 +298,94 @@ def test_runner_retains_usage_free_native_outcome_without_reusing_stale_state(
     assert receipt["native_provider_outcome"]["reason_code"] == ("timeout" if timeout else "max_turns")
     assert receipt["usage"].get("stop_reason") == (None if timeout else "max_turn_requests")
     assert "private" not in raw
+
+
+@pytest.mark.parametrize("option,expected", [({}, None), ({"grok_disallowed_tools": None}, None),
+    ({"grok_disallowed_tools": ""}, None),
+    ({"grok_disallowed_tools": "search_tool,use_tool"}, "search_tool,use_tool"),
+    ({"grok_disallowed_tools": "search_tool, use_tool,search_tool"}, "search_tool,use_tool"),
+    ({"grok_disallowed_tools": "Agent(explore)"}, "Agent(explore)")])
+def test_shared_grok_disallowed_tools_is_opt_in_and_uses_literal_argv(monkeypatch, option, expected):
+    from ipfs_accelerate_py import llm_router
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    commands = []
+    def execute(command, **kwargs):
+        commands.append(command)
+        assert kwargs.get("shell", False) is False
+        return SimpleNamespace(returncode=0, stdout=json.dumps(envelope()), stderr="")
+    monkeypatch.setattr(llm_router.subprocess, "run", execute)
+    llm_router._get_grok_cli_provider().generate("instruction", model_name="grok-4.7", **option)
+    command = commands[0]
+    assert ("--disallowed-tools" in command) is (expected is not None)
+    if expected is not None:
+        assert command[command.index("--disallowed-tools") + 1] == expected
+
+
+@pytest.mark.parametrize("value", [True, 1, [], {}, "x" * 4097, "search_tool,,use_tool",
+    "--no-plan", "search_tool\nuse_tool", "$(private)", "Agent(", ",".join(["x"] * 33)])
+def test_invalid_grok_disallowed_tools_fails_before_native_call(monkeypatch, value):
+    from ipfs_accelerate_py import llm_router
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    monkeypatch.setattr(llm_router.subprocess, "run", lambda *_a, **_kw: pytest.fail("native call reached"))
+    with pytest.raises(ValueError, match="grok_disallowed_tools"):
+        llm_router._get_grok_cli_provider().generate("instruction", model_name="grok-4.7",
+                                                    grok_disallowed_tools=value)
+
+
+@pytest.mark.parametrize("suffix,accepted", [
+    (["--disallowed-tools", "search_tool,use_tool"], True),
+    (["--disallowed-tools=search_tool,use_tool"], True),
+    (["--disallowed-tools", "read_file"], False),
+    (["--disallowed-tools=read_file"], False),
+    (["--disallowed-tools", "search_tool,use_tool", "--disallowed-tools", "read_file"], False),
+    (["--disallowed-tools"], False),
+])
+def test_explicit_grok_tool_denial_cannot_be_weakened_by_custom_command(monkeypatch, suffix, accepted):
+    from ipfs_accelerate_py import llm_router
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    calls = []
+    def execute(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(envelope()), stderr="")
+    monkeypatch.setattr(llm_router.subprocess, "run", execute)
+    provider = llm_router._get_grok_cli_provider()
+    options = {"grok_cli_cmd": ["/fixture/grok", *suffix],
+               "grok_disallowed_tools": "search_tool,use_tool"}
+    if accepted:
+        assert provider.generate("instruction", model_name="grok-4.7", **options) == "private-response"
+        assert len(calls) == 1
+    else:
+        with pytest.raises(ValueError, match="conflicts"):
+            provider.generate("instruction", model_name="grok-4.7", **options)
+        assert calls == []
+
+
+@pytest.mark.parametrize("command", ["/fixture/custom-wrapper", ["/fixture/grok", "--"],
+                                    "/fixture/grok --"])
+def test_grok_tool_denial_rejects_unsupported_wrapper_or_option_terminator(monkeypatch, command):
+    from ipfs_accelerate_py import llm_router
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    monkeypatch.setattr(llm_router, "_run_cli_command", lambda *_a, **_kw: pytest.fail("wrapper reached"))
+    monkeypatch.setattr(llm_router.subprocess, "run", lambda *_a, **_kw: pytest.fail("native call reached"))
+    with pytest.raises(ValueError, match="grok_disallowed_tools"):
+        llm_router._get_grok_cli_provider().generate("instruction", model_name="grok-4.7",
+            grok_cli_cmd=command, grok_disallowed_tools="search_tool,use_tool")
+
+
+@pytest.mark.parametrize("options", [{}, {"grok_disallowed_tools": None}, {"grok_disallowed_tools": ""}])
+def test_nonstructured_grok_wrapper_preserves_default_behavior(monkeypatch, options):
+    from ipfs_accelerate_py import llm_router
+    monkeypatch.setattr(llm_router, "find_grok_cli", lambda: "/fixture/grok")
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _: True)
+    calls = []
+    def execute(*args, **kwargs):
+        calls.append(args)
+        return "done"
+    monkeypatch.setattr(llm_router, "_run_cli_command", execute)
+    assert llm_router._get_grok_cli_provider().generate("instruction", model_name="grok-4.7",
+        grok_cli_cmd="/fixture/custom-wrapper", **options) == "done"
+    assert len(calls) == 1

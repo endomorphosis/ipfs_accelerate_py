@@ -7955,6 +7955,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     extra_env["XAI_API_KEY"] = alternate_key
 
             if not structured_cli:
+                if kwargs.get("grok_disallowed_tools") not in (None, ""):
+                    raise ValueError("grok_disallowed_tools requires a structured Grok CLI command")
                 raw = _run_cli_command(
                     command_text,
                     prompt,
@@ -8029,6 +8031,33 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             )
             if "--tools" not in cmd:
                 cmd.extend(["--tools", str(tools or "")])
+
+            # An empty built-in allowlist can retain Grok's MCP dispatch tools.
+            # Opt-in callers can deny those explicitly; omitted kwargs preserve
+            # the existing router behavior and custom CLI command unchanged.
+            disallowed = kwargs.pop("grok_disallowed_tools", None)
+            if disallowed is not None:
+                if not isinstance(disallowed, str) or len(disallowed) > 4096:
+                    raise ValueError("grok_disallowed_tools requires a bounded comma-separated string")
+                names = [name.strip() for name in disallowed.split(",")] if disallowed.strip() else []
+                if len(names) > 32 or any(re.fullmatch(
+                    r"(?:Agent\([A-Za-z0-9_.-]{1,64}\)|[A-Za-z_][A-Za-z0-9_-]{0,255})", name
+                ) is None for name in names):
+                    raise ValueError("grok_disallowed_tools contains an invalid tool name")
+                if names:
+                    if "--" in cmd:
+                        raise ValueError("custom Grok command terminates options before grok_disallowed_tools")
+                    selected = ",".join(dict.fromkeys(names))
+                    existing = []
+                    for index, part in enumerate(cmd):
+                        if part == "--disallowed-tools":
+                            existing.append(cmd[index + 1] if index + 1 < len(cmd) else None)
+                        elif part.startswith("--disallowed-tools="):
+                            existing.append(part.partition("=")[2])
+                    if existing and existing != [selected]:
+                        raise ValueError("custom Grok command conflicts with grok_disallowed_tools")
+                    if not existing:
+                        cmd.extend(["--disallowed-tools", selected])
 
             reasoning_effort = str(
                 kwargs.pop(

@@ -70,6 +70,10 @@ grant completion authority or automatically change retry budgets.
 uses one round, tools profile `none` and permission mode `dontAsk`; coding uses
 at most 128 rounds, tools profile `isolated_coding` and `bypassPermissions` inside
 the verified worker boundary. The `none` profile names the empty built-in tool
-allowlist; Grok's CLI can retain MCP meta-tools, and this deployment transfers no
-host MCP configuration. `provider_output_token_cap_enforced` remains false:
+allowlist. Both purposes explicitly deny Grok's otherwise retained MCP dispatch
+tools `search_tool` and `use_tool` through the shared router's
+`grok_disallowed_tools="search_tool,use_tool"` option; the receipt records that
+deny list. This deployment transfers no host MCP configuration. The generic
+router retains its previous behavior when this option is omitted.
+`provider_output_token_cap_enforced` remains false:
 the router's requested output-token count is not an enforced native CLI limit.
