@@ -1,0 +1,20 @@
+{
+  "schema": "supervisor-task-context-publication-integration@1",
+  "integration_commit": "d7a76724ea83069e82c63ba2e312c94c85f14645",
+  "owned_source_commit": "4e0322ef6f4a496e9c2e2934e9797045526888a0",
+  "incoming_published_head": "f69d87fec31f5d76410217f740365b00f40d7b58",
+  "incoming_scope": "documentation-only independent eigenvalue diagnosis and symbolic qualification",
+  "changes_after_source_commit_scope": "documentation-only",
+  "manual_source_and_test_bindings_matching_final_run": 65,
+  "retained_files_matching_final_run": 13,
+  "all_final_source_asset_and_datasets_pins_match": true,
+  "qualification": "final-01.qualification.json",
+  "counts": {
+    "passed": 445,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "requalification_note": "No repeated model/control-path regression: all source/test bytes remain equal to the frozen final run; only documentation was merged. Local documentation gates passed after integration.",
+  "completion_authority": false
+}

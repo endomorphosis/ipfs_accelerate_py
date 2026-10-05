@@ -1,0 +1,97 @@
+{
+  "schema": "supervisor-task-context-development-diagnostics@1",
+  "runs": [
+    {
+      "run": "native-context-development-01.qualification.json",
+      "counts": {
+        "passed": 0,
+        "failure": 1,
+        "error": 0,
+        "skipped": 0
+      },
+      "pytest_returncode": 1,
+      "pins_unchanged": true,
+      "changed_source_pins": [],
+      "retained_assets_unchanged": true,
+      "datasets_unchanged": true,
+      "ast_sealing": {
+        "records": 0,
+        "closure_files_min": null,
+        "closure_files_max": null,
+        "any_completion_authority": false
+      },
+      "role": "Initial actual two-root positive refused before context output because expected native identity omitted the owner-added task_cid and task_alias keys. Corrected exact expectation, not relaxed native guards."
+    },
+    {
+      "run": "native-context-development-02.qualification.json",
+      "counts": {
+        "passed": 56,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "pytest_returncode": 0,
+      "pins_unchanged": false,
+      "changed_source_pins": [
+        "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py"
+      ],
+      "retained_assets_unchanged": true,
+      "datasets_unchanged": true,
+      "ast_sealing": {
+        "records": 56,
+        "closure_files_min": 987,
+        "closure_files_max": 987,
+        "any_completion_authority": false
+      },
+      "role": "Original 56 controls passed while source/tests were still under active development; not a frozen qualification."
+    },
+    {
+      "run": "native-context-development-03.qualification.json",
+      "counts": {
+        "passed": 6,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "pytest_returncode": 0,
+      "pins_unchanged": false,
+      "changed_source_pins": [
+        "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py"
+      ],
+      "retained_assets_unchanged": true,
+      "datasets_unchanged": true,
+      "ast_sealing": {
+        "records": 6,
+        "closure_files_min": 987,
+        "closure_files_max": 987,
+        "any_completion_authority": false
+      },
+      "role": "Six additional metadata/block/empty controls passed while source/tests were still under active development; not a frozen qualification."
+    },
+    {
+      "run": "native-context-development-04.qualification.json",
+      "counts": {
+        "passed": 5,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "pytest_returncode": 0,
+      "pins_unchanged": true,
+      "changed_source_pins": [],
+      "retained_assets_unchanged": true,
+      "datasets_unchanged": true,
+      "ast_sealing": {
+        "records": 5,
+        "closure_files_min": 987,
+        "closure_files_max": 987,
+        "any_completion_authority": false
+      },
+      "role": "Final five missing-DB/broader-world/Source384 transport controls passed with all frozen pins unchanged. These controls overlap final selection."
+    }
+  ],
+  "count_scope": "Development counts are not added to the frozen final regression. Intermediate passing runs with changed source pins are diagnostic only.",
+  "completion_authority": false
+}

@@ -1,0 +1,67 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-03.xml",
+    "--basetemp=/tmp/ordinary-supervisor-native-context-development-03-251d3389a9784176b3fbdaebc7f872aa",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_actual_active_block_with_ready_status_still_refuses_context",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_roots_with_actual_empty_program_population_need_no_vectors"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-native-context-development-03-248756b8265048a3a19d6c504bb48817.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 0,
+  "elapsed_seconds": 102.36881196600734,
+  "pins_unchanged": false,
+  "ast_sealing": {
+    "records": 6,
+    "closure_files_min": 987,
+    "closure_files_max": 987,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 6,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[None]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[metadata1]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[foreign-metadata]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_cold_reopen_refuses_non_mapping_metadata_before_bundle_comparison[True]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_actual_active_block_with_ready_status_still_refuses_context": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_multitask_context::test_two_roots_with_actual_empty_program_population_need_no_vectors": "passed"
+  },
+  "evidence_files": {
+    "native-context-development-03.xml": {
+      "bytes": 1437,
+      "sha256": "22ce9afd0d98abfb96b0483961d0fa498c45a27f3883f1ef24e92a9ee82339fe"
+    },
+    "native-context-development-03.log": {
+      "bytes": 2469,
+      "sha256": "a76c7b1ada179256f0fe75dafa13c1f75c3cfe29c9635494d1f4764d659c2bf4"
+    }
+  }
+}

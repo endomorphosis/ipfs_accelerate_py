@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 125 items
+
+test/api/semantic_state/test_supervised_task_context.py ..........       [  8%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 16%]
+....                                                                     [ 20%]
+test/test_ir_persistent_catalog.py ..................................... [ 49%]
+......................                                                   [ 67%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 68%]
+........................................                                 [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/baseline-01.xml -
+============================= slowest 10 durations =============================
+7.56s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[zero_symbol]
+5.32s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_parallel_roots_and_join_replay_into_actual_native_owner
+5.00s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[created_code]
+4.70s call     test/api/semantic_state/test_published_empty_task_context.py::test_actual_completed_empty_publication_preserves_scope_and_current_owner[first_symbol]
+3.84s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_resigned_contract_substitution_is_refused_by_materialization_and_native_replay
+3.57s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[False]
+3.47s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_actual_native_runtime_refuses_multitask_launch_before_allocation[True]
+3.12s call     test/api/semantic_state/test_supervised_task_context.py::test_launch_bundle_feeds_context_without_self_referential_native_task_mutation
+2.58s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py::test_source_change_after_real_task_insert_rolls_back_native_transaction
+2.34s call     test/api/semantic_state/test_published_empty_task_context.py::test_admitted_owner_registers_empty_policy_without_vector_artifacts
+======================= 125 passed in 103.67s (0:01:43) ========================

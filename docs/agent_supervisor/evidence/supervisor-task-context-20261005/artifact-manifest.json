@@ -1,0 +1,235 @@
+{
+  "schema": "supervisor-task-context-evidence-manifest@1",
+  "scope": "Bounded metadata, raw qualification logs/XML/commands and owner witnesses only; no databases, private keys or model weights. Manifest excludes itself.",
+  "files": {
+    "README.md": {
+      "bytes": 7417,
+      "sha256": "7cd74a11890cc9726599a9f72f4d0e663555794d8dc35f31df865feb8d27c80b"
+    },
+    "audit_native_processes.py": {
+      "bytes": 2579,
+      "sha256": "1c3bc6b5d7c5fb319a5e20fd59f0a07d071f5d6fca3dfc6785160e95b57904ac"
+    },
+    "baseline-01-after.json": {
+      "bytes": 11110,
+      "sha256": "0dfd99837fbed04f52e52f686f460339472e090fd59a9aad5e0b170247b8393f"
+    },
+    "baseline-01-before.json": {
+      "bytes": 11110,
+      "sha256": "0dfd99837fbed04f52e52f686f460339472e090fd59a9aad5e0b170247b8393f"
+    },
+    "baseline-01.command.sh": {
+      "bytes": 1113,
+      "sha256": "c9da7b6f5472f5433d3e185613d4a3f36d2849e1eb49261c927b97be16ef6743"
+    },
+    "baseline-01.log": {
+      "bytes": 2769,
+      "sha256": "aa6b2ade5d9a99aee17a9d5385a05489a07c276ab22eb531f8a257846a5485d0"
+    },
+    "baseline-01.native-process-audit.json": {
+      "bytes": 374,
+      "sha256": "48fc84639e531c07c09775aaea5ac3b34d279fc39e11c294b84af558802fd198"
+    },
+    "baseline-01.qualification.json": {
+      "bytes": 20093,
+      "sha256": "c7992f7b8bb0d659b33355e92f7929eff74bebe16b83b2b82d95303cb01ebd51"
+    },
+    "baseline-01.xml": {
+      "bytes": 21679,
+      "sha256": "3288558f461b04e78d0c494813e780b484200a43e29f2df10aa1796e1c77ec88"
+    },
+    "baseline-preservation.json": {
+      "bytes": 7674,
+      "sha256": "6fcd9691cc4c4ff1666eb2b86cc631348c8221f3431a9882fe3c379a24cb2da9"
+    },
+    "committed-source-readback.json": {
+      "bytes": 256,
+      "sha256": "2eb6b3eb1b9aafb026eca887c1b71ff5f81e19781211d923ce199d652714eb29"
+    },
+    "development-diagnostics.json": {
+      "bytes": 3392,
+      "sha256": "c786c531b01e080f1823f986199860b2b54bdb750110c1260bc3cc1b8c4bfbc7"
+    },
+    "documentation-gates.json": {
+      "bytes": 518,
+      "sha256": "fde39c02e129515a4e389de3c271077ec44bd5a2569327f7fe25e908cacbc373"
+    },
+    "documentation-gates.log": {
+      "bytes": 200,
+      "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+    },
+    "final-01-after.json": {
+      "bytes": 15790,
+      "sha256": "9b8dd433675306333e5845b62bc97309d230e4c0e1bb2515888fc379cc409fc7"
+    },
+    "final-01-before.json": {
+      "bytes": 15790,
+      "sha256": "9b8dd433675306333e5845b62bc97309d230e4c0e1bb2515888fc379cc409fc7"
+    },
+    "final-01.command.sh": {
+      "bytes": 1846,
+      "sha256": "da498746df54d65734837afd19a6f1e6dcb7ea8dad762e1137b4623c633d90dc"
+    },
+    "final-01.log": {
+      "bytes": 4592,
+      "sha256": "b3e62b34e6575a6971ec778a65f877d91741c913f74d2d1ae9633981b064833d"
+    },
+    "final-01.native-process-audit.json": {
+      "bytes": 371,
+      "sha256": "7ca2866b09ca870207eb636111fb7f94875d32d329cb0bafe40ac3243a55868c"
+    },
+    "final-01.qualification.json": {
+      "bytes": 71982,
+      "sha256": "7043833eeea84a385fa8cd74446e9b0545194bc972f4f9584b676402a16cfadc"
+    },
+    "final-01.xml": {
+      "bytes": 81118,
+      "sha256": "7f4e45daadcfb3c9b9dcf3613370b2ef7987630f518a7fc680fcfabe7ccc3ed9"
+    },
+    "final-selection-01.json": {
+      "bytes": 1517,
+      "sha256": "347b76f041079aae0d346101db1f99fc7e16175fcb9f4988fb60bf00e8e37079"
+    },
+    "implementation-scope.json": {
+      "bytes": 1094,
+      "sha256": "4acdaf75135902c9a752d966938fdf419d310440d4104fc00edc1d67050e1a75"
+    },
+    "independent-review.json": {
+      "bytes": 2300,
+      "sha256": "c537371ec205f5dc7d0f2f285857137ca8f2d951382957e89f1f25435626fc77"
+    },
+    "live-model-manager-catalog-survey.json": {
+      "bytes": 306147,
+      "sha256": "aa3d3f2a62045cbf179a5b1ede69c2fbd5cb87975abf5d90977e7168c91ee1e6"
+    },
+    "native-context-development-01-after.json": {
+      "bytes": 10972,
+      "sha256": "e58ed4546f741ab6776dcd896fd15d5a778679ff06484798e364fab12cf77bc3"
+    },
+    "native-context-development-01-before.json": {
+      "bytes": 10972,
+      "sha256": "e58ed4546f741ab6776dcd896fd15d5a778679ff06484798e364fab12cf77bc3"
+    },
+    "native-context-development-01.command.sh": {
+      "bytes": 1087,
+      "sha256": "c4cfabd319a8a52d3b3101a6999554401fcab2f3c05e8739bb971b7527e7b15d"
+    },
+    "native-context-development-01.log": {
+      "bytes": 2432,
+      "sha256": "0c843ca8de4e16077a7ddbabb27ee74483a6487b137232373550b3547ddc5ac9"
+    },
+    "native-context-development-01.qualification.json": {
+      "bytes": 2087,
+      "sha256": "c9d209cd53bb5d10d3b875d94c27e499d364d8a39c884f7a97a41ea851a943cc"
+    },
+    "native-context-development-01.xml": {
+      "bytes": 1546,
+      "sha256": "9539fde19f2e7942d2b3caebe750e94e90f74a71c7b84cd77ddbf89ba2d4b81b"
+    },
+    "native-context-development-02-after.json": {
+      "bytes": 10972,
+      "sha256": "c8de43fb4aba076473935ce76da8b2fcf49b9f3282cd5bdf7ab9062a9b32c02d"
+    },
+    "native-context-development-02-before.json": {
+      "bytes": 10972,
+      "sha256": "dc5fd05f8f07de78cb5546d10abc6ae3be0cc85ccca7e44e00892a3647dd3a7e"
+    },
+    "native-context-development-02.command.sh": {
+      "bytes": 1011,
+      "sha256": "113bb07f4a352ba6e91d367701a10aef16e6fd549bded68a0e21660314a9a6fc"
+    },
+    "native-context-development-02.log": {
+      "bytes": 2481,
+      "sha256": "87bb424ce02c7bcb142205e7b1ad3bb5b621116378632239b2dfeba9cfed8902"
+    },
+    "native-context-development-02.qualification.json": {
+      "bytes": 11687,
+      "sha256": "d7c9408fa767a79f782f9d0e2d936ca10f0c46c7ed75f2f5edb871eb8bd9e697"
+    },
+    "native-context-development-02.xml": {
+      "bytes": 11580,
+      "sha256": "42b127f3d00636626c984159408b1eb81d2f30a7ea3349f00b6602f90b5b1a54"
+    },
+    "native-context-development-03-after.json": {
+      "bytes": 13202,
+      "sha256": "70530c5d2a300e82b93d492ff3208788d52bf2a3db99d0bf6a2652b1eeef1be5"
+    },
+    "native-context-development-03-before.json": {
+      "bytes": 13202,
+      "sha256": "bc152bb3fb70f8518a8bc27d23d77334bfec1b6655519ac942521f8c72769e96"
+    },
+    "native-context-development-03.command.sh": {
+      "bytes": 1378,
+      "sha256": "20588c688db39ae2e035e2f85170e11b041192dbaaf8ec23a2769c5492ca69fe"
+    },
+    "native-context-development-03.log": {
+      "bytes": 2469,
+      "sha256": "a76c7b1ada179256f0fe75dafa13c1f75c3cfe29c9635494d1f4764d659c2bf4"
+    },
+    "native-context-development-03.qualification.json": {
+      "bytes": 3249,
+      "sha256": "8779f5babcad087afd9c09d2adc36004dcb999832a5def00e5468f59f97c13be"
+    },
+    "native-context-development-03.xml": {
+      "bytes": 1437,
+      "sha256": "22ce9afd0d98abfb96b0483961d0fa498c45a27f3883f1ef24e92a9ee82339fe"
+    },
+    "native-context-development-04-after.json": {
+      "bytes": 13202,
+      "sha256": "4011ff04de2612947bd1721a87d5f232036e379f79197b73b2660fa26825e4c7"
+    },
+    "native-context-development-04-before.json": {
+      "bytes": 13202,
+      "sha256": "4011ff04de2612947bd1721a87d5f232036e379f79197b73b2660fa26825e4c7"
+    },
+    "native-context-development-04.command.sh": {
+      "bytes": 1379,
+      "sha256": "b4f218743153b71ea57a4c141965aac68ac1a00182e68d6c7c7f0d19c09376b9"
+    },
+    "native-context-development-04.log": {
+      "bytes": 2412,
+      "sha256": "6ee60324000c3086f909d17b027f29f05af6f0ac904047b82c44739807c75fec"
+    },
+    "native-context-development-04.qualification.json": {
+      "bytes": 3056,
+      "sha256": "868daba90658da8993d2715784821833ea9a5abafe21f96f7a7d98c8ef744e50"
+    },
+    "native-context-development-04.xml": {
+      "bytes": 1220,
+      "sha256": "fc2487ec1a9ec5ab0d6ff041d0c58a30c540b60771df5b4e0b6e695d2e1418bd"
+    },
+    "publication-incoming.json": {
+      "bytes": 2991,
+      "sha256": "09283634b64e9739c02eb28233818fd916dce7aa8cdcdfce107fc4dd2b336fe9"
+    },
+    "publication-integration.json": {
+      "bytes": 989,
+      "sha256": "5b10a4c12195bb41496a5ae20c3a051e060a4cedf7ef7320b9acfd7eada13294"
+    },
+    "qualification.json": {
+      "bytes": 8354,
+      "sha256": "420cb1dd519609fbe7d3a9cfc5afbb441fe7581437f0a46fc7dcbc580bc3afb3"
+    },
+    "retain_final_evidence.py": {
+      "bytes": 8795,
+      "sha256": "d68b35b4e1d664f6533be0ec90699467b0141209b9470d095fa5efacf2cf183d"
+    },
+    "retained-checkpoint-file-witnesses.json": {
+      "bytes": 4869,
+      "sha256": "7ed5a9d63b4c72cd0657535ba74656b06b0bd548c751ca67295078b51cff7fed"
+    },
+    "retained-ir-catalog-nominations.json": {
+      "bytes": 30100,
+      "sha256": "94e66bd2bb324a2c6bf57c6f147ce9dac2f901f7002f0652b4c27c1a3a4d47e9"
+    },
+    "run_baseline.py": {
+      "bytes": 9524,
+      "sha256": "1879d4187fd07ee5cdabff7c933c035244f635aaa7419d7d07fc45561a9b4825"
+    },
+    "run_qualification.py": {
+      "bytes": 10766,
+      "sha256": "3fcc130cbe41eeb0dbcf7c6d4fa4d91afe70b34d9631badf21d716bb846c96f0"
+    }
+  },
+  "completion_authority": false
+}

@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005
+configfile: pytest.ini
+collected 56 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py . [  1%]
+.......................................................                  [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/native-context-development-02.xml -
+============================= slowest 10 durations =============================
+16.54s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[event]
+16.48s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[retrieval]
+16.40s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[semantic]
+16.30s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[bundle]
+16.25s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_selected_catalog_generation_edit_without_loading_weights
+16.24s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[world]
+16.19s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence
+15.86s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[blocked]
+15.60s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_other_valid_producer_context_cannot_replace_signed_task_scope_or_query[program_scope]
+15.17s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_other_valid_producer_context_cannot_replace_signed_task_scope_or_query[retrieval_query]
+======================== 56 passed in 623.01s (0:10:23) ========================

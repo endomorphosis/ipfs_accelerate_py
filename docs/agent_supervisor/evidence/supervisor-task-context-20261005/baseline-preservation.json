@@ -1,0 +1,159 @@
+{
+  "schema": "supervisor-task-context-baseline-preservation@1",
+  "previous_published_head": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "previous_reviewed_owner_pins": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "previous": {
+        "bytes": 17723,
+        "sha256": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc"
+      },
+      "current": {
+        "bytes": 17723,
+        "sha256": "26b1281665b5e0101315d85e0311d769c6c3c9f3c4ce958273b8b763c37d98fc"
+      },
+      "equal": true
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "previous": {
+        "bytes": 94089,
+        "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+      },
+      "current": {
+        "bytes": 94089,
+        "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+      },
+      "equal": true
+    },
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "previous": {
+        "bytes": 95240,
+        "sha256": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846"
+      },
+      "current": {
+        "bytes": 95240,
+        "sha256": "345c95e84e71bc4dd8c67dc2b920732ff051fd7f0207460bab876af3efb85846"
+      },
+      "equal": true
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": {
+      "previous": {
+        "bytes": 682,
+        "sha256": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8"
+      },
+      "current": {
+        "bytes": 682,
+        "sha256": "0d0b75ba45dea031e16717aaa7a9c6b550ba8127122ee013a93b92eb9e8452c8"
+      },
+      "equal": true
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "previous": {
+        "bytes": 65562,
+        "sha256": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da"
+      },
+      "current": {
+        "bytes": 65562,
+        "sha256": "b36079a7bb4e1bd214c06741fa1984999fb4f727d1db85971670acea482a43da"
+      },
+      "equal": true
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": {
+      "previous": {
+        "bytes": 29176,
+        "sha256": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042"
+      },
+      "current": {
+        "bytes": 29176,
+        "sha256": "980e0d894b642948c8f4ad79bd47f714f94e6bfcc2479a0d6462bc084da9e042"
+      },
+      "equal": true
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py": {
+      "previous": {
+        "bytes": 32273,
+        "sha256": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+      },
+      "current": {
+        "bytes": 32273,
+        "sha256": "cbabbc5f5111d02e59ab9e8034f2ee6d8c400faf3c1c651e5632b522942dfb96"
+      },
+      "equal": true
+    }
+  },
+  "four_previous_asset_pins": {
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "previous": {
+        "bytes": 66746168,
+        "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+      },
+      "current": {
+        "bytes": 66746168,
+        "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+      },
+      "equal": true
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "previous": {
+        "bytes": 384106,
+        "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+      },
+      "current": {
+        "bytes": 384106,
+        "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+      },
+      "equal": true
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "previous": {
+        "bytes": 90868376,
+        "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+      },
+      "current": {
+        "bytes": 90868376,
+        "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+      },
+      "equal": true
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "previous": {
+        "bytes": 493355,
+        "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+      },
+      "current": {
+        "bytes": 493355,
+        "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+      },
+      "equal": true
+    }
+  },
+  "final_retained_asset_count": 13,
+  "datasets_commit_equal": true,
+  "incoming_publication_head": "f69d87fec31f5d76410217f740365b00f40d7b58",
+  "incoming_files": [
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/artifact-manifest.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/documentation-gates.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/historical-phase-accounting.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/incoming-numeric-proof-scope.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/native-runtime-diagnosis.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-documentation-gates.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-independent-review.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-provenance.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-qualification.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-frozen-inputs.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-plan.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-runtime-receipt.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay.Dockerfile",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/replay_public.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/run_public_diagnostic.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-independent-review.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-provenance.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-qualification.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/workspace-preservation.json",
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md"
+  ],
+  "incoming_scope": "documentation only; frozen implementation owners unchanged",
+  "completion_authority": false
+}

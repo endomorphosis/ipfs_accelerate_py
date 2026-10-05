@@ -1,0 +1,48 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-task-context-20261005
+configfile: pytest.ini
+collected 445 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py . [  0%]
+..................................................................       [ 15%]
+test/api/test_task_ir_selection.py ..................................... [ 23%]
+...                                                                      [ 24%]
+test/api/semantic_state/test_supervised_task_context.py ..........       [ 26%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 28%]
+....                                                                     [ 29%]
+test/test_ir_persistent_catalog.py ..................................... [ 37%]
+......................                                                   [ 42%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 43%]
+........................................                                 [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 52%]
+........................................................................ [ 68%]
+....................................................                     [ 80%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 80%]
+................                                                         [ 84%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 84%]
+......                                                                   [ 85%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 85%]
+...........                                                              [ 88%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 88%]
+..                                                                       [ 88%]
+test/api/semantic_state/test_intent_world_snapshot.py .........          [ 91%]
+test/api/semantic_state/test_semantic_context_runtime.py ............... [ 94%]
+........                                                                 [ 96%]
+test/api/semantic_state/test_code_retrieval_context.py ....              [ 97%]
+test/api/semantic_state/test_source384_task_context_bundle.py .......... [ 99%]
+...                                                                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-task-context-20261005/final-01.xml -
+============================= slowest 10 durations =============================
+17.66s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_roots_with_actual_empty_program_population_need_no_vectors
+16.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_refuses_selected_catalog_generation_edit_without_loading_weights
+16.35s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[event]
+16.34s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_two_ready_roots_reuse_vectors_and_bind_actual_semantic_world_evidence
+16.31s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[retrieval]
+16.27s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[bundle]
+16.20s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[world]
+16.16s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_cold_reopen_rechecks_sources_live_owner_and_actual_artifacts[semantic]
+15.56s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_other_valid_producer_context_cannot_replace_signed_task_scope_or_query[retrieval_query]
+15.52s call     benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py::test_other_valid_producer_context_cannot_replace_signed_task_scope_or_query[semantic_query]
+======================= 445 passed in 1067.27s (0:17:47) =======================

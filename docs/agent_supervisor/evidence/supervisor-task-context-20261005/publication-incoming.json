@@ -1,0 +1,32 @@
+{
+  "schema": "supervisor-task-context-publication-incoming@1",
+  "merge_base": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "incoming_head": "f69d87fec31f5d76410217f740365b00f40d7b58",
+  "incoming_files": [
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/README.md",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/artifact-manifest.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/documentation-gates.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/historical-phase-accounting.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/incoming-numeric-proof-scope.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/native-runtime-diagnosis.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-documentation-gates.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-independent-review.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-provenance.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/post-merge-symbolic-planning-qualification.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-frozen-inputs.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-plan.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay-runtime-receipt.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay.Dockerfile",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/public-replay.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/replay_public.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/run_public_diagnostic.py",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-independent-review.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-provenance.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-planning-qualification.json",
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/workspace-preservation.json",
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md"
+  ],
+  "scope": "Documentation-only independent eigenvalue diagnosis/qualification; no frozen source owner changes.",
+  "completion_authority": false
+}
