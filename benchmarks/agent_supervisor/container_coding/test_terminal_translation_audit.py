@@ -9,9 +9,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation imp
 from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
 
-def test_historical_translated_projection_remains_verifiable(native, tmp_path):
+@pytest.mark.parametrize("transport_schema", ["supervisor-semantic-router-input@1",
+                                               "supervisor-semantic-router-input@2"])
+def test_historical_translated_projection_remains_verifiable(native, tmp_path, transport_schema):
     repository, _, prompt, source = native
-    encoded = encode_semantic_router_prompt(prompt=prompt, repository=repository)
+    encoded = encode_semantic_router_prompt(prompt=prompt, repository=repository,
+                                            transport_schema=transport_schema)
     workspace = tmp_path / "allocated/removed-worktree"
     model, header = render_model_prompt(prompt=encoded.provider_prompt, purpose="coding",
         workspace=workspace, semantic_transport=True)
@@ -25,6 +28,10 @@ def test_historical_translated_projection_remains_verifiable(native, tmp_path):
         "workspace_advisory_sha256": sha(header), "workspace_advisory_bytes": len(header.encode()),
         "semantic_translation": dict(encoded.receipt)}
     parsed = audit._receipt(receipt, workspace.parent)
+    changed = {**receipt, "semantic_translation": {**receipt["semantic_translation"],
+        "transport_schema": "supervisor-semantic-router-input@999"}}
+    with pytest.raises(ValueError, match="transport version"):
+        audit._receipt(changed, workspace.parent)
     # A completed publication can change the canonical source. Audit only
     # replays immutable historical artifacts, never claims operational freshness.
     (repository / "mod.py").write_text(source + "# accepted subsequent revision\n")

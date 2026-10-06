@@ -1,0 +1,36 @@
+{
+  "attempts": [
+    {
+      "benchmark_runs": 0,
+      "cause": "Initial Python network guard replaced socket type with function, breaking Trio import-time type union; guard corrected to patch connection methods while preserving socket type.",
+      "ordinal": 1,
+      "outcome": "failed_before_output_creation",
+      "provider_calls": 0
+    },
+    {
+      "benchmark_runs": 0,
+      "limit": "Initial synthetic fixture used1201Bchunks and allowed eval.py edit; preserved as preliminary evidence only.",
+      "ordinal": 2,
+      "outcome": "passed_provisional_fixture",
+      "output": "public-task-sizing-01",
+      "producer_copy": "measure_public_task_transport.initial.py",
+      "provider_calls": 0
+    },
+    {
+      "benchmark_runs": 0,
+      "corrections": [
+        "Native6144Breference chunk default",
+        "Only eigen.py edit scope;eval.py read-only evidence",
+        "Unencoded native complete-rendering accounting included"
+      ],
+      "ordinal": 3,
+      "outcome": "passed_corrected_fixture",
+      "output": "public-task-sizing-02",
+      "provider_calls": 0
+    }
+  ],
+  "original_task_inputs_unchanged": true,
+  "primary_measurement": "public-task-sizing-02/measurement.json",
+  "schema": "offline-public-fixture-execution-history@1",
+  "tokenizer_download": "One separately staged public tokenizer rank download, hash-verified; producer measurements themselves guarded offline."
+}

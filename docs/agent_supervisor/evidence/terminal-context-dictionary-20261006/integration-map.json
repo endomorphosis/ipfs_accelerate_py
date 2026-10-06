@@ -1,0 +1,159 @@
+{
+  "baseline": {
+    "archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+    "build_command_metadata": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-command.json",
+    "execute_command_metadata": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/execute-03-command.json",
+    "llm_phases": [
+      "planning",
+      "coding"
+    ],
+    "prepare_command_metadata": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/prepare-03-command.json",
+    "receipt": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+    "runtime_source_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+    "total_tokens": 291432
+  },
+  "benchmark_runs": 0,
+  "internal_history_limit": {
+    "complete_session_usage_hook": "full_supervisor_harbor_agent.py:measured_usage",
+    "current_compaction_callback": false,
+    "current_provider_kwargs_forward_context_window": false,
+    "existing_usage_hook": "runtime/codex_usage_receipt.py:recover_codex_usage",
+    "initial_prompt_compaction_does_not_prove_later_history_compaction": true,
+    "native_provider": "one codex exec --json process per router phase",
+    "recommended_per_turn_projection": "Extract only native token_count total_token_usage and last_token_usage plus ordinal/task-complete metadata; reject malformed values and preserve missing usage. Do not sum cumulative records, export model thoughts or treat token-count record count as API calls.",
+    "requested_output_cap_enforced": false,
+    "subsequent_turn_history_owner": "native Codex CLI"
+  },
+  "pilot": {
+    "arm": "full for both baseline and treatment",
+    "controls": [
+      "same original public task and exact task-input hashes",
+      "same model gpt-6.1-sol/high and native CLI0.160.0",
+      "same5CPU16GiBextended resource profile",
+      "same offline Source384 artifacts and setup cache policy",
+      "same predeclared retry policy, timeout, agent/tool exposure and verifier",
+      "one planning LLM session + one coding LLM session observed in receipts",
+      "original official outcome unchanged and complete cleanup evidence",
+      "account complete native cumulative totals for both sessions, all attempts and lookup/retry turns"
+    ],
+    "fresh_paired_baseline_required_for_causal_attribution": true,
+    "historical_baseline_comparison_only_descriptive": true,
+    "planning_strategy": "direct; omit intent-requirement-contract",
+    "treatment": "semantic_transport_schema@1 versus @2 in same newly built archive"
+  },
+  "provider_calls": 0,
+  "recorded_at_utc": "2026-10-06T08:38:34.333992+00:00",
+  "repo_source_edits": 0,
+  "schema": "terminal-retained-planning-transport-integration-map@1",
+  "scope": "read-only integration recommendations, not benchmark execution",
+  "source_bindings": [
+    {
+      "bytes": 27399,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "dfb66b2933332553dbcfc2af903908a21b1662bff183601828362d6017e0633a"
+    },
+    {
+      "bytes": 30740,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "3dabf72435c39f4fdcbccf7f1641fef502e01b716b693fe13ef79469f9d1f4c7"
+    },
+    {
+      "bytes": 11715,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "cb9428caf9b2997759d8a816c4dad46a63ac2abc971281c1d02f4fc428363531"
+    },
+    {
+      "bytes": 54365,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4d8a83e274cbe090f23a469cd0b8e9b194ecace06bb29e3546c48fda8f6a3ccc"
+    },
+    {
+      "bytes": 12684,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "89d45ad96a8dcc946663e72eacd9bb4cd5e7f26c3c592793e3d877814aa6f5a1"
+    },
+    {
+      "bytes": 21395,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "6540ee2fe4328992b9061fce6f07d47f8441f2bbecbdaf0ab982042fe207aacc"
+    },
+    {
+      "bytes": 31033,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "262ddbce4d54c7153b9a750aaf0fe709f02f4552273b5376fb149014c863f1f4"
+    },
+    {
+      "bytes": 80066,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "f79dd65ffde3fa5c4513a43905e9904143b5531162687193babb38f070346145"
+    }
+  ],
+  "steps": [
+    {
+      "change": "Add optional semantic_transport_schema with a closed @1/@2 choice; omit default @1 from kwargs so old configuration is unchanged. Validate @2 requires full arm. Forward explicit @2 to Harbor kwargs; retain policy in preparation and collection receipts. Preparation/execute already bind exact archive, complete config and host source hashes.",
+      "file": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "functions": [
+        "config_for",
+        "prepare",
+        "collect",
+        "main"
+      ]
+    },
+    {
+      "change": "Allow only the typed semantic_transport_schema kwarg and validate enum/full arm. Keep environment escape forbidden. Complete configuration digest binds the intended treatment; common-control comparison intentionally excludes whole arm kwargs, so separate treatment readback must assert only policy/output identity differs.",
+      "file": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "functions": [
+        "build_controls",
+        "compare_controls"
+      ]
+    },
+    {
+      "change": "Validate/store the optional policy and pass the explicit @2 selection as --semantic-transport-schema to the container driver. Record requested policy in metadata; default @1 omits the new CLI flag.",
+      "file": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "functions": [
+        "FullSupervisorAgent.__init__",
+        "FullSupervisorAgent.run"
+      ]
+    },
+    {
+      "change": "Accept/validate driver CLI choice and retain it in the report. Leave isolated_planner active with default @1 and no semantic_repository: planning grammar is a prompt-goal request, not a compiled semantic capsule. Propagate selected @2 to coding dispatch only. If selected Doctor route bypasses coding, reject that run as the retained-two-session compaction experiment rather than misreporting it.",
+      "file": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "functions": [
+        "run",
+        "isolated_planner",
+        "main"
+      ]
+    },
+    {
+      "change": "Pass semantic_transport_schema to the ordinary model-router coding argv; require a semantic_repository for @2. These argv are selected before admitted worker launch/signing; do not mutate command/policy after admission. Deterministic Doctor candidate branches remain outside the primary retained-two-session comparison.",
+      "file": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "functions": [
+        "dispatch_arguments"
+      ]
+    },
+    {
+      "change": "Runner receives explicit --semantic-transport-schema and preserves no-database-authority, allocated-worktree and same Git common-directory checks. Encode with selected transport, append exact unchanged Doctor/public instruction content, render complete workspace advisory, record original/native and complete/router hashes and actual encoding version. Decode structured aliases through full controller table and current native producer.",
+      "file": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "functions": [
+        "run",
+        "main"
+      ]
+    },
+    {
+      "change": "Validate receipt encoding/transport version pair and reconstruct the observed version for sealed historical audit; never silently replay @1 as @2. Hash complete rendered provider input. Historical reconstruction retains no source-currentness authority.",
+      "file": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "functions": [
+        "_receipt",
+        "_model_projection"
+      ]
+    },
+    {
+      "change": "Build fresh pinned archive including new transport and wiring. Frozen bundle-03@8dab cannot execute host-only compaction edits. Preserve Source384, native CLI0.160.0, datasets987cf856, kit/toolchain/CPU-wheel/assets and setup cache policy; verify archive manifest asset/SHA parity.",
+      "file": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "functions": [
+        "build_runtime_archive",
+        "deploy_supervisor"
+      ]
+    }
+  ]
+}

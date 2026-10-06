@@ -454,6 +454,7 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
 
 def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
+        semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -470,6 +471,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_requirement_contract: Path | None = None,
         task_profile: Path | None = None) -> dict:
     from .benchmark_provider_profile import resolve_provider_profile
+    from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
+    validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     provider_selection = resolve_provider_profile(provider_profile)
     budget = execution_budget(resource_profile)
     if timeout_seconds is None:
@@ -518,6 +521,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
               "provider_profile": provider_selection,
+              **semantic_transport_selection(semantic_transport_schema),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -682,7 +686,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         implementation = implementation_argv(router=ROUTER, model=provider_selection["model"],
             reasoning=provider_selection["reasoning_effort"],
             timeout=remaining() if provider_free_candidate else min(300, remaining(25)),
-            semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
+            semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
+            semantic_transport_schema=semantic_transport_schema)
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
         if report["implementation_route"] == "model_router":
@@ -852,6 +857,9 @@ def main():
     parser.add_argument("--timeout-seconds", type=int)
     from .benchmark_provider_profile import PROVIDER_PROFILES
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES)
+    from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
+    parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
+        default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--resource-profile", choices=PROFILES)
     parser.add_argument("--model-snapshot", type=Path)
     parser.add_argument("--model-revision", default="")

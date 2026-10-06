@@ -73,7 +73,9 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
-        semantic_repository: Path | None = None, doctor_residual_artifact: Path | None = None,
+        semantic_repository: Path | None = None,
+        semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+        doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
         public_instruction_task_cid: str = "") -> tuple[str, dict]:
@@ -90,6 +92,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit model and bounded invocation settings required")
     if reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
         raise ValueError("explicit supported reasoning effort required")
+    if semantic_transport_schema not in {"supervisor-semantic-router-input@1",
+                                         "supervisor-semantic-router-input@2"}:
+        raise ValueError("unsupported semantic transport schema")
+    if (semantic_transport_schema != "supervisor-semantic-router-input@1"
+            and (purpose != "coding" or semantic_repository is None)):
+        raise ValueError("compact semantic transport requires a semantic coding route")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
     root = Path.cwd().resolve()
@@ -126,7 +134,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if common_dir(semantic_repository) != common_dir(root):
             raise ValueError("semantic source repository differs from allocated worktree")
         from .semantic_router_translation import encode_semantic_router_prompt
-        encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository)
+        encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
+                                               transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -306,6 +315,8 @@ def main():
     parser.add_argument("--container-boundary", type=Path)
     parser.add_argument("--container-boundary-sha256", default="")
     parser.add_argument("--semantic-repository", type=Path)
+    parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
+                        choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
     parser.add_argument("--doctor-residual-sha256", default="")
     parser.add_argument("--doctor-residual-task-cid", default="")
@@ -321,6 +332,7 @@ def main():
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
+                        semantic_transport_schema=args.semantic_transport_schema,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,
                         doctor_residual_task_cid=args.doctor_residual_task_cid,

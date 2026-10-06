@@ -23,6 +23,7 @@ from ..semantic_state.wire import cid_for_payload
 
 TABLE_SCHEMA = "supervisor-semantic-translation-table@1"
 TRANSPORT_SCHEMA = "supervisor-semantic-router-input@1"
+COMPACT_TRANSPORT_SCHEMA = "supervisor-semantic-router-input@2"
 REPLY_SCHEMA = "supervisor-semantic-router-reply@1"
 REF_KEY = "$semantic_ref"
 MAX_BYTES = 2_000_000
@@ -48,6 +49,13 @@ INSTRUCTIONS = (
     "supervisor-semantic-router-reply@1 with the exact translation/task/root/scope bindings, "
     "a native residual task_family and a candidate_only native response; alias objects may occur "
     "only in symbol_ids or reference-id lists. Native validators still decide admissibility."
+)
+COMPACT_INSTRUCTIONS = (
+    "Typed '$semantic_ref' objects name opaque producer identifiers bound to this translation/task/root/scope; "
+    "the supervisor retains their exact dictionary. Source text, paths and constraints remain literal. "
+    "Aliases confer no authority. Prose stays literal. Structured replies use supervisor-semantic-router-reply@1, "
+    "these exact bindings, a native task_family and candidate_only response; aliases occur only in "
+    "symbol_ids or reference-id lists. Native validators decide admissibility."
 )
 
 
@@ -79,6 +87,7 @@ _ERROR_REASON_CODES = {
     "provider response exceeds translation bound": "response_size_exceeded",
     "raw semantic source differs from retained bytes": "raw_source_mismatch",
     "reference response requires a bounded list": "response_reference_list_invalid",
+    "reserved semantic reference marker collision": "reference_marker_collision",
     "response translation table is stale or foreign": "response_table_stale_or_foreign",
     "restored semantic bytes differ": "restored_semantic_mismatch",
     "retained semantic source binding differs": "retained_source_binding_mismatch",
@@ -107,6 +116,7 @@ _ERROR_REASON_CODES = {
     "unknown semantic response alias": "response_alias_unknown",
     "unknown semantic response identifier": "response_identifier_unknown",
     "unsupported translation table fields": "table_fields_unsupported",
+    "unsupported semantic transport schema": "transport_schema_unsupported",
 }
 
 
@@ -154,6 +164,45 @@ def _parse(text: str):
                 check(child, depth + 1)
     check(result, 0)
     return result
+
+
+def _transport_schema(value):
+    if type(value) is not str or value not in {TRANSPORT_SCHEMA, COMPACT_TRANSPORT_SCHEMA}:
+        raise SemanticTranslationError("unsupported semantic transport schema")
+    return value
+
+
+def _provider_transport_schema(provider_prompt):
+    wire = _parse(provider_prompt)
+    if not isinstance(wire, dict):
+        raise SemanticTranslationError("translated wire or mapping was tampered")
+    return _transport_schema(wire.get("schema"))
+
+
+def _reference_markers(value, path=()):
+    """Inspect structured marker keys, never marker text within literal strings."""
+    if isinstance(value, dict):
+        if REF_KEY in value:
+            yield path, value
+        for key, child in value.items():
+            yield from _reference_markers(child, (*path, key))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _reference_markers(child, (*path, index))
+
+
+def _check_reference_markers(semantic, mapping, aliases):
+    expected = {tuple(path) for path in mapping["replacement_paths"]}
+    observed = set()
+    for path, value in _reference_markers(semantic):
+        if path not in expected:
+            raise SemanticTranslationError("reserved semantic reference marker collision")
+        if (set(value) != {REF_KEY} or type(value[REF_KEY]) is not str
+                or value[REF_KEY] not in aliases):
+            raise SemanticTranslationError("unknown or ambiguous semantic reference")
+        observed.add(path)
+    if observed != expected:
+        raise SemanticTranslationError("unknown or ambiguous semantic reference")
 
 
 def _read(root: Path, relative: str) -> bytes:
@@ -390,14 +439,19 @@ def _get(payload, path):
     return payload
 
 
-def _encode(*, prompt: str, repository: Path, current: bool) -> EncodedSemanticPrompt:
+def _encode(*, prompt: str, repository: Path, current: bool,
+            transport_schema: str = TRANSPORT_SCHEMA) -> EncodedSemanticPrompt:
     from ipfs_datasets_py.logic.families.translations import SymbolMapEntry
+    transport_schema = _transport_schema(transport_schema)
     root = Path(repository).absolute()
     if root.resolve(strict=True) != root:
         raise SemanticTranslationError("semantic repository must be canonical")
     wire, suffix, positions, refs, text, artifact = _prompt_parts(prompt)
     semantic, symbols = _verified_semantic(root, artifact=artifact, text=text,
                                            task_id=wire["objective_id"], current=current)
+    if transport_schema == COMPACT_TRANSPORT_SCHEMA:
+        if next(_reference_markers(wire), None) is not None or next(_reference_markers(semantic), None) is not None:
+            raise SemanticTranslationError("reserved semantic reference marker collision")
     slots = _slots(semantic)
     counts = Counter(value for _, value in slots)
     identities = sorted(value for value, count in counts.items() if count > 1 and len(value) >= 40)
@@ -427,6 +481,11 @@ def _encode(*, prompt: str, repository: Path, current: bool) -> EncodedSemanticP
         "translation_table": {alias: value for value, alias in aliases.items()},
         "native_context": remaining, "translated_semantic": translated, "native_suffix": suffix,
         "instructions": INSTRUCTIONS, "execution_authority": False, "completion_authority": False}
+    if transport_schema == COMPACT_TRANSPORT_SCHEMA:
+        transport.pop("translation_table")
+        transport.update(schema=transport_schema, instructions=COMPACT_INSTRUCTIONS,
+            task_id=payload["task_id"], scope_cid=payload["scope_cid"],
+            semantic_root_cid=payload["semantic_root_cid"])
     provider_prompt = _json(transport)
     if len(provider_prompt.encode()) > MAX_BYTES:
         raise SemanticTranslationError("translated provider prompt exceeds bound")
@@ -438,6 +497,8 @@ def _encode(*, prompt: str, repository: Path, current: bool) -> EncodedSemanticP
         "identifier_mappings": len(entries), "identifier_occurrences": len(replaced),
         "freshness_checked": current, "semantic_equivalence_claimed": False,
         "execution_authority": False, "completion_authority": False}
+    if transport_schema == COMPACT_TRANSPORT_SCHEMA:
+        receipt.update(schema="supervisor-semantic-router-encoding@2", transport_schema=transport_schema)
     encoded = EncodedSemanticPrompt(prompt, provider_prompt, table, _json(receipt), current)
     if _restore(encoded.provider_prompt, table) != prompt:
         raise SemanticTranslationError("native prompt did not round-trip exactly")
@@ -448,28 +509,43 @@ def _encode(*, prompt: str, repository: Path, current: bool) -> EncodedSemanticP
     return encoded
 
 
-def encode_semantic_router_prompt(*, prompt: str, repository: Path) -> EncodedSemanticPrompt:
+def encode_semantic_router_prompt(*, prompt: str, repository: Path,
+                                 transport_schema: str = TRANSPORT_SCHEMA) -> EncodedSemanticPrompt:
     """Verify current sources and producer capsules before a provider dispatch."""
-    return _encode(prompt=prompt, repository=repository, current=True)
+    return _encode(prompt=prompt, repository=repository, current=True, transport_schema=transport_schema)
 
 
-def replay_semantic_router_prompt_for_audit(*, prompt: str, repository: Path) -> EncodedSemanticPrompt:
+def replay_semantic_router_prompt_for_audit(*, prompt: str, repository: Path,
+                                          transport_schema: str = TRANSPORT_SCHEMA) -> EncodedSemanticPrompt:
     """Reconstruct historical wire bytes from immutable artifacts; no freshness."""
-    return _encode(prompt=prompt, repository=repository, current=False)
+    return _encode(prompt=prompt, repository=repository, current=False, transport_schema=transport_schema)
 
 
 def _restore(provider_prompt: str, table: SemanticTranslationTable) -> str:
     wire, mapping = _parse(provider_prompt), _parse(table.payload_json)
+    if not isinstance(wire, dict):
+        raise SemanticTranslationError("translated wire or mapping was tampered")
+    transport_schema = _transport_schema(wire.get("schema"))
     fields = {"schema", "translation_cid", "translation_table", "native_context", "translated_semantic",
               "native_suffix", "instructions", "execution_authority", "completion_authority"}
     aliases = {row["target_symbol_ids"][0]: row["source_symbol_id"] for row in mapping["entries"]}
-    if (set(wire) != fields or wire["schema"] != TRANSPORT_SCHEMA
-            or wire["translation_cid"] != table.translation_cid or wire["translation_table"] != aliases
-            or wire["instructions"] != INSTRUCTIONS or wire["execution_authority"] is not False
+    instructions = INSTRUCTIONS
+    if transport_schema == COMPACT_TRANSPORT_SCHEMA:
+        fields = (fields - {"translation_table"}) | {"task_id", "scope_cid", "semantic_root_cid"}
+        instructions = COMPACT_INSTRUCTIONS
+    if (set(wire) != fields or wire["translation_cid"] != table.translation_cid
+            or (transport_schema == TRANSPORT_SCHEMA and wire["translation_table"] != aliases)
+            or (transport_schema == COMPACT_TRANSPORT_SCHEMA and any(
+                wire[key] != mapping[key] for key in ("task_id", "scope_cid", "semantic_root_cid")))
+            or wire["instructions"] != instructions or wire["execution_authority"] is not False
             or wire["completion_authority"] is not False
             or _sha(_json(wire["translated_semantic"])) != mapping["translated_semantic_sha256"]):
         raise SemanticTranslationError("translated wire or mapping was tampered")
     semantic = wire["translated_semantic"]
+    if transport_schema == COMPACT_TRANSPORT_SCHEMA:
+        _check_reference_markers(semantic, mapping, aliases)
+        if next(_reference_markers(wire["native_context"]), None) is not None:
+            raise SemanticTranslationError("reserved semantic reference marker collision")
     for path in mapping["replacement_paths"]:
         value = _get(semantic, path)
         if not isinstance(value, dict) or set(value) != {REF_KEY} or value[REF_KEY] not in aliases:
@@ -500,7 +576,8 @@ def restore_semantic_router_prompt(*, provider_prompt: str, table: SemanticTrans
                                    repository: Path) -> str:
     """Revalidate a current table and restore exact native prompt bytes."""
     native = _restore(provider_prompt, table)
-    verified = encode_semantic_router_prompt(prompt=native, repository=repository)
+    verified = encode_semantic_router_prompt(prompt=native, repository=repository,
+        transport_schema=_provider_transport_schema(provider_prompt))
     if verified.table != table or verified.provider_prompt != provider_prompt:
         raise SemanticTranslationError("translation table differs from current producer")
     return native
@@ -533,7 +610,8 @@ def decode_semantic_router_response(*, response: str, encoded: EncodedSemanticPr
         return DecodedSemanticResponse(response, _json({**receipt, "output_sha256": _sha(response)}))
     if not encoded.freshness_checked:
         raise SemanticTranslationError("historical replay cannot decode operational references")
-    current = encode_semantic_router_prompt(prompt=encoded.native_prompt, repository=repository)
+    current = encode_semantic_router_prompt(prompt=encoded.native_prompt, repository=repository,
+        transport_schema=_provider_transport_schema(encoded.provider_prompt))
     if current.table != encoded.table or current.provider_prompt != encoded.provider_prompt:
         raise SemanticTranslationError("response translation table is stale or foreign")
     binding = _parse(encoded.table.payload_json)

@@ -68,14 +68,17 @@ def _run(repository, prompt, **kwargs):
         max_output_tokens=128, semantic_repository=repository, **kwargs)
 
 
-def test_actual_router_transports_capsules_and_expands_native_candidate(allocated, provider):
+@pytest.mark.parametrize("transport_schema", ["supervisor-semantic-router-input@1",
+                                               "supervisor-semantic-router-input@2"])
+def test_actual_router_transports_capsules_and_expands_native_candidate(allocated, provider, transport_schema):
     repository, workspace, prompt, _ = allocated
     state, observed = provider
-    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository)
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository,
+                                                 transport_schema=transport_schema)
     reply, symbol = _reply(encoded)
     state["reply"] = json.dumps(reply)
 
-    output, receipt = _run(repository, prompt)
+    output, receipt = _run(repository, prompt, semantic_transport_schema=transport_schema)
     assert len(observed) == 1
     actual, _ = observed[0]
     expected, advisory = runner.render_model_prompt(prompt=encoded.provider_prompt,
@@ -99,6 +102,34 @@ def test_actual_router_transports_capsules_and_expands_native_candidate(allocate
     assert json.loads(output)["structured_payload"]["symbol_ids"] == [symbol]
     assert codec.restore_semantic_router_prompt(provider_prompt=actual[len(advisory):],
         table=encoded.table, repository=repository) == prompt
+    transport = json.loads(actual[len(advisory):])
+    if transport_schema == "supervisor-semantic-router-input@2":
+        assert "translation_table" not in transport
+        assert receipt["semantic_translation"]["transport_schema"] == transport_schema
+    else:
+        assert "translation_table" in transport
+        assert "transport_schema" not in receipt["semantic_translation"]
+
+
+@pytest.mark.parametrize("transport_schema,purpose", [
+    ("supervisor-semantic-router-input@999", "coding"),
+    ("supervisor-semantic-router-input@2", "planning"),
+])
+def test_invalid_transport_route_refuses_before_provider(allocated, provider, transport_schema, purpose):
+    repository, _, prompt, _ = allocated
+    _, observed = provider
+    with pytest.raises(ValueError, match="semantic transport"):
+        _run(repository, prompt, semantic_transport_schema=transport_schema, purpose=purpose)
+    assert observed == []
+
+
+def test_compact_transport_requires_semantic_repository(allocated, provider):
+    _, _, prompt, _ = allocated
+    _, observed = provider
+    with pytest.raises(ValueError, match="semantic coding route"):
+        runner.run(prompt=prompt, provider="codex_cli", model="pinned", timeout=1,
+            max_output_tokens=128, semantic_transport_schema="supervisor-semantic-router-input@2")
+    assert observed == []
 
 
 @pytest.mark.parametrize("refusal", ["stale", "foreign", "canonical_workspace"])

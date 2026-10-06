@@ -1,0 +1,142 @@
+{
+  "base_commit": "e768a30e40a4c283fb2933e935f7184756fed7a2",
+  "blocking_findings": [],
+  "checkout": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006",
+  "checks": {
+    "all_bound_python_sources_parse": true,
+    "compact_receipt_requires_encoding_and_transport_version_match": true,
+    "compact_route_requires_coding_and_semantic_repository": true,
+    "complete_router_and_model_input_sha256_and_bytes_are_checked": true,
+    "legacy_default_omits_new_fields_and_flags": true,
+    "legacy_receipts_replay_without_transport_schema": true,
+    "old_runtime_archive_refused_before_provider_or_upload": true,
+    "only_full_indexed_model_router_coding_can_select_compact_transport": true,
+    "planning_provider_arguments_remain_legacy": true,
+    "route_refusal_precedes_provider_access": true,
+    "stale_and_foreign_sources_remain_rejected": true,
+    "structured_references_keep_native_candidate_grammar": true,
+    "transport_selection_is_configuration_bound_and_receipt_drift_is_visible": true
+  },
+  "independent_offline_probe": {
+    "authored_public_fixture": true,
+    "compact_replay_all_checks_pass": true,
+    "failed_checks_on_cross_version_substitution": [
+      "router_prompt_sha256",
+      "router_prompt_bytes",
+      "model_prompt_sha256",
+      "model_prompt_bytes"
+    ],
+    "legitimate_legacy_metadata_substituted_for_compact_input_is_rejected": true,
+    "new_provider_calls": 0,
+    "same_native_table_cid_across_versions": true
+  },
+  "new_provider_calls": 0,
+  "official_benchmark_executed": false,
+  "qualification_constraints": [
+    "The primary benchmark must retain LLM planning via direct planning or the planning-preserved IntentIR coverage profile and independently verify both planning and coding sessions. The coding-only transport flag does not disable separately selected historical symbolic planning modes.",
+    "This qualifies reversible context transport and versioned integration. No complete-session token saving or benchmark reward improvement is claimed.",
+    "Catalog lookup and context-delta tool integration remain separate work; dictionary transport does not expose database authority."
+  ],
+  "reviewed_at_utc": "2026-10-06T08:37:08.209628+00:00",
+  "reviewer": "/root/terminal_context_compaction_options",
+  "schema": "terminal-context-dictionary-integration-review@1",
+  "scope": "Independent read-only review of root router/audit integration and benchmark policy wiring. Reviewer authored the codec and its focused tests; their hashes are dependency bindings, not independent codec sign-off.",
+  "source_bindings": [
+    {
+      "bytes": 21395,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "6540ee2fe4328992b9061fce6f07d47f8441f2bbecbdaf0ab982042fe207aacc"
+    },
+    {
+      "bytes": 13673,
+      "path": "test/api/test_semantic_router_integration.py",
+      "sha256": "bbc1e98dbca9c53428323c08148da41e080893c506ed33b161aaeec90d5099f0"
+    },
+    {
+      "bytes": 12239,
+      "path": "test/api/test_router_implementation_runner.py",
+      "sha256": "b25e72ac07cdf2c91b4affa8fd405d80bae54198eb1a2b58ba028d24fc852270"
+    },
+    {
+      "bytes": 31033,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "262ddbce4d54c7153b9a750aaf0fe709f02f4552273b5376fb149014c863f1f4"
+    },
+    {
+      "bytes": 3196,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py",
+      "sha256": "16ebb80bec0d06724356da4e45289f17982067c51a106de9dfa18fedb50eaadc"
+    },
+    {
+      "bytes": 3257,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    {
+      "bytes": 11715,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "cb9428caf9b2997759d8a816c4dad46a63ac2abc971281c1d02f4fc428363531"
+    },
+    {
+      "bytes": 26629,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "da0e250dd7f3f9bbc4a7ab13b85ae4a18e5e7630dea9c5817feacd54f0a08a8d"
+    },
+    {
+      "bytes": 27399,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "dfb66b2933332553dbcfc2af903908a21b1662bff183601828362d6017e0633a"
+    },
+    {
+      "bytes": 30740,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "3dabf72435c39f4fdcbccf7f1641fef502e01b716b693fe13ef79469f9d1f4c7"
+    },
+    {
+      "bytes": 54365,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4d8a83e274cbe090f23a469cd0b8e9b194ecace06bb29e3546c48fda8f6a3ccc"
+    },
+    {
+      "bytes": 12684,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "89d45ad96a8dcc946663e72eacd9bb4cd5e7f26c3c592793e3d877814aa6f5a1"
+    },
+    {
+      "bytes": 11619,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+      "sha256": "1b5658f426acde040cdb2cc71f80dd67cc1cb54e1663b79dcef58bb31b788189"
+    },
+    {
+      "bytes": 5577,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_instruction_delivery.py",
+      "sha256": "c08a4a499cd5d3c6c3b67cd95d743dfb2dc29f32c53f39dc4f63ce72129d6969"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 28602,
+      "path": "test/api/test_semantic_router_translation.py",
+      "sha256": "90251862dfcf8b67ab5340a562f89729762e757de6c637c21c4acac29dc2715b"
+    }
+  ],
+  "source_files_edited_by_review": false,
+  "status": "passed",
+  "test_evidence_inspected": [
+    {
+      "command_receipt": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/router-audit-tests-command.json",
+      "exit_code": 0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/router-audit-tests.log",
+      "summary": "38 passed in 43.71s"
+    },
+    {
+      "note": "Policy agent reported additional tests running after this successful run; source edits declared stable.",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-tests.log",
+      "summary": "83 passed in 34.52s"
+    }
+  ],
+  "total_token_efficacy_measured": false
+}

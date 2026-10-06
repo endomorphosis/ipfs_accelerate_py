@@ -1,0 +1,183 @@
+{
+  "ast_parse_passed": true,
+  "base_head": "e768a30e40a4c283fb2933e935f7184756fed7a2",
+  "checkout": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006",
+  "commits_created": 0,
+  "corrected_fixture_failure": "Final run authored task fixture omitted required task.toml/environment/tests. Added only fixture files and reran final suite; no production source changes.",
+  "created_at": "2026-10-06T08:38:09.668039+00:00",
+  "default_transport_preserved": true,
+  "diff_check_passed": true,
+  "docker_calls": 0,
+  "fresh_terminal_benchmark_runs": 0,
+  "planning_provider_path_modified": false,
+  "provider_calls": 0,
+  "schema": "terminal-semantic-transport-policy-tests@1",
+  "scope": "offline configuration, worker parser, adapter, and driver forwarding; actual two-session usage not measured",
+  "source_bindings": [
+    {
+      "bytes": 3257,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    {
+      "bytes": 27399,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "dfb66b2933332553dbcfc2af903908a21b1662bff183601828362d6017e0633a"
+    },
+    {
+      "bytes": 30740,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "3dabf72435c39f4fdcbccf7f1641fef502e01b716b693fe13ef79469f9d1f4c7"
+    },
+    {
+      "bytes": 54365,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4d8a83e274cbe090f23a469cd0b8e9b194ecace06bb29e3546c48fda8f6a3ccc"
+    },
+    {
+      "bytes": 12684,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "89d45ad96a8dcc946663e72eacd9bb4cd5e7f26c3c592793e3d877814aa6f5a1"
+    },
+    {
+      "bytes": 26629,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "da0e250dd7f3f9bbc4a7ab13b85ae4a18e5e7630dea9c5817feacd54f0a08a8d"
+    },
+    {
+      "bytes": 11715,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "cb9428caf9b2997759d8a816c4dad46a63ac2abc971281c1d02f4fc428363531"
+    },
+    {
+      "bytes": 11619,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+      "sha256": "1b5658f426acde040cdb2cc71f80dd67cc1cb54e1663b79dcef58bb31b788189"
+    },
+    {
+      "bytes": 5577,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_instruction_delivery.py",
+      "sha256": "c08a4a499cd5d3c6c3b67cd95d743dfb2dc29f32c53f39dc4f63ce72129d6969"
+    },
+    {
+      "bytes": 13886,
+      "path": "test/api/test_terminal_doctor_dispatch.py",
+      "sha256": "673cb2abf71a63653e3403a78e0713658156fbb0b54dd873a9c59c1d86e64d53"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 21395,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "6540ee2fe4328992b9061fce6f07d47f8441f2bbecbdaf0ab982042fe207aacc"
+    }
+  ],
+  "test_runs": [
+    {
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "-q",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-tests.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_instruction_delivery.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py"
+      ],
+      "environment": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-tests.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 0,
+      "junit": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-tests.xml",
+      "junit_sha256": "99069b46f6e4bcfcb7677592c9a2b5683d03947fcb9eee57c9183f4283cc4f9e",
+      "log": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-tests.log",
+      "log_sha256": "98b8ee27571216afb6bd61176d35b78437dae0cf149bf2c6c2eaf8eef3e6b07e",
+      "name": "policy-tests",
+      "result": {
+        "errors": "0",
+        "failures": "0",
+        "hostname": "spark-b271",
+        "name": "pytest",
+        "skipped": "0",
+        "tests": "83",
+        "time": "34.477",
+        "timestamp": "2026-10-06T08:34:22.897496+00:00"
+      }
+    },
+    {
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import test, ipfs_datasets_py, pytest; raise SystemExit(pytest.main([\"-o\", \"addopts=\", \"-p\", \"no:cacheprovider\", \"-p\", \"ipfs_accelerate_py.testing.pytest_ast_seal\", \"-q\", \"--junitxml=/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-tests.xml\", \"benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py\", \"test/api/test_terminal_doctor_dispatch.py\"]))"
+      ],
+      "environment": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-tests.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 1,
+      "junit": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-tests.xml",
+      "junit_sha256": "c223a85f4cb907c8a1068177793223cf81c4f0f1accd3bea55142de378e4e591",
+      "log": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-tests.log",
+      "log_sha256": "5bd12dfea87b2e42c0f5c16d2cbe97298082658e598850990a893a7077297d03",
+      "name": "policy-final-tests",
+      "result": {
+        "errors": "0",
+        "failures": "1",
+        "hostname": "spark-b271",
+        "name": "pytest",
+        "skipped": "0",
+        "tests": "32",
+        "time": "36.005",
+        "timestamp": "2026-10-06T08:36:07.822559+00:00"
+      }
+    },
+    {
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import test, ipfs_datasets_py, pytest; raise SystemExit(pytest.main([\"-o\", \"addopts=\", \"-p\", \"no:cacheprovider\", \"-p\", \"ipfs_accelerate_py.testing.pytest_ast_seal\", \"-q\", \"--junitxml=/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-retry-tests.xml\", \"benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py\", \"test/api/test_terminal_doctor_dispatch.py\"]))"
+      ],
+      "environment": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-retry-tests.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-context-dictionary-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 0,
+      "junit": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-retry-tests.xml",
+      "junit_sha256": "326f60d3911610d511a55c223d3df458d6e9e42fbbbf8d8d5c33d29810581802",
+      "log": "/home/barberb/lift_coding/artifacts/terminal-context-dictionary-20261006/policy-final-retry-tests.log",
+      "log_sha256": "c00c1f389f178d1d74ce7b8f002253a5c7c6f2c12cce4a362a82ac1019c098b0",
+      "name": "policy-final-retry-tests",
+      "result": {
+        "errors": "0",
+        "failures": "0",
+        "hostname": "spark-b271",
+        "name": "pytest",
+        "skipped": "0",
+        "tests": "32",
+        "time": "35.343",
+        "timestamp": "2026-10-06T08:37:02.251744+00:00"
+      }
+    }
+  ]
+}
