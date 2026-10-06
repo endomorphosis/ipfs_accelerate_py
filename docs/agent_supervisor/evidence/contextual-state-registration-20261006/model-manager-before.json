@@ -1,0 +1,543 @@
+{
+  "backup_pin": {
+    "bytes": 2973249536,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-before.duckdb",
+    "sha256": "c7f6dc010a3084a09ba80f6536d52f6b8747d08cec613bca1bcfd766cc02b15a"
+  },
+  "baseline_model_count": 668,
+  "baseline_records_pin": {
+    "bytes": 11326537,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-before-records.json",
+    "sha256": "76e0eb569f608ba34ca82b00d6f1ba44e1dbbba0d4a0771ec760c5a2db14e67f"
+  },
+  "baseline_schema": {
+    "columns": [
+      [
+        "main",
+        "model_metadata",
+        "model_id",
+        1,
+        "VARCHAR",
+        "NO",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "model_name",
+        2,
+        "VARCHAR",
+        "NO",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "model_type",
+        3,
+        "VARCHAR",
+        "NO",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "architecture",
+        4,
+        "VARCHAR",
+        "NO",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "inputs",
+        5,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "outputs",
+        6,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "huggingface_config",
+        7,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "inference_code_location",
+        8,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "supported_backends",
+        9,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "hardware_requirements",
+        10,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "performance_metrics",
+        11,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "tags",
+        12,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "source_url",
+        13,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "license",
+        14,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "description",
+        15,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "model_card",
+        16,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "repository_structure",
+        17,
+        "JSON",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "model_cid",
+        18,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "config_cid",
+        19,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "tokenizer_cid",
+        20,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "artifact_cid",
+        21,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "model_revision",
+        22,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "revision_id",
+        23,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "revision_created_at",
+        24,
+        "TIMESTAMP",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "parent_model_id",
+        25,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "parent_model_cid",
+        26,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "last_used_at",
+        27,
+        "TIMESTAMP",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "last_inference_cid",
+        28,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "last_run_id",
+        29,
+        "VARCHAR",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "inference_count",
+        30,
+        "BIGINT",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "created_at",
+        31,
+        "TIMESTAMP",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "updated_at",
+        32,
+        "TIMESTAMP",
+        "YES",
+        null
+      ],
+      [
+        "main",
+        "model_metadata",
+        "serving_config",
+        33,
+        "JSON",
+        "YES",
+        null
+      ]
+    ],
+    "indexes": [
+      [
+        "main",
+        "model_metadata",
+        "idx_architecture",
+        false,
+        false,
+        "[architecture]",
+        "CREATE INDEX idx_architecture ON model_metadata(architecture);"
+      ],
+      [
+        "main",
+        "model_metadata",
+        "idx_model_name",
+        false,
+        false,
+        "[model_name]",
+        "CREATE INDEX idx_model_name ON model_metadata(model_name);"
+      ],
+      [
+        "main",
+        "model_metadata",
+        "idx_model_type",
+        false,
+        false,
+        "[model_type]",
+        "CREATE INDEX idx_model_type ON model_metadata(model_type);"
+      ]
+    ],
+    "tables": [
+      [
+        "main",
+        "model_metadata"
+      ]
+    ]
+  },
+  "database_pin": {
+    "bytes": 2973249536,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+    "sha256": "c7f6dc010a3084a09ba80f6536d52f6b8747d08cec613bca1bcfd766cc02b15a"
+  },
+  "expected_new_model_ids": [
+    "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+    "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+  ],
+  "in_memory_instance_save_population_restricted_to_two_target_ids": true,
+  "original_checkpoint_corpus_vector_codec_files_must_remain_unchanged": true,
+  "selected_storage": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+  "source_owners": [
+    {
+      "head": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+      "pin": {
+        "bytes": 29300,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py",
+        "sha256": "5d50f879d6e1e80fc68a29060680fcac9e234f62a3732f7c697f31360ca9506b"
+      },
+      "relative_path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 176248,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_manager.py",
+        "sha256": "cd65b2e91c05a603ad984ddcef0e2967b90362f90ee212c1849f9e5bc81631d4"
+      },
+      "relative_path": "ipfs_accelerate_py/model_manager.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 1596,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/__init__.py",
+        "sha256": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/__init__.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 26636,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/cache.py",
+        "sha256": "c8ae37197dad0db6e3e3a6788cb05b53bd20bc515206316138a18ada46af9534"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/cache.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 40317,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/catalog.py",
+        "sha256": "badb30612917fa7f71deb036b2b1f0cf710161de11af61f02e4b07189f6397a5"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/catalog.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 20160,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/events.py",
+        "sha256": "a5839de4c2e76fcba58be4060a549dd38492396874dc2d7c28fce310af386365"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/events.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 8918,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/identity.py",
+        "sha256": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/identity.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 27067,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/receipts.py",
+        "sha256": "3a956d2b9d2c35793a615ae0fb3e5a2f2709a489114624f974827c406facc487"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/receipts.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 30232,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/registry.py",
+        "sha256": "2ba8aae587f5838016da8a71370b84e5b50b1985cd49c95682b02a8189e55284"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/registry.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 27779,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/resolver.py",
+        "sha256": "17bfcbfdfc029ccca6458a3c11ae5bc2418c3dfc7ba423a942930edc6c8407a5"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/resolver.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 36178,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/schema.py",
+        "sha256": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/schema.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 30098,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/security.py",
+        "sha256": "93a5b4dc3e6b1d119fcdc8af48d81f881ef1a89401dc21d1e2fe1253d64c9d0d"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/security.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 11886,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/snapshot.py",
+        "sha256": "c17817f2c770103677e0a2880b8355d134df4c533590fd4824cf283ba4c4ef6a"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/snapshot.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 1043,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/__init__.py",
+        "sha256": "b771d4d00b5cf8f167e9bb7aa3951e25a8d5a225b78b0e872c1a21eabf5672f4"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/__init__.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 47700,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/deployments.py",
+        "sha256": "31272b5b22b3c7a6a9934a338fc45d0587015deeeedc24d74959626fea665d2c"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/deployments.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 19952,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+        "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 27224,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/peers.py",
+        "sha256": "eebce1b7b560f7ee6e3dbaefdf00222234c7e02820dcd328570d3eec41eaa773"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/peers.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 3331,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/persistent.py",
+        "sha256": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/persistent.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 7333,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/routers.py",
+        "sha256": "6cf638e7076b078a648dcbea288279db3763e735f5e772193bf40f9340fee5da"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/routers.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 37159,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/static.py",
+        "sha256": "4f9b658aecc00820e2d87866445f298c248e6d9a39161b1499a884f6451281cf"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/static.py"
+    }
+  ]
+}

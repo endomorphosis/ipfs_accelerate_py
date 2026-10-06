@@ -1,0 +1,2717 @@
+{
+  "authority": {
+    "checkpoint_numerically_validated": false,
+    "database_operations_executed": false,
+    "embedding_producer_execution_authenticated": false,
+    "full_source_dependency_closure_qualified": false,
+    "huggingface_available": false,
+    "independent_evaluation_qualified": false,
+    "learned_source_text_reconstruction_qualified": false,
+    "model_task_qualified": false,
+    "native_grammar_verified": false,
+    "numerical_model_loaded": false,
+    "original_training_run_authenticated": false,
+    "output_semantics_verified": false,
+    "physical_cell_store_qualified": false,
+    "promotion_admitted": false,
+    "proof_authority": false,
+    "quality_qualified": false,
+    "registry_release_qualified": false,
+    "remote_operations_executed": false,
+    "runtime_admitted": false,
+    "runtime_release_qualified": false,
+    "source_free_reconstruction_qualified": false,
+    "source_semantics_verified": false,
+    "source_token_budget_qualified": false,
+    "store_available": false,
+    "teacher_qualified": false,
+    "tensor_shapes_verified": false,
+    "training_admitted": false,
+    "training_executed": false
+  },
+  "bindings": [
+    {
+      "corpus_pin": {
+        "bytes": 180619,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+        "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+      },
+      "format_request": {
+        "schema_version": "program-ir/v1",
+        "target_format_id": "security_ir/program_expression",
+        "task_id": "source_to_native_ir"
+      },
+      "package_manifest_pin": {
+        "bytes": 8156,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/manifest.json",
+        "sha256": "d9fc241c7c6a039068681fab18b6a36fbcbd1752c2683ba1dc16423ce94aba2a"
+      },
+      "request": {
+        "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "security_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-security-ir-original-fit"
+    },
+    {
+      "corpus_pin": {
+        "bytes": 321176,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+        "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+      },
+      "format_request": {
+        "schema_version": "intent-rich-grammar/v1",
+        "target_format_id": "intent_ir/intent_rich_ast",
+        "task_id": "source_to_native_ir"
+      },
+      "package_manifest_pin": {
+        "bytes": 8126,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/manifest.json",
+        "sha256": "250b6bf9cd93e32ee2db77498432d4dc5c7d705f333f9d99e92de69cdf2c727f"
+      },
+      "request": {
+        "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "intent_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-intent-ir-original-fit"
+    }
+  ],
+  "cells": [
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "codebase_ir_8d",
+      "dimension": 8,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/codebase-ir-autoencoder-8d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/codebase-ir-autoencoder-8d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7862,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/8d.json",
+        "sha256": "bb4d7a74ec581e32c19800333dfcbf2bb175e753e975375f5a3efbbf5c66a2a1"
+      },
+      "ir_family_id": "codebase_ir",
+      "original_declared_checkpoints": [
+        {
+          "dimension_role": "latent",
+          "formal_decoder": false,
+          "input_width": 53,
+          "latent_width": 8,
+          "receipt": {
+            "bytes": 673933,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+            "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+          },
+          "role": "trained structural parent",
+          "source_access": "compiler-derived structural features"
+        },
+        {
+          "continuation": "saved Adam state plus ancestral replay",
+          "dimension_role": "latent",
+          "formal_decoder": false,
+          "input_width": 53,
+          "latent_width": 8,
+          "receipt": {
+            "bytes": 815238,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/child-checkpoint.json",
+            "sha256": "c00a0c54f8b1adb24d1822ab2ac98cec2d414e5b2ec55fad9da69ad7630be6a6"
+          },
+          "role": "trained structural child"
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 673933,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+              "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 815238,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/child-checkpoint.json",
+              "sha256": "c00a0c54f8b1adb24d1822ab2ac98cec2d414e5b2ec55fad9da69ad7630be6a6"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/codebase_ir/8d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/codebase_ir/8d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical repository/source snapshot and source-correspondence owners",
+        "index_database": "<ir_store_root>/codebase_ir/8d/index.duckdb",
+        "inventory_export": "<ir_store_root>/codebase_ir/8d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/codebase_ir/8d/artifacts/",
+        "registry_database": "<ir_store_root>/codebase_ir/8d/registry.duckdb",
+        "root_template": "<ir_store_root>/codebase_ir/8d",
+        "run_namespace": "<ir_store_root>/codebase_ir/8d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "codebase_ir_384d",
+      "dimension": 384,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/codebase-ir-autoencoder-384d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/codebase-ir-autoencoder-384d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 8393,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/384d.json",
+        "sha256": "d01836c6d11996d6d4e88a7d2722fca63004ed4fea19e08f331db65903b4fdc4"
+      },
+      "ir_family_id": "codebase_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_kind": "frozen projection and fixed-tree ridge readout",
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "native_codebase_decoder_complete": false,
+          "owning_ir_family": "codebase_ir",
+          "payload_ir_family": "security_ir",
+          "receipt": {
+            "bytes": 1009515,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/cc/cc025fbc017849b806d60f191397fa03759f732a8406cbdcb3558ba3871b2a6f",
+            "sha256": "cc025fbc017849b806d60f191397fa03759f732a8406cbdcb3558ba3871b2a6f"
+          },
+          "role": "registered shared parent envelope"
+        },
+        {
+          "decoder_budget_unit": "fixed schema/scalar slots",
+          "development_child_exact": "0/9",
+          "development_parent_exact": "9/9",
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "parent_pretraining_independence": "unknown",
+          "payload_ir_family": "security_ir",
+          "promoted": false,
+          "receipt": {
+            "bytes": 304490,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+            "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+          },
+          "role": "unpromoted repository child envelope"
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1009515,
+              "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/cc/cc025fbc017849b806d60f191397fa03759f732a8406cbdcb3558ba3871b2a6f",
+              "sha256": "cc025fbc017849b806d60f191397fa03759f732a8406cbdcb3558ba3871b2a6f"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 304490,
+              "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+              "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/codebase_ir/384d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/codebase_ir/384d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical repository/source snapshot and source-correspondence owners",
+        "index_database": "<ir_store_root>/codebase_ir/384d/index.duckdb",
+        "inventory_export": "<ir_store_root>/codebase_ir/384d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/codebase_ir/384d/artifacts/",
+        "registry_database": "<ir_store_root>/codebase_ir/384d/registry.duckdb",
+        "root_template": "<ir_store_root>/codebase_ir/384d",
+        "run_namespace": "<ir_store_root>/codebase_ir/384d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "codebase_ir_768d",
+      "dimension": 768,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/codebase-ir-autoencoder-768d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/codebase-ir-autoencoder-768d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7034,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/768d.json",
+        "sha256": "4f2476246a11e0e53f4e18ec82c53b160fa7d39e8b27cf91ef85f865de039177"
+      },
+      "ir_family_id": "codebase_ir",
+      "original_declared_checkpoints": [],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/codebase_ir/768d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/codebase_ir/768d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical repository/source snapshot and source-correspondence owners",
+        "index_database": "<ir_store_root>/codebase_ir/768d/index.duckdb",
+        "inventory_export": "<ir_store_root>/codebase_ir/768d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/codebase_ir/768d/artifacts/",
+        "registry_database": "<ir_store_root>/codebase_ir/768d/registry.duckdb",
+        "root_template": "<ir_store_root>/codebase_ir/768d",
+        "run_namespace": "<ir_store_root>/codebase_ir/768d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "intent_ir_8d",
+      "dimension": 8,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/intent-ir-autoencoder-8d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/intent-ir-autoencoder-8d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7440,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/8d.json",
+        "sha256": "4ff8cbbf4dc5696603ea97f5f57db9415f679148d1b9f13a9a1883a9b5886af5"
+      },
+      "ir_family_id": "intent_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_budget_unit": "fixed path/value fields",
+          "dimension_role": "latent",
+          "independent_text_to_logic": false,
+          "input_width": 12,
+          "latent_width": 8,
+          "receipt": {
+            "bytes": 25559,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/decoder-e2e-20261001/native-20261001T0130/intent_ir/resumed/checkpoint.json",
+            "sha256": "3f61850d111893b8010ffcb360599cbcebd32165a9699133c87dde26e2d274c1"
+          },
+          "role": "trained compiler-conditional path/value head",
+          "source_access": "compiler targets"
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 25559,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/decoder-e2e-20261001/native-20261001T0130/intent_ir/resumed/checkpoint.json",
+              "sha256": "3f61850d111893b8010ffcb360599cbcebd32165a9699133c87dde26e2d274c1"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/intent_ir/8d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/intent_ir/8d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Intent instruction/SkillCenter corpus and context/span owners, plus separately observed repository grounding",
+        "index_database": "<ir_store_root>/intent_ir/8d/index.duckdb",
+        "inventory_export": "<ir_store_root>/intent_ir/8d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/intent_ir/8d/artifacts/",
+        "registry_database": "<ir_store_root>/intent_ir/8d/registry.duckdb",
+        "root_template": "<ir_store_root>/intent_ir/8d",
+        "run_namespace": "<ir_store_root>/intent_ir/8d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "registered_supported_formats",
+      "cell_id": "intent_ir_384d",
+      "dimension": 384,
+      "huggingface_plan": {
+        "existing_descriptor_source": {
+          "bytes": 1971,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+          "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+        },
+        "existing_read_only_descriptors": [
+          {
+            "domain_id": "intent_ir",
+            "manifest_sha256": "250b6bf9cd93e32ee2db77498432d4dc5c7d705f333f9d99e92de69cdf2c727f",
+            "release_prefix": "releases/20261002-384-development-v1",
+            "repository_id": "Publicus/intent-ir-autoencoder",
+            "revision": "da986a94f096b62a23e387739c83623adb65e92d",
+            "schema": "ir-384-hub-descriptor/v1"
+          }
+        ],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/intent-ir-autoencoder-384d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/intent-ir-autoencoder-384d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 9678,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/384d.json",
+        "sha256": "0b8b99e966316e16f641359d19a9bdab1e0b2536d400761a88edbb99a4b9e437"
+      },
+      "ir_family_id": "intent_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_hidden_width": 32,
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "max_decoder_tokens": 512,
+          "metric_scope": "release panel 0/2 exact and 2/2 valid; source quality unaccepted",
+          "projection_width": 8,
+          "receipt": {
+            "bytes": 586049,
+            "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+            "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+          },
+          "role": "published development GTE-conditioned GRU",
+          "token_embedding_width": 16
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 3116227,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/intent_ir/train.json",
+              "sha256": "9d642ce65ac25ec9cb05b14db34aecb3584a648b6c2da4c3cb15c40ef1e7f8aa"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1039515,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/intent_ir/validation.json",
+              "sha256": "8478295c9c2a2e7158c8fdede1e3b5043e7278c0531020e4e8e0c7ffd27be404"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1038586,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/intent_ir/test.json",
+              "sha256": "775e8f91e4d485d34c58f256624670c32fe2a1c44f951f660027a0759c58aacc"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 519725,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/intent_ir/canary.json",
+              "sha256": "38dc9c77b3a9bb4ca584b7baef2cd9f84ecb6290ad781b4a6dbcff2744b2474b"
+            },
+            "status": "verified"
+          }
+        ],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 586049,
+              "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+              "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": {
+          "reason": null,
+          "receipt": {
+            "bytes": 1971,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+            "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+          },
+          "status": "verified"
+        }
+      },
+      "registered_record_ids": [
+        "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907"
+      ],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/intent_ir/384d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/intent_ir/384d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Intent instruction/SkillCenter corpus and context/span owners, plus separately observed repository grounding",
+        "index_database": "<ir_store_root>/intent_ir/384d/index.duckdb",
+        "inventory_export": "<ir_store_root>/intent_ir/384d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/intent_ir/384d/artifacts/",
+        "registry_database": "<ir_store_root>/intent_ir/384d/registry.duckdb",
+        "root_template": "<ir_store_root>/intent_ir/384d",
+        "run_namespace": "<ir_store_root>/intent_ir/384d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "intent_ir_768d",
+      "dimension": 768,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/intent-ir-autoencoder-768d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/intent-ir-autoencoder-768d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7061,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/768d.json",
+        "sha256": "c66c360cc797cbe7b74a08bed90102d22719937a7c7cb46d44f9f70d94af8a98"
+      },
+      "ir_family_id": "intent_ir",
+      "original_declared_checkpoints": [],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/intent_ir/768d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/intent_ir/768d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Intent instruction/SkillCenter corpus and context/span owners, plus separately observed repository grounding",
+        "index_database": "<ir_store_root>/intent_ir/768d/index.duckdb",
+        "inventory_export": "<ir_store_root>/intent_ir/768d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/intent_ir/768d/artifacts/",
+        "registry_database": "<ir_store_root>/intent_ir/768d/registry.duckdb",
+        "root_template": "<ir_store_root>/intent_ir/768d",
+        "run_namespace": "<ir_store_root>/intent_ir/768d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "legal_ir_8d",
+      "dimension": 8,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/legal-ir-autoencoder-8d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/legal-ir-autoencoder-8d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7495,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/8d.json",
+        "sha256": "6c5515387d1280ff0dbe55270bd655b612cc6ae2c76293f1c7bc3e77f4f49b0f"
+      },
+      "ir_family_id": "legal_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_hidden_width": 16,
+          "dimension_role": "input_embedding",
+          "encoder_token_limit": null,
+          "input_width": 8,
+          "max_decoder_tokens": 64,
+          "projection_width": 4,
+          "receipt": {
+            "bytes": 128924,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/modal-joint-e2e-20261001-final/legacy_v1/formula-head.json",
+            "sha256": "ffca84492b81ab94fa291ae6ddbe52cfc84318f3516a22f901d468de255b6cbe"
+          },
+          "role": "trained historical formula donor",
+          "source_access": "legacy parser-assisted donor; not qualified source-only",
+          "token_embedding_width": 8
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 128924,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/modal-joint-e2e-20261001-final/legacy_v1/formula-head.json",
+              "sha256": "ffca84492b81ab94fa291ae6ddbe52cfc84318f3516a22f901d468de255b6cbe"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/legal_ir/8d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/legal_ir/8d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical Legal source/corpus version and span owners, plus separately bound applicability and repository subjects",
+        "index_database": "<ir_store_root>/legal_ir/8d/index.duckdb",
+        "inventory_export": "<ir_store_root>/legal_ir/8d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/legal_ir/8d/artifacts/",
+        "registry_database": "<ir_store_root>/legal_ir/8d/registry.duckdb",
+        "root_template": "<ir_store_root>/legal_ir/8d",
+        "run_namespace": "<ir_store_root>/legal_ir/8d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "legal_ir_384d",
+      "dimension": 384,
+      "huggingface_plan": {
+        "existing_descriptor_source": {
+          "bytes": 1971,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+          "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+        },
+        "existing_read_only_descriptors": [
+          {
+            "domain_id": "legal_ir",
+            "manifest_sha256": "34794ea4bbf128678eafdd8ba1862b58c8d0bf36b8ae83e20de75abf57e9debc",
+            "release_prefix": "releases/20261002-384-development-v1",
+            "repository_id": "Publicus/legal-ir-autoencoder",
+            "revision": "9542bbee70a55ea79fb24e4ef01ff2a6f88204a2",
+            "schema": "ir-384-hub-descriptor/v1"
+          }
+        ],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/legal-ir-autoencoder-384d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/legal-ir-autoencoder-384d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 10568,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/384d.json",
+        "sha256": "77492b849bd2fa75a55a5d4f79de8eb5a3f6059346ab931df9ed5ccda75e1776"
+      },
+      "ir_family_id": "legal_ir",
+      "original_declared_checkpoints": [
+        {
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "metric_scope": "exposed validation exactIR0/60; not text reconstruction",
+          "receipt": {
+            "bytes": 614534,
+            "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/run-01/legal_ir/raw_ce-1729-checkpoint.json",
+            "sha256": "6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61"
+          },
+          "role": "retained source GRU donor"
+        },
+        {
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "metric_scope": "archived exposed validation exactIR2/60; not independent teacher qualification",
+          "receipt": {
+            "bytes": 621716,
+            "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/run-01/legal_ir/semantic-1729-checkpoint.json",
+            "sha256": "36b6b3a5a31ce88748a7ff69f1ab55f16dae79a78bfb635436a7b13a34c9cbf2"
+          },
+          "role": "compatible alternative GRU"
+        },
+        {
+          "decoder_kind": "sparse core and formula GRU",
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "max_decoder_tokens": 64,
+          "receipt": {
+            "bytes": 1715990,
+            "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/legal_ir/checkpoint.json",
+            "sha256": "26cb6d77947b5b8e1e6c08e68ff8c6ce1c8f23002d56bfc1ebbd024c55a0c2da"
+          },
+          "role": "published development parser-assisted package",
+          "source_access": "embedding plus parser-derived features"
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 3113459,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/legal_ir/train.json",
+              "sha256": "00f4074cca56daed9f766e74c90d3d35e608bfb1058c24db99fc30250314704f"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1038480,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/legal_ir/validation.json",
+              "sha256": "6a07b7a4d7c73802fc4a31a2666adcb312706fcc3deffbc46626d9d8914d43c9"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1037637,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/legal_ir/test.json",
+              "sha256": "33288ea40ee902788bb012b98dd48a767405c18090b92981ef82d680ddee0d72"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 519374,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/legal_ir/canary.json",
+              "sha256": "ac7c55bb4d70f1428d5ecd81595b0546fa325bfb7f4c9ab67ad010dcdba813ec"
+            },
+            "status": "verified"
+          }
+        ],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 614534,
+              "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/run-01/legal_ir/raw_ce-1729-checkpoint.json",
+              "sha256": "6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 621716,
+              "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/run-01/legal_ir/semantic-1729-checkpoint.json",
+              "sha256": "36b6b3a5a31ce88748a7ff69f1ab55f16dae79a78bfb635436a7b13a34c9cbf2"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1715990,
+              "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/legal_ir/checkpoint.json",
+              "sha256": "26cb6d77947b5b8e1e6c08e68ff8c6ce1c8f23002d56bfc1ebbd024c55a0c2da"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": {
+          "reason": null,
+          "receipt": {
+            "bytes": 1971,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+            "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+          },
+          "status": "verified"
+        }
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/legal_ir/384d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/legal_ir/384d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical Legal source/corpus version and span owners, plus separately bound applicability and repository subjects",
+        "index_database": "<ir_store_root>/legal_ir/384d/index.duckdb",
+        "inventory_export": "<ir_store_root>/legal_ir/384d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/legal_ir/384d/artifacts/",
+        "registry_database": "<ir_store_root>/legal_ir/384d/registry.duckdb",
+        "root_template": "<ir_store_root>/legal_ir/384d",
+        "run_namespace": "<ir_store_root>/legal_ir/384d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "legal_ir_768d",
+      "dimension": 768,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/legal-ir-autoencoder-768d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/legal-ir-autoencoder-768d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7577,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/768d.json",
+        "sha256": "7c48396a3d0332b0dacbb248fdd5c6ab037080475ebde137aa2217973d514595"
+      },
+      "ir_family_id": "legal_ir",
+      "original_declared_checkpoints": [
+        {
+          "dimension_role": "input_embedding",
+          "input_width": 768,
+          "native_source_inputs_available_in_prior_evaluation": false,
+          "receipt": {
+            "bytes": 6873498,
+            "path": "/home/barberb/lift_coding/artifacts/gte-decoder-reuse-20261001/run-01/student-initialization.json",
+            "sha256": "7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12"
+          },
+          "role": "authenticated inherited initialization",
+          "teacher_qualified": false,
+          "training_completed": false
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 6873498,
+              "path": "/home/barberb/lift_coding/artifacts/gte-decoder-reuse-20261001/run-01/student-initialization.json",
+              "sha256": "7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/legal_ir/768d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/legal_ir/768d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Canonical Legal source/corpus version and span owners, plus separately bound applicability and repository subjects",
+        "index_database": "<ir_store_root>/legal_ir/768d/index.duckdb",
+        "inventory_export": "<ir_store_root>/legal_ir/768d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/legal_ir/768d/artifacts/",
+        "registry_database": "<ir_store_root>/legal_ir/768d/registry.duckdb",
+        "root_template": "<ir_store_root>/legal_ir/768d",
+        "run_namespace": "<ir_store_root>/legal_ir/768d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "security_ir_8d",
+      "dimension": 8,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/security-ir-autoencoder-8d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/security-ir-autoencoder-8d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7507,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/8d.json",
+        "sha256": "e9441e3a56c98133aa02e19b8f70b80c03357ec3d15c47f852a713c9616e1d7a"
+      },
+      "ir_family_id": "security_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_budget_unit": "fixed path/value fields",
+          "dimension_role": "latent",
+          "independent_text_to_logic": false,
+          "input_width": 52,
+          "latent_width": 8,
+          "receipt": {
+            "bytes": 92660,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/decoder-e2e-20261001/native-20261001T0130/security_ir/resumed/checkpoint.json",
+            "sha256": "4807bdfd76f4e43bd969296dbd2e1fc29e9afc2aa76df9115a78dc17b581e6c4"
+          },
+          "role": "trained compiler-conditional path/value head",
+          "source_access": "compiler targets"
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 92660,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/decoder-e2e-20261001/native-20261001T0130/security_ir/resumed/checkpoint.json",
+              "sha256": "4807bdfd76f4e43bd969296dbd2e1fc29e9afc2aa76df9115a78dc17b581e6c4"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/security_ir/8d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/security_ir/8d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Security declaration and CVE/body/diff/description corpus owners, plus separately bound repository code when applicable",
+        "index_database": "<ir_store_root>/security_ir/8d/index.duckdb",
+        "inventory_export": "<ir_store_root>/security_ir/8d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/security_ir/8d/artifacts/",
+        "registry_database": "<ir_store_root>/security_ir/8d/registry.duckdb",
+        "root_template": "<ir_store_root>/security_ir/8d",
+        "run_namespace": "<ir_store_root>/security_ir/8d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "registered_supported_formats",
+      "cell_id": "security_ir_384d",
+      "dimension": 384,
+      "huggingface_plan": {
+        "existing_descriptor_source": {
+          "bytes": 1971,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+          "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+        },
+        "existing_read_only_descriptors": [
+          {
+            "domain_id": "security_ir",
+            "manifest_sha256": "d9fc241c7c6a039068681fab18b6a36fbcbd1752c2683ba1dc16423ce94aba2a",
+            "release_prefix": "releases/20261002-384-development-v1",
+            "repository_id": "Publicus/security-ir-autoencoder",
+            "revision": "f690dc079ff0d87f96d9e779f25b82b182ce8383",
+            "schema": "ir-384-hub-descriptor/v1"
+          }
+        ],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/security-ir-autoencoder-384d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/security-ir-autoencoder-384d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 9757,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/384d.json",
+        "sha256": "36fab9a4d7976cc5e791db062919f8d3ff6a30969414a5dad809c197a7beaf21"
+      },
+      "ir_family_id": "security_ir",
+      "original_declared_checkpoints": [
+        {
+          "decoder_hidden_width": 32,
+          "dimension_role": "input_embedding",
+          "input_width": 384,
+          "max_decoder_tokens": 512,
+          "metric_scope": "release panel 0/2 exact and 2/2 valid; source quality unaccepted",
+          "projection_width": 8,
+          "receipt": {
+            "bytes": 597741,
+            "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+            "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+          },
+          "role": "published development GTE-conditioned GRU",
+          "token_embedding_width": 16
+        }
+      ],
+      "reference_checks": {
+        "cached_vectors": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 3202749,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/security_ir/train.json",
+              "sha256": "99d856ef2a70f1a44c992f6f31dd35cd1f491db93f147065db51aa635d7c6876"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1068258,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/security_ir/validation.json",
+              "sha256": "e719430c2db18dde3d3e49ca831755a4569c975f2eff12bd1db7dba2c82cf8b3"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 1067558,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/security_ir/test.json",
+              "sha256": "e2e590c68d00454600ce355bbc5bae57843786bd52704d61f7fb85dec761ac25"
+            },
+            "status": "verified"
+          },
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 534505,
+              "path": "/home/barberb/lift_coding/artifacts/source-native-v3-20261001/run-02/security_ir/canary.json",
+              "sha256": "014c2029ed820a8431a11d636db342a97364611ad676aef67ebc789093014aed"
+            },
+            "status": "verified"
+          }
+        ],
+        "checkpoints": [
+          {
+            "reason": null,
+            "receipt": {
+              "bytes": 597741,
+              "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+              "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+            },
+            "status": "verified"
+          }
+        ],
+        "descriptor_source": {
+          "reason": null,
+          "receipt": {
+            "bytes": 1971,
+            "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/published_384_checkpoints.py",
+            "sha256": "a7ab0892799bf80fdca2e4780be12fabea1b5105d03cc34b98ea895c77b1617a"
+          },
+          "status": "verified"
+        }
+      },
+      "registered_record_ids": [
+        "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c"
+      ],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/security_ir/384d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/security_ir/384d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Security declaration and CVE/body/diff/description corpus owners, plus separately bound repository code when applicable",
+        "index_database": "<ir_store_root>/security_ir/384d/index.duckdb",
+        "inventory_export": "<ir_store_root>/security_ir/384d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/security_ir/384d/artifacts/",
+        "registry_database": "<ir_store_root>/security_ir/384d/registry.duckdb",
+        "root_template": "<ir_store_root>/security_ir/384d",
+        "run_namespace": "<ir_store_root>/security_ir/384d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "binding_status": "declared_only_no_supported_format_binding",
+      "cell_id": "security_ir_768d",
+      "dimension": 768,
+      "huggingface_plan": {
+        "existing_descriptor_source": null,
+        "existing_read_only_descriptors": [],
+        "load_requires": [
+          "full immutable commit",
+          "manifest SHA256",
+          "matching family/dimension role/task/profile/codec",
+          "actual checkpoint SHA256"
+        ],
+        "namespace_write_access_verified": false,
+        "release_path_template": "releases/<task>/<profile>/<release_id>/",
+        "repo_type": "model",
+        "repository_id_template": "<hf_namespace>/security-ir-autoencoder-768d",
+        "status": "proposed_not_created",
+        "suggested_namespace_from_existing_release_descriptors": "Publicus",
+        "suggested_repository_id": "Publicus/security-ir-autoencoder-768d",
+        "visibility": null,
+        "visibility_status": "explicit deployment configuration required; no visibility changes performed during planning"
+      },
+      "inventory_receipt": {
+        "bytes": 7126,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/768d.json",
+        "sha256": "990f57bb94f99cdbffe328549ae8baea39390faab1fd3be864d6ffed109a9fee"
+      },
+      "ir_family_id": "security_ir",
+      "original_declared_checkpoints": [],
+      "reference_checks": {
+        "cached_vectors": [],
+        "checkpoints": [],
+        "descriptor_source": null
+      },
+      "registered_record_ids": [],
+      "storage_plan": {
+        "canonical_repository_source_owner": "RepositoryCodebaseIndex captures repository code once; cell indexes reference exact admitted source/semantic heads when relevant",
+        "current_isolated_history_limits": {
+          "byte_cap": 268435456,
+          "metadata_name": "history.ducklake",
+          "production_supported": false
+        },
+        "database_writer_policy": "separate serialized owner per physical database; registry forbids foreign tables",
+        "ducklake_catalog_database": "<ir_store_root>/security_ir/768d/lake/catalog.duckdb",
+        "ducklake_data_prefix": "<ir_store_root>/security_ir/768d/lake/data/",
+        "ducklake_layout_adapter_required": true,
+        "family_source_owner": "Security declaration and CVE/body/diff/description corpus owners, plus separately bound repository code when applicable",
+        "index_database": "<ir_store_root>/security_ir/768d/index.duckdb",
+        "inventory_export": "<ir_store_root>/security_ir/768d/inventory.json",
+        "mutable_artifact_root": "<ir_store_root>/security_ir/768d/artifacts/",
+        "registry_database": "<ir_store_root>/security_ir/768d/registry.duckdb",
+        "root_template": "<ir_store_root>/security_ir/768d",
+        "run_namespace": "<ir_store_root>/security_ir/768d/runs/<task>/<profile>/<run_id>/",
+        "source_roots_required": [
+          "family source/corpus version and complete span/context manifest",
+          "repository source/semantic roots when code-grounding applies",
+          "applicability source revisions and both typed join endpoint roots"
+        ],
+        "status": "planned_not_created"
+      }
+    }
+  ],
+  "checkpoints": [
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "checkpoint_receipt": {
+        "bytes": 586049,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+        "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+      },
+      "codec_source_receipts": [
+        {
+          "bytes": 34679,
+          "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+          "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+        }
+      ],
+      "corpus_receipt": {
+        "bytes": 321176,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+        "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+      },
+      "declared_weights_sha256": "d87c38815d5cb9be47a1eebb76ea940aeacf11a02432cf143707a45b6b3716d6",
+      "format_contract": {
+        "all_original_targets_checked": 16,
+        "all_original_targets_structurally_match": true,
+        "architecture": "residual-projection-latent-formula-gru/v1",
+        "candidate_output_check": "envelope, source/ID association, status and fragment structural format only",
+        "canonical_codec_sha256": "865663d2950bec54ddfd6d675310c11e0c4b7b25851f8ccc90f7ca62d06e22b7",
+        "checkpoint_receipt": {
+          "bytes": 586049,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+          "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+        },
+        "checkpoint_schema": "domain-384-typed-autoencoder/v1",
+        "codec_schema": "typed-json-lexical/v1",
+        "contract_id": "ir-decoder-format-contract/v1:1ef4e4ac04e6159aa28ef7a591bdcd9a6d6ef532d05f663be1c03e08707e9e21",
+        "contract_sha256": "1ef4e4ac04e6159aa28ef7a591bdcd9a6d6ef532d05f663be1c03e08707e9e21",
+        "corpus_receipt": {
+          "bytes": 321176,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+          "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+        },
+        "decoder_configuration_sha256": "2ecf2841f39131c0ee0ca9b2aa95a9d60dedd46a48fc7adf1654e17813480bfc",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "fitted_constructor_coverage": {
+          "atom": 12
+        },
+        "format_implementation_module": "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar",
+        "format_implementation_receipt": {
+          "bytes": 11527,
+          "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+          "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+        },
+        "format_request": {
+          "schema_version": "intent-rich-grammar/v1",
+          "target_format_id": "intent_ir/intent_rich_ast",
+          "task_id": "source_to_native_ir"
+        },
+        "implementation_declaration_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+        "ir_family_id": "intent_ir",
+        "native_grammar_verified": false,
+        "original_constructor_coverage_by_split": {
+          "test": {
+            "atom": 2
+          },
+          "train": {
+            "atom": 12
+          },
+          "validation": {
+            "atom": 2
+          }
+        },
+        "output_scope": "serialized_native_fragment",
+        "schema": "ir-decoder-format-contract/v1",
+        "schema_version_binding": "source-declared format version; fragments have no self-version field",
+        "selected_output_contract_only": false,
+        "target_kind": "intent_rich_ast",
+        "training_manifest_sha256": "832b6025bd6f53a305dbaa9f98c520efb2f8171f1f9b501f9a4e0782993246e2",
+        "validation_manifest_sha256": "679a56514e365903764d37059a397b8442d66e7a2a537ce6934cc007df8e968f"
+      },
+      "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+      "format_request": {
+        "schema_version": "intent-rich-grammar/v1",
+        "target_format_id": "intent_ir/intent_rich_ast",
+        "task_id": "source_to_native_ir"
+      },
+      "full_checkpoint_configuration": {
+        "batch_size": 6,
+        "embedding_provenance": {
+          "assets": [
+            {
+              "bytes": 190,
+              "name": "1_Pooling/config.json",
+              "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+            },
+            {
+              "bytes": 583,
+              "name": "config.json",
+              "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+            },
+            {
+              "bytes": 66746168,
+              "name": "model.safetensors",
+              "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+            },
+            {
+              "bytes": 385,
+              "name": "modules.json",
+              "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+            },
+            {
+              "bytes": 57,
+              "name": "sentence_bert_config.json",
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+            },
+            {
+              "bytes": 125,
+              "name": "special_tokens_map.json",
+              "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+            },
+            {
+              "bytes": 711661,
+              "name": "tokenizer.json",
+              "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+            },
+            {
+              "bytes": 394,
+              "name": "tokenizer_config.json",
+              "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+            },
+            {
+              "bytes": 231508,
+              "name": "vocab.txt",
+              "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+            }
+          ],
+          "device": "cpu",
+          "dimension": 384,
+          "dtype": "float32",
+          "elapsed_seconds_including_load": 4.257302220910788,
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "truncated": false,
+          "vectors_executed": 48
+        },
+        "epochs": 500,
+        "hidden_size": 32,
+        "learning_rate": 0.003,
+        "max_seconds": 180,
+        "max_target_tokens": 512,
+        "patience": 60,
+        "projection_width": 8,
+        "reconstruction_weight": 0.1,
+        "seed": 1729,
+        "token_embedding_dim": 16
+      },
+      "package_file_receipts": {
+        "authored-corpus.json": {
+          "bytes": 321176,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+          "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+        },
+        "checkpoint.json": {
+          "bytes": 586049,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+          "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+        }
+      },
+      "package_manifest_receipt": {
+        "bytes": 8126,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/manifest.json",
+        "sha256": "250b6bf9cd93e32ee2db77498432d4dc5c7d705f333f9d99e92de69cdf2c727f"
+      },
+      "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+      "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+      "replay_binding_options": {
+        "corpus_pin": {
+          "bytes": 321176,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+          "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+        },
+        "directory_plan_pin": {
+          "bytes": 25143,
+          "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/directory-plan.json",
+          "sha256": "a2d7ff1bf5a0fc5907c18a8bd98f8ca282d6d83ea87ae475949a1fe3249719f2"
+        },
+        "format_request": {
+          "schema_version": "intent-rich-grammar/v1",
+          "target_format_id": "intent_ir/intent_rich_ast",
+          "task_id": "source_to_native_ir"
+        },
+        "inventory_pins": [
+          {
+            "bytes": 8393,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/384d.json",
+            "sha256": "d01836c6d11996d6d4e88a7d2722fca63004ed4fea19e08f331db65903b4fdc4"
+          },
+          {
+            "bytes": 7034,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/768d.json",
+            "sha256": "4f2476246a11e0e53f4e18ec82c53b160fa7d39e8b27cf91ef85f865de039177"
+          },
+          {
+            "bytes": 7862,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/8d.json",
+            "sha256": "bb4d7a74ec581e32c19800333dfcbf2bb175e753e975375f5a3efbbf5c66a2a1"
+          },
+          {
+            "bytes": 9678,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/384d.json",
+            "sha256": "0b8b99e966316e16f641359d19a9bdab1e0b2536d400761a88edbb99a4b9e437"
+          },
+          {
+            "bytes": 7061,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/768d.json",
+            "sha256": "c66c360cc797cbe7b74a08bed90102d22719937a7c7cb46d44f9f70d94af8a98"
+          },
+          {
+            "bytes": 7440,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/8d.json",
+            "sha256": "4ff8cbbf4dc5696603ea97f5f57db9415f679148d1b9f13a9a1883a9b5886af5"
+          },
+          {
+            "bytes": 10568,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/384d.json",
+            "sha256": "77492b849bd2fa75a55a5d4f79de8eb5a3f6059346ab931df9ed5ccda75e1776"
+          },
+          {
+            "bytes": 7577,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/768d.json",
+            "sha256": "7c48396a3d0332b0dacbb248fdd5c6ab037080475ebde137aa2217973d514595"
+          },
+          {
+            "bytes": 7495,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/8d.json",
+            "sha256": "6c5515387d1280ff0dbe55270bd655b612cc6ae2c76293f1c7bc3e77f4f49b0f"
+          },
+          {
+            "bytes": 9757,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/384d.json",
+            "sha256": "36fab9a4d7976cc5e791db062919f8d3ff6a30969414a5dad809c197a7beaf21"
+          },
+          {
+            "bytes": 7126,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/768d.json",
+            "sha256": "990f57bb94f99cdbffe328549ae8baea39390faab1fd3be864d6ffed109a9fee"
+          },
+          {
+            "bytes": 7507,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/8d.json",
+            "sha256": "e9441e3a56c98133aa02e19b8f70b80c03357ec3d15c47f852a713c9616e1d7a"
+          }
+        ],
+        "package_manifest_pin": {
+          "bytes": 8126,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/manifest.json",
+          "sha256": "250b6bf9cd93e32ee2db77498432d4dc5c7d705f333f9d99e92de69cdf2c727f"
+        },
+        "request": {
+          "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "ir_family_id": "intent_ir",
+          "task_id": "source_to_native_ir"
+        }
+      },
+      "request": {
+        "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "intent_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-intent-ir-original-fit",
+      "run_id_provenance": "operator_assigned_inventory_alias",
+      "training_manifest_sha256": "832b6025bd6f53a305dbaa9f98c520efb2f8171f1f9b501f9a4e0782993246e2",
+      "validation_manifest_sha256": "679a56514e365903764d37059a397b8442d66e7a2a537ce6934cc007df8e968f"
+    },
+    {
+      "authority": {
+        "checkpoint_numerically_validated": false,
+        "database_operations_executed": false,
+        "embedding_producer_execution_authenticated": false,
+        "full_source_dependency_closure_qualified": false,
+        "huggingface_available": false,
+        "independent_evaluation_qualified": false,
+        "learned_source_text_reconstruction_qualified": false,
+        "model_task_qualified": false,
+        "native_grammar_verified": false,
+        "numerical_model_loaded": false,
+        "original_training_run_authenticated": false,
+        "output_semantics_verified": false,
+        "physical_cell_store_qualified": false,
+        "promotion_admitted": false,
+        "proof_authority": false,
+        "quality_qualified": false,
+        "registry_release_qualified": false,
+        "remote_operations_executed": false,
+        "runtime_admitted": false,
+        "runtime_release_qualified": false,
+        "source_free_reconstruction_qualified": false,
+        "source_semantics_verified": false,
+        "source_token_budget_qualified": false,
+        "store_available": false,
+        "teacher_qualified": false,
+        "tensor_shapes_verified": false,
+        "training_admitted": false,
+        "training_executed": false
+      },
+      "checkpoint_receipt": {
+        "bytes": 597741,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+        "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+      },
+      "codec_source_receipts": [
+        {
+          "bytes": 34679,
+          "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+          "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+        }
+      ],
+      "corpus_receipt": {
+        "bytes": 180619,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+        "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+      },
+      "declared_weights_sha256": "af64147b74c5edb4705e6cc50a38e42841cc73f89587a815c95d7872074344d0",
+      "format_contract": {
+        "all_original_targets_checked": 16,
+        "all_original_targets_structurally_match": true,
+        "architecture": "residual-projection-latent-formula-gru/v1",
+        "candidate_output_check": "envelope, source/ID association, status and fragment structural format only",
+        "canonical_codec_sha256": "4a3ca13f023db7283e5e81cd0793cd47082ca7fd211e087ca40fc5860563d917",
+        "checkpoint_receipt": {
+          "bytes": 597741,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+          "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+        },
+        "checkpoint_schema": "domain-384-typed-autoencoder/v1",
+        "codec_schema": "typed-json-lexical/v1",
+        "contract_id": "ir-decoder-format-contract/v1:003e81e13c1d99e12effdfe0339f3e5caafe90da55521b34fc2877b4fd9ccc50",
+        "contract_sha256": "003e81e13c1d99e12effdfe0339f3e5caafe90da55521b34fc2877b4fd9ccc50",
+        "corpus_receipt": {
+          "bytes": 180619,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+          "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+        },
+        "decoder_configuration_sha256": "2ecf2841f39131c0ee0ca9b2aa95a9d60dedd46a48fc7adf1654e17813480bfc",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "fitted_constructor_coverage": {
+          "binary": 9,
+          "unary": 3
+        },
+        "format_implementation_module": "ipfs_datasets_py.logic.software_verification.program",
+        "format_implementation_receipt": {
+          "bytes": 58065,
+          "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/software_verification/program.py",
+          "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+        },
+        "format_request": {
+          "schema_version": "program-ir/v1",
+          "target_format_id": "security_ir/program_expression",
+          "task_id": "source_to_native_ir"
+        },
+        "implementation_declaration_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+        "ir_family_id": "security_ir",
+        "native_grammar_verified": false,
+        "original_constructor_coverage_by_split": {
+          "test": {
+            "binary": 1,
+            "unary": 1
+          },
+          "train": {
+            "binary": 9,
+            "unary": 3
+          },
+          "validation": {
+            "binary": 2
+          }
+        },
+        "output_scope": "serialized_native_fragment",
+        "schema": "ir-decoder-format-contract/v1",
+        "schema_version_binding": "source-declared format version; fragments have no self-version field",
+        "selected_output_contract_only": false,
+        "target_kind": "program_expression",
+        "training_manifest_sha256": "022fd5d64d66ed3d425b7e1ba138e1d4b120585169912d9bf529555b070177df",
+        "validation_manifest_sha256": "8e4ace3e6172cec00371cb85890682c570ae7ce6bce732e90becfca500f97585"
+      },
+      "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+      "format_request": {
+        "schema_version": "program-ir/v1",
+        "target_format_id": "security_ir/program_expression",
+        "task_id": "source_to_native_ir"
+      },
+      "full_checkpoint_configuration": {
+        "batch_size": 6,
+        "embedding_provenance": {
+          "assets": [
+            {
+              "bytes": 190,
+              "name": "1_Pooling/config.json",
+              "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+            },
+            {
+              "bytes": 583,
+              "name": "config.json",
+              "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+            },
+            {
+              "bytes": 66746168,
+              "name": "model.safetensors",
+              "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+            },
+            {
+              "bytes": 385,
+              "name": "modules.json",
+              "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+            },
+            {
+              "bytes": 57,
+              "name": "sentence_bert_config.json",
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+            },
+            {
+              "bytes": 125,
+              "name": "special_tokens_map.json",
+              "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+            },
+            {
+              "bytes": 711661,
+              "name": "tokenizer.json",
+              "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+            },
+            {
+              "bytes": 394,
+              "name": "tokenizer_config.json",
+              "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+            },
+            {
+              "bytes": 231508,
+              "name": "vocab.txt",
+              "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+            }
+          ],
+          "device": "cpu",
+          "dimension": 384,
+          "dtype": "float32",
+          "elapsed_seconds_including_load": 4.257302220910788,
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "truncated": false,
+          "vectors_executed": 48
+        },
+        "epochs": 500,
+        "hidden_size": 32,
+        "learning_rate": 0.003,
+        "max_seconds": 180,
+        "max_target_tokens": 512,
+        "patience": 60,
+        "projection_width": 8,
+        "reconstruction_weight": 0.1,
+        "seed": 1729,
+        "token_embedding_dim": 16
+      },
+      "package_file_receipts": {
+        "authored-corpus.json": {
+          "bytes": 180619,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+          "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+        },
+        "checkpoint.json": {
+          "bytes": 597741,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+          "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+        }
+      },
+      "package_manifest_receipt": {
+        "bytes": 8156,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/manifest.json",
+        "sha256": "d9fc241c7c6a039068681fab18b6a36fbcbd1752c2683ba1dc16423ce94aba2a"
+      },
+      "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+      "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+      "replay_binding_options": {
+        "corpus_pin": {
+          "bytes": 180619,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+          "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+        },
+        "directory_plan_pin": {
+          "bytes": 25143,
+          "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/directory-plan.json",
+          "sha256": "a2d7ff1bf5a0fc5907c18a8bd98f8ca282d6d83ea87ae475949a1fe3249719f2"
+        },
+        "format_request": {
+          "schema_version": "program-ir/v1",
+          "target_format_id": "security_ir/program_expression",
+          "task_id": "source_to_native_ir"
+        },
+        "inventory_pins": [
+          {
+            "bytes": 8393,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/384d.json",
+            "sha256": "d01836c6d11996d6d4e88a7d2722fca63004ed4fea19e08f331db65903b4fdc4"
+          },
+          {
+            "bytes": 7034,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/768d.json",
+            "sha256": "4f2476246a11e0e53f4e18ec82c53b160fa7d39e8b27cf91ef85f865de039177"
+          },
+          {
+            "bytes": 7862,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/8d.json",
+            "sha256": "bb4d7a74ec581e32c19800333dfcbf2bb175e753e975375f5a3efbbf5c66a2a1"
+          },
+          {
+            "bytes": 9678,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/384d.json",
+            "sha256": "0b8b99e966316e16f641359d19a9bdab1e0b2536d400761a88edbb99a4b9e437"
+          },
+          {
+            "bytes": 7061,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/768d.json",
+            "sha256": "c66c360cc797cbe7b74a08bed90102d22719937a7c7cb46d44f9f70d94af8a98"
+          },
+          {
+            "bytes": 7440,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/8d.json",
+            "sha256": "4ff8cbbf4dc5696603ea97f5f57db9415f679148d1b9f13a9a1883a9b5886af5"
+          },
+          {
+            "bytes": 10568,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/384d.json",
+            "sha256": "77492b849bd2fa75a55a5d4f79de8eb5a3f6059346ab931df9ed5ccda75e1776"
+          },
+          {
+            "bytes": 7577,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/768d.json",
+            "sha256": "7c48396a3d0332b0dacbb248fdd5c6ab037080475ebde137aa2217973d514595"
+          },
+          {
+            "bytes": 7495,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/8d.json",
+            "sha256": "6c5515387d1280ff0dbe55270bd655b612cc6ae2c76293f1c7bc3e77f4f49b0f"
+          },
+          {
+            "bytes": 9757,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/384d.json",
+            "sha256": "36fab9a4d7976cc5e791db062919f8d3ff6a30969414a5dad809c197a7beaf21"
+          },
+          {
+            "bytes": 7126,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/768d.json",
+            "sha256": "990f57bb94f99cdbffe328549ae8baea39390faab1fd3be864d6ffed109a9fee"
+          },
+          {
+            "bytes": 7507,
+            "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/8d.json",
+            "sha256": "e9441e3a56c98133aa02e19b8f70b80c03357ec3d15c47f852a713c9616e1d7a"
+          }
+        ],
+        "package_manifest_pin": {
+          "bytes": 8156,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/manifest.json",
+          "sha256": "d9fc241c7c6a039068681fab18b6a36fbcbd1752c2683ba1dc16423ce94aba2a"
+        },
+        "request": {
+          "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "ir_family_id": "security_ir",
+          "task_id": "source_to_native_ir"
+        }
+      },
+      "request": {
+        "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "security_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-security-ir-original-fit",
+      "run_id_provenance": "operator_assigned_inventory_alias",
+      "training_manifest_sha256": "022fd5d64d66ed3d425b7e1ba138e1d4b120585169912d9bf529555b070177df",
+      "validation_manifest_sha256": "8e4ace3e6172cec00371cb85890682c570ae7ce6bce732e90becfca500f97585"
+    }
+  ],
+  "consistency_scope": "Stable bounded per-file reads and repeated endpoint equality; no atomic cross-file snapshot, continuous source currentness, universal ancestor containment, decoder numerical qualification, or serving-head admission.",
+  "directory_plan_receipt": {
+    "bytes": 25143,
+    "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/directory-plan.json",
+    "sha256": "a2d7ff1bf5a0fc5907c18a8bd98f8ca282d6d83ea87ae475949a1fe3249719f2"
+  },
+  "formats": [
+    {
+      "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+      "identity": {
+        "ir_family_id": "security_ir",
+        "output_scope": "serialized_native_fragment",
+        "schema_version": "program-ir/v1",
+        "target_format_id": "security_ir/program_expression",
+        "target_kind": "program_expression",
+        "task_id": "source_to_native_ir"
+      }
+    },
+    {
+      "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+      "identity": {
+        "ir_family_id": "intent_ir",
+        "output_scope": "serialized_native_fragment",
+        "schema_version": "intent-rich-grammar/v1",
+        "target_format_id": "intent_ir/intent_rich_ast",
+        "target_kind": "intent_rich_ast",
+        "task_id": "source_to_native_ir"
+      }
+    }
+  ],
+  "inventory_receipts": [
+    {
+      "bytes": 8393,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/384d.json",
+      "sha256": "d01836c6d11996d6d4e88a7d2722fca63004ed4fea19e08f331db65903b4fdc4"
+    },
+    {
+      "bytes": 7034,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/768d.json",
+      "sha256": "4f2476246a11e0e53f4e18ec82c53b160fa7d39e8b27cf91ef85f865de039177"
+    },
+    {
+      "bytes": 7862,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/codebase_ir/8d.json",
+      "sha256": "bb4d7a74ec581e32c19800333dfcbf2bb175e753e975375f5a3efbbf5c66a2a1"
+    },
+    {
+      "bytes": 9678,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/384d.json",
+      "sha256": "0b8b99e966316e16f641359d19a9bdab1e0b2536d400761a88edbb99a4b9e437"
+    },
+    {
+      "bytes": 7061,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/768d.json",
+      "sha256": "c66c360cc797cbe7b74a08bed90102d22719937a7c7cb46d44f9f70d94af8a98"
+    },
+    {
+      "bytes": 7440,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/intent_ir/8d.json",
+      "sha256": "4ff8cbbf4dc5696603ea97f5f57db9415f679148d1b9f13a9a1883a9b5886af5"
+    },
+    {
+      "bytes": 10568,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/384d.json",
+      "sha256": "77492b849bd2fa75a55a5d4f79de8eb5a3f6059346ab931df9ed5ccda75e1776"
+    },
+    {
+      "bytes": 7577,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/768d.json",
+      "sha256": "7c48396a3d0332b0dacbb248fdd5c6ab037080475ebde137aa2217973d514595"
+    },
+    {
+      "bytes": 7495,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/legal_ir/8d.json",
+      "sha256": "6c5515387d1280ff0dbe55270bd655b612cc6ae2c76293f1c7bc3e77f4f49b0f"
+    },
+    {
+      "bytes": 9757,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/384d.json",
+      "sha256": "36fab9a4d7976cc5e791db062919f8d3ff6a30969414a5dad809c197a7beaf21"
+    },
+    {
+      "bytes": 7126,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/768d.json",
+      "sha256": "990f57bb94f99cdbffe328549ae8baea39390faab1fd3be864d6ffed109a9fee"
+    },
+    {
+      "bytes": 7507,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-ir-numerical-replay-20261003/inputs/inventories/security_ir/8d.json",
+      "sha256": "e9441e3a56c98133aa02e19b8f70b80c03357ec3d15c47f852a713c9616e1d7a"
+    }
+  ],
+  "profiles": [
+    {
+      "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+      "identity": {
+        "declared_shape": {
+          "hidden_size": 32,
+          "input_width": 384,
+          "projection_width": 8,
+          "status": "declared_not_tensor_verified",
+          "tensor_shapes_verified": false,
+          "token_embedding_dim": 16
+        },
+        "decoder_architecture_id": "residual-projection-latent-formula-gru/v1",
+        "decoder_configuration": {
+          "embedding_provenance": {
+            "assets": [
+              {
+                "bytes": 190,
+                "name": "1_Pooling/config.json",
+                "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+              },
+              {
+                "bytes": 583,
+                "name": "config.json",
+                "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+              },
+              {
+                "bytes": 66746168,
+                "name": "model.safetensors",
+                "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+              },
+              {
+                "bytes": 385,
+                "name": "modules.json",
+                "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+              },
+              {
+                "bytes": 57,
+                "name": "sentence_bert_config.json",
+                "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+              },
+              {
+                "bytes": 125,
+                "name": "special_tokens_map.json",
+                "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+              },
+              {
+                "bytes": 711661,
+                "name": "tokenizer.json",
+                "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+              },
+              {
+                "bytes": 394,
+                "name": "tokenizer_config.json",
+                "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+              },
+              {
+                "bytes": 231508,
+                "name": "vocab.txt",
+                "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+              }
+            ],
+            "device": "cpu",
+            "dimension": 384,
+            "dtype": "float32",
+            "model_id": "thenlper/gte-small",
+            "normalized": true,
+            "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "truncated": false
+          },
+          "hidden_size": 32,
+          "max_target_tokens": 512,
+          "projection_width": 8,
+          "token_embedding_dim": 16
+        },
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+        "format_implementation_content_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+        "implementation_content_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+        "ir_family_id": "security_ir",
+        "ordered_codec_sha256": "4a3ca13f023db7283e5e81cd0793cd47082ca7fd211e087ca40fc5860563d917",
+        "source_budget_policy": {
+          "dimension": 384,
+          "dimension_role_required": true,
+          "encoder_kind": "GTE-small source embedding for source-conditioned tasks",
+          "hard_encoder_token_limit": 512,
+          "model_id": "thenlper/gte-small",
+          "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "normalization": "l2",
+          "pooling": "mean",
+          "qualified_source_token_limit": null,
+          "unknown_limit_policy": "freeze task/span-specific admitted budget within encoder ceiling; historical compiler profiles remain separate"
+        },
+        "source_producer": {
+          "corpus_embedding_model": "thenlper/gte-small",
+          "corpus_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "embedding_provenance": {
+            "assets": [
+              {
+                "bytes": 190,
+                "name": "1_Pooling/config.json",
+                "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+              },
+              {
+                "bytes": 583,
+                "name": "config.json",
+                "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+              },
+              {
+                "bytes": 66746168,
+                "name": "model.safetensors",
+                "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+              },
+              {
+                "bytes": 385,
+                "name": "modules.json",
+                "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+              },
+              {
+                "bytes": 57,
+                "name": "sentence_bert_config.json",
+                "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+              },
+              {
+                "bytes": 125,
+                "name": "special_tokens_map.json",
+                "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+              },
+              {
+                "bytes": 711661,
+                "name": "tokenizer.json",
+                "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+              },
+              {
+                "bytes": 394,
+                "name": "tokenizer_config.json",
+                "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+              },
+              {
+                "bytes": 231508,
+                "name": "vocab.txt",
+                "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+              }
+            ],
+            "device": "cpu",
+            "dimension": 384,
+            "dtype": "float32",
+            "model_id": "thenlper/gte-small",
+            "normalized": true,
+            "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "truncated": false
+          },
+          "status": "declared_not_execution_authenticated"
+        },
+        "target_budget_policy": {
+          "max_target_tokens": 512,
+          "qualified_target_token_limit": null
+        }
+      },
+      "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1"
+    },
+    {
+      "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+      "identity": {
+        "declared_shape": {
+          "hidden_size": 32,
+          "input_width": 384,
+          "projection_width": 8,
+          "status": "declared_not_tensor_verified",
+          "tensor_shapes_verified": false,
+          "token_embedding_dim": 16
+        },
+        "decoder_architecture_id": "residual-projection-latent-formula-gru/v1",
+        "decoder_configuration": {
+          "embedding_provenance": {
+            "assets": [
+              {
+                "bytes": 190,
+                "name": "1_Pooling/config.json",
+                "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+              },
+              {
+                "bytes": 583,
+                "name": "config.json",
+                "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+              },
+              {
+                "bytes": 66746168,
+                "name": "model.safetensors",
+                "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+              },
+              {
+                "bytes": 385,
+                "name": "modules.json",
+                "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+              },
+              {
+                "bytes": 57,
+                "name": "sentence_bert_config.json",
+                "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+              },
+              {
+                "bytes": 125,
+                "name": "special_tokens_map.json",
+                "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+              },
+              {
+                "bytes": 711661,
+                "name": "tokenizer.json",
+                "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+              },
+              {
+                "bytes": 394,
+                "name": "tokenizer_config.json",
+                "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+              },
+              {
+                "bytes": 231508,
+                "name": "vocab.txt",
+                "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+              }
+            ],
+            "device": "cpu",
+            "dimension": 384,
+            "dtype": "float32",
+            "model_id": "thenlper/gte-small",
+            "normalized": true,
+            "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "truncated": false
+          },
+          "hidden_size": 32,
+          "max_target_tokens": 512,
+          "projection_width": 8,
+          "token_embedding_dim": 16
+        },
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+        "format_implementation_content_sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+        "implementation_content_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+        "ir_family_id": "intent_ir",
+        "ordered_codec_sha256": "865663d2950bec54ddfd6d675310c11e0c4b7b25851f8ccc90f7ca62d06e22b7",
+        "source_budget_policy": {
+          "dimension": 384,
+          "dimension_role_required": true,
+          "encoder_kind": "GTE-small source embedding for source-conditioned tasks",
+          "hard_encoder_token_limit": 512,
+          "model_id": "thenlper/gte-small",
+          "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "normalization": "l2",
+          "pooling": "mean",
+          "qualified_source_token_limit": null,
+          "unknown_limit_policy": "freeze task/span-specific admitted budget within encoder ceiling; historical compiler profiles remain separate"
+        },
+        "source_producer": {
+          "corpus_embedding_model": "thenlper/gte-small",
+          "corpus_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "embedding_provenance": {
+            "assets": [
+              {
+                "bytes": 190,
+                "name": "1_Pooling/config.json",
+                "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+              },
+              {
+                "bytes": 583,
+                "name": "config.json",
+                "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+              },
+              {
+                "bytes": 66746168,
+                "name": "model.safetensors",
+                "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+              },
+              {
+                "bytes": 385,
+                "name": "modules.json",
+                "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+              },
+              {
+                "bytes": 57,
+                "name": "sentence_bert_config.json",
+                "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+              },
+              {
+                "bytes": 125,
+                "name": "special_tokens_map.json",
+                "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+              },
+              {
+                "bytes": 711661,
+                "name": "tokenizer.json",
+                "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+              },
+              {
+                "bytes": 394,
+                "name": "tokenizer_config.json",
+                "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+              },
+              {
+                "bytes": 231508,
+                "name": "vocab.txt",
+                "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+              }
+            ],
+            "device": "cpu",
+            "dimension": 384,
+            "dtype": "float32",
+            "model_id": "thenlper/gte-small",
+            "normalized": true,
+            "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "truncated": false
+          },
+          "status": "declared_not_execution_authenticated"
+        },
+        "target_budget_policy": {
+          "max_target_tokens": 512,
+          "qualified_target_token_limit": null
+        }
+      },
+      "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274"
+    }
+  ],
+  "schema": "ir-decoder-profile-inventory/v1"
+}

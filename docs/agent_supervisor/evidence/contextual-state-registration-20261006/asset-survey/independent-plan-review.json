@@ -1,0 +1,178 @@
+{
+  "completed": true,
+  "inspected_bytes_unchanged": true,
+  "inspected_pins_after": [
+    {
+      "bytes": 169498,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+      "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+    },
+    {
+      "bytes": 24113,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source-producer-joins.json",
+      "sha256": "0a6f970b0a0b27110d879b38a7d76a59ea11e852808ecf0e61abf656f4f7eb40"
+    },
+    {
+      "bytes": 172556,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+      "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+    },
+    {
+      "bytes": 1969,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+      "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 5143,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+      "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    }
+  ],
+  "inspected_pins_before": [
+    {
+      "bytes": 169498,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+      "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+    },
+    {
+      "bytes": 24113,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source-producer-joins.json",
+      "sha256": "0a6f970b0a0b27110d879b38a7d76a59ea11e852808ecf0e61abf656f4f7eb40"
+    },
+    {
+      "bytes": 172556,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+      "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+    },
+    {
+      "bytes": 1969,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+      "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 5143,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+      "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    }
+  ],
+  "no_unresolved_material_contract_findings": true,
+  "observations": [
+    {
+      "Git_blob_OID": "133591e3646e7b8dd77428694015ec5ba7020257",
+      "custody_lane_exactly_preserved": true,
+      "dimension": 384,
+      "full_downloaded_state_matches_original": true,
+      "immutable_remote_path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "mandatory_paragraph_clause_and_mask_geometry_matches_original_recipe": true,
+      "model_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "proof_authority": false,
+      "runtime_admitted": false,
+      "teacher_qualified": false,
+      "unknown_native_selectors_preserved": true
+    },
+    {
+      "Git_blob_OID": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+      "custody_lane_exactly_preserved": true,
+      "dimension": 768,
+      "full_downloaded_state_matches_original": true,
+      "immutable_remote_path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "mandatory_paragraph_clause_and_mask_geometry_matches_original_recipe": true,
+      "model_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "proof_authority": false,
+      "runtime_admitted": false,
+      "teacher_qualified": false,
+      "unknown_native_selectors_preserved": true
+    }
+  ],
+  "operations": {
+    "database_access_or_writes": false,
+    "inference_executed": false,
+    "model_loaded": false,
+    "network_calls": false,
+    "only_new_review_evidence_written": true,
+    "registered_plan_or_receipt_edits": false,
+    "training_executed": false
+  },
+  "plan_and_publication_contract_checks_passed": true,
+  "precision_note_not_registered_artifact_mutation": {
+    "IOSpec_is_advisory_complete_runtime_io_contract_false": true,
+    "authoritative_input_recipe": [
+      "Retain raw native paragraph and ordered literal-source clause vectors plus exact source IDs/text bindings from the pinned original caches.",
+      "Apply the original saved training-only input_transform once to the actual paragraph vector before the retained model forward path.",
+      "Apply that original saved input_transform once to each real clause vector, then zero-pad the transformed vector packet to8slots; derive boolmask true on actualsourceclauses andfalse onpadding.",
+      "The retained frozen decoder/projection applies its distinct saved paragraph and clause feature normalizations at their existing model stages; do not preapply them as the packetproducer input_transform.",
+      "Preserve all32state entries, original vocabulary and source/context/order policies. The32vocabulary size and512output limit are distinct."
+    ],
+    "finding": "The broad word normalization must not merge the saved original input_transform with separate decoder paragraph/clause feature normalizations.",
+    "mirror_and_runtime_docs_should_use_explicit_recipe": true,
+    "normalization_and_input_transform_hashes_are_bound_per_custody_lane": true,
+    "recipe_source_owner_pin": {
+      "bytes": 14249,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+      "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+    },
+    "registered_description": "padding to eight slots after normalization",
+    "requires_registration_or_database_rewrite": false,
+    "source_text_and_IDs_needed_for_cache_validation_remain_in_custody_contract": true
+  },
+  "review_independence_disclosure": "Reviewer authored custodysurvey and sourceproducerjoins; root authored registrationplan/publicationadapter. Review independently checks their exact joins without owner/runtime/database execution.",
+  "reviewed_at_utc": "2026-10-06T08:59:54.176467+00:00",
+  "reviewer": "decoder_asset_survey",
+  "schema": "contextual-registration-semantic-contract-review/v1",
+  "scope": "Read-only semantic/asset contract correspondence review after the root reported registration complete. No current database/query or native runtime replay is performed by this review; already registered artifacts are preserved.",
+  "script_pin": {
+    "bytes": 10823,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/review_registration_plan.py",
+    "sha256": "14f9f639c3b560d2d4272a285467004cd9650af9a12b5bd0b010f84c2bd254d0"
+  }
+}

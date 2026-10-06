@@ -1,0 +1,48 @@
+{
+  "completed": true,
+  "cross_repository_transaction_atomic": false,
+  "models_changed_or_retrained": false,
+  "new_release_files": 6,
+  "new_repository_count": 0,
+  "original_model_manager_records_rewritten": false,
+  "outcomes": [
+    {
+      "dimension": 384,
+      "preservation_pin": {
+        "bytes": 1484,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-preservation.json",
+        "sha256": "3795c41b4847fe1e70694e0a821eb27ff54e690b610edda2c5ad491f0c65caae"
+      },
+      "receipt_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-publication-receipt.json",
+        "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+      },
+      "repository_id": "Publicus/legal-ir-autoencoder-384d",
+      "revision": "f2c3714f7bf8e30177a799270f0cead51baf19dc"
+    },
+    {
+      "dimension": 768,
+      "preservation_pin": {
+        "bytes": 1483,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-preservation.json",
+        "sha256": "5855ffc39b4b4074ec5e6c7672f385d2ab6a1ecb50b4acd3b52d9e96acfc673a"
+      },
+      "receipt_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-publication-receipt.json",
+        "sha256": "9bf16ea7107775fc9f0709137239dceb282d27725ae3b121465bf5b2890ce51c"
+      },
+      "repository_id": "Publicus/legal-ir-autoencoder-768d",
+      "revision": "2fc77ccd037e7276c8bdd56a2c79cada0334fd79"
+    }
+  ],
+  "preparation_pin": {
+    "bytes": 18114,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/preparation.json",
+    "sha256": "0da8fe2baaf6962660d0d7a0b306e8b6f036a2d86d8b18ea514403ca6e6e05db"
+  },
+  "proof_authority": false,
+  "runtime_admitted": false,
+  "schema": "retained-contextual-dimension-mirror-publication/v1"
+}

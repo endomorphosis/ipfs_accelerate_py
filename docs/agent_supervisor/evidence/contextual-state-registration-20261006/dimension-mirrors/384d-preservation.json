@@ -1,0 +1,32 @@
+{
+  "all_prior_path_identities_preserved": true,
+  "baseline_pin": {
+    "bytes": 214540,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-before-publication.json",
+    "sha256": "4ef9920dbc9a66679474174e29dd2022c171b3a0b98cb4b135ff4d33dbcd7601"
+  },
+  "gated_setting_preserved": true,
+  "initial_file_count": 502,
+  "initial_revision": "6a1a85e868ec7c073a484112efac417904cebdea",
+  "model_loaded": false,
+  "new_paths": [
+    "releases/20261006-contextual-selected-v1/README.md",
+    "releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+    "releases/20261006-contextual-selected-v1/manifest.json"
+  ],
+  "original_and_staged_file_pins_preserved": true,
+  "original_model_manager_record_rewritten": false,
+  "proof_authority": false,
+  "publication_receipt_pin": {
+    "bytes": 3543,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-publication-receipt.json",
+    "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+  },
+  "published_file_count": 505,
+  "published_revision": "f2c3714f7bf8e30177a799270f0cead51baf19dc",
+  "repository_id": "Publicus/legal-ir-autoencoder-384d",
+  "root_defaults_and_model_card_untouched": true,
+  "runtime_admitted": false,
+  "schema": "dimension-mirror-prior-path-preservation/v1",
+  "visibility_preserved": true
+}

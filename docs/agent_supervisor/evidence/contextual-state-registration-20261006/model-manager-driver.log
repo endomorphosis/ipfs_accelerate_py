@@ -1,0 +1,17 @@
+2026-10-06 08:56:14,869 - ipfs_accelerate_model_manager - INFO - IPFS content addressing enabled
+2026-10-06 08:56:14,886 - ipfs_accelerate_model_manager - WARNING - SentenceTransformers not available. Vector search disabled.
+2026-10-06 08:56:14,931 - ipfs_accelerate_model_manager - INFO - Connected to model manager database at: /home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb
+2026-10-06 08:56:14,934 - ipfs_accelerate_model_manager - INFO - Model manager database tables created successfully
+2026-10-06 08:56:15,021 - ipfs_accelerate_model_manager - INFO - Loaded 668 models from database
+2026-10-06 08:56:16,213 - ipfs_accelerate_model_manager - INFO - Saved 1 models to database
+2026-10-06 08:56:16,351 - ipfs_accelerate_model_manager - INFO - Added/updated model: ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9
+2026-10-06 08:56:16,399 - ipfs_accelerate_model_manager - INFO - Saved 2 models to database
+2026-10-06 08:56:16,405 - ipfs_accelerate_model_manager - INFO - Added/updated model: ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2
+2026-10-06 08:56:16,432 - ipfs_accelerate_model_manager - INFO - Saved 2 models to database
+2026-10-06 08:56:17,793 - ipfs_accelerate_model_manager - INFO - Model manager closed successfully
+2026-10-06 08:56:17,923 - ipfs_accelerate_model_manager - INFO - Connected to model manager database at: /home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb
+2026-10-06 08:56:17,928 - ipfs_accelerate_model_manager - INFO - Model manager database tables created successfully
+2026-10-06 08:56:17,989 - ipfs_accelerate_model_manager - INFO - Loaded 670 models from database
+2026-10-06 08:56:18,815 - ipfs_accelerate_model_manager - INFO - Saved 2 models to database
+2026-10-06 08:56:20,233 - ipfs_accelerate_model_manager - INFO - Model manager closed successfully
+{"result_pin": {"path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-registration.json", "bytes": 7619, "sha256": "73e0f2b11c718d3f275d42f3fc975defed247c6a6ca004c6d5c89c58bcd01e88"}, "registered_count": 2, "before_count": 668, "after_count": 670}

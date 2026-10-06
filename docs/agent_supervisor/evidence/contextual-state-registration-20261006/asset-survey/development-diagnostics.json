@@ -1,0 +1,33 @@
+{
+  "diagnostics": [
+    {
+      "boundary": "Historical saved_state_coverage also contains other container/pointer row shapes.",
+      "correction": "Filter only exact matching rows with optional file_sha256 key; retain strict full-state matching checks for the two selected checkpoints.",
+      "exception": "KeyError: file_sha256",
+      "script": "survey.py"
+    },
+    {
+      "boundary": "Original384 paragraph producer records status embedded and token IDs, without a source_sha256 member inside tokens.",
+      "correction": "Require actual status embedded; join exact paragraph source bytes/SHA through the separately pinned original paragraphs.json and exact source/cache IDs/vector values.",
+      "exception": "AssertionError",
+      "script": "source_producer_joins.py"
+    },
+    {
+      "boundary": "Original768 paragraphcache combines24 older complete-native receipts and72later bounded512 receipts.",
+      "correction": "Authenticate both original producer reports, join exact source/vector SHAs, preserve separate producer execution budgets and record per-origin match counts.",
+      "exception": "KeyError: missing source SHA in originalcomplete-native768 receipt map",
+      "script": "source_producer_joins.py"
+    }
+  ],
+  "failed_attempt_asset_mutations": false,
+  "failed_attempt_model_or_database_or_network_operations": false,
+  "failed_source_pins_recorded": false,
+  "final_completed_outputs": [
+    "contextual-state-custody-survey.json",
+    "source-producer-joins.json",
+    "independent-plan-review.json"
+  ],
+  "new_quality_or_runtime_authority": false,
+  "schema": "contextual-asset-survey-development-diagnostics/v1",
+  "scope": "Three local read-only evidence-script diagnostics before their final successful executions; no model/runtime/quality failure claim. Failed draft source pins were not saved. No survey output was created by the failed attempts."
+}

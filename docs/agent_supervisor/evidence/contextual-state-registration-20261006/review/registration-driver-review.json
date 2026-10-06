@@ -1,0 +1,110 @@
+{
+  "approved": true,
+  "approved_scope": "One explicit run of the reviewed genuine ModelManager metadata registration driver for exactly the two pinned original LegalIR contextual states into the already-authorized selected existing store. This is source and plan review, not proof of successful persistence or runtime admission.",
+  "exact_selected_identities": [
+    {
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "format_id": null,
+      "ir_family_id": "legal_ir",
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "profile_id": null,
+      "record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "role": "selected_contextual_semantic_decoder_state",
+      "schema_version": null,
+      "task_id": "semantic_IR_reconstruction"
+    },
+    {
+      "dimension": 768,
+      "dimension_role": "input_embedding",
+      "format_id": null,
+      "ir_family_id": "legal_ir",
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "profile_id": null,
+      "record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+      "role": "selected_contextual_semantic_decoder_state",
+      "schema_version": null,
+      "task_id": "semantic_IR_reconstruction"
+    }
+  ],
+  "findings": [
+    {
+      "evidence": "Full initial genuine population is checked before narrowing this driver-owned in-memory models dictionary to the two target IDs. Canonical public add_model and close methods remain unchanged; each normal and failure close narrows the population. No remove_model or direct SQL insert substitutes for the public API.",
+      "id": "all-model-reserialization",
+      "status": "resolved"
+    },
+    {
+      "evidence": "All non-target decoded persisted records including activity timestamps compare exactly after both closes. Schema/index snapshots and explicit single-table precondition exclude unnoticed unrelated-table mutation. A byte-exact original database backup is made before genuine construction.",
+      "id": "baseline-preservation",
+      "status": "resolved"
+    },
+    {
+      "evidence": "Adapter callbacks use fresh native connections, explicitly allowing shared engine cache. Separate read-only native connections after close and full genuine cold reload establish additional persistence observations; both target IDs are checked in genuine catalog provenance.",
+      "id": "actual-cold-readback",
+      "status": "resolved"
+    },
+    {
+      "evidence": "Exact committed genuine ModelManager module receives only a stdlib logger bootstrap before execution. Four optional side-effect owner imports and ML imports are denied, actual integration attributes must be None, and public methods/source remain unchanged.",
+      "id": "optional-import-logger-bootstrap",
+      "status": "resolved"
+    },
+    {
+      "evidence": "Audit hook denies network and extra processes while allowing only enumerated exact read-only Git HEAD/object source checks. Closing source and contextual file fences are retained.",
+      "id": "source-fence-versus-process-denial",
+      "status": "resolved"
+    },
+    {
+      "evidence": "Builder joins exact unique 384/768 lanes to original state pins. Paragraph vectors, eight-slot clause vectors and boolean mask remain separate mandatory inputs; observed 32-token vocabulary is not relabelled as decoder budget. Native schema/profile/format remain null; runtime/proof/teacher/quality authorities remain false.",
+      "id": "custody-and-IO-joins",
+      "status": "resolved"
+    }
+  ],
+  "independent_review_controls": {
+    "fresh_download_files_rehashed": 2,
+    "model_manager_or_live_database_opened": false,
+    "original_state_files_rehashed": 2,
+    "preparation_plan_publication_and_survey_pins_verified": true,
+    "protected_original_files_rehashed": 44,
+    "registration_executed": false,
+    "source_or_asset_mutations": false,
+    "source_scripts_parse": true
+  },
+  "limitations": [
+    "Sequential file and catalog checks are cooperative endpoints, not an atomic snapshot or lease.",
+    "The registration driver may observe a partial completed prefix on failure; it retains explicit outcomes and makes no automatic rollback or retry.",
+    "Actual execution must pass all embedded guards and cold readbacks; this review does not claim the two records already exist.",
+    "Only the isolated driver-owned manager instance is narrowed. Other live processes are not refreshed.",
+    "Source pinning covers selected genuine API and model-catalog Git objects, not the complete eager import closure.",
+    "Original caches/states and fresh immutable-revision downloads were byte-checked; no decoder loading, numerical replay, source prose reconstruction, fresh holdout quality, 8192-token qualification, family projection or proof admission was performed."
+  ],
+  "reviewed_builder_pin": {
+    "bytes": 10266,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/build_registration_plan.py",
+    "sha256": "ecca5da4d2c8b0f3f7ceda2c9663ebb31d8f0438db8c158b56d78b1862cb0a18"
+  },
+  "reviewed_custody_pin": {
+    "bytes": 2714,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/custody.py",
+    "sha256": "c3b355c2b3e4743a839a721b61c1d2868fe25c609b8da562a6b302fbe0cb6864"
+  },
+  "reviewed_driver_pin": {
+    "bytes": 21050,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/register_original_contextual_states.py",
+    "sha256": "ddf62894bef8235f29321bd2173064c85b0132ccd8e8a75e9705753dcd753127"
+  },
+  "reviewed_preparation_pin": {
+    "bytes": 1969,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+    "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+  },
+  "schema": "original-contextual-registration-independent-driver-review/v1",
+  "selected_store": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb"
+}
