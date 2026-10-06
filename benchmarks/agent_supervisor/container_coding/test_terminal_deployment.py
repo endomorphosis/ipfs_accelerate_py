@@ -38,6 +38,43 @@ def _inputs(tmp_path):
     return {**roots, "extension_dir": extensions}
 
 
+def _supervisor_inputs(tmp_path):
+    """Packaging fixture with the exact worker capability sources.
+
+    This remains a hermetic archive fixture, not an executable full runtime.
+    Generic packaging tests deliberately retain the seven-file _inputs fixture.
+    """
+    from .terminal_worker_capability import SOURCE_PATHS
+    inputs = _inputs(tmp_path)
+    checkout = Path(__file__).resolve().parents[3]
+    for name in SOURCE_PATHS:
+        target = inputs["source"] / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((checkout / name).read_bytes())
+    return inputs
+
+
+def _supervisor_manifest(manifest):
+    """Unit-only metadata for adapters whose deployment is explicitly mocked.
+
+    Unlike _supervisor_inputs this creates no archive and does not qualify one.
+    It lets downstream adapter tests exercise their intended contract without
+    mocking or disabling the production worker compatibility guard.
+    """
+    import copy
+    from .terminal_worker_capability import KEY, _current_capability
+    value = copy.deepcopy(manifest)
+    capability = _current_capability()
+    checkout = Path(__file__).resolve().parents[3]
+    value["files"] = [row for row in value.get("files", [])
+                      if row.get("path") not in capability["source_sha256"]]
+    value["files"].extend({"path": name, "sha256": digest, "mode": 0o644,
+                          "bytes": (checkout / name.removeprefix("source/")).stat().st_size}
+                          for name, digest in capability["source_sha256"].items())
+    value[KEY] = capability
+    return value
+
+
 def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_path):
     result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
     with tarfile.open(tmp_path / "bundle/runtime.tar.gz") as archive:

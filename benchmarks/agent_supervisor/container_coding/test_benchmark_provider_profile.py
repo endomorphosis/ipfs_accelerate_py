@@ -11,7 +11,7 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding import native_codex_baseline as native
 from benchmarks.agent_supervisor.container_coding import terminal_deployment as deployment
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs, _supervisor_manifest
 from benchmarks.agent_supervisor.container_coding.test_terminal_task_selection import _prepared, _task
 from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original
 
@@ -44,7 +44,7 @@ def test_old_or_malformed_archive_refused_before_container_setup(tmp_path, versi
 def test_old_archive_refused_before_harbor_preparation(tmp_path, monkeypatch):
     dataset = tmp_path / "dataset"
     _task(dataset, native.TASK)
-    manifest = deployment.build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
+    manifest = deployment.build_runtime_archive(output=tmp_path / "bundle", **_supervisor_inputs(tmp_path))
     manifest["codex_version"] = "0.158.0"
     (tmp_path / "bundle/manifest.json").write_text(json.dumps(manifest))
     def forbidden(*args, **kwargs):
@@ -73,7 +73,7 @@ def test_rehashed_old_archive_cannot_reach_harbor_execution(tmp_path, monkeypatc
 
 def test_direct_adapter_refuses_old_archive_before_task_bootstrap(tmp_path):
     from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import FullSupervisorAgent
-    (tmp_path / "manifest.json").write_text(json.dumps({"codex_version": "0.158.0"}))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({"codex_version": "0.158.0"})))
     agent = object.__new__(FullSupervisorAgent)
     agent.runtime_archive = tmp_path
     with pytest.raises(ValueError, match="Codex version differs"):

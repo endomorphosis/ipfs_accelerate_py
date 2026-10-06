@@ -32,7 +32,11 @@ def _prepared(tmp_path, runner, *, task_name=SELECTED):
     output.mkdir()
     archive.mkdir()
     (archive / "runtime.tar.gz").write_bytes(b"authored archive fixture")
-    native._json(archive / "manifest.json", {"archive_sha256": native._hash(archive / "runtime.tar.gz"), "codex_version": native.CLI_VERSION})
+    manifest = {"archive_sha256": native._hash(archive / "runtime.tar.gz"), "codex_version": native.CLI_VERSION}
+    if runner is not native:
+        from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
+        manifest = _supervisor_manifest(manifest)
+    native._json(archive / "manifest.json", manifest)
     if runner is native:
         config = native.config_for(dataset, output, task_name=task_name)
     else:

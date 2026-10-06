@@ -16,6 +16,8 @@ from benchmarks.agent_supervisor.container_coding.benchmark_controls import buil
 from benchmarks.agent_supervisor.container_coding.benchmark_provider_profile import CLI_VERSION
 
 
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
+
 LEGACY = policy.DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
 COMPACT = policy.CONTROLLER_DICTIONARY_TRANSPORT_SCHEMA
 
@@ -86,8 +88,8 @@ def test_old_archive_is_rejected_before_preparation_dry_run(tmp_path, monkeypatc
     archive.mkdir()
     raw = b"authored immutable archive"
     (archive / "runtime.tar.gz").write_bytes(raw)
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": hashlib.sha256(raw).hexdigest(),
-        "codex_version": CLI_VERSION, "files": []}))
+    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": hashlib.sha256(raw).hexdigest(),
+        "codex_version": CLI_VERSION, "files": []})))
     calls = []
     monkeypatch.setattr(benchmark.subprocess, "run", lambda *args, **kwargs: calls.append(args))
     output = tmp_path / "output"
@@ -101,8 +103,8 @@ def test_old_archive_is_rejected_before_preparation_dry_run(tmp_path, monkeypatc
 
 def test_adapter_rejects_old_archive_before_upload_or_execution(tmp_path):
     from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import FullSupervisorAgent
-    (tmp_path / "manifest.json").write_text(json.dumps({"archive_sha256": "a" * 64,
-        "codex_version": CLI_VERSION, "files": [], "learned_requirements": []}))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "a" * 64,
+        "codex_version": CLI_VERSION, "files": [], "learned_requirements": []})))
     agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=benchmark.MODEL,
         runtime_archive=str(tmp_path), arm="full", semantic_transport_schema=COMPACT)
     environment = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock(), download_file=AsyncMock())
@@ -118,7 +120,7 @@ def test_adapter_forwards_explicit_transport_and_keeps_direct_planning_identity(
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
     manifest = {**_current_inventory(), "archive_sha256": "a" * 64,
         "codex_version": CLI_VERSION, "learned_requirements": []}
-    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest(manifest)))
     monkeypatch.setattr(adapter, "capture_public_inputs", AsyncMock(return_value={"status": "captured"}))
     monkeypatch.setattr(adapter, "export_public_outputs", AsyncMock(return_value={"status": "captured"}))
     calls = []

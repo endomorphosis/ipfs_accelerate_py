@@ -17,7 +17,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_container_supe
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import (
     FullSupervisorAgent, intent_asset_arguments,
 )
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs
 from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original  # noqa: F401
 from benchmarks.agent_supervisor.container_coding.test_terminal_intent_autoencoder import _plan
 from benchmarks.agent_supervisor.container_coding.test_terminal_intent_roundtrip import (
@@ -251,7 +251,7 @@ def test_harbor_rejects_retargeted_or_malformed_request_binding(tmp_path, roundt
 def test_harbor_forwards_selected_request_in_both_arms_and_respects_ablation(tmp_path, roundtrip_checkpoint, arm, disabled):
     from harbor.models.agent.context import AgentContext
     built = deployment.build_runtime_archive(output=tmp_path / "archive", intent_checkpoint=roundtrip_checkpoint,
-        intent_projection_request=_request(roundtrip_checkpoint), **_inputs(tmp_path))
+        intent_projection_request=_request(roundtrip_checkpoint), **_supervisor_inputs(tmp_path))
     commands = []
     report = {"task_completed": False, "seconds": 0, "phases": {}, "provider_invocations": []}
     class Environment:
