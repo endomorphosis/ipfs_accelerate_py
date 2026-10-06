@@ -1234,3 +1234,25 @@ strict retry-list serialization equality remains false although both policies
 disable retries. The source-bound symbolic plan remains administrative coverage,
 with no source-semantic or universal float/complex proof authority. Source384
 advice has unsupported source-contract nominations and is not a numeric proof.
+
+## Context token economy with LLM planning retained (2026-10-06)
+
+The user clarified that removing the planning session is not the intended
+optimization. The [corrected context improvement plan](evidence/supervisor-context-token-economy-20261006/README.md)
+keeps both planning and coding through `llm_router`, and uses catalog metadata,
+formal constraints, selected semantic capsules, reversible minification,
+bounded lookup and context deltas to reduce total tokens. The earlier symbolic
+trial remains an explicit historical ablation; the normal direct route was
+never globally disabled.
+
+Independent read-only audits show that the current coding transport already
+removes 7,443 bytes through JSON unpacking and typed identifier aliases. Its
+appended metadata matters: the historical direct input is 59,301 bytes after
+all additions, while the symbolic ablation is 75,724 bytes, including a
+20,076-byte instruction/IntentIR block. Current catalog locators are not yet a
+bounded model lookup tool, and existing decision/delta compilers are not fully
+integrated with the terminal provider/session path. The plan prioritizes full
+input/per-turn accounting, checked decision views, shared metadata tables,
+compact proof/status cards and progressive disclosure while preserving source,
+scope, unknown obligations and normal native validation. It claims no measured
+token saving for an unrun planning-preserved context experiment.

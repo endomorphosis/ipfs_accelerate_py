@@ -1,0 +1,31 @@
+{
+  "checks": {
+    "all_15_reviewed_runtime_source_bindings_unchanged": true,
+    "all_reviewed_artifact_bindings_unchanged": true,
+    "copied_audits_and_accounting_exact": true,
+    "documentation_gates": {
+      "argv": [
+        "/home/barberb/lift_coding/.venv/bin/python",
+        "scripts/docs/run_documentation_gates.py"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n"
+    },
+    "independent_review_status": "approved_with_nonblocking_hardening_notes",
+    "new_and_updated_document_links": {
+      "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/README.md": [],
+      "docs/agent_supervisor/terminal_symbolic_capabilities.md": []
+    },
+    "new_provider_calls": 0,
+    "original_root_head_preserved": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+    "original_root_index_sha256_preserved": "80b0426031778d38c8b762a273739e08edbf2ce2b18690efb4f541fa6de120a4",
+    "planning_preserved_savings_measured": false,
+    "producer_syntax_valid": true,
+    "runtime_changed": false
+  },
+  "recorded_at_utc": "2026-10-06T07:57:47.138956+00:00",
+  "schema": "supervisor-context-token-economy-documentation-gates@1",
+  "source_head": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "status": "passed"
+}
