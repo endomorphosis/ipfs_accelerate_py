@@ -1,0 +1,98 @@
+{
+  "actual_resource_observation": {
+    "bytes": 1083,
+    "path": "grok-container/resource-observation-11.json",
+    "sha256": "6a9b571c3c2c189d6ed2cccb9733ede6cc59e85e4a86f7027420ec6ed883be1c"
+  },
+  "all_selected_native_usage_envelopes_observed": false,
+  "benchmark_durations_seconds": {
+    "agent_execution": 847.444504,
+    "agent_setup": 127.616822,
+    "environment_setup": 1.96698,
+    "verifier": 7.943344
+  },
+  "billing_total_verified": false,
+  "cache_included_in_input": false,
+  "dollar_cost": null,
+  "driver_task_completed": false,
+  "live_summary": {
+    "bytes": 18585,
+    "path": "live-trial-summary-11.json",
+    "sha256": "a45253d931343323094ac9ed95b99d78008570ef7d85d2ed74f28e52072f25b3"
+  },
+  "matched_baseline_in_this_trial": false,
+  "missing_usage_is_unknown": true,
+  "native_custody_closed": true,
+  "native_final_turn_is_task_completion_authority": false,
+  "native_observed_cached_input_tokens": null,
+  "native_observed_input_tokens_excluding_cache": null,
+  "native_observed_output_tokens": null,
+  "native_observed_total_tokens": null,
+  "native_task_status": "in_progress",
+  "official_reward": 0.0,
+  "provider_invocations": [
+    {
+      "model": "grok-4.7",
+      "native_outcome": {
+        "classification_source": "stop_reason",
+        "completion_authority": false,
+        "envelope_observed": true,
+        "error_observed": false,
+        "error_subtype": "unknown",
+        "http_status": null,
+        "process_outcome": "returned",
+        "raw_provider_data_exported": false,
+        "reason_code": "end_turn",
+        "schema": "native-grok-outcome@1",
+        "schema_error_code": null,
+        "schema_error_path": null,
+        "stop_reason": "end_turn"
+      },
+      "native_tokens": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 2176,
+        "input_tokens": 12715,
+        "output_tokens": 7915,
+        "reasoning_output_tokens": 6096,
+        "total_tokens": 22806
+      },
+      "native_usage_envelope_observed": true,
+      "phase": "planning",
+      "provider": "grok_cli",
+      "seconds": 79.42264302197145,
+      "timeout_seconds": 180
+    },
+    {
+      "model": "grok-4.7",
+      "native_outcome": {
+        "classification_source": "process",
+        "completion_authority": false,
+        "envelope_observed": false,
+        "error_observed": false,
+        "error_subtype": "unknown",
+        "http_status": null,
+        "process_outcome": "timeout",
+        "raw_provider_data_exported": false,
+        "reason_code": "timeout",
+        "schema": "native-grok-outcome@1",
+        "schema_error_code": null,
+        "schema_error_path": null,
+        "stop_reason": "unknown"
+      },
+      "native_tokens": null,
+      "native_usage_envelope_observed": false,
+      "phase": "coding",
+      "provider": "grok_cli",
+      "seconds": 600.2467448359821,
+      "timeout_seconds": 600
+    }
+  ],
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "raw_model_task_verifier_or_credential_bodies_exported": false,
+  "reasoning_tokens_are_subset_of_output": true,
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "schema": "terminal-grok-observed-performance@1",
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "token_or_speed_advantage_claimed": false,
+  "trial_name": "grok-tune-mjcf-11"
+}

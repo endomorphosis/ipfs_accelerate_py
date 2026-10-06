@@ -1,0 +1,23 @@
+{
+  "check_count": 11,
+  "checker_sha256": "09384be81f746bc1a3decdb6f9c0125d0f56b1f1406fcb0791486df3d1e3b8b6",
+  "checks": [
+    "raw bodies omitted",
+    "boolean count rejected",
+    "missing reference equality not inferred",
+    "known reasons retained",
+    "unknown reasons counted only",
+    "known gaps retained",
+    "unknown gaps counted only",
+    "proof report not upgraded to whole proof",
+    "missing numeric fields unknown",
+    "nonfinite seconds rejected",
+    "digest format enforced"
+  ],
+  "containers_launched": 0,
+  "passed": true,
+  "provider_calls": 0,
+  "raw_private_data_exported": false,
+  "schema": "indexed-path-export-safety-review@1",
+  "script_sha256": "f964c3549a6f79c68014a784709481c5349a33c7e5c3188fe03b2fda6ee19973"
+}

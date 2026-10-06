@@ -1,0 +1,20 @@
+{
+  "combined_qualification_pending": true,
+  "committed_source_test_execution_claimed": false,
+  "development_checkout_relabelled_clean": false,
+  "development_label": "lifecycle-captured-cas-dev-04",
+  "development_review": "captured-lifecycle-custody-development-review-01.json",
+  "development_review_sha256": "aadd130ad55ce850d16b13e2bd4e3e4b7823c12ec4a53f540e9969520d5519b0",
+  "parent_source": "e4e0ded3296261cbaf5d3dd0304c57604fdf6c85",
+  "provider_calls": 0,
+  "raw_output_exported": false,
+  "schema": "captured-lifecycle-committed-source-binding@1",
+  "source_commit": "d862fe847532a83e3dfb57d237ce581c3f44dc09",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "84953f274f4cf02223d4e5568446c7aea0185fd2ff4049357f6157e2830ff3dd",
+    "test/api/test_captured_lifecycle_boundaries.py": "3796bcf3b3bebd22d0fc68253adea8245005bb7c8ce50c05cb011f9918336eb0",
+    "test/api/test_lifecycle_captured_settlement.py": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+  },
+  "tested_files_match_committed_bytes": true
+}

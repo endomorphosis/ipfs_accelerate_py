@@ -1,0 +1,127 @@
+{
+  "all_three_observer_children_exited_zero": true,
+  "attempt": "10",
+  "billing_verified": false,
+  "cached_input_already_in_total": true,
+  "container_mutations": 0,
+  "container_teardown_is_native_custody_close": false,
+  "driver_task_completed": false,
+  "evidence": {
+    "closure-failure-diagnosis-10.json": {
+      "bytes": 1472,
+      "sha256": "41dadaf4da447ba8961db6a6d14885fa9487b5f54d6684a40734a2e995a014b7"
+    },
+    "grok-container/learned-vector-runtime-observation-10.json": {
+      "bytes": 1291,
+      "sha256": "310a0a85d92479ebc1d8dd2c3bd2c5a6aaca085b09d4f04dbb4691fba0b6c56b"
+    },
+    "grok-container/native-tools-grok-tune-mjcf-10.json": {
+      "bytes": 26600,
+      "sha256": "be4fdf5f0737698761ac9bac77589b9af936136eb04e3089403599dea1893c3e"
+    },
+    "grok-container/observe_learned_vector_runtime.py": {
+      "bytes": 4054,
+      "sha256": "eb529d9cd33d2fe60fc915dbdad20e1e7bff43320095d2789940db96af266007"
+    },
+    "grok-container/observer-coordinator-10.json": {
+      "bytes": 1042,
+      "sha256": "ca7b44a3822945a30f2f4cdfb869b0dd5458c4a53ee903345e8264ec3e70f93c"
+    },
+    "grok-container/preparation-review-10.json": {
+      "bytes": 4243,
+      "sha256": "f82ce02d0a3e54eadfb87213fcd55e693ce6fed0d23c942d915fe3c6b166258c"
+    },
+    "grok-container/resource-observation-10.json": {
+      "bytes": 1083,
+      "sha256": "0da66961520e1523c18b236a04884a561ac80f5e0f90d77b31e741763d1ef25e"
+    },
+    "indexed-path-observation-10.json": {
+      "bytes": 6933,
+      "sha256": "f0de30187613e457b77975386feba63e4153452c897cb5a4fb459b84d008a4b1"
+    },
+    "live-trial-summary-10.json": {
+      "bytes": 15788,
+      "sha256": "8deebd7008489c4dae29a88ce439d9199f2e1819728ae8ce5fa889496be02089"
+    },
+    "performance-observation-10.json": {
+      "bytes": 2456,
+      "sha256": "b1079f94cd2b6dfca6cd077bae8d121dfd5c132ba5a5ee6a6ad7308814f4811f"
+    },
+    "publication-stage/automatic-native-monitor-review-10.json": {
+      "bytes": 4923,
+      "sha256": "6ec6ba7fe173b331fd65aa40f6895df2252b9688464f530e453b2f0b0869f4e3"
+    },
+    "publication-stage/preexisting-collection-contract-audit-01.json": {
+      "bytes": 6355,
+      "sha256": "c676b88160cb3ab67b04485316c133df5b861145635e685747e3e43bc6dadd2a"
+    },
+    "qualification/learned-runtime-independent-review-10.json": {
+      "bytes": 1394,
+      "sha256": "9172d799183fb6b7f4136d271dadd6a163bd632ab32be2d44b25a0902bcd4952"
+    },
+    "qualification/observe_trial10_closure.py": {
+      "bytes": 5453,
+      "sha256": "36bc6ce91d2fc1d6ce17c462a36bcfa40e9018b2e512f4d1424f06ded8fca0b2"
+    },
+    "qualification/observe_trial10_retrieval.py": {
+      "bytes": 7146,
+      "sha256": "b62cd7b335e28cde55775a0de37d929ce3f08be8830f3d608fe906829e1cf481"
+    },
+    "qualification/trial10-preparation-observer-independent-review-01.json": {
+      "bytes": 3106,
+      "sha256": "75d164491475f3ae9cba585791a49171c5dc1d8fc56c1cac492d383570e01fbf"
+    },
+    "retrieval-mode-observation-10.json": {
+      "bytes": 3139,
+      "sha256": "c373d4486ba879062d341812913f2ec217a827a5d8fba4ab31c3223fa6d62c58"
+    },
+    "timeout-recovery/coordinate_trial10_observers.py": {
+      "bytes": 8724,
+      "sha256": "5d239af3e894302bfa91202be87a671c8b9fd5601a7e12e20fa650eea921cb08"
+    },
+    "trial-closure-observation-10.json": {
+      "bytes": 1622,
+      "sha256": "fb5ec0fa0bbbd77c9aa5b2b8694b2100bee19a95040b052d147308494dcecbd6"
+    }
+  },
+  "harbor_input_includes_cached_input": true,
+  "learned_cpu_inference_independently_observed_before_teardown": true,
+  "limitations": [
+    "One selected task passed its original verifier, while native lifecycle closure failed; full supervision qualification is not established.",
+    "The original STOP failure was not retained; later cleanup work must have its own source-bound qualification.",
+    "Observed final native token totals are not verified billing or a matched baseline/ablation efficiency claim.",
+    "Neural index inputs were symbol names and Source384 remained nomination-only; no whole-task formal proof or parallel-agent advantage is established.",
+    "Static review retains three unresolved collection/API contracts; no failing suite was reclassified as passing."
+  ],
+  "native_start_status": "succeeded",
+  "native_stop_status": null,
+  "native_task_revision": 4,
+  "native_task_status": "completed",
+  "native_tokens": {
+    "cached_input_tokens": 1037440,
+    "input_tokens": 136091,
+    "output_tokens": 39201,
+    "total_tokens": 1212732
+  },
+  "new_test_runs": 0,
+  "observer_coordinator_closed": true,
+  "official_reward": 1.0,
+  "original_completed_receipts_overwritten": false,
+  "original_stop_cause_established": false,
+  "original_verifier_result_hash_and_reward_rechecked": true,
+  "owned_container_absence_reported": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "raw_logs_task_model_verifier_or_credentials_exported": false,
+  "reviewed_closed_exports_consistent": true,
+  "runtime_close_source_literal_revalidated": true,
+  "runtime_close_succeeded": false,
+  "schema": "terminal-trial-publication-independent-review@1",
+  "source384_fresh_inference": true,
+  "source384_proof_authority": false,
+  "source_edits": 0,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "three_unresolved_collection_api_contracts_preserved": true,
+  "usage_complete_claimed": false,
+  "worker_cleanup_returncode": 0
+}

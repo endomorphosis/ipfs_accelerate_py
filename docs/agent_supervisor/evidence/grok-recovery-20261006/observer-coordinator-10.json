@@ -1,0 +1,39 @@
+{
+  "authority": false,
+  "broad_container_search": false,
+  "captured_after_seconds": 5.027,
+  "children": [
+    {
+      "exit_code": 0,
+      "label": "native",
+      "pid": 3751180,
+      "status": "exited"
+    },
+    {
+      "exit_code": 0,
+      "label": "resources",
+      "pid": 3751181,
+      "status": "exited"
+    },
+    {
+      "exit_code": 0,
+      "label": "tools",
+      "pid": 3751182,
+      "status": "exited"
+    }
+  ],
+  "container_id": "fe5b0b452d8541b83189c65a456efb5c6e940f60ae18cdbc72b92537d7f03950",
+  "container_mutations": 0,
+  "container_name": "tune-mjcf__sm8cn4q__env-main-1",
+  "elapsed_seconds": 829.154,
+  "finished_utc": "2026-10-06T12:56:33Z",
+  "monitor_absence_is_not_success": true,
+  "owned_case": "tune-mjcf__sm8cN4Q",
+  "provider_calls": 0,
+  "schema": "exact-owned-trial-observer-coordination@1",
+  "source_sha256": "5d239af3e894302bfa91202be87a671c8b9fd5601a7e12e20fa650eea921cb08",
+  "started_utc": "2026-10-06T12:42:44Z",
+  "status": "observers_exited",
+  "task_body_read": false,
+  "trial": "10"
+}

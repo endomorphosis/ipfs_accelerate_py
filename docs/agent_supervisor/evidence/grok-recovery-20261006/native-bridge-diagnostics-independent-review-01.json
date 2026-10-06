@@ -1,0 +1,34 @@
+{
+  "blocking_findings": [],
+  "completion_authority": false,
+  "live_provider_qualification": false,
+  "production_changes": false,
+  "provider_calls": 0,
+  "raw_outputs_exported": false,
+  "read_only_review": true,
+  "retry_authority": false,
+  "reviewed_controls": [
+    "closed enums, booleans, small return codes and selected exact source-frame metadata",
+    "regular same-inode file as live writer; no symlink following; 65536-byte tail and 16384-byte complete-row limit",
+    "duplicate/malformed/partial child report refused or marked ambiguous",
+    "child report explicitly observation-only and independently shape-validated",
+    "diagnostic extraction and sink failures do not change original settlement decisions"
+  ],
+  "reviewed_test_controls": [
+    "traceback source access prohibited; private message excluded",
+    "exception formatting hooks not executed",
+    "native pre-receipt failure preserves terminal settlement and no invocation receipt",
+    "unknown callback retains accepted claim and running attempt",
+    "diagnostic failure still settles otherwise admissible native failure"
+  ],
+  "schema": "native-bridge-diagnostics-independent-review@1",
+  "settlement_authority": false,
+  "source_commit": "403e8045bd8755bc188d8d91d80241e935667c2a",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "386e35244e74279c367c65cd677025ae7e36d82396c0312b3456c1e696ad8fd1",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "66ddb9cca4ecf1ea9d7993cbf86cc63de24aaca4db0dab2b7b87d912ec55fea2",
+    "test/api/test_bridge_failure_diagnostics.py": "fac81d1f7a2bd4e105ef4e39659e1985687b94de9b089d68aebfe03a0487ee76"
+  },
+  "whole_repository_correctness_claim": false
+}

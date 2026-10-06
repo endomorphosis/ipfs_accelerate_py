@@ -1,0 +1,45 @@
+{
+  "aggregate_token_usage": null,
+  "automatic_retry_performed": false,
+  "coding_provider_dispatch_observed": null,
+  "coding_router_receipts": 0,
+  "coding_token_usage": null,
+  "completion_authority": false,
+  "exact_bridge_failure_reason": "not_retained",
+  "failure_receipt_does_not_establish_task_success": true,
+  "invocation_counter_is_native_router_dispatch_proof": false,
+  "native_exception_types_observed": 0,
+  "native_start_status": "succeeded",
+  "native_stop_reason": "native_task_blocked",
+  "native_stop_status": "succeeded",
+  "native_traceback_frames_observed": 0,
+  "original_verifier_reward": 0.0,
+  "planning_router_receipts": 1,
+  "raw_model_task_verifier_or_credential_data_exported": false,
+  "retained_report": {
+    "bytes": 73668,
+    "sha256": "90818e55e0f2c3d2d9d546e6276d6e782131802880f89d67269bef6437e1b0ec"
+  },
+  "runtime_close_succeeded": true,
+  "schema": "grok-native-terminal-settlement-observation@1",
+  "settlement": {
+    "attempt_number": 1,
+    "automatic_retry_admitted": false,
+    "control_expected_revision": 3,
+    "effect_claim_count": 0,
+    "failure_kind": "terminal_portal_bridge_error",
+    "operation": "database_task_claim_failure",
+    "provider_invocation_count": 1
+  },
+  "source_head": "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d344829bff440ef72aa4858dda520cf7480f2f5a790cd1a7f87296ae5e6f9824",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d",
+    "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py": "79f81c36fb77e28a56fc248ee1fc345699a443329861040ac2c7398cfc07e4f8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "84953f274f4cf02223d4e5568446c7aea0185fd2ff4049357f6157e2830ff3dd"
+  },
+  "task_revision": 4,
+  "task_status": "blocked",
+  "trial_name": "grok-tune-mjcf-07"
+}

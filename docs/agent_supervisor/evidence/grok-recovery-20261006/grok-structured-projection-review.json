@@ -1,0 +1,36 @@
+{
+  "canonical_and_wire_hashes_bound": true,
+  "concrete_failure": "Native HTTP400 rejects original canonical schema top-level $id URI reference",
+  "credential_data_exported": false,
+  "development_tests": {
+    "aggregate_claim": false,
+    "passed": 163,
+    "recorded_focused_tests": "pending at time of this review",
+    "seconds": 32.88
+  },
+  "fix": "Omit top-level $id only for exact canonical planner grammar reconstructed from four budget fields",
+  "modified_lookalikes_unchanged": true,
+  "other_schemas_unchanged": true,
+  "preserved": [
+    "Original canonical schema validator",
+    "Prompt bytes",
+    "All validation assertions",
+    "All local references and definitions",
+    "Custom budget metadata",
+    "Strict plan scope/evidence checks",
+    "Zero planning tool policy",
+    "No fallback",
+    "Original planning timeout and turn limit"
+  ],
+  "qualified_native_probe": "grok-schema-projection-qualified.json",
+  "raw_provider_data_exported": false,
+  "schema": "grok-structured-projection-review@1",
+  "source_commit": "038056d8277a36ca8690d51ce9fa8e4890dfecb7",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "5ec3e26f16393274ec568102c262ba6f88d327124bee061c889910ddc14d42e7",
+    "ipfs_accelerate_py/cli_runtime/grok_structured_output.py": "946365ecc876c15b8fd3ab19e5084d8c89e5adc31194f964cb2eb91afb66cefa",
+    "ipfs_accelerate_py/llm_router.py": "7f733a2c6a5ffdb108200b11b69ebac1507fd102cb379b7f2130144fc2b33f95",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94",
+    "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325"
+  }
+}

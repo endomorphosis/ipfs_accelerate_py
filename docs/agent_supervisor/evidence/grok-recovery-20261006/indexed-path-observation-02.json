@@ -1,0 +1,70 @@
+{
+  "actual_index": {
+    "canonical_tasks_created": false,
+    "descriptor_sha256": "be71f60b6c7700e9f636aa0418cdfc5faf292c5a58c3aca27e75176448323f12",
+    "full_capsules": 11,
+    "indexed_symbols": 4,
+    "learned_embeddings": false,
+    "phases": {
+      "empty_native_world_capture": 0.5303237019688822,
+      "final_evidence_verification": 1.7411442960146815,
+      "persisted_snapshot_reopen": 0.010792193992529064,
+      "retrieval_persistence": 0.01159461896168068,
+      "semantic_build_reconstruction_and_hydration": 1.8979767510318197,
+      "source384_capture_and_inference": 10.345135890995152,
+      "vector_qualification": 0.5687573680188507
+    },
+    "reference_hashes": {
+      "index_id": {
+        "bytes": 96,
+        "value_sha256": "22632c319f9fc93ddb1d14ce8a323202f17a133aca22730c2f53ae5295d8f304"
+      },
+      "semantic_root_cid": {
+        "bytes": 61,
+        "value_sha256": "be164ca6f0da44c9ab7d7c82e4ec2195c1a2bcdfdf218e03dd22d2173c11a4cc"
+      },
+      "world_snapshot_cid": {
+        "bytes": 71,
+        "value_sha256": "df48fe6fe84e2ec0fdc9c84b7bdfe34248914322c80e6096aa73c1d81bbe0a5b"
+      }
+    },
+    "seconds": 15.11507698497735,
+    "world_task_count": 0
+  },
+  "admitted_worker_context_reached": false,
+  "doctor": {
+    "basis": "driver_failed_in_planning_before_admission_and_doctor",
+    "reached": false,
+    "residual_counts": null
+  },
+  "native_start_reached": false,
+  "raw_source_model_formula_verifier_or_credential_data_exported": false,
+  "receipt_sha256": "47c576dc599053a3162efbf1092c6cf15ae80748acee8e6ef32f1d1a2d1341d9",
+  "schema": "grok-recovery-indexed-path-observation@1",
+  "source384": {
+    "authority": {
+      "completion_authority": false,
+      "execution_authority": false,
+      "formalization_authority": false,
+      "model_promotion_performed": false,
+      "nomination_only": true,
+      "proof_authority": false
+    },
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "counts": {
+      "excluded_source_files": 0,
+      "harness_support_files": 3,
+      "inference_python_files": 1,
+      "omitted_candidates": 2,
+      "program_source_files": 1,
+      "provider_calls": 0,
+      "source_files": 5,
+      "task_data_files": 1,
+      "training_steps": 0
+    },
+    "inference_sha256": "cb9a5d83a1adc5a8e6ed10ca0ab986f3aee1c20437bb6a4809db81f7dc69a968",
+    "neural_inference_replayed": false,
+    "seconds": 10.203357815975323
+  },
+  "trial_name": "grok-tune-mjcf-02"
+}

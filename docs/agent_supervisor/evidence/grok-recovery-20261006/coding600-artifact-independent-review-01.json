@@ -1,0 +1,60 @@
+{
+  "blocking_concerns": [],
+  "budgets_seconds": {
+    "cleanup": 60,
+    "driver": 900,
+    "planner": 180,
+    "provider_cap": 600,
+    "provider_remaining_reserve": 25,
+    "start_allowance": 120,
+    "stop_allowance": 20,
+    "watchdog_cap": 660,
+    "work": 840
+  },
+  "checked_artifact_reports": {
+    "grok-container/coding600-recipe-static-review-01.json": {
+      "check_count": 22,
+      "sha256": "5fa641ab7f7beddf80c839e5cf306770230f71b2d1add5d88817a86fb8a3ac36"
+    },
+    "qualification/coding600-observer-safety-review-01.json": {
+      "check_count": 25,
+      "sha256": "24810526ee640c3d51b729be2b1c3620e6912fb40e873cf6a43855cd06a2612f"
+    },
+    "qualification/fresh-live-inspector-safety-review-07.json": {
+      "check_count": 49,
+      "sha256": "a6e27767ba1883c6224b2df9bada440ac13073cb72cdcb09d7216f749fd63571"
+    }
+  },
+  "common_controls_v1_do_not_prove_equal_adapter_coding_budgets": true,
+  "containers_launched": 0,
+  "new_live_trial_executed": false,
+  "observer_binds_prepared_task_arm_schema_and_resource_profile": true,
+  "observer_does_not_attest_actual_provider_timeout": true,
+  "observer_requires_docker_and_cgroup_max_high_and_cpu_match": true,
+  "original_recipes_preserved": true,
+  "original_trial01_to05_receipts_not_modified": true,
+  "production_edits_by_this_review": 0,
+  "profile": "source384-5cpu-20gib-coding600@1",
+  "proposed_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "d90a0db3447bee7a746a6a21cdef21fb4ec667ee116161d91c12314e09c29f5d",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "28bcc50a4445271bf158359aa2f2edf782102abd7050a677461725c1a0a3b1e4"
+  },
+  "provider_calls": 0,
+  "provider_timeout_selected_and_clamped_fields_exported_separately": true,
+  "raw_private_data_exported": false,
+  "recipe_preserves_router_and_tool_policy": true,
+  "resource_limits": {
+    "cpu": 5,
+    "memory_mib": 20480
+  },
+  "reviewed_artifact_sha256": {
+    "grok-container/observe_coding600_resources.py": "b7ddd2f07b9bf33745a31b2cb68ca6e0ff8ce18d2831b4d4c90a49575e8f9463",
+    "grok-container/recipes/run_fresh_grok_coding600.py": "f403bd07e65aab4402c4d08515961ecc6398e863c5b084f4111eeaee5f9831b0",
+    "qualification/check_coding600_resource_observer.py": "8233ae8316d00be3da24c9f31cb22c33bec32f4dd8e29765322304fdd14fcc9a",
+    "qualification/check_fresh_live_inspector.py": "bf4c74bb63ae32543b86b5a6ebd2fbc764c86ed39b03785c655f17ebb462e4d7",
+    "qualification/inspect_live_trials.py": "3bfd6e449541cf73c67858eb9af40cd3aeb6f39a5b3ce2496387e5679189caba"
+  },
+  "runtime_qualification_pending": true,
+  "same_coding_budget_comparison_claim": false,
+  "schema": "coding600-artifact-independent-review@1"
+}

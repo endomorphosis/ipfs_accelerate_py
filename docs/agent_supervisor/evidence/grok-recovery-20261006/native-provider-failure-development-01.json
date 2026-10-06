@@ -1,0 +1,116 @@
+{
+  "schema": "native-provider-failure-development@1",
+  "base_commit": "6e3171c913b76b569b85600179199f2b57ec5b52",
+  "development_runs": [
+    {
+      "label": "first",
+      "log_sha256": "b90d31c252833b8b5c02d6e5f9133b14e7e5d94913a7d5e92a590d07b9b93916",
+      "summary": "1 failed in 21.02s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "second",
+      "log_sha256": "0fecb547975909325ae42f79ff32b1ee82fd7d37ed622616a66ebcd65e593311",
+      "summary": "1 failed in 14.69s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "third",
+      "log_sha256": "87d7ebc5fae67cf41f8b6630b5e79b55f97b63dba784105aa65ae6bdc02ba860",
+      "summary": "1 failed in 14.81s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "fourth",
+      "log_sha256": "e892dfe87cf512b743cb9244d39e50e5860da1729f09a9889640a47172e8553b",
+      "summary": "1 failed in 14.80s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "fifth",
+      "log_sha256": "85f1a3e00c986122e927c0a070780de728bfd18e0ecd85361c7f5e4c6edbc84a",
+      "summary": "1 failed, 10 passed in 15.27s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "sixth",
+      "log_sha256": "5bb8137b4fc69db1e10e6df55842dc022322c58c39eba58ed808ea428d8f0b67",
+      "summary": "1 failed, 10 passed in 14.09s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "seventh",
+      "log_sha256": "74028d273975f414dec4333ae49d847af5f24726c13b3d8137404a3fc3d3a069",
+      "summary": "2 failed, 18 passed in 34.90s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "eighth",
+      "log_sha256": "52d21e61bbba5b90e03c22c53c8ffa3eec26787974163962b866f2d7a4f35b74",
+      "summary": "2 failed, 18 skipped in 18.80s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "ninth",
+      "log_sha256": "9c88bf7882eed822ce86c6e68c2fe5825d9936861d7b24b2ce9ab21fed4544ea",
+      "summary": "2 failed, 20 passed in 35.34s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "tenth",
+      "log_sha256": "f346646ee6021e8920377a37abbcac47770f5388a901e78074a40d1d60c1496c",
+      "summary": "3 failed, 23 passed in 46.66s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    },
+    {
+      "label": "eleventh",
+      "log_sha256": "b3cea539290acf012e55c1c6bd5da0a979bcdb66afeb9ed22693298990d2de3d",
+      "summary": "26 passed in 47.22s",
+      "recorded_source_unchanged": false,
+      "formal_qualification": false
+    }
+  ],
+  "frozen_review_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "2103db4c054987695f8ebc263302160d4b184f5329805c0c48477b8e57a0bf6c",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a0adc47c97ba299989d94de53fbd6c38815f49c0a3612bb3fd736d6180e9bfdb",
+    "test/api/test_native_provider_failure_settlement.py": "753eaeec22bb9ae29122b2c8d4fe36497d6c8436825200dcd292858811f04f9e"
+  },
+  "latest_development": {
+    "passed": 26,
+    "failed": 0,
+    "seconds": 47.22,
+    "provider_calls_paid": 0,
+    "fixture": "authored shared-router subprocess timeout; embedded database owner",
+    "signed_native_owner_integration": "pending"
+  },
+  "changes_after_latest_development": [
+    "type-exact projected event JSON equality",
+    "integer-only native state return code",
+    "removed fixture debug tracing"
+  ],
+  "verified_behavior": [
+    "waited nonzero native runner",
+    "empty owned subreaper descendant custody including detached-session negative",
+    "one-use exact bridge failure capability",
+    "exact projected event and bound DuckDB/Quack state join",
+    "original callback intent compare-and-swap",
+    "failed and blocked with exact claim release, no automatic retry",
+    "canonical repository unchanged after allocated partial edit",
+    "response-loss replay without repeated provider"
+  ],
+  "limits": [
+    "Development logs are not frozen-source formal qualification.",
+    "No live provider task success or token efficiency improvement is claimed.",
+    "Generic, missing-custody and ambiguous callback failures remain unresolved."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "reason": "before bounded shutdown failure export",
+  "schema": "closed-exporter-historical-bindings@1",
+  "sha256": {
+    "live-trial-summary-01.json": "4485949158ac6879e5bf947ff210b5d123a5bae63d3e40ef52ba8ae4bf8dc7ac",
+    "live-trial-summary-02.json": "8078108ccee9228c359650010906a20d0b142aaa05ac53c6ea77412f4682b27d",
+    "live-trial-summary-03.json": "82edec9585d4bbd2101a4cc5105da819d87358ab7cbcdacbb2e7c34918f5ffaf",
+    "live-trial-summary-04.json": "8d8b249c8cad0759002f46cd18cb48f66c01c7161964131c05c6d8f56fe789c5",
+    "live-trial-summary-05.json": "a2ff6166318d8c35d55d8e877696527464ec49bef227872c2950603ab3d9c699",
+    "live-trial-summary-06.json": "c11efd10e40cfbb8daf2563db783cf3fe149fe3dbad9e358abb18c4e576c407d",
+    "live-trial-summary-07.json": "226ad978ab8c618a8f929686ca76fc8e83aba93167d9ef017d23a53619f3cfac",
+    "live-trial-summary-08.json": "4e7f4e615d5040241fb76624a1ba5dcd75da9b16d0a91d4bb173f9648ea8c0ee",
+    "live-trial-summary-09.json": "5f0089bfce6fc159cd8b4407f74a375a4dc58bec0bf3115904056aa6eaff096c",
+    "live-trial-summary-10.json": "8deebd7008489c4dae29a88ce439d9199f2e1819728ae8ce5fa889496be02089",
+    "qualification/check_fresh_live_inspector.py": "7dbd51c02f3bd2373ded33f4b6d06f90377d4b9cae817b9c41acac9627a338a5",
+    "qualification/inspect_live_trials.py": "42b8cab4eacc53957e066b411732319540ed0ebac36af285f3d1c87e923c25df"
+  }
+}

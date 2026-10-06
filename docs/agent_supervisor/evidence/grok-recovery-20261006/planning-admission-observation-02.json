@@ -1,0 +1,46 @@
+{
+  "canonical_schema_validated": true,
+  "earlier_guards_passed": [
+    "no_unresolved_questions_or_uncertainty_debt",
+    "global_evidence_exact",
+    "planning_roots_exact",
+    "global_policy_roots_exact",
+    "required_task_population_exact"
+  ],
+  "exact_mismatched_fields": null,
+  "expected_observed_field_counts": null,
+  "failure_message_semantics": "Proposal changed signed scope, acceptance, dependency or command.",
+  "failure_type": "LocalPlanningError",
+  "fallback_used": false,
+  "local_admission_qualified": false,
+  "official_reward": 0,
+  "offline_exact_replay_possible": false,
+  "parsed_counts": {
+    "evidence_count": 7,
+    "goal_count": 2,
+    "response_bytes": 4995,
+    "task_count": 1
+  },
+  "possible_mismatched_fields": [
+    "scope_paths",
+    "outputs",
+    "validations",
+    "acceptance",
+    "dependencies",
+    "task_assumptions",
+    "task_evidence_subset",
+    "task_policy_roots"
+  ],
+  "producer_function": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:_graph_contract",
+  "producer_source_revision": "038056d8277a36ca8690d51ce9fa8e4890dfecb7",
+  "proposal_body_retained_on_host": false,
+  "provider_graph_accepted": true,
+  "raw_provider_source_verifier_or_credential_data_exported": false,
+  "receipt_sha256": "47c576dc599053a3162efbf1092c6cf15ae80748acee8e6ef32f1d1a2d1341d9",
+  "retry_performed": false,
+  "schema": "grok-recovery-planning-admission-observation@1",
+  "specific_field_unavailable_reason": "Current shared admission exception combines these checks; proposal and private trace were not exported before container removal.",
+  "task_completed": false,
+  "trial_name": "grok-tune-mjcf-02",
+  "worker_cleanup_returncode": 0
+}

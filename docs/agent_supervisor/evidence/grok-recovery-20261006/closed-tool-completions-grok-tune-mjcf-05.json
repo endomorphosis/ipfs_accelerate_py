@@ -1,0 +1,203 @@
+{
+  "command_arguments_or_messages_inspected": false,
+  "container_mutations": 0,
+  "native_terminal_alias_observed": "run_terminal_command",
+  "observation": {
+    "bounded_scan_truncated": false,
+    "completion_event_count": 22,
+    "events": [
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 0,
+        "explicit_start_field_present": false,
+        "record_index": 276,
+        "success": true,
+        "tool": "read_file"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 0,
+        "explicit_start_field_present": false,
+        "record_index": 277,
+        "success": true,
+        "tool": "list_dir"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 135,
+        "explicit_start_field_present": false,
+        "record_index": 281,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 0,
+        "explicit_start_field_present": false,
+        "record_index": 285,
+        "success": true,
+        "tool": "read_file"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 179,
+        "explicit_start_field_present": false,
+        "record_index": 289,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 100,
+        "explicit_start_field_present": false,
+        "record_index": 293,
+        "success": false,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 8,
+        "explicit_start_field_present": false,
+        "record_index": 297,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 62,
+        "explicit_start_field_present": false,
+        "record_index": 301,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 641,
+        "explicit_start_field_present": false,
+        "record_index": 305,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 400,
+        "explicit_start_field_present": false,
+        "record_index": 309,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 2699,
+        "explicit_start_field_present": false,
+        "record_index": 313,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 175,
+        "explicit_start_field_present": false,
+        "record_index": 317,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 30,
+        "explicit_start_field_present": false,
+        "record_index": 321,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 654,
+        "explicit_start_field_present": false,
+        "record_index": 325,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 3,
+        "explicit_start_field_present": false,
+        "record_index": 329,
+        "success": true,
+        "tool": "read_file"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 60,
+        "explicit_start_field_present": false,
+        "record_index": 330,
+        "success": true,
+        "tool": "run_terminal_command"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 32,
+        "explicit_start_field_present": false,
+        "record_index": 334,
+        "success": true,
+        "tool": "grep"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 34,
+        "explicit_start_field_present": false,
+        "record_index": 335,
+        "success": true,
+        "tool": "grep"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 0,
+        "explicit_start_field_present": false,
+        "record_index": 339,
+        "success": true,
+        "tool": "read_file"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 0,
+        "explicit_start_field_present": false,
+        "record_index": 340,
+        "success": true,
+        "tool": "read_file"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 5,
+        "explicit_start_field_present": false,
+        "record_index": 344,
+        "success": true,
+        "tool": "grep"
+      },
+      {
+        "command_category_field_present": false,
+        "elapsed_ms": 7,
+        "explicit_start_field_present": false,
+        "record_index": 345,
+        "success": true,
+        "tool": "grep"
+      }
+    ],
+    "events_omitted": 0,
+    "native_json_records": 347,
+    "native_log_files": 1
+  },
+  "observed_utc": "2026-10-06T09:56:46Z",
+  "provider_calls": 0,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "schema": "grok-closed-native-tool-completions@1",
+  "task_completion_authority": false,
+  "terminal_active_at_provider_deadline": "not_established_from_completion_events",
+  "terminal_command_category": "unknown",
+  "terminal_completion_events": 12,
+  "terminal_failure_events": 1,
+  "terminal_last_completed_elapsed_ms": 60,
+  "terminal_max_completed_elapsed_ms": 2699,
+  "terminal_success_events": 11,
+  "trial_name": "grok-tune-mjcf-05"
+}

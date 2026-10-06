@@ -1,0 +1,70 @@
+{
+  "automatic_retry_admitted": false,
+  "changed_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "386e35244e74279c367c65cd677025ae7e36d82396c0312b3456c1e696ad8fd1",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "66ddb9cca4ecf1ea9d7993cbf86cc63de24aaca4db0dab2b7b87d912ec55fea2",
+    "test/api/test_bridge_failure_diagnostics.py": "fac81d1f7a2bd4e105ef4e39659e1985687b94de9b089d68aebfe03a0487ee76"
+  },
+  "commit": "403e8045bd8755bc188d8d91d80241e935667c2a",
+  "committed_bytes_match_final_recorded_source": true,
+  "completion_authority": false,
+  "limitations": [
+    "No live-provider trial validates these new bytes yet.",
+    "Trial07 exact underlying exception remains unknown.",
+    "Combined signed collector integration remains pending in reporting worktree."
+  ],
+  "qualifications": [
+    "Actual subprocess pre-receipt runner failure was exercised in pooled and nonpooled authored tasks.",
+    "Signed native timeout settlement and stale typed admission controls passed before the final bounded exception-args hardening.",
+    "Final native regression covers settled, ambiguous, forged, replayed and detached-child cases.",
+    "Child JSON and all diagnostics remain observation-only; missing receipt does not prove nondispatch."
+  ],
+  "runs": [
+    {
+      "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "exit_code": 0,
+      "label": "native-terminal-diagnostics-dev-01",
+      "log_sha256": "ea9272dd398134a4e4f11fe44cb44f27dbcdad2168590ab46bbd5088a3008926",
+      "pytest": {
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "48",
+        "time": "68.534"
+      },
+      "seconds_recorded": 71.18283548398176,
+      "source_unchanged": true,
+      "targets": [
+        "test/api/test_bridge_failure_diagnostics.py",
+        "test/api/test_router_failure_diagnostics.py",
+        "test/integration/test_admitted_native_provider_failure_settlement.py"
+      ],
+      "tested_head": "8883f566411d1d11be4b54ea21be4c8b63d6165c",
+      "xml_sha256": "6cf3ea94c38b3eae81ecaf2db73d53ca750064b728c2e80e1d18dafa2dfbf025"
+    },
+    {
+      "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "exit_code": 0,
+      "label": "native-terminal-diagnostics-dev-02",
+      "log_sha256": "2d475b4c9cadc2f6b706c55e8b2c2d8647d47760ba44fd0e08ceca9194c28c69",
+      "pytest": {
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "52",
+        "time": "95.905"
+      },
+      "seconds_recorded": 97.67823787999805,
+      "source_unchanged": true,
+      "targets": [
+        "test/api/test_bridge_failure_diagnostics.py",
+        "test/api/test_native_provider_failure_settlement.py"
+      ],
+      "tested_head": "8883f566411d1d11be4b54ea21be4c8b63d6165c",
+      "xml_sha256": "d01ba2c3e66b16a4677e02983090f6ec98ed3d40ed87572ddf823899138bc362"
+    }
+  ],
+  "schema": "closed-native-diagnostic-development-review@1",
+  "settlement_authority": false
+}

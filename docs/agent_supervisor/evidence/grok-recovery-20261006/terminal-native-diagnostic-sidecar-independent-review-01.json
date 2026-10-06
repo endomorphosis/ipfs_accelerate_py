@@ -1,0 +1,60 @@
+{
+  "actual_runtime_path_reviewed": {
+    "admitted_native_state_argument": "runtime.state/run",
+    "collector_native_root": "created runtime.state passed explicitly; never inferred from outer planner state",
+    "daemon_assignment": "explicit state_dir resolved into execution_state_dir",
+    "optional_database_json_projection_required": false,
+    "sidecar_filename": "bridge-failure-observation.json"
+  },
+  "blocking_findings": [],
+  "completion_authority": false,
+  "historical_collector_gap": "terminal-failure-observation-dev-01 had68passed1failed because an optional database JSON event projection was disabled; that run remains failed",
+  "live_trial07_cause_reconstructed": false,
+  "production_edits_by_reviewer": 0,
+  "provider_dispatch_inferred": false,
+  "publication_ready": false,
+  "raw_outputs_or_credentials_exported": false,
+  "retry_authority": false,
+  "review_provider_calls": 0,
+  "review_scope": "read-only implementation and test review at recorded bytes; final signed runtime test and clean combined qualification pending",
+  "reviewed_controls": [
+    "validator accepts exact closed envelope with task and attempt SHA256 identities only",
+    "mkstemp0600 within explicit state directory, bounded payload, flush and fsync, atomic replacement; destination symlink is replaced rather than followed",
+    "no fallback into the coding checkout when explicit state directory is absent",
+    "collector reads bounded regular canonical file without following destination symlink and checks descriptor/path identity before and after read",
+    "collector joins task, status and revision from current task observations and exact attempt hash from failure receipt",
+    "foreign task, attempt or phase is not selected; malformed diagnostics are not promoted",
+    "read and write failures cannot suppress original settlement or final cleanup report",
+    "child-reported router diagnostics remain observation-only and cannot establish provider dispatch"
+  ],
+  "reviewed_tests": [
+    "source-owned actual child preflight failure with database JSON event export absent",
+    "atomic replacement interruption preserves earlier sidecar and cleans temporary file",
+    "destination symlink target preserved",
+    "foreign and malformed binding/authority controls",
+    "collector observes actual nested native path separately from outer planner stderr",
+    "actual signed START/STOP/close collector regression authored without live LLM calls; final rerun pending"
+  ],
+  "schema": "terminal-native-diagnostic-sidecar-independent-review@1",
+  "settlement_authority": false,
+  "sources": {
+    "grok-terminal-diagnostics-20261006": {
+      "head": "4297dc5610395addd4d5f4497a67e05e79befef4",
+      "source_sha256": {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b",
+        "test/api/test_bridge_failure_diagnostics.py": "4ed8288bdde3e80b9d794ed84b628ace4c1589002d81f1862670f245e0640d01"
+      }
+    },
+    "grok-terminal-reporting-20261006": {
+      "head": "6eafda9173a6f9abf1ce46bbbd486f2686a4a51e",
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6b51c66af5c9620210c9966aec561b1440306a90fd7a77bb9fd235be1959c3b1",
+        "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+        "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "89891bf774f3894a156ea65d4658aefd27a587ff6f6839cbc505fc599d3461de",
+        "test/api/test_terminal_failure_observation.py": "970738a6ff06fb0a022d0fd1378a4e2b1fd06a2c1a1093fed876a7fbb532d821",
+        "test/integration/test_terminal_failure_observation.py": "4bde092afdd6db0f906bfc552e4f9693dba65490617172ca5a5ccbb598e733b3"
+      }
+    }
+  }
+}

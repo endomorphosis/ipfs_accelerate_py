@@ -1,0 +1,15 @@
+{
+  "available": true,
+  "container_network_equivalence_claimed": false,
+  "content_length": 28705212,
+  "credential_access": false,
+  "downloaded_asset_bytes": 0,
+  "final_host": "release-assets.githubusercontent.com",
+  "http_status": 200,
+  "probe_method": "HEAD",
+  "provider_calls": 0,
+  "public_asset_url": "https://github.com/astral-sh/python-build-standalone/releases/download/20251217/cpython-3.12.12%2B20251217-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+  "schema": "public-cpython-asset-availability@1",
+  "scope": "host_network_only",
+  "seconds": 0.22300664201611653
+}

@@ -1,0 +1,12 @@
+{
+  "actual_limits_not_yet_observed": true,
+  "containers_launched": 0,
+  "memory_high_requirement": "absent/unlimited or finite>=21474836480; malformed/tighter rejected",
+  "observer_checks_passed": true,
+  "observer_sha256": "7e06cea6fe41084157ee0d41a32fb7392ef6d4b9897bfed10bb8310ef3db085e",
+  "observer_synthetic_checks": 13,
+  "previous_review_sha256": "75f7efb57882e41d8402064ba1b5a9a31f10100f3e424f06bb6b75998f93e39a",
+  "production_source_mutations": 0,
+  "provider_calls": 0,
+  "schema": "grok-explicit20gib-artifact-recipe-review@2"
+}

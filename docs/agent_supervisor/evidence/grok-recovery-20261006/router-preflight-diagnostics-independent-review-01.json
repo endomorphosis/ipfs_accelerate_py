@@ -1,0 +1,50 @@
+{
+  "blocking_findings": [],
+  "completion_authority": false,
+  "development_counts": [
+    {
+      "errors": 0,
+      "failed": 0,
+      "passed": 40,
+      "skipped": 0
+    },
+    {
+      "errors": 0,
+      "failed": 0,
+      "passed": 21,
+      "skipped": 0
+    }
+  ],
+  "development_labels": [
+    "router-preflight-diagnostics-development-01",
+    "router-preflight-diagnostics-development-02"
+  ],
+  "live_provider_qualification": false,
+  "production_changes": false,
+  "provider_calls": 0,
+  "raw_outputs_exported": false,
+  "read_only_review": true,
+  "retry_authority": false,
+  "reviewed_controls": [
+    "closed phase and exception-type enums",
+    "at most four exceptions and twelve selected frames per exception with bounded traceback walking",
+    "exact runtime code metadata; no source, message, argument or arbitrary local serialization",
+    "closed envelope validation; malformed diagnostic fallback preserves exit failure",
+    "preflight failures do not create invocation receipts; real invocation receipts remain separately observed"
+  ],
+  "reviewed_test_controls": [
+    "private canaries and prohibited linecache access",
+    "cyclic/deep exception chains and unknown custom exception names",
+    "invalid arguments, boundary failures and invalid UTF-8 before provider dispatch",
+    "authored provider timeout preserves independent invocation receipt",
+    "closed-shape mutation and fallback controls"
+  ],
+  "schema": "router-preflight-diagnostics-independent-review@1",
+  "settlement_authority": false,
+  "source_commit": "b79159ca24e189c1747eb2544913367ba15f36fa",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "21d9b203cdd7c81781ee17829846e75b38e5fb55d88e9c744ac7d131f46abb11",
+    "test/api/test_router_failure_diagnostics.py": "fdcd9f20d5421404db5db8c02e9ff12ad540895fced29f7c68a561107078116c"
+  },
+  "whole_repository_correctness_claim": false
+}

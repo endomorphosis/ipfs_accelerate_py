@@ -1,0 +1,86 @@
+{
+  "limitations": [
+    "The first probe used the wrong portal-event path and is excluded from qualification.",
+    "The long failing baseline ran while unrelated source files changed; it is development reproduction evidence, not a frozen full-suite qualification.",
+    "The root-loss assertion immediately triggered fixture cleanup, before the observer captured the post-exec argv or later bootstrap rejection.",
+    "The separate native-exec observation demonstrates argv loss without claiming recovery of the original Grok rejection."
+  ],
+  "runs": [
+    {
+      "accelerate_revision": "9ffefe04669c52ff4f51c5ee31962380ed204418",
+      "completed_benchmark_task_claim": false,
+      "datasets_revision": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "exit_code": 1,
+      "junit_counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 0,
+        "skipped": 0
+      },
+      "junit_sha256": "130a2de31140d68486e2304d6e76320cd9f142c61a95108f56f9a4cdd719066b",
+      "label": "timeout-baseline-01",
+      "log_sha256": "716d78434fe5ff7a802e7a329f1dd17066cf9ce585992083e43be20359602e09",
+      "meaning": "excluded_fixture_event_path_error",
+      "provider_calls": 0,
+      "raw_logs_exported": false,
+      "seconds": 90.24138691398548,
+      "source_paths_changed_during_run": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "test/api/test_grok_structured_plan_roundtrip.py"
+      ],
+      "source_unchanged": false
+    },
+    {
+      "accelerate_revision": "9ffefe04669c52ff4f51c5ee31962380ed204418",
+      "completed_benchmark_task_claim": false,
+      "datasets_revision": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "exit_code": 0,
+      "junit_counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 1,
+        "skipped": 0
+      },
+      "junit_sha256": "26d38d2b810136a774ff9fd3592266710c8c2af1674b175e53a5570dc7cde8bb",
+      "label": "timeout-baseline-02",
+      "log_sha256": "516bc111201c791ee4f05409a6fc4c8591a31a30a0f0a94c2ae0f04d5c3db60c",
+      "meaning": "real_timeout_and_replacement_passed_before_watchdog_startup_grace",
+      "provider_calls": 0,
+      "raw_logs_exported": false,
+      "seconds": 48.80539267597487,
+      "source_paths_changed_during_run": [],
+      "source_unchanged": true
+    },
+    {
+      "accelerate_revision": "9ffefe04669c52ff4f51c5ee31962380ed204418",
+      "completed_benchmark_task_claim": false,
+      "datasets_revision": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "exit_code": 1,
+      "junit_counts": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 0,
+        "skipped": 0
+      },
+      "junit_sha256": "a9c32a3b9b6eb85cce213b8d0ba0c48ed7c518e7d395717556e2e9bc45d1483e",
+      "label": "timeout-baseline-03",
+      "log_sha256": "1a1669fdd650ee6ca12b36ee2250e24b694d5f33986f40e51269808453b0fe0f",
+      "meaning": "authenticated_root_disappeared_after_watchdog_source_update_detection",
+      "provider_calls": 0,
+      "raw_logs_exported": false,
+      "seconds": 325.40617675101385,
+      "source_paths_changed_during_run": [
+        "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+        "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+        "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+        "test/api/test_grok_structured_output.py"
+      ],
+      "source_unchanged": false
+    }
+  ],
+  "schema": "authored-coding-timeout-baseline-summary@1"
+}

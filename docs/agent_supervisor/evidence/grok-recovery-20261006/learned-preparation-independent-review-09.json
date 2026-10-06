@@ -1,0 +1,52 @@
+{
+  "actual_index_hydration_observed": false,
+  "actual_neural_retrieval_observed": false,
+  "archive_member_count": 27366,
+  "archive_sha256": "89413ed90097904e4283feb9461bd6253c672956d18b1aa02403db75abd2cb9a",
+  "attempt": "09",
+  "benchmark_result": false,
+  "config_arm_provider_and_resource_profile_match_preparation": true,
+  "config_hash_matches_preparation": true,
+  "config_sha256": "60077a9ded5d47f0617b01d8523c7b7d9a40face1783c1aec6a289ba780b48c9",
+  "container_mutations": 0,
+  "embedding_asset_count": 9,
+  "embedding_asset_inventory_bytes": 67691071,
+  "evidence": {
+    "grok-container/archive-review-09.json": {
+      "bytes": 2313,
+      "sha256": "7b240c1b0b56ff7934dbbb8f131ab4fd6366ae7a45947a86ce634a793d3f0dca"
+    },
+    "grok-container/preparation-review-09.json": {
+      "bytes": 4078,
+      "sha256": "c25f59fbf52a68b02314424e6b8953f8e2f1b97cc3c1fab4d7a120325be3f272"
+    },
+    "grok-container/trial09-preparation-plan-02.json": {
+      "bytes": 7817,
+      "sha256": "ccd1fde8535e878d52aca9932f4508f96724883a2e2e996520da6e7e12a61518"
+    },
+    "publication-stage/qualification-summary-worker-capability-final.json": {
+      "bytes": 726479,
+      "sha256": "1e61adbcfc2fed2050145309cfea3fcbd503e941f5cf3cbff4384428ca8b5afe"
+    }
+  },
+  "full_archive_content_reread_by_this_review": false,
+  "full_archive_verification_report_checked": true,
+  "limitations": [
+    "This independently joins prepared configuration and selected source bytes; the separate streaming archive audit supplies all-member archive verification.",
+    "Preparation does not establish actual embedding inference, successful coding dispatch, task success, or provider billing.",
+    "Retrieval differs from lexical trial08; no matched retrieval performance comparison is claimed."
+  ],
+  "manifest_config_and_agent_revision_match": true,
+  "manifest_sha256": "8746d59ac70b4e66c55354dd485e461ff0c7cca32ef27af9532872da21e5e9b3",
+  "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "provider_calls": 0,
+  "publication_ready": false,
+  "qualified_bindings": true,
+  "review_scope": "read_only_pre_execution_bindings",
+  "runtime_source_hashes_match_commit_count": 12,
+  "schema": "terminal-learned-preparation-independent-review@1",
+  "source_clean_at_review": true,
+  "source_edits": 0,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "task_completion_authority": false
+}

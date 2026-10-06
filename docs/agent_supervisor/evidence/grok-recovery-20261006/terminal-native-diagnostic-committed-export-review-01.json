@@ -1,0 +1,53 @@
+{
+  "artifact_sha256": {
+    "check_fresh_live_inspector.py": "dc316791892d3d90ea474a5f4e8c5207c95cb3cded7923393884271009e846b0",
+    "fresh-live-inspector-safety-review-11.json": "0dfdaf6d58ff4ddb98c4c5a9e03353df21952b384a667f6ccde099314bb77844",
+    "inspect_live_trials.py": "42b8cab4eacc53957e066b411732319540ed0ebac36af285f3d1c87e923c25df"
+  },
+  "blocking_findings": [],
+  "clean_combined_qualification_pending": true,
+  "controlled_trial08_pending": true,
+  "live_provider_calls_in_review": 0,
+  "live_trial07_cause_reconstructed": false,
+  "prior_review_sha256": "372bfd5f94f54452d6407612d390d5657359e7c6554c32613f60adcf5dc69032",
+  "publication_ready": false,
+  "raw_outputs_or_credentials_exported": false,
+  "recorded_development_results": {
+    "native-terminal-sidecar-dev-01": {
+      "failed": 0,
+      "passed": 31
+    },
+    "terminal-failure-observation-dev-01": {
+      "failed": 1,
+      "passed": 68
+    },
+    "terminal-failure-observation-dev-02": {
+      "failed": 0,
+      "passed": 71
+    }
+  },
+  "reviewed_export_controls": [
+    "native observations require exact schema and exact field sets",
+    "producer validator files must equal the independently audited archive source revision before imports",
+    "imported validator locations must match the selected source tree",
+    "bridge observations contain no raw task or attempt identity",
+    "diagnostic provider-dispatch marker stays unknown and all authority flags remain false",
+    "missing old-run diagnostic field stays null; unavailable validation source remains explicit",
+    "closed collection failure preserves unavailable status without fabricating dispatch",
+    "malformed nested body, reason, frame, count and authority injection controls remain rejected"
+  ],
+  "reviewed_sidecar_and_collector_bytes_match_commit": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": true,
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": true,
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": true,
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": true,
+    "test/api/test_bridge_failure_diagnostics.py": true,
+    "test/api/test_terminal_failure_observation.py": true,
+    "test/integration/test_terminal_failure_observation.py": true
+  },
+  "schema": "terminal-native-diagnostic-committed-export-review@1",
+  "signed_native_followup_scope": "authored provider-free preflight failure; exact nested native state; blocked task; STOP and runtime close; original optional event projection absent",
+  "source_clean_at_review": true,
+  "source_commit": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e"
+}

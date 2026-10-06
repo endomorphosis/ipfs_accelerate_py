@@ -1,0 +1,81 @@
+{
+  "actual_cuda_qualification": false,
+  "adding_separate_retrieval_bundle_path_duplicates_uncompressed_model_assets": true,
+  "blocking_findings": [],
+  "committed_bytes_match_development_and_probe": true,
+  "committed_source": "2bb615d917e41c65af2fbca802cb30ae4e3e8b08",
+  "committed_source_clean_at_review": true,
+  "compression_delta_measured": false,
+  "deployment_revision_directory_binding_present": true,
+  "development_counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 52,
+    "skipped": 0
+  },
+  "development_record_not_relabelled_as_clean_run": true,
+  "development_run_label": "retrieval-revision-dev-01",
+  "development_run_was_dirty": true,
+  "development_source_unchanged": true,
+  "existing_source384_snapshot_assets_reused": true,
+  "first_probe": {
+    "global_environment_modified": false,
+    "outcome": "environment_dependency_conflict_before_model_load",
+    "required_tokenizers": "at least 0.21 and below 0.22",
+    "selected_tokenizers_version": "0.23.2",
+    "transformers_version": "4.52.1"
+  },
+  "formal_semantic_correctness_authority": false,
+  "full_benchmark_qualification": false,
+  "generic_memory_reservations_changed": false,
+  "hard_memory_bound_inferred": false,
+  "llm_provider_calls": 0,
+  "model_assets_bytes": 67691071,
+  "model_assets_count": 9,
+  "model_download_calls": 0,
+  "planned_controlled_trial08_retrieval_mode": "lexical-tfidf-symbols@1",
+  "probe_artifacts_sha256": {
+    "local-gte-retrieval-probe-02.json": "3984963a10c92f23760db95daa7cd4bc065caf8df64bd75379970ff6bbb52d60",
+    "local-gte-retrieval-process-01.json": "20eaf994fa9e2dd1cfbaf11c7c7ac09d80ea62f43055cffadb90545b735289b4",
+    "local-gte-retrieval-process-02.json": "4d1969178a8223872dc4e21bc1d15e19365772c81460a4283393385d908786eb",
+    "run_local_gte_retrieval_probe.py": "9c5bb134e51bef8ee0b8c2eff5f7fa04bbef82a9eb3fe22a05b02a684d190ed8",
+    "run_local_gte_retrieval_probe_02.py": "3c27e90e2a05ea00d6c44f4fdcae8de28443d2a9a8172af21c20670d7240d3cd"
+  },
+  "production_changes_in_this_review": false,
+  "quality_advantage": null,
+  "raw_corpus_model_outputs_or_credentials_exported": false,
+  "retrieval_change_merged_into_trial_source": false,
+  "schema": "local-gte-retrieval-revision-review@1",
+  "second_probe": {
+    "canary_disposition": "passed",
+    "device": "cpu",
+    "dimensions": 384,
+    "ducklake_projected": true,
+    "embedding_input": "qualified symbol names only",
+    "existing_environment_tokenizers_version": "0.21.4",
+    "local_model_calls": 3,
+    "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "native_ast_rows_replayed": 2,
+    "outcome": "qualified",
+    "parameter_bytes": 133440000,
+    "parameter_dtypes": [
+      "torch.float32"
+    ],
+    "peak_process_rss_kib": 1090304,
+    "persisted_index_reopened_and_equal": true,
+    "process_seconds": 4.426229664997663,
+    "qualification_seconds": 3.43307500903029,
+    "symbols": 2,
+    "vector_lane": "enabled"
+  },
+  "semantic_authority": false,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "f272017aef56abb2dd3d5ab2cea75e3db2443d7633a64f928470b4b903767434",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "3628688df2ed2a052253ac1f95b730fa3172d9f1e0161347b4e716a409ac39b3",
+    "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py": "c359dd201fc5ea36f0ef0cff22f7101138570ded450915e8fd596a339bd0e1dd",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_retrieval_revision.py": "d71617c8aa0f417c9c6c744b6c71619fec2b4ac579770dae6b97b27fc5950ce7"
+  },
+  "token_savings": null,
+  "training_steps": 0,
+  "trial07_retrieval_mode": "lexical-tfidf-symbols@1"
+}

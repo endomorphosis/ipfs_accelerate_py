@@ -1,0 +1,52 @@
+{
+  "causal_limits": {
+    "exact_mismatched_marker": "unknown",
+    "exact_process_role": "unknown",
+    "full_lifecycle_exception_traceback_retained": false,
+    "pid_reuse": "not_established",
+    "process_exit_to_zombie_or_exec_transition": "not_established_for_historical_trial",
+    "source_matching_failure_branch": "LinuxProcessAdapter._identity marker validation"
+  },
+  "evidence": {
+    "existing_source_bound_diagnosis": {
+      "bytes": 2893,
+      "sha256": "8eea5ebf590eee396d7a74578c867ccece3a1febba232fdda03426378f6ec93c"
+    },
+    "later_closed_observation": {
+      "bytes": 1690,
+      "sha256": "9de430c9d19c3eb0954f6895fc3a5d278e86cedce267f0f2ff2a6eae57e60375"
+    },
+    "retained_report": {
+      "bytes": 56170,
+      "sha256": "62cda437876246440a9705f8b626f1dd7f6e8ea46ced210294d5df3b25bcf2fc"
+    }
+  },
+  "production_source_changes": 0,
+  "raw_environment_argv_model_task_verifier_or_credential_data_exported": false,
+  "recommended_regressions": [
+    "real owned child exit between process stat and environment read",
+    "stable live foreign marker remains rejected",
+    "PID birth reuse remains rejected",
+    "launched root identity persisted before descendant snapshot failure",
+    "signed recovery stops only independently witnessed owned processes",
+    "no unknown PID adoption or completion authority from process metadata"
+  ],
+  "retained_identity_evidence": {
+    "daemon_pid_differs_between_observations": true,
+    "later_capture_restart_count": 0,
+    "mismatch_marker_names_or_values_retained": false,
+    "mismatch_parent_or_argv_retained": false,
+    "mismatch_pid_differs_from_later_daemon": true,
+    "mismatch_pid_differs_from_retained_initial_daemon": true,
+    "mismatch_pid_differs_from_retained_supervisor": true,
+    "mismatch_process_birth_record_retained": false,
+    "native_diagnostic_exception_type_count": 0,
+    "native_diagnostic_traceback_frame_count": 0,
+    "owner_read_succeeded_in_later_capture": true,
+    "same_supervisor_pid_across_observations": true
+  },
+  "review_provider_calls": 0,
+  "schema": "terminal-lifecycle-retained-evidence-review@1",
+  "source_revision": "0a8309047c4e2d8f780c470a02a8453cfe01ceec",
+  "trial_name": "grok-tune-mjcf-06"
+}

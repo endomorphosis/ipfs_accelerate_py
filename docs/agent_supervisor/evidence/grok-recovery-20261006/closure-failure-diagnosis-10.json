@@ -1,0 +1,34 @@
+{
+  "close_error_can_mask_stop_error_in_current_finally_structure": true,
+  "completion_authority": false,
+  "container_removed": true,
+  "driver_stderr_bytes": 0,
+  "driver_task_completed": false,
+  "exact_exception_type": "RuntimeError",
+  "exact_original_stop_cause_established": false,
+  "native_exception_types_retained": 0,
+  "native_task_status": "completed",
+  "native_traceback_frames_retained": 0,
+  "official_reward": 1.0,
+  "performance_advantage_claimed": false,
+  "primary_stop_exception_available": false,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "reason_code": "live_launched_children_prevent_custody_release",
+  "repair_or_retry_authority": false,
+  "retained_report": {
+    "bytes": 102647,
+    "path": "grok-tune-mjcf-10/jobs/supervisor-full-tune-mjcf/tune-mjcf__sm8cN4Q/agent/supervisor-result.json",
+    "sha256": "9d360de345d5a231c8d445e507c3cfbe596d0c8e614e1665e5821996c2108eda"
+  },
+  "runtime_close_succeeded": false,
+  "schema": "terminal-native-closure-failure-diagnosis@1",
+  "source_binding": {
+    "line": 569,
+    "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+    "sha256": "3b560f687fb26dd58cc403e7f237346501811f9c373b287abc8d0061184c2c35"
+  },
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "source_owned_literal": "stop every live launched child before releasing runtime custody",
+  "stop_receipt_available": false,
+  "trial_name": "grok-tune-mjcf-10"
+}

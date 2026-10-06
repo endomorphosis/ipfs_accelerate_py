@@ -1,0 +1,75 @@
+{
+  "actual_resource_limits_observed": null,
+  "agent_execution_started": false,
+  "attempt": "09",
+  "coding_observed": null,
+  "container_absence_independently_requeried_by_this_review": false,
+  "container_mutations": 0,
+  "evidence": {
+    "grok-container/archive-review-09.json": {
+      "bytes": 2313,
+      "sha256": "7b240c1b0b56ff7934dbbb8f131ab4fd6366ae7a45947a86ce634a793d3f0dca"
+    },
+    "grok-container/preparation-review-09.json": {
+      "bytes": 4078,
+      "sha256": "c25f59fbf52a68b02314424e6b8953f8e2f1b97cc3c1fab4d7a120325be3f272"
+    },
+    "grok-container/resource-observation-09.json": {
+      "bytes": 687,
+      "sha256": "5026d1a4eeab3ae0347181743531fa0b8f8402157624b2cdd2db1fcbb60f8db2"
+    },
+    "indexed-path-observation-09.json": {
+      "bytes": 789,
+      "sha256": "234835c9603b32b436decae1f86854956bab0543f1070e8d56e9e33b9f837f62"
+    },
+    "live-trial-summary-09.json": {
+      "bytes": 6145,
+      "sha256": "5f0089bfce6fc159cd8b4407f74a375a4dc58bec0bf3115904056aa6eaff096c"
+    },
+    "qualification/learned-preparation-independent-review-09.json": {
+      "bytes": 2399,
+      "sha256": "2cf56a7b9a02ef7e0b4384936943dfee6e52b622d34fcba32dea1a18da7b0cdd"
+    },
+    "qualification/observe_trial09_setup.py": {
+      "bytes": 6812,
+      "sha256": "3e5b75bca272968adcfc1e3f2a779450594e82cb04b99eeea57ab8eb9bb1cc86"
+    },
+    "setup-failure-observation-09.json": {
+      "bytes": 2225,
+      "sha256": "124ede85564776059736fa2dad4b0afdff45e2ca34b1b8ceffe1bc49c254de08"
+    },
+    "trial-closure-observation-09.json": {
+      "bytes": 1369,
+      "sha256": "ce7cdbd5b4be0e626e08054a673d0aac5e7e16f771d8e0e6eed7a861f7bbd56c"
+    }
+  },
+  "index_hydration_observed": null,
+  "learned_retrieval_executed": null,
+  "limitations": [
+    "The prepared full arm selected neural GTE retrieval, but setup failed before the driver; configuration is not inference evidence.",
+    "The retained log establishes an HTTP 500 while downloading the pinned CPython asset; it does not identify the failing network intermediary or prove an intrinsic runtime defect.",
+    "The container was absent at the closure producer query; native START/STOP/runtime closure and actual cgroup limits were not observed.",
+    "Official verifier score, task completion, usage totals and billing remain unknown.",
+    "The ninth attempted configuration differs from lexical trial08; no matched performance or token savings claim."
+  ],
+  "native_start_stop_close_observed": null,
+  "observed_setup_reason": "runtime_python_download_http_500",
+  "official_reward": null,
+  "original_completed_receipts_overwritten": false,
+  "outer_recipe_success_not_task_success": true,
+  "owned_container_absence_reported": true,
+  "planning_observed": null,
+  "provider_calls": 0,
+  "provider_token_usage": null,
+  "publication_ready": false,
+  "raw_logs_task_model_verifier_or_credentials_exported": false,
+  "retained_runtime_install_log_signals_revalidated": true,
+  "reviewed_closed_exports_consistent": true,
+  "reward_basis": "unknown",
+  "schema": "terminal-trial-publication-independent-review@1",
+  "source384_inference_observed": null,
+  "source_edits": 0,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "source_owned_runtime_exception_revalidated": true,
+  "source_unchanged_report_verified": true
+}

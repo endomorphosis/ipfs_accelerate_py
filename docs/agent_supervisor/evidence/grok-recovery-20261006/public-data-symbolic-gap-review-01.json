@@ -1,0 +1,109 @@
+{
+  "actions": {
+    "hidden_benchmark_reads": 0,
+    "model_calls": 0,
+    "production_changes": 0,
+    "test_runs": 0
+  },
+  "current_route": {
+    "data_dependency_reason": "doctor_task_data_contract_unavailable",
+    "data_profiles_admitted": true,
+    "generic_doctor_workflows": [
+      "closed-local-keyword-rename@1",
+      "closed-imported-alias-call@1"
+    ],
+    "generic_effect": "modify existing Python",
+    "structural_validators_available": true,
+    "whole_task_behavior_verified": false
+  },
+  "families": [
+    {
+      "existing": "Strict bounded object records, duplicate-key rejection, nonfinite-number rejection.",
+      "media_type": "application/x-ndjson",
+      "missing": "Reviewed field/schema mapping and exact input-to-output record correspondence, ordering/cardinality/error rules.",
+      "smallest_integration": "Finite explicitly reviewed scalar field projection with deterministic candidate generation and separate correspondence checker; unsupported types remain residual."
+    },
+    {
+      "existing": "Bounded well-formed XML, DTD/entity rejection.",
+      "media_type": "application/xml",
+      "missing": "Typed domain semantics, permitted transformations, references and numerical behavior. MJCF optimization also needs independently specified simulator objective, tolerances, bounds and numerical assumptions.",
+      "smallest_integration": "Reviewed bounded XML selector/attribute edits with exact untouched-tree preservation checks; this only proves the declared transformation, not MJCF fitness."
+    },
+    {
+      "existing": "Calendar framing, VERSION/PRODID, balanced components.",
+      "media_type": "text/calendar",
+      "missing": "Date/time validity, timezone/recurrence interpretation, event identity, ordering/conflict rules.",
+      "smallest_integration": "Explicit finite UTC event/interval contract plus independent order/nonoverlap/correspondence checker before adding timezone or recurrence semantics."
+    }
+  ],
+  "limits": [
+    "FINITE_ADAPTER and SCHEMA_PROJECTION enum members are analytical operator kinds, not evidence of an integrated Terminal data repair.",
+    "Current codebase integer-family lowering is a narrow Python integer-offset profile and does not cover XML physics or calendar recurrence.",
+    "Software-contract canonical scalars exclude floats; MJCF numeric semantics need an explicit reviewed representation/model.",
+    "Legal canonical calendar helper handles explicit Gregorian day ordinals; it is not an iCalendar timezone/recurrence engine.",
+    "Parsed XML, structured output, successful lake compilation, installed provers or cached/model-generated formulae do not establish independent task correctness."
+  ],
+  "observed_at_ms": 1791279957373,
+  "recommended_next_integration": "Start with a finite NDJSON field-projection contract and independent correspondence checker using authored fixtures. Bind reviewed intent and exact data hashes; only then expose one candidate operator through the existing Doctor workflow. Retain residual fallback for uncovered tasks.",
+  "reusable_owners": [
+    "Software-contract typed bounded predicates and declared/extracted/witnessed/inferred provenance.",
+    "Canonical proof cache binding to source, snapshot, contract, compiler, assumptions, bounds and checker, requiring fresh native checks.",
+    "Existing candidate staging, signed task admission, source-current fences, validation and rollback.",
+    "Native Lean/SMT/TLA runner adapters after a new reviewed data-to-logic lowering exists.",
+    "Adversarial data/schema mutation catalogue for negative validation cases; its declarations alone are not data repair implementations."
+  ],
+  "schema": "terminal-data-symbolic-gap-review@1",
+  "scope": "Repository implementation and reviewed public catalog shapes only; no benchmark hidden inputs or solutions.",
+  "source_bindings": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "repository": "accelerate",
+      "sha256": "537665896a3664c7b917650e49d2cad539dfe484bc1d82406030c1f39e81d6e3"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "repository": "accelerate",
+      "sha256": "1b2be0ccc92ff1fd11b06f46f431d26c68b681a7cb53dd3f301bf4248da8f650"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py",
+      "repository": "accelerate",
+      "sha256": "1e5b51b758fa20e98bcf1540e5c3146400ef5ed0f9ae219a682db8da5c2dabc6"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_contracts.py",
+      "repository": "accelerate",
+      "sha256": "1ccbfc1e4b799f7579d4b7b2bb6db41102cbd376e063a6e32e7981b50b82e432"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/contracts.py",
+      "repository": "datasets",
+      "sha256": "23066fc0877eefe2fedcf58369497124299a1748648723616a76b16ebb53a3a8"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_property_cache.py",
+      "repository": "datasets",
+      "sha256": "d8d3614e435607de9ce1bb7b910af150dfbf6359dcebd3778593e411c3f6cbf1"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+      "repository": "datasets",
+      "sha256": "a059472331b2fbc0b5b0778bbd311912dffefb0d8f6c6557c4978070fc89e283"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_family_execution.py",
+      "repository": "datasets",
+      "sha256": "e245bd97d5e6b816cbeaf438a9c4c24d9e0ed73c423046a8f6cf72aaaea02475"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/software_contracts/adversarial_assurance/operators/data_schema_interface.py",
+      "repository": "datasets",
+      "sha256": "67489dcec7f75c9200fa2979579a941b05c005a5378afbaaf4d4fe201212bce3"
+    },
+    {
+      "path": "ipfs_datasets_py/logic/autoformal/legal_canonical_calendar.py",
+      "repository": "datasets",
+      "sha256": "6e5275dbd1f15d58bc7c0e1480b2af68fae11b08c03a8fe6a1c0e3d97c959501"
+    }
+  ]
+}

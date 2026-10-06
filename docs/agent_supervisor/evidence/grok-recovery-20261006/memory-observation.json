@@ -1,0 +1,101 @@
+{
+  "accelerate_head": "47281b5b94feed197b27c8ea4fd0504225337a54",
+  "benchmark_task_completed": false,
+  "child_memory_mb": 4096,
+  "completion_authority": false,
+  "config_sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5",
+  "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "fixture": "authored tune-mjcf catalog shape with one Python function and minimal XML",
+  "fresh_process_per_phase": true,
+  "initial_and_replay_parent_memory_mb": 6144,
+  "limitations": [
+    "RSS includes imports; process-tree RSS may double-count shared resident pages",
+    "20ms samples may miss transients; Linux ru_maxrss records per-process maxima",
+    "Replay retains checkpoint validation, NumPy allocation and immutable artifact reconstruction",
+    "One small authored corpus cannot justify reducing generic allowed memory envelopes"
+  ],
+  "memory_guarantee_or_general_upper_bound": false,
+  "model_or_source_bodies_exported": false,
+  "official_reward": null,
+  "os_file_cache_reset": false,
+  "phases": {
+    "prepare": {
+      "exit_code": 0,
+      "phase_receipt": {
+        "active_leases_after": 0,
+        "admission_memory_bounds_unchanged": true,
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "child_process_peak_rss_kib": 1045328,
+        "completion_authority": false,
+        "inference_artifact_bytes": 48336,
+        "native_execution": {
+          "inference_executed": true,
+          "model_loads": 1,
+          "native_worker_executed": true
+        },
+        "phase": "prepare",
+        "process_peak_rss_kib": 290404,
+        "provider_calls": 0,
+        "qualified": true,
+        "scheduler_headroom_mb": 24922,
+        "scheduler_total_memory_mb": 99688,
+        "schema": "source384-native-memory-phase@1",
+        "seconds": 9.497003575030249,
+        "source_currentness_verified": true,
+        "source_files": 5,
+        "waiting_requests_after": 0
+      },
+      "private_log_exported": false,
+      "rss_samples": 392,
+      "sample_interval_seconds": 0.02,
+      "sampled_process_tree_peak_rss_bytes": 1355210752,
+      "timed_out": false,
+      "wall_seconds": 10.508542047988158
+    },
+    "replay": {
+      "exit_code": 0,
+      "phase_receipt": {
+        "active_leases_after": 0,
+        "admission_memory_bounds_unchanged": true,
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "child_process_peak_rss_kib": 255528,
+        "completion_authority": false,
+        "inference_artifact_bytes": 48336,
+        "native_execution": {
+          "checkpoint_validation_and_array_allocations_still_run": true,
+          "forward_guard_installed": true,
+          "new_neural_forward_calls": 0,
+          "new_numerical_worker_calls": 0
+        },
+        "phase": "replay",
+        "process_peak_rss_kib": 256840,
+        "provider_calls": 0,
+        "qualified": true,
+        "scheduler_headroom_mb": 24922,
+        "scheduler_total_memory_mb": 99688,
+        "schema": "source384-native-memory-phase@1",
+        "seconds": 2.112380802980624,
+        "source_currentness_verified": true,
+        "source_files": 5,
+        "waiting_requests_after": 0
+      },
+      "private_log_exported": false,
+      "rss_samples": 108,
+      "sample_interval_seconds": 0.02,
+      "sampled_process_tree_peak_rss_bytes": 263458816,
+      "timed_out": false,
+      "wall_seconds": 3.048815842019394
+    }
+  },
+  "provider_calls": 0,
+  "qualified": true,
+  "relevant_source_unchanged": true,
+  "runs_in_benchmark_container": false,
+  "schema": "source384-cold-replay-memory-observation@1",
+  "script_sha256": "d90719c48fbace5c92f8079e0e5d99ec0ba55e8545472e661916e32be57368c8",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_datasets_py/logic/software_contracts/codebase_source_384.py": "f00ff90983770e0e9ac32d8a16c9654059630cfb2880e00bf891902fafe4bb03",
+    "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e"
+  }
+}

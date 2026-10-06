@@ -1,0 +1,34 @@
+{
+  "bound_execute_receipt": {
+    "bytes": 779,
+    "sha256": "94c26ac98d95eabe5e3f774e311c80989ecb176439372081ac84a92ea901b113"
+  },
+  "bound_live_summary": {
+    "bytes": 12151,
+    "sha256": "226ad978ab8c618a8f929686ca76fc8e83aba93167d9ef017d23a53619f3cfac"
+  },
+  "completion_observed": false,
+  "container_presence_query_exit": 0,
+  "exact_owned_container_present_after_cleanup": false,
+  "execution_exit_code": 0,
+  "execution_seconds": 278.92076218203874,
+  "native_start_status": "succeeded",
+  "native_stop_status": "succeeded",
+  "official_reward": 0.0,
+  "performance_advantage_claimed": false,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "remaining_processes": 0,
+  "runtime_close_attempted": true,
+  "runtime_close_succeeded": true,
+  "schema": "terminal-grok-trial-closure-observation@1",
+  "source_clean_after": true,
+  "source_revisions": {
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89"
+  },
+  "source_unchanged": true,
+  "trial_name": "grok-tune-mjcf-07",
+  "usage_complete_claimed": false,
+  "worker_cleanup_returncode": 0
+}

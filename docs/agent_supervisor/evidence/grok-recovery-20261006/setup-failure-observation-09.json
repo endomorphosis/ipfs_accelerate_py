@@ -1,0 +1,57 @@
+{
+  "agent_execution_started": false,
+  "closed_signals": {
+    "cpython_3_12_12_linux_aarch64_install_failed": true,
+    "download_failed_after_three_retries": true,
+    "http_500_internal_server_error": true,
+    "uv_0_9_24_installed": true
+  },
+  "completion_authority": false,
+  "driver_report_available": false,
+  "evidence": {
+    "execute_receipt": {
+      "bytes": 778,
+      "path": "grok-tune-mjcf-09-execute-exit.json",
+      "sha256": "225dab10885ff2a14f0b2618fc2ba5debc8d63ca31ca532d8eaf9266e4efeb58"
+    },
+    "installation_log": {
+      "bytes": 925,
+      "path": "grok-tune-mjcf-09/jobs/supervisor-full-tune-mjcf/tune-mjcf__ZbNJX2W/agent/deployment/python-runtime-install.log",
+      "sha256": "f0f34494e7aacba04030c3c17954423ee0851a4d79e4ebe5a53990d700e6c9d5"
+    },
+    "live_summary": {
+      "bytes": 6145,
+      "path": "live-trial-summary-09.json",
+      "sha256": "5f0089bfce6fc159cd8b4407f74a375a4dc58bec0bf3115904056aa6eaff096c"
+    },
+    "native_result": {
+      "bytes": 6510,
+      "path": "grok-tune-mjcf-09/jobs/supervisor-full-tune-mjcf/tune-mjcf__ZbNJX2W/result.json",
+      "sha256": "da9e77b11e7babc2b5c474b4569b646ea6a64005e4d52caff5625949c0ebef4a"
+    }
+  },
+  "exact_source_owned_exception_matches": true,
+  "exception_type": "RuntimeError",
+  "learned_retrieval_executed": null,
+  "learned_retrieval_selected": true,
+  "missing_usage_is_unknown": true,
+  "official_reward": null,
+  "original_verifier_result_available": false,
+  "outer_recipe_exit_zero_is_task_success": false,
+  "performance_advantage_claimed": false,
+  "phase": "agent_deployment",
+  "planning_observed": null,
+  "provider_usage": null,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "reason_code": "runtime_python_download_http_500",
+  "schema": "terminal-grok-setup-failure-observation@1",
+  "source384_inference_observed": null,
+  "source_binding": {
+    "committed_source_matches": true,
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "1707be47142ec38097ad366c3353402236e2959998dbbdd1e1b961cf29f26933"
+  },
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "step": "python-runtime-install",
+  "trial_name": "grok-tune-mjcf-09"
+}

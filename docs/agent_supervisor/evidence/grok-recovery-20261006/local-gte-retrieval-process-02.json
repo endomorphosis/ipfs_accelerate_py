@@ -1,0 +1,17 @@
+{
+  "cpu_limit_seconds": 60,
+  "exit_code": 0,
+  "log_sha256": "4ed079b9b1b1e8c496de7fc0161c60ad119408c08cf83fd71e7c6de080e63b34",
+  "provider_calls": 0,
+  "raw_output_exported": false,
+  "schema": "local-gte-retrieval-process-boundary@1",
+  "seconds": 4.426229664997663,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "f272017aef56abb2dd3d5ab2cea75e3db2443d7633a64f928470b4b903767434",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "3628688df2ed2a052253ac1f95b730fa3172d9f1e0161347b4e716a409ac39b3",
+    "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py": "c359dd201fc5ea36f0ef0cff22f7101138570ded450915e8fd596a339bd0e1dd",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_retrieval_revision.py": "d71617c8aa0f417c9c6c744b6c71619fec2b4ac579770dae6b97b27fc5950ce7"
+  },
+  "source_unchanged": true,
+  "wall_timeout_seconds": 90
+}

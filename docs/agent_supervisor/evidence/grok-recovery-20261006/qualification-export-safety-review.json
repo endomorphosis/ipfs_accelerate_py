@@ -1,0 +1,23 @@
+{
+  "checks": [
+    "capture_and_command_credentials_omitted",
+    "repeated_cases_remain_per_run_no_sum",
+    "duplicate_labels_rejected",
+    "path_escape_rejected",
+    "source_changed_preserves_both_snapshots",
+    "false_source_unchanged_claim_rejected",
+    "collection_error_preserved_without_capture",
+    "xml_hash_drift_rejected",
+    "declared_count_disagreement_rejected",
+    "invalid_seconds_rejected",
+    "invalid_exit_code_rejected",
+    "invalid_xml_sha256_rejected",
+    "invalid_log_sha256_rejected",
+    "noncanonical_source_path_rejected"
+  ],
+  "exporter_sha256": "ce2d1bf35a352dadf684ebde8abbd65b40570a8e9c11ffc84daa6bbfef206bf2",
+  "passed": 14,
+  "production_source_changed": false,
+  "provider_calls": 0,
+  "schema": "grok-qualification-export-safety-review@1"
+}

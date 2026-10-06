@@ -1,0 +1,28 @@
+{
+  "actual_container_limits_not_yet_observed": true,
+  "checks": {
+    "explicit20gib_only_profile": true,
+    "fallback_disabled": true,
+    "independent_archive_review_required": true,
+    "no_same_resource_advantage_claim": true,
+    "observer_binds_exact_owned_name": true,
+    "observer_does_not_request_full_inspect_or_environment": true,
+    "observer_requires_effective_memory_and_cpu": true,
+    "observer_syntax_valid": true,
+    "only_declared_resource_and_observation_differences": true,
+    "original_recipe_hash_preserved": true,
+    "recipe_syntax_valid": true,
+    "timers_unchanged": true
+  },
+  "containers_launched": 0,
+  "current_source_qualification_required_before_execution": true,
+  "file_sha256": {
+    "grok-container/observe_20gib_resources.py": "b3bd3d6740078814587b54fdad05d54d1b50745e10fcf36f12db4638130363fd",
+    "grok-container/recipes/run_fresh_grok.py": "d0319243f1de93d457b42561baaa6d2f890ea2b40bf7ab32804b4e1a91283861",
+    "grok-container/recipes/run_fresh_grok_20gib.py": "a1a31fafe3c5153d108e5105c2f1b55a9a56d9587edf4ef42ce6b3c8f57cf142"
+  },
+  "passed": true,
+  "provider_calls": 0,
+  "schema": "grok-explicit20gib-artifact-recipe-review@1",
+  "source_mutations": 0
+}

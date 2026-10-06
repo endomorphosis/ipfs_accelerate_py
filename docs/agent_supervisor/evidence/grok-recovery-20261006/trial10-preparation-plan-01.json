@@ -1,0 +1,216 @@
+{
+  "archive_audit_argv_template": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/review_archive.py",
+    "--expected-source-head",
+    "b966623d3de7457b4139e7d9235a5976f275dd46",
+    "--bundle-attempt",
+    "09"
+  ],
+  "archive_audit_environment": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006:/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "attempt": "10",
+  "closed_start_cleanup_export_supported": true,
+  "containers_launched": 0,
+  "cross_provider_fallback": false,
+  "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "embedding_asset_download_calls": 0,
+  "embedding_training_steps": 0,
+  "gates": [
+    "root supplies exact clean capability-guard/shared-worker-budget/learned-retrieval source revision",
+    "final XML and source-unchanged receipt verified; offline six-case worker comparison qualified",
+    "fresh archive full SHA and all regular members match clean P/D/K",
+    "public task profile matches unchanged08 profile; learned revision transported manifest through setup",
+    "exact owned container matches prepared profile and actual20GiB/max/high/5CPU",
+    "one authorized trial only",
+    "official original verifier score reported without inferred task completion",
+    "native STOP and custody closure observed separately from container teardown"
+  ],
+  "indexed_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/qualification/export_indexed_path.py",
+    "--attempt",
+    "10"
+  ],
+  "inspector_safety_review": "qualification/fresh-live-inspector-safety-review-12.json",
+  "kit_head": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+  "native_failure_observation_export_supported": true,
+  "observer_orchestration": "bounded_exact_trial_directory_to_exact_docker_name_and_full_CID_before_agent_handoff",
+  "preparation_review_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/review_reused_learned_preparation.py",
+    "--attempt",
+    "10",
+    "--bundle-attempt",
+    "09",
+    "--expected-source-head",
+    "b966623d3de7457b4139e7d9235a5976f275dd46"
+  ],
+  "prepared_review_binding": {
+    "path": "grok-container/preparation-review-10.json",
+    "sha256": "f82ce02d0a3e54eadfb87213fcd55e693ce6fed0d23c942d915fe3c6b166258c"
+  },
+  "previous_attempt_outcome": "agent_setup_runtime_python_download_http_500_no_score",
+  "previous_completed_attempt": "09",
+  "previous_plan_sha256": "fa4869084c9610d52aa92c106a12312f5e8f58cd2b4cf9d5c04dc1d424031251",
+  "previous_retrieval_mode": "lexical-tfidf-symbols@1",
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "provider_resource_and_time_settings_same_as_trial08": true,
+  "provider_resource_and_time_settings_same_as_trial09": true,
+  "readiness_review_only": false,
+  "resource_observer_argv_template": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/observe_coding600_resources.py",
+    "--container-id",
+    "EXACT_OWNED_CONTAINER_ID_REQUIRED",
+    "--attempt",
+    "10",
+    "--resource-profile",
+    "source384-5cpu-20gib-coding600@1"
+  ],
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "resources": {
+    "cleanup_seconds": 60,
+    "coding_timeout_cap_seconds": 600,
+    "coding_tools": 6,
+    "coding_watchdog_cap_seconds": 660,
+    "cpus": 5,
+    "driver_seconds": 900,
+    "memory_bytes": 21474836480,
+    "planning_seconds": 180,
+    "planning_tools": 0,
+    "remaining_work_reserve_seconds": 25,
+    "work_seconds": 840
+  },
+  "retrieval_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "retrieval_mode": "local-safetensors-symbols@1",
+  "retry_basis": {
+    "path": "grok-container/runtime-python-availability-09-01.json",
+    "scope": "host_HEAD_only_not_container_success"
+  },
+  "reused_archive_attempt": "09",
+  "reused_archive_sha256": "89413ed90097904e4283feb9461bd6253c672956d18b1aa02403db75abd2cb9a",
+  "reused_reviewed_artifacts": {
+    "export_indexed_path": {
+      "bytes": 10936,
+      "path": "qualification/export_indexed_path.py",
+      "sha256": "f964c3549a6f79c68014a784709481c5349a33c7e5c3188fe03b2fda6ee19973"
+    },
+    "inspect_live_trials": {
+      "bytes": 36868,
+      "path": "qualification/inspect_live_trials.py",
+      "sha256": "42b8cab4eacc53957e066b411732319540ed0ebac36af285f3d1c87e923c25df"
+    },
+    "monitor_closed_tools": {
+      "bytes": 4615,
+      "path": "grok-container/monitor_closed_tools.py",
+      "sha256": "590e68cccd96505b06e3203ebcdd5f42292715c7783bedb57b2272120ea2489f"
+    },
+    "observe_coding600_resources": {
+      "bytes": 5923,
+      "path": "grok-container/observe_coding600_resources.py",
+      "sha256": "b7ddd2f07b9bf33745a31b2cb68ca6e0ff8ce18d2831b4d4c90a49575e8f9463"
+    },
+    "review_archive": {
+      "bytes": 8716,
+      "path": "grok-container/recipes/review_archive.py",
+      "sha256": "1391da75fc3de497d811e37f0499bfa9df1aaaceafb8de18e62586836d902633"
+    },
+    "run_fresh_grok_coding600": {
+      "bytes": 10624,
+      "path": "grok-container/recipes/run_fresh_grok_learned_coding600.py",
+      "sha256": "8a3c1eb77aa3644d954ed9c7a324f2087c5da4f3e3c126b107020b84ab66dc84"
+    }
+  },
+  "same_budget_performance_advantage_claimed": false,
+  "same_index_configuration_as09": true,
+  "same_index_configuration_performance_comparison_claim": false,
+  "schema": "terminal-fresh-trial-preparation-plan@1",
+  "source384_checkpoint_inference_separate_from_retrieval": true,
+  "source_changes": 0,
+  "source_checkout": "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006",
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "source_head_status": "clean_frozen_combined197_qualified",
+  "stage_commands": [
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "profile",
+        "--expected-source-head",
+        "b966623d3de7457b4139e7d9235a5976f275dd46",
+        "--bundle-attempt",
+        "09",
+        "--trial-attempt",
+        "10",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": false,
+      "provider_calls": 0,
+      "stage": "profile"
+    },
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "prepare",
+        "--expected-source-head",
+        "b966623d3de7457b4139e7d9235a5976f275dd46",
+        "--bundle-attempt",
+        "09",
+        "--trial-attempt",
+        "10",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": false,
+      "provider_calls": 0,
+      "stage": "prepare"
+    },
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "execute",
+        "--expected-source-head",
+        "b966623d3de7457b4139e7d9235a5976f275dd46",
+        "--bundle-attempt",
+        "09",
+        "--trial-attempt",
+        "10",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": false,
+      "provider_calls": null,
+      "stage": "execute"
+    }
+  ],
+  "stages_executed": [
+    "profile",
+    "prepare"
+  ],
+  "summary_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/qualification/inspect_live_trials.py",
+    "--trial-name",
+    "grok-tune-mjcf-10",
+    "--require-trial-name",
+    "grok-tune-mjcf-10",
+    "--output",
+    "live-trial-summary-10.json"
+  ],
+  "task": "tune-mjcf"
+}

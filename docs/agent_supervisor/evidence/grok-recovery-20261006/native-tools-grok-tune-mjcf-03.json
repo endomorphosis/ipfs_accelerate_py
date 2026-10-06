@@ -1,0 +1,54 @@
+{
+  "checks": 44,
+  "container_mutations": 0,
+  "error_type": null,
+  "finished_utc": "2026-10-06T08:53:56Z",
+  "last_observation": {
+    "advertised_tool_count_frequencies": {},
+    "bounded_scan_truncated": false,
+    "credential_files_read": false,
+    "native_json_records": 0,
+    "native_log_files": 0,
+    "phase_markers": {
+      "admission.json": false,
+      "context-result.json": false,
+      "planning-result.json": false
+    },
+    "provider_calls": 0,
+    "raw_logs_exported": false,
+    "tool_outcome_counts": {}
+  },
+  "missing_native_logs_are_unknown": true,
+  "observation_completeness": "last_successful_bounded_snapshot_before_container_unavailable",
+  "observation_windows": [
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {},
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 0,
+        "native_log_files": 0,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 0.08097130502574146
+    }
+  ],
+  "phase_interpretation": "Marker existence and native advertised tool counts are observations; they confer no START or task completion claim.",
+  "provider_calls": 0,
+  "raw_logs_exported": false,
+  "raw_model_source_or_credential_data_exported": false,
+  "schema": "grok-native-tool-observation@1",
+  "seconds": 132.58741642499808,
+  "started_utc": "2026-10-06T08:51:43Z",
+  "status": "container_unavailable",
+  "task_completion_authority": false,
+  "trial_name": "grok-tune-mjcf-03",
+  "windows_omitted": 0
+}

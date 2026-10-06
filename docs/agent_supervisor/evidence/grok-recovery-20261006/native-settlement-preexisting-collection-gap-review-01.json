@@ -1,0 +1,112 @@
+{
+  "active_regression_scope": [
+    {
+      "covers": "Existing protected active/incident fences block rearm; missing or changed binding cannot act as clearance.",
+      "equivalence": "Narrow current guard coverage only; not equivalent to the absent automatic-clearance API.",
+      "target": "test/api/test_agent_supervisor_database_portal_bridge.py::test_protected_failure_rearm_waits_for_native_fence_clearance"
+    },
+    {
+      "covers": "Exact claimed-task failure disposition, operator changes, live claim retention, failure-intent replay.",
+      "equivalence": "Related active owner path; does not qualify the removed candidate closure route.",
+      "target": "test/api/test_agent_supervisor_database_portal_failure.py"
+    },
+    {
+      "covers": "New waited-process custody, one-use bridge capability, unknown outcome refusal, callback CAS, pooled release evidence and no retry.",
+      "equivalence": "Current settlement route only; authored provider boundary.",
+      "target": "test/api/test_native_provider_failure_settlement.py"
+    },
+    {
+      "covers": "Actual signed native START/owner/claim/Portal/STOP and stale admission/released lease refusal.",
+      "equivalence": "Current signed native settlement route; no live model.",
+      "target": "test/integration/test_admitted_native_provider_failure_settlement.py"
+    }
+  ],
+  "additional_preexisting_api_drift": {
+    "callback_test_source": {
+      "base_sha256": "35f8e701224665f8c79f27fcdff92c00e519373131e8db10290cec3f0cf567d8",
+      "byte_identical": true,
+      "current_sha256": "35f8e701224665f8c79f27fcdff92c00e519373131e8db10290cec3f0cf567d8",
+      "path": "test/api/test_lifecycle_terminal_callback_replay.py"
+    },
+    "captured_lifecycle_test_source": {
+      "base_sha256": "fad04f7f742d12f1de083073bd1be7b994538787ee016226b11b0ceba730ff77",
+      "byte_identical": true,
+      "current_sha256": "fad04f7f742d12f1de083073bd1be7b994538787ee016226b11b0ceba730ff77",
+      "path": "test/api/test_captured_lifecycle_boundaries.py"
+    },
+    "not_reported_as_passing_equivalent_coverage": true,
+    "protected_recovery_methods_absent_in_both": [
+      "recover_protected_path_retry",
+      "_verify_protected_path_attempt_boundary"
+    ],
+    "terminal_callback_kwarg_absent_in_both": true,
+    "terminal_finalize_method_args": [
+      "self",
+      "record",
+      "reason"
+    ]
+  },
+  "base_revision": "0a8309047c4e2d8f780c470a02a8453cfe01ceec",
+  "current_revision": "e4e0ded3296261cbaf5d3dd0304c57604fdf6c85",
+  "followup": "Repair or retire stale test contracts in a separate reviewed change after frozen qualification. Do not add removed authority solely to satisfy imports.",
+  "full_replacement_coverage_claimed": false,
+  "issues": [
+    {
+      "current_collection_failure_observed": true,
+      "import_present_in_both": true,
+      "importer": {
+        "base_sha256": "c909638733d87eea8277e32cdad2e1d716f64cf94e4b70c981c93f0a055f8888",
+        "byte_identical": true,
+        "current_sha256": "c909638733d87eea8277e32cdad2e1d716f64cf94e4b70c981c93f0a055f8888",
+        "path": "test/api/test_agent_supervisor_database_portal_protected_path_recovery.py"
+      },
+      "missing_symbol": "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
+      "prior_revision_full_collection_replayed": false,
+      "provider": {
+        "base_sha256": "2496155e186306e20a127e1efd724be374b4d238add556dbcc25e9bad1bae872",
+        "byte_identical": false,
+        "current_sha256": "2103db4c054987695f8ebc263302160d4b184f5329805c0c48477b8e57a0bf6c",
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+      },
+      "symbol_absent_in_both_source_texts": true,
+      "wildcard_import_absent_in_both": true
+    },
+    {
+      "current_collection_failure_observed": true,
+      "import_present_in_both": true,
+      "importer": {
+        "base_sha256": "2b1cbb6285d1462478002a5a858644edb89fad705012d031f6404860f3056847",
+        "byte_identical": true,
+        "current_sha256": "2b1cbb6285d1462478002a5a858644edb89fad705012d031f6404860f3056847",
+        "path": "test/api/test_candidate_rejection_closure.py"
+      },
+      "missing_symbol": "_created_docker_termination_fence",
+      "prior_revision_full_collection_replayed": false,
+      "provider": {
+        "base_sha256": "1c7b4195f76c31bb175eb0bdf0e23be1f00d4f683406805c28faecdb583fef15",
+        "byte_identical": true,
+        "current_sha256": "1c7b4195f76c31bb175eb0bdf0e23be1f00d4f683406805c28faecdb583fef15",
+        "path": "test/api/test_agent_supervisor_grok_quota_terra_gate.py"
+      },
+      "symbol_absent_in_both_source_texts": true,
+      "wildcard_import_absent_in_both": true
+    }
+  ],
+  "provider_calls": 0,
+  "raw_model_task_verifier_credential_or_test_output_exported": false,
+  "retained_failed_qualification": {
+    "collection_errors": 2,
+    "executed_test_cases": 0,
+    "exit_code": 2,
+    "exit_sha256": "7810e49649e90cbfa1ef56282e0aae22edd64e574b363c7061d6acacaa89aeeb",
+    "label": "native-provider-settlement-final-01",
+    "log_sha256": "c1e181bcdd4d9f7d9725b9d0cc65b9f5ac6683fb415d4059bdebd7bbaabaeb1f",
+    "raw_captured_output_exported": false,
+    "source_unchanged": true,
+    "xml_sha256": "46c7941efd0ad35a96b807c597579d4c94506e3d6a11994fabfe89add1b4a666"
+  },
+  "review_method": "Read-only committed source and AST comparison plus retained current collection error report; no production authority restored.",
+  "schema": "native-settlement-preexisting-collection-gap-review@1",
+  "source_edits": 0,
+  "whole_repository_suite_pass_claimed": false
+}

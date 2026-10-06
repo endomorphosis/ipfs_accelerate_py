@@ -1,0 +1,74 @@
+{
+  "actual_resource_observation": {
+    "bytes": 1083,
+    "path": "grok-container/resource-observation-10.json",
+    "sha256": "0da66961520e1523c18b236a04884a561ac80f5e0f90d77b31e741763d1ef25e"
+  },
+  "all_selected_native_usage_envelopes_observed": true,
+  "benchmark_durations_seconds": {
+    "agent_execution": 669.899388,
+    "agent_setup": 121.022515,
+    "environment_setup": 1.919687,
+    "verifier": 19.333511
+  },
+  "billing_total_verified": false,
+  "cache_included_in_input": false,
+  "dollar_cost": null,
+  "driver_task_completed": false,
+  "live_summary": {
+    "bytes": 15788,
+    "path": "live-trial-summary-10.json",
+    "sha256": "8deebd7008489c4dae29a88ce439d9199f2e1819728ae8ce5fa889496be02089"
+  },
+  "matched_baseline_in_this_trial": false,
+  "native_custody_closed": false,
+  "native_final_turn_is_task_completion_authority": false,
+  "native_observed_cached_input_tokens": 1037440,
+  "native_observed_input_tokens_excluding_cache": 136091,
+  "native_observed_output_tokens": 39201,
+  "native_observed_total_tokens": 1212732,
+  "native_task_status": "completed",
+  "official_reward": 1.0,
+  "provider_invocations": [
+    {
+      "model": "grok-4.7",
+      "native_envelope_observed": true,
+      "native_tokens": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1920,
+        "input_tokens": 12946,
+        "output_tokens": 6853,
+        "reasoning_output_tokens": 5011,
+        "total_tokens": 21719
+      },
+      "phase": "planning",
+      "provider": "grok_cli",
+      "seconds": 66.27204099000664,
+      "timeout_seconds": 180
+    },
+    {
+      "model": "grok-4.7",
+      "native_envelope_observed": true,
+      "native_tokens": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1035520,
+        "input_tokens": 123145,
+        "output_tokens": 32348,
+        "reasoning_output_tokens": 20345,
+        "total_tokens": 1191013
+      },
+      "phase": "coding",
+      "provider": "grok_cli",
+      "seconds": 534.1211680519627,
+      "timeout_seconds": 600
+    }
+  ],
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "raw_model_task_verifier_or_credential_bodies_exported": false,
+  "reasoning_tokens_are_subset_of_output": true,
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "schema": "terminal-grok-observed-performance@1",
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "token_or_speed_advantage_claimed": false,
+  "trial_name": "grok-tune-mjcf-10"
+}

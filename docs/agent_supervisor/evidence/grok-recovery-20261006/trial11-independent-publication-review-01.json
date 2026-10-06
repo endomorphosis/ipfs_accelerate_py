@@ -1,0 +1,145 @@
+{
+  "STOP_after_success_path_exercised": false,
+  "all_observer_children_exited_zero": true,
+  "attempt": "11",
+  "billing_verified": false,
+  "callback_state": "started_outcome_unknown",
+  "coding_native_tokens": null,
+  "coding_seconds": 600.2467448359821,
+  "container_mutations": 0,
+  "cumulative_rows": 58,
+  "driver_task_completed": false,
+  "evidence": {
+    "grok-container/archive-review-11.json": {
+      "bytes": 2314,
+      "sha256": "3d0d519d81edfeaf5dbb15d7029b26c1046b850766f0a8530d239a60f6e1dcf8"
+    },
+    "grok-container/learned-vector-runtime-observation-11.json": {
+      "bytes": 1291,
+      "sha256": "2fce1e2ff5b5a9f5b0867cf2bc8876e6c898ad7889f688bbe3ea81e659d4f7a7"
+    },
+    "grok-container/native-tools-grok-tune-mjcf-11.json": {
+      "bytes": 27646,
+      "sha256": "fe597ec298401ee5859b5879907da5ae4bae2256ab229d79c764c6d1504e25a9"
+    },
+    "grok-container/observer-coordinator-11.json": {
+      "bytes": 1040,
+      "sha256": "c2849e657729a5862c48b17e442254c9bfa055700211fff56a02c99bdc3297b3"
+    },
+    "grok-container/preparation-review-11.json": {
+      "bytes": 4549,
+      "sha256": "53974ae38c7c538f96408a25938fe138c33a25265ff297babb8518491b1d26ad"
+    },
+    "grok-container/recipes/review_shutdown_learned_preparation.py": {
+      "bytes": 6732,
+      "sha256": "84a804bae79bbba364b9b530dfb9f79504104970272b341113ea16a7afd862ae"
+    },
+    "grok-container/resource-observation-11.json": {
+      "bytes": 1083,
+      "sha256": "6a9b571c3c2c189d6ed2cccb9733ede6cc59e85e4a86f7027420ec6ed883be1c"
+    },
+    "indexed-path-observation-11.json": {
+      "bytes": 6933,
+      "sha256": "9dc0fc288d399195593af35a2527c69e010ebd634d2859915e51ec701e35d12e"
+    },
+    "live-trial-summary-11.json": {
+      "bytes": 18585,
+      "sha256": "a45253d931343323094ac9ed95b99d78008570ef7d85d2ed74f28e52072f25b3"
+    },
+    "performance-observation-11.json": {
+      "bytes": 3310,
+      "sha256": "1a55280f987e6d2fddd70f5020340a18eb87b96c9520d0c24f849eab5e78b16e"
+    },
+    "publication-stage/automatic-native-monitor-review-11.json": {
+      "bytes": 4655,
+      "sha256": "77f9b53de446599529550cb374f72fcca6a4a86b854466f937c93727a645aeb8"
+    },
+    "publication-stage/independent-origin-codex-merge-review-01.json": {
+      "bytes": 2860,
+      "sha256": "7df80e8986711ccf1be1ef7c8e66b1e58144d2f0c4e682578f04a9f7ffe63614"
+    },
+    "publication-stage/qualification-summary-origin-codex-merge-final.json": {
+      "bytes": 867185,
+      "sha256": "26de3bac5f2cf21e16df3ee9efac6c64a2645a2369fa3bd009948d43455b8f75"
+    },
+    "qualification/observe_trial11_closure.py": {
+      "bytes": 7199,
+      "sha256": "a94bde9ee00d25dcfc9cc23ba61a1f00877eee94ad548d28ef0d34c05874bf59"
+    },
+    "qualification/observe_trial11_retrieval.py": {
+      "bytes": 7564,
+      "sha256": "727606acf94e0cd13ec2307b62b69497ff9bc8f2654b8c53668125c9691419f9"
+    },
+    "qualification/observe_trial11_timeout.py": {
+      "bytes": 5538,
+      "sha256": "0c00ce2962d284ccc690dbfe708dfd64006f6d558a44ef5f24d09278f2251651"
+    },
+    "qualification/trial11-preparation-independent-review-01.json": {
+      "bytes": 2974,
+      "sha256": "b19613ef1cc60e0d48b9a49e7e1beab336d902b315aed518c87613f680fe1710"
+    },
+    "retrieval-mode-observation-11.json": {
+      "bytes": 3139,
+      "sha256": "69f19c17dbe4c17cfeef0b170cf3734d15beb7f08029757b4645376a532e2045"
+    },
+    "timeout-recovery/coordinate_trial11_observers.py": {
+      "bytes": 8724,
+      "sha256": "97e837108383e7dbb354f3beed1b8ecd5b9e5c7c5b3836d32f48d9aa11444b1c"
+    },
+    "timeout-settlement-observation-11.json": {
+      "bytes": 2563,
+      "sha256": "a184ca7e786dd5a783a1d449fe391e1e3b597d045f9b1f8f12f2c112048cf403"
+    },
+    "trial-closure-observation-11.json": {
+      "bytes": 2540,
+      "sha256": "662b01a0c3fac74f4d112d34d65d990435c55565e265ff5c5bb1778f36a682b1"
+    }
+  },
+  "exact_native_custody_gate_denial_known": false,
+  "learned_cpu_runtime_evidence_reviewed": true,
+  "learned_result_independently_reopened_by_this_review": false,
+  "limitations": [
+    "Trial10 task success with failed native closure and trial11 timeout with clean process cleanup remain separate.",
+    "No live task pass followed by clean native shutdown is established.",
+    "Missing native exit receipt leaves callback settlement unknown; no retry or settlement authority is inferred.",
+    "Neural retrieval inputs were symbol names and Source384 remained nomination-only; no whole-task formal proof or parallel-agent advantage is established.",
+    "No matched baseline, token savings, billing completeness or whole-suite result is claimed.",
+    "Three unresolved collection/API contracts and historical test failures remain recorded."
+  ],
+  "merged_qualification_passes": 213,
+  "merged_qualification_source": "0a8a1b3e8448a6604899bedcbc5175dc08bf6825",
+  "merged_source_live_benchmarked": false,
+  "native_exit_receipt_present": false,
+  "native_start_status": "succeeded",
+  "native_stop_status": "succeeded",
+  "native_task_revision": 3,
+  "native_task_status": "in_progress",
+  "new_test_runs": 0,
+  "official_reward": 0.0,
+  "original_completed_receipts_overwritten": false,
+  "original_verifier_result_hash_and_reward_rechecked": true,
+  "overlapping_test_counts_not_summed": true,
+  "owned_container_absence_reported": true,
+  "planning_native_tokens": 22806,
+  "prior_57_rows_unchanged": true,
+  "process_cleanup_qualified": true,
+  "provider_calls": 0,
+  "publication_readiness_scope": "final README and inventory reviewed separately",
+  "publication_ready": false,
+  "raw_logs_task_model_verifier_or_credentials_exported": false,
+  "referenced_evidence_hashes_rechecked": true,
+  "remaining_processes": 0,
+  "reviewed_closed_exports_consistent": true,
+  "runtime_close_succeeded": true,
+  "schema": "terminal-trial-publication-independent-review@1",
+  "shutdown_failures_reported": false,
+  "source384_fresh_inference": true,
+  "source384_proof_authority": false,
+  "source_edits": 0,
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "task_or_callback_completion_qualified": false,
+  "total_native_tokens": null,
+  "usage_complete_claimed": false,
+  "work_budget_error_source_literal_revalidated": true,
+  "worker_cleanup_returncode": 0
+}

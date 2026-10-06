@@ -1,0 +1,24 @@
+{
+  "schema": "lifecycle-pool-test-collection-gap-review@1",
+  "method": "read-only pinned source comparison plus actual retained C collection error",
+  "records": [
+    {
+      "source": "0a8309047c4e2d8f780c470a02a8453cfe01ceec",
+      "test_sha256": "d3d43cf050b65100b15bb02f6332703c0b95e6f2668ae4b2e2a1ee22dfa86e4c",
+      "test_imports_absent_symbol": true,
+      "production_defines_symbol": false,
+      "production_has_symbol_token": false
+    },
+    {
+      "source": "e4e0ded3296261cbaf5d3dd0304c57604fdf6c85",
+      "test_sha256": "d3d43cf050b65100b15bb02f6332703c0b95e6f2668ae4b2e2a1ee22dfa86e4c",
+      "test_imports_absent_symbol": true,
+      "production_defines_symbol": false,
+      "production_has_symbol_token": false
+    }
+  ],
+  "current_collection_label": "lifecycle-captured-cas-dev-02",
+  "tests_executed": 0,
+  "coverage_equivalence_claimed": false,
+  "removed_api_restored": false
+}

@@ -1,0 +1,35 @@
+{
+  "cgroup": {
+    "cpu_period_us": 100000,
+    "cpu_quota_us": 500000,
+    "memory_current_bytes": 302829568,
+    "memory_high_bytes": null,
+    "memory_high_kind": "unlimited",
+    "memory_max_bytes": 21474836480
+  },
+  "container_mutations": 0,
+  "docker": {
+    "cpu_period_us": 0,
+    "cpu_quota_us": 0,
+    "memory_bytes": 21474836480,
+    "nano_cpus": 5000000000,
+    "running": true
+  },
+  "exact_owned_container_verified": true,
+  "expected_cpus": 5,
+  "expected_memory_bytes": 21474836480,
+  "observed_utc": "2026-10-06T10:25:06Z",
+  "preparation_binding": {
+    "bytes": 59471,
+    "resource_profile": "source384-5cpu-20gib-coding600@1",
+    "sha256": "be0ec60230c69ca13899188e568c5c17e964af9b7ad7a5ae479cb00fc717c9ca"
+  },
+  "provider_calls": 0,
+  "qualified": true,
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "same_coding_budget_performance_comparison_claim": false,
+  "same_resource_comparison_claim": false,
+  "schema": "grok-explicit-container-resource-observation@1",
+  "source_or_credential_data_read": false,
+  "trial_name": "grok-tune-mjcf-06"
+}

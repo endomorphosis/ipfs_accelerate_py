@@ -1,0 +1,13 @@
+{
+  "clean": true,
+  "commit": "2fd5bd6728bd27e0523f460d43cf31c738170e49",
+  "development_review_sha256": "4dcf7e17399715d91f4ec0297071114ac37fccb78dbbd3ac4299c3b7053bdd25",
+  "final_combined_qualification_pending": true,
+  "hook_qualification": "pre-commit hook was not executable; Git skipped it",
+  "new_test_run": false,
+  "qualified_file_matches": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": true,
+    "test/integration/test_admitted_shutdown_transaction.py": true
+  },
+  "schema": "qualified-source-commit-binding@1"
+}

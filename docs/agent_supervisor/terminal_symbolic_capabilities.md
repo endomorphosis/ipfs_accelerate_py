@@ -1295,3 +1295,165 @@ qualifies this representation experiment, while total provider-token savings
 and official reward require a fresh matched comparison. Catalog lookups,
 compact formal status and terminal context deltas remain the next integration
 steps; the initial coding-input transport does not control native CLI history.
+
+## Grok planning, resource admission and lifecycle recovery (2026-10-06)
+
+The [Grok recovery evidence](evidence/grok-recovery-20261006/README.md) records
+canonical structured planning through `llm_router`, a signed single-task schema
+constraint and explicit XML, NDJSON and calendar output labels. Native Grok
+proposals now pass the original schema, graph checks and independent task
+admission. The added labels qualify transport and scope; they do not supply
+symbolic repair operators for those data formats.
+
+The combined runtime at `020e6adccc9ad56b1df0ee2b5984ce0adcb39d89` passed
+282 targeted tests with no failures or skips. Native failed-provider callbacks
+can now settle after independently verified child custody and durable state;
+uncertain callbacks retain their claims. Worktree activation, pooled moves and
+cleanup compare the original captured record under the store locks. Interrupted
+START retains its launched root and can perform cleanup through the original
+authorization before a normal STOP. Cleanup repair preserves the failed START
+result and grants no completion or retry authority. Separate bounded report
+fields distinguish that repair from STOP, runtime closure and worker cleanup.
+These checks qualify runtime contracts, not benchmark task correctness. Earlier
+failed tests and unsupported legacy APIs remain visible in the linked evidence.
+
+The fifth fresh `tune-mjcf` trial reached coding after the explicit 20 GiB
+profile cleared the earlier memory gate. Coding reached its 300-second timeout;
+its final usage envelope was absent, and the unresolved callback then held the
+claim until the work deadline. Official reward was zero. The sixth trial
+selected a separately qualified 600-second coding cap but failed during native
+START on a process-identity mismatch. STOP conflicted with the unfinished
+transition, and native runtime closure retained two tracked processes. Container
+teardown completed. This remains a native custody failure and does not establish
+600-second provider execution. Planning reported 22,963 native tokens;
+aggregate usage remains unknown.
+
+The seventh fresh trial at the combined runtime completed native START, STOP
+and runtime closure, with zero remaining processes and successful worker
+cleanup. Its task became blocked and official reward remained zero. Planning
+reported 21,316 native tokens; no coding invocation receipt survived, so coding
+dispatch, coding usage and aggregate usage remain unknown. The retained task
+receipt identifies a terminal Portal bridge failure but does not retain its
+underlying error or establish which failure-settlement path was exercised.
+
+Trial seven indexed four symbols into eleven semantic capsules, reused the
+metadata/vector context and performed fresh Source384 inference. Retrieval
+used lexical TF-IDF vectors in DuckDB with the DuckLake metadata projection;
+the separately pinned GTE-small embedding model and security checkpoint served
+Source384 inference. Neural retrieval was not selected. The generic Doctor
+still reports unsupported structured-data and numerical obligations. These
+trials establish neither a task proof, a full-suite score nor an efficiency
+advantage. Exact source pins, earlier failures, cleanup evidence and overlapping
+targeted qualifications are retained in the linked record.
+
+The later diagnostic integration at `585cf2adc` passed 127 targeted tests on a
+clean checkout. Router failures before the invocation receipt now identify a
+bounded source phase. The native daemon retains a task/attempt-bound observation
+outside its optional JSON event mirrors, and the final report reads it after
+cleanup. A signed native integration first exposed the absent event mirror and
+then verified the corrected path through START, terminal failure, STOP and
+closure. These observations cannot authorize settlement or retry, establish
+provider dispatch, or supply missing token totals.
+
+Trial eight exercised that diagnostic path: the native child exited with code
+one and the failed callback settled, followed by successful START/STOP closure,
+zero remaining processes and worker cleanup. Official reward was zero. Planning
+used 21,343 native tokens; no coding invocation receipt or router diagnostic was
+retained. The bounded monitor observed no cgroup OOM event during its window.
+
+An offline Docker replay subsequently reproduced a concrete configuration
+blocker in the archived worker: its 300-second argument limit rejected the
+selected 600-second cap before the router could run. The worker now shares the
+router's 600-second ceiling, while older routers retain their original worker
+limit. All six owner-to-worker Docker compatibility cases passed with networking
+disconnected and no provider calls. Accepted arguments deliberately reached an
+invalid-model preflight error; they were not successful coding runs. The replay
+used the archived source with a rebuilt image, and cannot recover trial eight's
+missing stderr. Extended-budget archives now bind the worker and router source
+hashes and generated entrypoint, so unsupported archives are refused before paid
+planning. Existing signed profiles still determine the selected invocation cap.
+The merged timeout, archive capability, retrieval and budget changes passed
+197 targeted tests on clean source `b966623d3`, with no failures or skips.
+
+Separately, retrieval configuration now derives its model revision from the
+selected archive instead of an older hardcoded revision. Stale active pins are
+rejected before deployment or dispatch. That change passed 52 development tests;
+an offline CPU GTE-small probe at revision `17e1f347…` produced 384-dimensional
+vectors for two authored symbols, reopened the persisted DuckDB index and
+verified its DuckLake metadata projection. It used no LLM calls, downloads or
+training. This small symbol-name retrieval check does not establish full-task
+semantic coverage, a benchmark memory bound or a performance advantage.
+
+The ninth attempt selected the learned retrieval snapshot and passed archive
+and preparation checks, but container setup stopped when the pinned Python
+runtime download returned HTTP 500 after three retries. Indexing, planning and
+native START did not begin. No verifier reward exists for that attempt; its
+score is unknown, not zero. The container was removed before the independent
+monitor received its identity, so no live resource samples are available.
+
+The tenth attempt reused the exact ninth archive after the public Python asset
+recovered. Actual container indexing selected learned GTE-small retrieval:
+four symbols and eleven capsules in 17.40 seconds, including fresh Source384
+inference in 9.74 seconds. Indexing made no LLM calls and performed no training.
+The admitted context reused three capsules without new embedding calls. Planning
+passed independent admission with two goals and one task, and native START
+succeeded. Grok coding ran for 534.12 seconds under the corrected 600-second cap.
+The original verifier awarded **1.0**, and the native task reached completed
+revision four. Native usage was **1,212,732 tokens**: 136,091 input excluding
+cache, 1,037,440 cached input and 39,201 output. Reasoning tokens are included
+in output. Billing totals and a matched performance advantage are unverified.
+
+This is task success with incomplete supervisor shutdown. No native STOP
+receipt was retained, runtime closure refused a live launched child, and the
+driver therefore reported `task_completed=false`. Worker cleanup returned zero
+and the exact container was removed. The continuous monitor observed a daemon
+replacement near shutdown and no OOM events; it does not establish the cause of
+the missing STOP. The retained close error can mask an earlier STOP exception.
+Further shutdown fixes must be qualified separately from this historical run.
+
+A subsequent signed native regression reproduced a shutdown defect: the
+interrupted-START repair hook revalidated the original START context while
+reading its committed transaction. Accepted publication had correctly made
+that context stale for another START, but the lookup prevented STOP as well.
+The correction checks the exact prior transaction under a current signed STOP
+grant and live lease. Actual interrupted-START repair still requires its
+original permit and revision checks. The diagnostic path separately records
+bounded STOP and close failures, including the phase of post-STOP observations.
+Trial ten's original masked STOP exception remains unavailable; this
+reproduction does not retroactively establish that exception's identity.
+The merged correction and diagnostics at `0e2d9a8c6` passed 120 targeted tests
+on a clean checkout, including signed native publication, STOP and interrupted
+START recovery, with no failures or skips.
+
+The eleventh fresh trial used that corrected source and actual CPU GTE-small
+retrieval, indexing four symbols into eleven capsules in 18.19 seconds. Fresh
+Source384 checkpoint inference took 10.60 seconds; the admitted context reused
+three capsules without new embedding calls. Planning again independently
+admitted two goals and one task. Coding reached its 600-second timeout after
+600.25 seconds, and the original verifier awarded **0.0**. Planning used
+**22,806 observed native tokens**; coding and aggregate usage remain unknown
+because no final coding usage envelope was retained.
+
+Native START and STOP succeeded, runtime closure succeeded, zero tracked
+processes remained, worker cleanup returned zero and the exact container was
+removed. No bounded shutdown failure was recorded. The task nevertheless
+remained in progress at revision three: its callback retained an unknown outcome
+because a complete native child-custody receipt was unavailable. Successful STOP
+does not settle that callback. This qualifies live cleanup after a timeout,
+while a live task pass followed by clean shutdown remains unverified. The
+missing custody join and general numerical repair coverage remain follow-up
+work; the retained diagnostics do not identify which custody check failed.
+
+Publication then merged the concurrent native Codex planning-schema and
+contextual decoder documentation updates. The merged source at `0a8a1b3e8`
+passed 213 focused router, schema and worker-capability tests with no failures
+or skips. This separate offline qualification does not change the eleventh
+trial's source pin or rerun that benchmark. Its test count overlaps earlier
+qualifications and is not an additional independent coverage total.
+
+The broader regression suite still has three independently recorded contract
+gaps: projection-identity fixtures reference a removed helper, older protected
+path recovery expects a different retry protocol, and Docker candidate cleanup
+has missing producer/consumer interfaces. These remain unqualified; the focused
+passes do not establish whole-repository correctness. General numerical and
+structured-data symbolic repair coverage also remains incomplete.

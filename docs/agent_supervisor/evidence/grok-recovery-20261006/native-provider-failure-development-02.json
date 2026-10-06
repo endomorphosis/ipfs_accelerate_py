@@ -1,0 +1,76 @@
+{
+  "schema": "native-provider-failure-development-supplement@1",
+  "prior_report_sha256": "69f2f3b9e6584bc8fb2140ef5b3ab17154c842b9fa3f3ecaeb6bba4760cabd6f",
+  "pooled_api_runs": [
+    {
+      "label": "settlement-pooled-dev-01",
+      "passed": 28,
+      "failed": 1,
+      "seconds": 62.86,
+      "log_sha256": "acd3a0de08940ce40854d3bde2cd4ecfcb7d6f3b878611d465f2f33ce0da2331",
+      "source_unchanged_recorded": false
+    },
+    {
+      "label": "settlement-pooled-dev-02",
+      "passed": 1,
+      "failed": 0,
+      "seconds": 14.79,
+      "log_sha256": "f36bc18d20f8d32136d70c536f057f1d98f86ebd6d92aa41ac18bd76ddf7abec",
+      "source_unchanged_recorded": false
+    }
+  ],
+  "signed_native_runs": [
+    {
+      "label": "native-signed-settlement-dev-01",
+      "command_sha256": "8453714170c90a7aff76cb21465fc04a9556423fe9343c7b1f418c4f3afe838e",
+      "exit_sha256": "5241aa92f20f46362a9355663f10452f5100ae4d5494ff6b57c4486087b18d07",
+      "xml_sha256": "9f99a7c3b556b0cb5eaa68402876f8e059876be9ade5fb49db87db85bb1d87f1",
+      "log_sha256": "27611dc92983a5f9098ea683b99d128d938d3486b465e7377fe099cb94490d09",
+      "exit_code": 1,
+      "source_unchanged": true,
+      "seconds": 116.46580917597748,
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "label": "native-signed-settlement-dev-02",
+      "command_sha256": "c8f0cbf238e39d7bb24a331e0422a20c02364715ad2928b10906aadbb6e4674e",
+      "exit_sha256": "83a16eaf00de463d4844df038d95354727e660ab0ab81ebf23ae63c80210ff8c",
+      "xml_sha256": "e3d0ed3d559239cc8512ce969275a958cb64ead911737d525c50a8acb42247cc",
+      "log_sha256": "a150e00b1fb1287d9fc6405f81e1f493387a2634633ccd807516380d974ded0a",
+      "exit_code": 0,
+      "source_unchanged": true,
+      "seconds": 38.263410779007245,
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "pooled_failure_cause": {
+    "native_pool_release": {
+      "attempted": true,
+      "released": true,
+      "lifecycle_finalized": true,
+      "lifecycle_state": "terminal"
+    },
+    "later_path_lookup": {
+      "lifecycle_finalized": false,
+      "reason": "no_lifecycle_record"
+    },
+    "fix": "Retain the exact captured pool-release lifecycle receipt; never reload released path after failed finalization.",
+    "dirty_pool_limit": "Discarded pool releases report pooled=false; attempt/release identity determines loss of custody."
+  },
+  "final_frozen_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "2103db4c054987695f8ebc263302160d4b184f5329805c0c48477b8e57a0bf6c",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "bf468993d8b6b938293da90cccdaf61eb4fe68e7cbb790169794d481adbe75b7",
+    "test/api/test_native_provider_failure_settlement.py": "2f8c8465beda9597e5a12fc062784d011a4fa6712e232f9ba8ee114b9c6d62ee",
+    "test/integration/test_admitted_native_provider_failure_settlement.py": "5588c2ec14cf57ebc4b177b72e25b630609e133b7e413215d9f687bf83791c28"
+  },
+  "qualification_status": "Final combined frozen-source qualification pending.",
+  "live_trial_06_includes_settlement_fix": false,
+  "live_trial_task_success_claimed": false,
+  "paid_provider_calls_in_these_tests": 0
+}

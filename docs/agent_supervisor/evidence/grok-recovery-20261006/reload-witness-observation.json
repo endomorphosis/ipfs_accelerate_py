@@ -1,0 +1,33 @@
+{
+  "schema": "native-exec-witness-regression@1",
+  "baseline_source_revision": "9ffefe04669c52ff4f51c5ee31962380ed204418",
+  "corrected_source_sha256": "5a8b0ee85082b54dce337d6f283db2ef5743b13744a450d89fd7c3fd54c4fcb1",
+  "provider_calls": 0,
+  "source_arguments_exported": false,
+  "credentials_read": false,
+  "limitations": [
+    "authored configured-wrapper exec; not a replay of the original Grok task"
+  ],
+  "observations": [
+    {
+      "case": "baseline",
+      "same_birth_alive": true,
+      "before_root_count": 1,
+      "after_root_count": 0,
+      "exact_original_argv_preserved": false,
+      "safe_path_flag_present": false,
+      "source_method_sha256": "1377d3b360bf3be011d1625b2ac5b2b01cedbd359784157cee718ba07daa9750",
+      "launched_child_reaped": true
+    },
+    {
+      "case": "corrected",
+      "same_birth_alive": true,
+      "before_root_count": 1,
+      "after_root_count": 1,
+      "exact_original_argv_preserved": true,
+      "safe_path_flag_present": true,
+      "source_method_sha256": "ad9b3b20c577c4a6cfbb0a7e65b194ecc8cd14ba3feb3fe86cf2f526e73079dc",
+      "launched_child_reaped": true
+    }
+  ]
+}

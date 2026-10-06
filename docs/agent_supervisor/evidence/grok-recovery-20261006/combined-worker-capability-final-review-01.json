@@ -1,0 +1,30 @@
+{
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 197,
+    "skipped": 0
+  },
+  "cumulative_summary_sha256": "1e61adbcfc2fed2050145309cfea3fcbd503e941f5cf3cbff4384428ca8b5afe",
+  "datasets_clean": true,
+  "datasets_commit": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "independent_testcase_count_check": true,
+  "live09_pending": true,
+  "log_sha256": "dc8615c5e958cde7850da7e8fb116e3124db9568b5f5981134f80b327edef96d",
+  "matched_retrieval_performance_claim": false,
+  "planned09_retrieval": "pinned_gte_small_cpu",
+  "prior49rows_preserved": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "qualification_label": "combined-worker-capability-final-01",
+  "raw_outputs_or_credentials_exported": false,
+  "recorded_seconds": 84.804448054987,
+  "repeated_cases_summed": false,
+  "run_rows": 50,
+  "schema": "combined-worker-capability-final-review@1",
+  "source_clean": true,
+  "source_commit": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "source_unchanged": true,
+  "whole_repository_suite_claim": false,
+  "xml_sha256": "3656ecf7bf770237481a63ec72ec2204ed6954d4fcc736c6e5c469c7df550a37"
+}

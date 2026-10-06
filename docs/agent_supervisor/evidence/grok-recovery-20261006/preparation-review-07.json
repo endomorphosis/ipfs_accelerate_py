@@ -1,0 +1,50 @@
+{
+  "archive_bytes": 1410182521,
+  "archive_members": 27353,
+  "archive_sha256": "2a402c8065d9e7429535a995fe1aa0ca0124ff637846d39c11e43ec2a8a6c6dd",
+  "attempt": "07",
+  "completion_authority": false,
+  "containers_launched": 0,
+  "download_calls": 0,
+  "index_hydration_observed": false,
+  "live_execution_pending_qualification": true,
+  "neural_inference_observed": false,
+  "prepared": true,
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "runtime_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d344829bff440ef72aa4858dda520cf7480f2f5a790cd1a7f87296ae5e6f9824",
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "aefad2724dcd10d174132a988777f94cdd85ebd420d2fba71e7c020e35abb70a",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "89891bf774f3894a156ea65d4658aefd27a587ff6f6839cbc505fc599d3461de",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3b560f687fb26dd58cc403e7f237346501811f9c373b287abc8d0061184c2c35"
+  },
+  "schema": "terminal-fresh-trial-preparation-review@1",
+  "source384_checkpoint_bytes": 493355,
+  "source384_checkpoint_member_verified": true,
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source384_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "source384_enabled": true,
+  "source_head": "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89",
+  "stages": {
+    "bundle": {
+      "exit_code": 0,
+      "seconds": 33.74303945299471,
+      "source_unchanged": true
+    },
+    "prepare": {
+      "exit_code": 0,
+      "seconds": 22.35233149997657,
+      "source_unchanged": true
+    },
+    "profile": {
+      "exit_code": 0,
+      "seconds": 0.12210017099278048,
+      "source_unchanged": true
+    }
+  },
+  "task_input_bindings_match06": true,
+  "task_profile_matches06": true,
+  "task_profile_sha256": "f0312fec5ecd7e9854bf9234e46ab09e9117158b27679b69592af8c1a73fb5e5",
+  "training_steps": 0
+}

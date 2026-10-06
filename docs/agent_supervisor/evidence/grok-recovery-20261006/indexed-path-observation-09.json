@@ -1,0 +1,21 @@
+{
+  "availability": "unavailable",
+  "completion_authority": false,
+  "doctor_observed": null,
+  "index_hydration_observed": null,
+  "learned_retrieval_executed": null,
+  "learned_retrieval_selected": true,
+  "performance_advantage_claimed": false,
+  "proof_or_completion_inferred_from_index": false,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "reason_code": "agent_setup_failed_before_driver",
+  "schema": "grok-recovery-indexed-path-unavailable@1",
+  "setup_evidence": {
+    "bytes": 2225,
+    "path": "setup-failure-observation-09.json",
+    "sha256": "124ede85564776059736fa2dad4b0afdff45e2ca34b1b8ceffe1bc49c254de08"
+  },
+  "source384_inference_observed": null,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "trial_name": "grok-tune-mjcf-09"
+}

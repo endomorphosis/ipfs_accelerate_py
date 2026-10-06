@@ -1,0 +1,64 @@
+{
+  "schema": "native-provider-failure-independent-review@1",
+  "source_base": "6e3171c913b76b569b85600179199f2b57ec5b52",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "2103db4c054987695f8ebc263302160d4b184f5329805c0c48477b8e57a0bf6c",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "aa870c1f28a1cd04256de074b1e3d7bdc8d23fc93ae6ac6922e154279dc078cb",
+    "test/api/test_native_provider_failure_settlement.py": "2f8c8465beda9597e5a12fc062784d011a4fa6712e232f9ba8ee114b9c6d62ee",
+    "test/integration/test_admitted_native_provider_failure_settlement.py": "5588c2ec14cf57ebc4b177b72e25b630609e133b7e413215d9f687bf83791c28"
+  },
+  "source_state": "uncommitted_development_patch",
+  "production_review": {
+    "waited_popen_reference_required": true,
+    "provider_output_cannot_mint_custody": true,
+    "subreaper_empty_child_baseline_required": true,
+    "detached_or_chdir_descendants_covered": true,
+    "missing_or_changed_process_observation_refuses": true,
+    "exact_native_event_projection_bound": true,
+    "authoritative_portal_state_snapshot_bound": true,
+    "one_use_exact_bridge_exception_required": true,
+    "owned_running_attempt_rechecked": true,
+    "live_claim_lease_fence_rechecked": true,
+    "typed_owner_admission_rechecked": true,
+    "exact_started_outcome_unknown_compare_and_swap": true,
+    "effect_or_completion_authority_added": false,
+    "automatic_retry_admitted": false
+  },
+  "pool_fix_review": {
+    "observed_failure": "released_pool_lifecycle_evidence_overwritten_by_deleted_row_lookup",
+    "existing_exact_release_receipt_preserved": true,
+    "failed_release_cannot_be_upgraded_by_later_path_lookup": true,
+    "no_missing_record_accepted_as_finalized": true
+  },
+  "development_qualification": {
+    "command_sha256": "c8f0cbf238e39d7bb24a331e0422a20c02364715ad2928b10906aadbb6e4674e",
+    "exit_sha256": "83a16eaf00de463d4844df038d95354727e660ab0ab81ebf23ae63c80210ff8c",
+    "passed_cases": 5,
+    "source_unchanged": true,
+    "actual_native_start_and_stop": true,
+    "actual_typed_owner_claim_attestation": true,
+    "provider_boundary": "authored_llm_router_generate_text_timeout",
+    "real_subprocess_timeout": true,
+    "real_router_and_native_bridge": true,
+    "live_grok_or_other_model_calls": 0,
+    "positive_terminal_state": "attempt_failed_task_blocked_claim_released",
+    "provider_invocations": 1,
+    "effect_claims": 0,
+    "automatic_retry_observed": false,
+    "negative_controls": [
+      "wrong_typed_admission_phase",
+      "wrong_process_attestation",
+      "wrong_source_revision",
+      "released_live_lease"
+    ]
+  },
+  "limitations": [
+    "Development result is bound to file hashes before a committed combined regression.",
+    "Authored provider timeout is not a live Grok outcome or benchmark task success.",
+    "This result does not establish token savings, billing, or matched benchmark performance.",
+    "Generic callback failures and uncertain custody intentionally retain the unknown outcome."
+  ],
+  "blocking_review_findings": [],
+  "final_committed_qualification_pending": true,
+  "publication_ready": false
+}

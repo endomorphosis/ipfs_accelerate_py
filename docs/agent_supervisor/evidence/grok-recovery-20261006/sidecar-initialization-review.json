@@ -1,0 +1,65 @@
+{
+  "completion_authority_added": false,
+  "diagnosis": {
+    "cause": "logical_store_id_used_to_derive_local_sidecars_from_target_working_directory",
+    "lease_or_observation_ttl_failure": false,
+    "observed_failure": "current_source_has_no_exact_native_owner_observation",
+    "trigger": "watchdog_portal_frontier_maintenance_after_300_second_startup_grace",
+    "underlying_failure": "untracked_source_or_bytecode_outside_runtime_directory",
+    "unexpected_target_files": [
+      "control.coordination.duckdb",
+      "control.execution.duckdb",
+      "associated_lock_files"
+    ]
+  },
+  "final_full_regression": "pending_root_confirmation",
+  "fix": {
+    "explicit_paths_supplied": [
+      "coordination.duckdb",
+      "execution.duckdb"
+    ],
+    "frontier_local_state_root": "signed_run_state_directory/portal-frontier-rearm",
+    "implicit_constructor_path_defaults_unchanged": true,
+    "remote_task_owner_and_rearm_admission_unchanged": true,
+    "single_lane_open_respects_constructor_resolved_coordination_path": true,
+    "source_inventory_fence_unchanged": true
+  },
+  "fixture_correction": {
+    "authentication_bypassed": false,
+    "corrected_fixture": "native_program_environment_and_fixture_owned_read_credential_installed",
+    "credential_value_exported": false,
+    "error": "Quack_SQL_authentication_failed",
+    "first_two_focused_runs": "missing_real_fixture_Quack_read_credential"
+  },
+  "focused_qualification": {
+    "assertions": [
+      "authenticated_native_rearm_succeeds_with_zero_rearms",
+      "both_sidecars_exist_under_run_state",
+      "canonical_task_record_unchanged",
+      "independent_admission_revalidates",
+      "target_control_databases_absent"
+    ],
+    "junit_sha256": "f0145d7f980206704e08252eb6657664decf4d15e20f8f62acaa9fbecb09c54d",
+    "label": "frontier-sidecars-focused-03",
+    "log_sha256": "b3d3067dbed13463f7953eb5a8768d10bc620830689e3281a68d4e6d197fc79e",
+    "passed": 1,
+    "seconds": 20.559883348993026,
+    "source_unchanged": true
+  },
+  "live_grok_trial": "pending_root_confirmation",
+  "previous_exec_observation": {
+    "current_whole_source_differs": true,
+    "file": "reload-witness-observation.json",
+    "previous_whole_source_sha256": "5a8b0ee85082b54dce337d6f283db2ef5743b13744a450d89fd7c3fd54c4fcb1",
+    "real_exec_experiment_repeated": false,
+    "same_reload_method_ast_sha256": "ad9b3b20c577c4a6cfbb0a7e65b194ecc8cd14ba3feb3fe86cf2f526e73079dc"
+  },
+  "provider_calls": 0,
+  "schema": "supervisor-sidecar-initialization-review@1",
+  "source_base_revision": "e048ee22ec68f6adc3a468e1e612624d00661cce",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "6a2067f057a753bbdff98a44e64f80498840bb1486014ae57cc46bd254b48d32",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "9812b7581ca5acd1231d1ce11f10603df9d794a3141096d74290350dfc13fff6",
+    "test/integration/test_admitted_coding_timeout_recovery.py": "101558bf6692acf75458f96203ac45695eec731252a4d058f2e0bedfbdf49d92"
+  }
+}

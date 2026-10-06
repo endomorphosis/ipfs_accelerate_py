@@ -1,0 +1,18 @@
+{
+  "baseline_source": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "benchmark_result": false,
+  "case_expectations_rechecked": 6,
+  "cleanup_recorded": true,
+  "input_sha256": "d2527af23fb19690acc2c42e8e189d31a48a2c870c6dd838798d9f27070dadeb",
+  "limitations": [
+    "Review independently verifies closed exported cases and source/template hashes; raw private stdout/stderr were not inspected.",
+    "Fresh image uses the same public task Dockerfile/settings but has a different image identity from08.",
+    "All accepted-bound cases deliberately reject an invalid model before provider discovery; this does not qualify successful coding or produce a benchmark score."
+  ],
+  "network_disconnected_observed_by_probe": true,
+  "patched_source": "ca54aa67ec913f5b90bf6c3b0539a76a6e687ef8",
+  "provider_calls": 0,
+  "real_credentials_used": false,
+  "schema": "independent-offline-worker-budget-review@1",
+  "source_and_worker_template_hashes_rechecked": true
+}

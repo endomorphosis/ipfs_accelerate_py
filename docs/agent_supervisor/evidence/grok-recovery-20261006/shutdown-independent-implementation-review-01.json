@@ -1,0 +1,95 @@
+{
+  "combined_source": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "committed_and_combined_bytes_match": true,
+  "container_mutations": 0,
+  "cumulative_rows": 56,
+  "development_counts_not_summed": true,
+  "diagnostic_contract": {
+    "closed_types_and_exact_installed_frame_paths": true,
+    "completion_retry_or_settlement_authority": false,
+    "exact_shutdown_phase_taxonomy": true,
+    "existing_error_propagation_and_cleanup_preserved": true,
+    "maximum_exception_chain": 4,
+    "maximum_source_frames_per_exception": 8,
+    "maximum_trace_nodes_scanned": 256,
+    "raw_messages_paths_locals_or_source_lines_exported": false,
+    "reason_type_consistency_validated": true,
+    "separate_stop_and_runtime_close_slots": true
+  },
+  "evidence": {
+    "publication-stage/qualification-summary-shutdown-development.json": {
+      "bytes": 797115,
+      "sha256": "64ee5ee7946ae5b1c3aa4cbc5cb7b88b71b397b7c78e9255031ef985dd071449"
+    },
+    "publication-stage/stop-custody-commit-binding-01.json": {
+      "bytes": 568,
+      "sha256": "b6ecd283a99865f3098ab97c91a9a196fb14c6afe36dcbdfe6eafcf29d7c1ff7"
+    },
+    "publication-stage/stop-custody-development-review-01.json": {
+      "bytes": 4457,
+      "sha256": "4dcf7e17399715d91f4ec0297071114ac37fccb78dbbd3ac4299c3b7053bdd25"
+    },
+    "qualification/check_fresh_live_inspector.py": {
+      "bytes": 24282,
+      "sha256": "1bc8cf1c57daf3437e45153a370d808fec755f71a6affa22da290a11c7968143"
+    },
+    "qualification/fresh-live-inspector-safety-review-13.json": {
+      "bytes": 7133,
+      "sha256": "3f029a53ad371acbb5c24e87914bfbc7731be8ca966ed626befd2c7294250d03"
+    },
+    "qualification/inspect_live_trials.py": {
+      "bytes": 38715,
+      "sha256": "b67a978b65917525bf0e7a7fdb70cdb34ce4b7092561972f0c6e7e99ab6e9daa"
+    },
+    "qualification/shutdown-exporter-before-01.json": {
+      "bytes": 1379,
+      "sha256": "87bc55f61c064f994cf4cd54967dc08ccc7377f7db466640ab11c7c035778e28"
+    }
+  },
+  "exporter_safety_checks": 120,
+  "final_combined_qualification_pending": true,
+  "historical01_through10_summaries_unchanged": true,
+  "limits": [
+    "The provider-free baseline reproduces a completed-context STOP defect; trial10 original STOP exception was not retained, so exact historical attribution remains unproven.",
+    "Context-publication tests use a real signed/native path with an explicitly authored source-hash validator; they do not claim model inference.",
+    "These fixes do not close the separately recorded three collection/API contracts or establish full-suite qualification.",
+    "Any later live result must identify its own combined source and archive."
+  ],
+  "meaningful_controls": [
+    "actual signed native START/STOP after an expired captured replay budget",
+    "foreign START and foreign transaction rejection",
+    "revoked profile, missing STOP grant and denied lease before transaction lookup",
+    "terminal lifecycle does not bypass original REPAIR_REQUIRED request/CAS",
+    "actual control-plane StaleTreeError frame survives later close guard",
+    "phase-specific failure, cancellation, diagnostic failure, and successful cleanup",
+    "cyclic exception chains, unknown types/paths, extra fields and contradictory reasons rejected"
+  ],
+  "new_test_runs": 0,
+  "no_blocking_concern_found_in_reviewed_scope": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "reviewed_commits": [
+    "2fd5bd6728bd27e0523f460d43cf31c738170e49",
+    "66977152816dc4007bc720f107fa7a8cc1555268"
+  ],
+  "schema": "terminal-shutdown-independent-implementation-review@1",
+  "shutdown_transaction_read": {
+    "fresh_stop_target_bounds_authorization_lease_required_before_read": true,
+    "full_transaction_identity_join": true,
+    "missing_transaction_does_not_grant_repair": true,
+    "normal_stop_and_live_child_close_fences_unchanged": true,
+    "original_and_stop_immutable_coordinates_match": true,
+    "original_exact_locally_issued_start_required": true,
+    "original_repair_request_permit_and_cas_unchanged": true,
+    "service_then_store_lock_order_preserved": true
+  },
+  "six_new_rows_preserve_two_development_failures_and_failing_baseline": true,
+  "source_edits": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "ec4f8d7373f1b6a3a54c92e4e43cdb11706368bc749088ae95d08443e8420d5b",
+    "benchmarks/agent_supervisor/container_coding/terminal_shutdown_observation.py": "f55aa0f7149928d35e23ad11a4838cf9d26e192159dbfb1ab03588b54f83ae46",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "2405e4d567c2c5c7fda4b83e41422e4cb6065cf262f1e6c47e5f7345fa4c19a9",
+    "test/api/test_terminal_shutdown_observation.py": "56d051673c78a217e07475e3f9adb9a54815e1a983f5c703952aaedb53ee60d7",
+    "test/integration/test_admitted_shutdown_transaction.py": "6f0b8f85118eeaef6cfa4712a484731455664e704542c80fdb486986f42410a2"
+  }
+}

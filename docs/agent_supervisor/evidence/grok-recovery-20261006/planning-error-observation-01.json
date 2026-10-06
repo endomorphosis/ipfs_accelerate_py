@@ -1,0 +1,30 @@
+{
+  "actual_tool_counts": null,
+  "actual_tool_counts_basis": "native_logs_removed_with_completed_trial_container; requested policy is not an observation",
+  "exact_causal_error_message_retained": false,
+  "failure_categories": {
+    "authentication": "unknown",
+    "cli_flags": "unknown",
+    "network": "unknown",
+    "runtime": "unknown",
+    "schema_rejection": "unknown",
+    "unsupported_schema_keywords": "unknown"
+  },
+  "failure_phase": "provider_invocation",
+  "native_error_envelope_observed": true,
+  "native_process_exit_code": 1,
+  "native_schema_requested": true,
+  "native_stderr_retention": "written_under_private_container_state_but_not_downloaded_by_current_harbor_agent",
+  "native_usage": null,
+  "provider_calls_observed": 1,
+  "raw_native_debug_provider_verifier_or_credential_data_exported": false,
+  "receipt_sha256": "a6256b284058d22b77534bd57c6757c2fdde6ab7eaf05bba0d369495af8c0c32",
+  "requested_planning_tools": 0,
+  "response_schema_validated": false,
+  "retained_planner_error_semantics": "Provider proposal failed because the isolated planning router did not complete successfully; local fallback was disabled.",
+  "retry_performed": false,
+  "schema": "grok-recovery-planning-error-observation@1",
+  "trial_container_removed": true,
+  "trial_name": "grok-tune-mjcf-01",
+  "worker_cleanup_returncode": 0
+}
