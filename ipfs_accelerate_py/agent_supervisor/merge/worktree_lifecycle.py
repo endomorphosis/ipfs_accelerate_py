@@ -23,6 +23,7 @@ import stat
 import tempfile
 import time
 import uuid
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -2371,17 +2372,33 @@ class WorktreeLifecycleStore:
         expected_fence: int,
         renew_lease: bool = True,
         terminal_reason: str = "",
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
-        """Owner-only CAS state transition with optional lease renewal."""
+        """Owner-only CAS; an explicit capture also binds the full record/index.
+
+        Compare the capture under the mutation locks, not before acquiring
+        them: another task can reuse a workspace and even a lease/fence pair.
+        """
 
         if isinstance(new_state, str):
             new_state = WorkspaceLifecycleState(new_state)
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
+            raise OwnershipError("captured record must be an exact lifecycle record")
+        captured_index = (self.task_index_path_for(
+            canonical_task_cid=expected_record.canonical_task_cid,
+            task_id=expected_record.task_id, attempt=expected_record.attempt,
+        ) if expected_record is not None else None)
+        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()), serialized_lock_update(record_path):
             self._require_not_quarantined(workspace)
-            current = self.load_workspace(workspace)
+            current = (self._load_strict_workspace_record(workspace)
+                       if expected_record is not None else self.load_workspace(workspace))
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
+            if expected_record is not None:
+                if current != expected_record:
+                    raise OwnershipError("captured record changed before lifecycle transition")
+                self._require_exact_task_index(current, index_path=captured_index)
             self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
             if current.is_terminal and new_state is not WorkspaceLifecycleState.TERMINAL:
                 raise WorktreeLifecycleError("cannot revive a terminal lifecycle record")
@@ -2431,6 +2448,7 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         """Owner-only CAS rebind when pool resolution changes the physical path.
 
@@ -2442,14 +2460,12 @@ class WorktreeLifecycleStore:
 
         old_normalized = normalize_workspace_path(workspace)
         new_normalized = normalize_workspace_path(new_workspace)
-        if old_normalized == new_normalized:
-            self._require_not_quarantined(old_normalized)
-            current = self.load_workspace(old_normalized)
-            if current is None:
-                raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
-            return current
-
+        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
+            raise OwnershipError("captured record must be an exact lifecycle record")
+        captured_index = (self.task_index_path_for(
+            canonical_task_cid=expected_record.canonical_task_cid,
+            task_id=expected_record.task_id, attempt=expected_record.attempt,
+        ) if expected_record is not None else None)
         old_path = self.workspace_path_for(old_normalized)
         new_path = self.workspace_path_for(new_normalized)
 
@@ -2458,10 +2474,17 @@ class WorktreeLifecycleStore:
                 old_normalized,
                 new_normalized,
             )
-            current = self.load_workspace(old_normalized)
+            current = (self._load_strict_workspace_record(old_normalized)
+                       if expected_record is not None else self.load_workspace(old_normalized))
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
+            if expected_record is not None:
+                if current != expected_record:
+                    raise OwnershipError("captured record changed before lifecycle rebind")
+                self._require_exact_task_index(current, index_path=captured_index)
             self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
+            if old_normalized == new_normalized:
+                return current
             if current.is_terminal:
                 raise WorktreeLifecycleError("cannot rebind a terminal lifecycle record")
             existing_new = self.load_workspace(new_normalized)
@@ -2513,15 +2536,17 @@ class WorktreeLifecycleStore:
                     pass
             return updated
 
-        # Lock both paths in a stable order.  When filenames collide, one
-        # advisory guard is enough (non-recursive flock would deadlock).
-        if old_path == new_path:
-            with serialized_lock_update(old_path):
-                return _rebind_body()
-        first, second = sorted([old_path, new_path], key=lambda item: str(item))
-        with serialized_lock_update(first):
-            with serialized_lock_update(second):
-                return _rebind_body()
+        # Captured ownership follows the index -> workspace lock order used
+        # by creation/adoption. Lock both physical paths in a stable order;
+        # equal paths require one non-recursive advisory guard.
+        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()):
+            if old_path == new_path:
+                with serialized_lock_update(old_path):
+                    return _rebind_body()
+            first, second = sorted([old_path, new_path], key=lambda item: str(item))
+            with serialized_lock_update(first):
+                with serialized_lock_update(second):
+                    return _rebind_body()
 
     def mark_active(
         self,
@@ -2529,12 +2554,14 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
             WorkspaceLifecycleState.ACTIVE,
             lease_id=lease_id,
             expected_fence=expected_fence,
+            expected_record=expected_record,
         )
 
     def mark_settling(
@@ -2543,12 +2570,14 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
             WorkspaceLifecycleState.SETTLING,
             lease_id=lease_id,
             expected_fence=expected_fence,
+            expected_record=expected_record,
         )
 
     def mark_terminal(
@@ -2558,6 +2587,7 @@ class WorktreeLifecycleStore:
         lease_id: str,
         expected_fence: int,
         reason: str = "owner_terminal",
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
@@ -2566,6 +2596,7 @@ class WorktreeLifecycleStore:
             expected_fence=expected_fence,
             renew_lease=False,
             terminal_reason=reason,
+            expected_record=expected_record,
         )
 
     @_workspace_mutation_boundary("workspace")
@@ -2960,14 +2991,35 @@ class WorktreeLifecycleStore:
         *,
         expected_fence: int,
         lease_id: str = "",
+        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> bool:
-        """Remove the lifecycle record only when fence (and optional lease) match."""
+        """Delete matching ownership, with strict capture checks when supplied.
+
+        An explicit capture requires its exact terminal record and task index;
+        an absent row is not proof that this caller performed deletion. Legacy
+        callers without a capture retain their existing idempotent behavior.
+        """
 
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
+        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
+            raise OwnershipError("captured record must be an exact lifecycle record")
+        captured_index = (self.task_index_path_for(
+            canonical_task_cid=expected_record.canonical_task_cid,
+            task_id=expected_record.task_id, attempt=expected_record.attempt,
+        ) if expected_record is not None else None)
+        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()), serialized_lock_update(record_path):
             if self._load_strict_quarantine_payload(workspace) is not None:
                 return False
-            current = self.load_workspace(workspace)
+            if expected_record is not None:
+                try:
+                    current = self._load_strict_workspace_record(workspace)
+                    if current != expected_record or not current.is_terminal:
+                        return False
+                    self._require_exact_task_index(current, index_path=captured_index)
+                except WorktreeLifecycleError:
+                    return False
+            else:
+                current = self.load_workspace(workspace)
             if current is None:
                 return True
             if int(current.fence) != int(expected_fence):

@@ -65,11 +65,8 @@ def test_replacement_inside_mutation_boundary_is_preserved(custody, monkeypatch,
         with pytest.raises(OwnershipError, match='captured record'):
             daemon._mark_worktree_lifecycle_settling(record.workspace_path)
     else:
-        calls = []
-        result = daemon._finalize_exact_worktree_lifecycle(record, reason='cleanup',
-            terminal_callback=lambda *_: calls.append(True))
+        result = daemon._finalize_exact_worktree_lifecycle(record, reason='cleanup')
         assert result['finalized'] is False
-        assert calls == []
     assert store.load_workspace(record.workspace_path) == observed['new']
     assert store.workspace_path_for(record.workspace_path).read_bytes() == observed['bytes']
     assert daemon._active_worktree_lifecycle == record

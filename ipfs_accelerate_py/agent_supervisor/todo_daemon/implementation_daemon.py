@@ -22411,6 +22411,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 lifecycle_record.workspace_path,
                 lease_id=lifecycle_record.lease_id,
                 expected_fence=lifecycle_record.fence,
+                expected_record=lifecycle_record,
             )
             self._active_worktree_lifecycle = lifecycle_record
             self._mark_implementation_started(
@@ -30738,6 +30739,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         lifecycle_record.workspace_path,
                         lease_id=lifecycle_record.lease_id,
                         expected_fence=lifecycle_record.fence,
+                        expected_record=lifecycle_record,
                     )
                     self._active_worktree_lifecycle = lifecycle_record
                 except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
@@ -52630,23 +52632,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Advance the active claim into settling before validation/merge/cleanup."""
 
         record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
-        if record is None or record.is_terminal:
+        if record is None:
+            return record
+        if ((worktree_path is not None and normalize_workspace_path(worktree_path)
+             != normalize_workspace_path(record.workspace_path))
+                or self.worktree_lifecycle.load_workspace(record.workspace_path) != record):
+            raise OwnershipError("captured lifecycle record changed before validation")
+        if record.is_terminal:
             return record
         if record.state is WorkspaceLifecycleState.SETTLING:
-            self._active_worktree_lifecycle = record
             return record
-        try:
-            updated = self.worktree_lifecycle.mark_settling(
-                record.workspace_path,
-                lease_id=record.lease_id,
-                expected_fence=record.fence,
-            )
-        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError):
-            return record
+        updated = self.worktree_lifecycle.mark_settling(
+            record.workspace_path,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+            expected_record=record,
+        )
         self._active_worktree_lifecycle = updated
         return updated
 
@@ -52668,6 +52669,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             normalized,
             lease_id=record.lease_id,
             expected_fence=record.fence,
+            expected_record=record,
         )
         self._active_worktree_lifecycle = rebound
         return rebound
@@ -53024,15 +53026,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         reason: str = "cleanup_finished",
     ) -> dict[str, Any]:
-        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
+        """Finalize the captured owner; a path lookup cannot grant its authority."""
 
         record = self._active_worktree_lifecycle
-        if worktree_path is not None:
-            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
-            if loaded is not None:
-                record = loaded
         if record is None:
             return {"finalized": False, "reason": "no_lifecycle_record"}
+        if (worktree_path is not None and normalize_workspace_path(worktree_path)
+                != normalize_workspace_path(record.workspace_path)):
+            return {"finalized": False, "reason": "lifecycle_capture_path_mismatch"}
         return self._finalize_exact_worktree_lifecycle(
             record,
             reason=reason,
@@ -53044,46 +53045,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         reason: str,
     ) -> dict[str, Any]:
-        """Terminalize only the captured lease/fence for a released workspace.
+        """Terminalize and delete only the exact captured workspace owner.
 
         A pooled checkout can be leased to another lane immediately after
         release.  Reloading by its stable path after that point could observe
         and terminalize the new owner's record.  Callers that release a pool
         lease therefore capture their record first and finalize this exact
-        compare-and-swap identity.
+        compare-and-swap identity. Both the terminal transition and deletion
+        compare the complete record and task index under the store locks.
         """
 
         def _clear_captured_active() -> None:
             current = self._active_worktree_lifecycle
-            if (
-                current is not None
-                and current.lease_id == record.lease_id
-                and current.fence == record.fence
-                and normalize_workspace_path(current.workspace_path)
-                == normalize_workspace_path(record.workspace_path)
-            ):
+            if current == record:
                 self._active_worktree_lifecycle = None
 
-        if record.is_terminal:
-            _clear_captured_active()
-            return {
-                "finalized": True,
-                "reason": "already_terminal",
-                "fence": record.fence,
-            }
         try:
-            terminal = self.worktree_lifecycle.mark_terminal(
+            terminal = record if record.is_terminal else self.worktree_lifecycle.mark_terminal(
                 record.workspace_path,
                 lease_id=record.lease_id,
                 expected_fence=record.fence,
                 reason=reason,
+                expected_record=record,
             )
             deleted = self.worktree_lifecycle.compare_and_delete(
                 terminal.workspace_path,
                 expected_fence=terminal.fence,
                 lease_id=terminal.lease_id,
+                expected_record=terminal,
             )
-            _clear_captured_active()
             if not deleted:
                 return {
                     "finalized": False,
@@ -53094,6 +53084,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "attempt_consumed": False,
                     "provider_call_allowed": False,
                 }
+            _clear_captured_active()
             return {
                 "finalized": True,
                 "reason": reason,
@@ -53102,7 +53093,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
         except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
             # Peer reclamation or concurrent owner may have advanced the fence.
-            _clear_captured_active()
             return {
                 "finalized": False,
                 "reason": "lifecycle_finalize_race",
