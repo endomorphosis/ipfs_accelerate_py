@@ -655,6 +655,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    native_state = None
     progress = NativeProgress(started=started)
     report["native_progress"] = progress.report
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -861,6 +862,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 **_published_retrieval_options(repository=Path("/app"), bundle=bundle, task=task,
                     model_snapshot=model_snapshot),
             )
+            native_state = runtime.state
             try:
                 report["coding_dispatch_possible"] = True
                 report["start"] = runtime.start().to_dict()
@@ -989,6 +991,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             progress.finish(report)
         except Exception:
             report["native_progress_error"] = "final_observation_unavailable"
+        try:
+            from .terminal_failure_observation import collect
+            report["native_failure_observations"] = collect(state, report, native_state=native_state)
+        except Exception:
+            # A diagnostic cannot replace the primary outcome or prevent
+            # durable result publication after native/worker cleanup.
+            report["native_failure_observations"] = {
+                "schema": "terminal-native-failure-observations@1", "status": "unavailable",
+                "observation_only": True, "completion_authority": False,
+                "retry_authority": False, "settlement_authority": False,
+            }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
