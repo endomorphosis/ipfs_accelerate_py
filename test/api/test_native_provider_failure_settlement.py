@@ -88,6 +88,13 @@ runner.run(prompt="Repair the fixture", provider="codex_cli", model="fixture", t
 @pytest.mark.parametrize("pooled", [False, True])
 def test_actual_router_timeout_settles_native_failure_without_retry(tmp_path, monkeypatch, partial_edit, pooled):
     daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, partial_edit=partial_edit, pooled=pooled)
+    failures = []
+    original_failure = bridge._native_provider_exit_failure
+    def capture_failure(**kwargs):
+        failure = original_failure(**kwargs)
+        failures.append(failure)
+        return failure
+    monkeypatch.setattr(bridge, "_native_provider_exit_failure", capture_failure)
     try:
         result = daemon.run_once()
         assert result["implementation_result"].get("portal_terminal_failure") is True, result
@@ -106,6 +113,12 @@ def test_actual_router_timeout_settles_native_failure_without_retry(tmp_path, mo
             candidates = list((tmp_path / "worktrees").glob("*/result.py"))
             assert len(candidates) == 1 and candidates[0].read_text() == "VALUE = 1\n"
         assert len(portals) == 1
+        observation = failures[0].result["native_provider_custody_observation"]
+        assert observation["checks"] == [
+            {"stage": stage, "status": "passed", "reason_code": reason}
+            for stage, reason in (("issuance", "eligible"), ("native_exit", "verified"),
+                                  ("bridge_join", "verified"), ("capability_take", "verified"))]
+        assert observation["settlement_authority"] is False
         logs = list(bridge._paths(attempt).root.rglob("*.log"))
         rows = [json.loads(line) for path in logs for line in path.read_text().splitlines()
                 if line.startswith('{"') and 'router-implementation-invocation@1' in line]
@@ -152,6 +165,8 @@ def test_detached_new_session_child_outside_checkout_prevents_settlement(tmp_pat
         native, authority, implementation = _issued_native(process, custody)
         assert native._take_database_provider_exit(authority, implementation) is None
         assert native._database_provider_exit is None
+        assert native._database_provider_custody_observation["checks"] == [
+            {"stage": "native_exit", "status": "denied", "reason_code": "child_census_not_empty_or_unstable"}]
         assert os.getpgid(detached) == detached
     finally:
         if process.poll() is None:
@@ -172,7 +187,7 @@ def test_preexisting_child_is_preserved_and_disables_custody():
         process.wait(timeout=5)
 
 
-@pytest.mark.parametrize("invalid", ["foreign_authority", "changed_result", "fake_process", "group_alive", "group_denied", "owner_birth", "children_unknown"])
+@pytest.mark.parametrize("invalid", ["foreign_authority", "changed_result", "fake_process", "group_alive", "group_denied", "owner_birth", "children_unknown", "custody_absent", "children_present", "subreaper_disabled"])
 def test_native_exit_capability_rejects_uncertain_custody(monkeypatch, invalid):
     custody = PortalImplementationDaemon._begin_database_provider_child_custody()
     assert custody is not None
@@ -193,12 +208,29 @@ def test_native_exit_capability_rejects_uncertain_custody(monkeypatch, invalid):
         monkeypatch.setattr(os, "killpg", denied)
     elif invalid == "owner_birth":
         native._database_provider_exit = (process, authority, json.dumps(implementation), (custody[0], (0, 0, 0, 0)), "{}")
-    else:
+    elif invalid == "children_unknown":
         def unknown():
             raise PermissionError("child census unavailable")
         monkeypatch.setattr(PortalImplementationDaemon, "_database_provider_children_empty", staticmethod(unknown))
+    elif invalid == "custody_absent":
+        native._database_provider_exit = (process, authority, json.dumps(implementation), None, "{}")
+    elif invalid == "children_present":
+        monkeypatch.setattr(PortalImplementationDaemon, "_database_provider_children_empty", staticmethod(lambda: False))
+    else:
+        import ctypes
+        class DisabledPrctl:
+            def __call__(self, *args):
+                return 0
+        monkeypatch.setattr(ctypes, "CDLL", lambda *args, **kwargs: SimpleNamespace(prctl=DisabledPrctl()))
     assert native._take_database_provider_exit(authority, implementation) is None
     assert native._database_provider_exit is None
+    expected = {"foreign_authority": "attempt_authority_changed", "changed_result": "implementation_result_changed",
+        "fake_process": "not_native_process", "group_alive": "process_group_present",
+        "group_denied": "process_group_unreadable", "owner_birth": "custody_owner_changed",
+        "children_unknown": "child_census_unavailable", "custody_absent": "custody_not_established",
+        "children_present": "child_census_not_empty_or_unstable", "subreaper_disabled": "subreaper_disabled"}[invalid]
+    assert native._database_provider_custody_observation["checks"] == [
+        {"stage": "native_exit", "status": "denied", "reason_code": expected}]
 
 
 def test_native_exit_capability_is_one_use():
@@ -238,7 +270,7 @@ def test_settled_callback_replays_after_response_loss_without_provider_dispatch(
         daemon.close()
 
 
-@pytest.mark.parametrize("change", ["foreign_exception", "claim", "fence", "state", "events", "projection", "cas_intent", "stale_source", "later_effect", "altered_native"])
+@pytest.mark.parametrize("change", ["foreign_exception", "claim", "fence", "state", "events", "projection", "cas_intent", "stale_source", "later_effect", "altered_native", "state_unreadable", "events_unreadable", "binding_unreadable"])
 def test_bridge_capability_cannot_cross_changed_authority(tmp_path, monkeypatch, change):
     """Exercise consumption barriers with actual sealed attempt files; no grant is minted."""
     from dataclasses import replace
@@ -279,6 +311,15 @@ def test_bridge_capability_cannot_cross_changed_authority(tmp_path, monkeypatch,
             paths.events.write_text('{"type":"changed"}\n')
         elif change == "projection":
             paths.task_projection.write_text(paths.task_projection.read_text() + '\n- Acceptance: foreign\n')
+        elif change in {"state_unreadable", "events_unreadable", "binding_unreadable"}:
+            def unavailable(*args, **kwargs):
+                raise OSError("authored control read unavailable")
+            if change == "state_unreadable":
+                monkeypatch.setattr(bridge, "_native_provider_state", unavailable)
+            elif change == "events_unreadable":
+                monkeypatch.setattr(module, "_accepted_source_events", unavailable)
+            else:
+                monkeypatch.setattr(bridge, "_strict_binding", unavailable)
         elif change in {"stale_source", "later_effect", "altered_native"}:
             if change == "stale_source":
                 def stale(*args):
@@ -303,6 +344,12 @@ def test_bridge_capability_cannot_cross_changed_authority(tmp_path, monkeypatch,
             return
         assert bridge.take_native_provider_exit_failure(attempt, failure) is None
         assert bridge._issued_provider_exit_failure is None
+        expected = {"foreign_exception": "foreign_exception", "claim": "attempt_changed",
+            "fence": "attempt_changed", "state": "state_changed", "events": "events_changed",
+            "projection": "protected_path_not_rearmed", "state_unreadable": "state_unavailable",
+            "events_unreadable": "events_unavailable", "binding_unreadable": "binding_unavailable"}[change]
+        assert failure.result["native_provider_custody_observation"]["checks"] == [
+            {"stage": "capability_take", "status": "denied", "reason_code": expected}]
         assert daemon.coordinator.get_task_claim(daemon.get_attempt(attempt.attempt_id).claim_id).state.value == "accepted"
     finally:
         daemon.close()
@@ -388,5 +435,22 @@ def test_pooled_release_failure_cannot_reload_or_settle_another_owner(tmp_path, 
         finished = next(item for item in events if item.get("type") == "implementation_finished")
         assert finished["lifecycle_finalize"] == {"finalized": False, "reason": "lifecycle_finalize_race"}
         assert (tmp_path / "repository/result.py").read_text() == "VALUE = 0\n"
+    finally:
+        daemon.close()
+
+
+def test_observation_sink_failure_cannot_prevent_native_settlement(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_provider_custody_observation as module
+    def broken(*args, **kwargs):
+        raise RuntimeError("authored observation sink failure")
+    monkeypatch.setattr(module, "append_native_provider_custody_check", broken)
+    daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, partial_edit=True, pooled=True)
+    try:
+        result = daemon.run_once()
+        assert result["implementation_result"]["portal_terminal_failure"] is True
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt.status == "failed"
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        assert daemon.coordinator.get_task_claim(attempt.claim_id).state.value == "released"
     finally:
         daemon.close()

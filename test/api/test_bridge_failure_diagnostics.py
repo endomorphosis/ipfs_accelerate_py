@@ -29,6 +29,62 @@ def _observe():
             "lifecycle_finalized": True}}, phase="terminal_failure")
 
 
+def test_legacy_bridge_diagnostic_remains_readable_without_custody_observation():
+    legacy = _observe()
+    legacy["schema"] = diagnostics.LEGACY_SCHEMA
+    legacy.pop("native_provider_custody_observation")
+    assert diagnostics.validate_bridge_failure_diagnostic(legacy) == legacy
+    assert "native_provider_custody_observation" not in legacy
+
+
+@pytest.mark.parametrize("mutation", ["legacy-extra", "current-missing", "unknown-version"])
+def test_bridge_diagnostic_versions_keep_separate_closed_shapes(mutation):
+    value = _observe()
+    if mutation == "legacy-extra":
+        value["schema"] = diagnostics.LEGACY_SCHEMA
+    elif mutation == "current-missing":
+        value.pop("native_provider_custody_observation")
+    else:
+        value["schema"] = "database-bridge-failure-diagnostic@3"
+    assert diagnostics.validate_bridge_failure_diagnostic(value) is None
+
+
+def test_untrusted_custody_payload_is_not_exported_or_promoted():
+    private = {"reason_code": "private command and source text", "settlement_authority": True}
+    failure = DatabasePortalBridgeError("portal_provider_failed", result={
+        "native_provider_custody_observation": private})
+    observed = diagnostics.observe_bridge_failure(failure, {}, phase="unknown_callback")
+    assert observed["schema"] == diagnostics.SCHEMA
+    assert observed["native_provider_custody_observation"] is None
+    assert "private" not in json.dumps(observed)
+    assert observed["callback"]["native_exit"]["present"] is False
+    assert observed["settlement_authority"] is False
+    assert diagnostics.validate_bridge_failure_diagnostic(observed) == observed
+    observed["native_provider_custody_observation"] = private
+    assert diagnostics.validate_bridge_failure_diagnostic(observed) is None
+
+
+def test_native_gate_denial_survives_projection_without_granting_custody(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_provider_custody_observation import (
+        append_native_provider_custody_check,
+    )
+    custody = append_native_provider_custody_check(None, "issuance", "lifecycle_not_finalized")
+    failure = DatabasePortalBridgeError("portal_provider_failed", result={
+        "native_provider_custody_observation": custody})
+    observed = diagnostics.observe_bridge_failure(failure, {}, phase="unknown_callback")
+    assert observed["native_provider_custody_observation"] == custody
+    assert observed["callback"]["native_exit"]["present"] is False
+    assert observed["settlement_authority"] is False
+    assert diagnostics.validate_bridge_failure_diagnostic(observed) == observed
+    diagnostics.write_bridge_failure_observation(tmp_path, task_cid="task:fixture",
+        attempt_id="attempt:fixture", diagnostic=observed)
+    envelope = json.loads((tmp_path / diagnostics.OBSERVATION_FILENAME).read_bytes())
+    assert diagnostics.validate_bridge_failure_observation(envelope) == envelope
+    assert envelope["diagnostic"]["native_provider_custody_observation"] == custody
+    custody["checks"][0]["reason_code"] = "private mutation"
+    assert "private" not in json.dumps(observed)
+
+
 def test_no_traceback_source_or_exception_message_reads(monkeypatch):
     def forbidden(*_args, **_kwargs):
         raise AssertionError("traceback source access is forbidden")

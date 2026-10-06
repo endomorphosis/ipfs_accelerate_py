@@ -9,7 +9,8 @@ import stat
 import tempfile
 from pathlib import Path
 
-SCHEMA = "database-bridge-failure-diagnostic@1"
+SCHEMA = "database-bridge-failure-diagnostic@2"
+LEGACY_SCHEMA = "database-bridge-failure-diagnostic@1"
 EVENT = "portal_bridge_failure_diagnostic"
 LOG_PREFIX = "Native bridge failure diagnostic: "
 OBSERVATION_SCHEMA = "database-bridge-failure-observation@1"
@@ -166,6 +167,9 @@ def observe_bridge_failure(failure, callback, *, phase):
     implementation = result.get("implementation") if type(result) is dict else None
     child = implementation.get("child_reported_router_failure") if type(implementation) is dict else None
     child = validate_child_report(child) if child is not None else None
+    from .native_provider_custody_observation import validate_native_provider_custody_observation
+    custody = result.get("native_provider_custody_observation") if type(result) is dict else None
+    custody = validate_native_provider_custody_observation(custody)
     # Do not execute an exception's custom __str__ or scan an unbounded model
     # message merely to recognize one short, source-owned reason literal.
     arguments = BaseException.args.__get__(failure, BaseException)
@@ -181,16 +185,21 @@ def observe_bridge_failure(failure, callback, *, phase):
                 "returncode": _returncode(native.get("returncode")) if native else None,
                 **{key: _boolean(native.get(key)) if native else None for key in _EXIT_BOOLS}}},
         "child_reported_router_failure": child or missing_child_report(),
+        "native_provider_custody_observation": custody,
         "completion_authority": False, "retry_authority": False, "settlement_authority": False}
 
 
 def validate_bridge_failure_diagnostic(value):
     """Validate an untrusted event projection; never confer custody authority."""
     try:
-        if (type(value) is not dict or set(value) != {"schema", "phase", "reason_code", "exceptions",
+        fields = {"schema", "phase", "reason_code", "exceptions",
                 "chain_truncated", "callback", "child_reported_router_failure", "completion_authority",
                 "retry_authority", "settlement_authority"}
-                or value["schema"] != SCHEMA or value["phase"] not in {"unknown_callback", "terminal_failure"}
+        if type(value) is not dict or value.get("schema") not in {SCHEMA, LEGACY_SCHEMA}:
+            return None
+        if value["schema"] == SCHEMA:
+            fields.add("native_provider_custody_observation")
+        if (set(value) != fields or value["phase"] not in {"unknown_callback", "terminal_failure"}
                 or value["reason_code"] not in _REASONS or type(value["chain_truncated"]) is not bool
                 or any(value[key] is not False for key in ("completion_authority", "retry_authority", "settlement_authority"))):
             return None
@@ -222,6 +231,10 @@ def validate_bridge_failure_diagnostic(value):
         child = validate_child_report(value["child_reported_router_failure"])
         if child is None:
             return None
+        if value["schema"] == SCHEMA and value["native_provider_custody_observation"] is not None:
+            from .native_provider_custody_observation import validate_native_provider_custody_observation
+            if validate_native_provider_custody_observation(value["native_provider_custody_observation"]) is None:
+                return None
         return json.loads(json.dumps({**value, "child_reported_router_failure": child}, allow_nan=False))
     except (ValueError, TypeError, RecursionError):
         return None

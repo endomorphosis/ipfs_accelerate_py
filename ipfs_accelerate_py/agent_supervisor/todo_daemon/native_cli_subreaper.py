@@ -14,7 +14,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
 
@@ -110,6 +110,36 @@ def _kill_and_reap_orphans() -> None:
             return
         if waited_pid == 0:
             time.sleep(_TERMINATION_POLL_SECONDS)
+
+
+def run_with_child_custody(callback: Callable[[], int]) -> int:
+    """Run one route in a fresh, dedicated worker and reap its descendants.
+
+    This belongs inside the isolated worker's Unix identity. It must never
+    wrap a callback in a shared daemon: after the empty-child prerequisite,
+    every child of this process must belong to this invocation. The caller's
+    outer watchdog remains responsible for an unresponsive worker. Returning
+    here supplies no task, settlement, retry, or provider-usage authority.
+    """
+    if not callable(callback):
+        raise TypeError("worker callback must be callable")
+    if not _enable_child_subreaper():
+        raise RuntimeError("worker child custody unavailable")
+    task_root = Path("/proc/self/task")
+    before = tuple(sorted(entry.name for entry in task_root.iterdir()))
+    first = _direct_child_pids()
+    middle = tuple(sorted(entry.name for entry in task_root.iterdir()))
+    second = _direct_child_pids()
+    after = tuple(sorted(entry.name for entry in task_root.iterdir()))
+    if not before or before != middle or middle != after or first or second:
+        raise RuntimeError("worker child custody requires an empty stable process")
+    try:
+        return callback()
+    finally:
+        # Same-UID descendants, including setsid/double-fork children and
+        # zombies, remain owned until the kernel reports no children. A
+        # cleanup failure must not turn into an observed worker exit.
+        _kill_and_reap_orphans()
 
 
 def _normalized_exit_code(return_code: int) -> int:

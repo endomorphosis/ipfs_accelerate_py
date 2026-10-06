@@ -44,7 +44,48 @@ runner.run(prompt="Repair the authored fixture", provider="codex_cli", model="fi
 ''')
 
 
-def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(tmp_path, monkeypatch):
+def _real_grok_detached_timeout(path: Path) -> Path:
+    """Real router/adapter and production worker custody, with an authored CLI."""
+    root = str(Path(__file__).resolve().parents[2])
+    executable, marker = path.with_name("grok"), path.with_name("owned_descendant.json")
+    executable.write_text(f'''#!{sys.executable}
+import json, os, subprocess, sys, time
+from pathlib import Path
+args=sys.argv[1:]
+assert args[args.index("--model")+1] == "grok-4.7"
+assert args[args.index("--output-format")+1] == "json"
+assert Path(args[args.index("--prompt-file")+1]).read_text().strip()
+Path("answer.py").write_text("def answer(): return 999\\n")
+child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(120)"],
+    start_new_session=True,cwd="/",stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+raw=Path(f"/proc/{{child.pid}}/stat").read_text()
+fields=raw[raw.rfind(")")+2:].split()
+Path({str(marker)!r}).write_text(json.dumps({{"pid":child.pid,"birth":int(fields[19])}}))
+time.sleep(120)
+''')
+    executable.chmod(0o700)
+    path.write_text(f'''import sys
+from types import SimpleNamespace
+sys.path.insert(0, {root!r})
+from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py.llm_allocation import intelligence_index
+from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_cli_subreaper import run_with_child_custody
+llm_router.find_grok_cli=lambda: {str(executable)!r}
+intelligence_index.discover_available_providers=lambda: ["grok_cli"]
+intelligence_index.select_efficient_route=lambda **kwargs: SimpleNamespace(provider="grok_cli",model_name="grok-4.7",reasoning_effort="high",catalog_revision="authored-fixture")
+# Planning purpose exercises the actual adapter locally while leaving the
+# separate production coding Docker identity gate intact. This is not a live
+# model/tool-policy qualification; only the subprocess tree is authored.
+run_with_child_custody(lambda: runner.run(prompt="Authored signed custody fixture",
+    provider="grok_cli",model="grok-4.7",purpose="planning",timeout=1,max_output_tokens=128))
+''')
+    return marker
+
+
+@pytest.mark.parametrize("provider_boundary", ["authored_leaf", "real_grok_detached"])
+def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(tmp_path, monkeypatch, provider_boundary):
     """Actual START/owner/claim/Portal/STOP; no authority guard is replaced."""
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import open_database_coordinator
@@ -59,7 +100,11 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
     initial_answer = (repository / "answer.py").read_bytes()
     initial_check = (repository / "test_answer.py").read_bytes()
     script = tmp_path / "authored_router_timeout.py"
-    _authored_router_timeout(script)
+    descendant_marker = None
+    if provider_boundary == "real_grok_detached":
+        descendant_marker = _real_grok_detached_timeout(script)
+    else:
+        _authored_router_timeout(script)
     with open_existing_native_owner(database=database, checkout=repository,
             state_dir=tmp_path / "owner", repository_id=verified["manifest"]["repository_cid"],
             execution_routes={prepared["task_id"]: GROK_CODEX_EXECUTION_MODE}) as owner:
@@ -131,6 +176,27 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
             invocations = [json.loads(line) for path in logs for line in path.read_text().splitlines()
                            if line.startswith('{"') and 'router-implementation-invocation@1' in line]
             assert len(invocations) == 1 and invocations[0]["error_type"] == "TimeoutExpired"
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon.bridge_failure_diagnostics import (
+                OBSERVATION_FILENAME, validate_bridge_failure_observation)
+            # The native producer writes this even with JSONL projections disabled.
+            observation = json.loads((runtime.state / "run" / OBSERVATION_FILENAME).read_text())
+            assert validate_bridge_failure_observation(observation) is not None
+            custody = observation["diagnostic"]["native_provider_custody_observation"]
+            assert [row["stage"] for row in custody["checks"]] == [
+                "issuance", "native_exit", "bridge_join", "capability_take"]
+            assert all(row["status"] == "passed" for row in custody["checks"])
+            assert custody["settlement_authority"] is False
+            if descendant_marker is not None:
+                descendant = json.loads(descendant_marker.read_text())
+                try:
+                    stat = Path(f"/proc/{descendant['pid']}/stat").read_text()
+                except (FileNotFoundError, ProcessLookupError):
+                    pass
+                else:
+                    # A reused numeric PID is not the authored child.
+                    assert int(stat[stat.rfind(")") + 2:].split()[19]) != descendant["birth"]
+                assert invocations[0]["provider"] == "grok_cli"
+                assert invocations[0]["purpose"] == "planning"
         finally:
             if runtime.process.snapshot(runtime.profile).members:
                 assert runtime.stop().succeeded

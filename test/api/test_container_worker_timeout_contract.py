@@ -23,6 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_ru
 
 
 def _execute_worker(monkeypatch, args):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_cli_subreaper
+    # This in-process fixture qualifies parser/routing only. Real child
+    # custody must run in the separate worker process, never in pytest.
+    monkeypatch.setattr(native_cli_subreaper, "run_with_child_custody", lambda callback: callback())
     tree = ast.parse(deployment.WORKER_ENTRY)
     start = next(index for index, node in enumerate(tree.body)
         if isinstance(node, ast.Assign)

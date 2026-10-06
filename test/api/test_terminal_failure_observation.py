@@ -62,6 +62,43 @@ def test_exact_terminal_sidecar_with_json_projection_absent(tmp_path):
     assert value['diagnostic']['phase'] == 'terminal_failure'
 
 
+def test_legacy_sidecar_is_read_without_inventing_custody_diagnostics(tmp_path):
+    diagnostic = _diagnostic()
+    diagnostic['schema'] = 'database-bridge-failure-diagnostic@1'
+    diagnostic.pop('native_provider_custody_observation')
+    _sidecar(tmp_path, diagnostic=diagnostic)
+    value = _bridge(tmp_path)
+    assert value['status'] == 'observed'
+    assert value['diagnostic'] == diagnostic
+    assert 'native_provider_custody_observation' not in value['diagnostic']
+
+
+def test_malformed_custody_observation_rejects_entire_sidecar(tmp_path):
+    _sidecar(tmp_path, diagnostic=_diagnostic(native_provider_custody_observation={
+        'settlement_authority': True, 'reason_code': 'private-error-canary'}))
+    value = _bridge(tmp_path)
+    assert value['status'] == 'invalid' and value['diagnostic'] is None
+    assert 'private-error-canary' not in json.dumps(value)
+
+
+def test_unknown_callback_report_retains_denied_gate_without_settlement(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_provider_custody_observation import (
+        append_native_provider_custody_check,
+    )
+    custody = append_native_provider_custody_check(None, 'issuance', 'lifecycle_not_finalized')
+    _sidecar(tmp_path, diagnostic=_diagnostic(phase='unknown_callback',
+        native_provider_custody_observation=custody))
+    report = {'task_state': {'task_cid': TASK, 'status': 'in_progress', 'revision': 3},
+        'native_progress': {'latest': {'task': {'task_cid': TASK, 'status': 'in_progress',
+            'revision': 3, 'completion_receipt': {'attempt_id_sha256': ATTEMPT_HASH}}}}}
+    result = observation.collect(tmp_path / 'outer', report, native_state=tmp_path)
+    assert result['bridge']['status'] == 'observed'
+    assert result['bridge']['diagnostic']['native_provider_custody_observation'] == custody
+    assert result['bridge']['diagnostic']['callback']['native_exit']['present'] is False
+    assert result['settlement_authority'] is False
+    assert report['task_state']['status'] == 'in_progress'
+
+
 @pytest.mark.parametrize('change', [
     {'task_cid_sha256':'a'*64}, {'attempt_id_sha256':'b'*64},
     {'diagnostic':{'phase':'unknown_callback'}},

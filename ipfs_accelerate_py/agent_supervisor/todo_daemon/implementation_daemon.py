@@ -30504,6 +30504,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         # Process custody is attempt-local and never reconstructed from model output.
         self._database_provider_exit = None
+        self._database_provider_custody_observation = None
         provider_process = None
         provider_process_returned = False
         provider_child_custody = None
@@ -33069,15 +33070,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if child_reported_router_failure is not None:
             result["child_reported_router_failure"] = child_reported_router_failure
         finished_event = self._record_event("implementation_finished", result)
-        if (provider_process_returned and provider_process is not None
-                and self._database_attempt_authority is not None
-                and type(returncode) is int and returncode != 0
-                and provider_process.returncode == returncode
-                and provider_dispatched and attempt_consumed
-                and not exception_result and not timeout_result
-                and not protected_path_violation
-                and validation_result.get("attempted") is False
-                and result.get("lifecycle_finalize", {}).get("finalized") is True):
+        issuance_reason = "eligible"
+        # Observe the first refused native gate, without adding authority to
+        # the result that the native capability independently binds.
+        if not provider_process_returned:
+            issuance_reason = "process_did_not_return"
+        elif provider_process is None:
+            issuance_reason = "missing_process"
+        elif self._database_attempt_authority is None:
+            issuance_reason = "missing_attempt_authority"
+        elif type(returncode) is not int or returncode == 0:
+            issuance_reason = "not_nonzero_exit"
+        elif provider_process.returncode != returncode:
+            issuance_reason = "process_exit_mismatch"
+        elif not provider_dispatched:
+            issuance_reason = "provider_not_dispatched"
+        elif not attempt_consumed:
+            issuance_reason = "attempt_not_consumed"
+        elif exception_result:
+            issuance_reason = "implementation_exception"
+        elif timeout_result:
+            issuance_reason = "outer_timeout"
+        elif protected_path_violation:
+            issuance_reason = "protected_path_violation"
+        elif validation_result.get("attempted") is not False:
+            issuance_reason = "validation_attempted"
+        elif result.get("lifecycle_finalize", {}).get("finalized") is not True:
+            issuance_reason = "lifecycle_not_finalized"
+        self._observe_database_provider_custody("issuance", issuance_reason)
+        if issuance_reason == "eligible":
             # This reference comes from the native Popen hook, never a provider
             # receipt. The bridge consumes it only after independent durable
             # state/event and process-group verification.
@@ -33087,6 +33108,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 json.dumps(finished_event, sort_keys=True, allow_nan=False),
             )
         return result
+
+    def _observe_database_provider_custody(self, stage, reason_code):
+        """Diagnostics cannot mint capabilities or change callback decisions."""
+        try:
+            from .native_provider_custody_observation import append_native_provider_custody_check
+            observation = append_native_provider_custody_check(
+                getattr(self, "_database_provider_custody_observation", None), stage, reason_code)
+            if observation is not None:
+                self._database_provider_custody_observation = observation
+        except Exception:
+            pass
 
     @staticmethod
     def _database_provider_children_empty():
@@ -33113,25 +33145,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return None
 
     @staticmethod
-    def _database_provider_children_quiesced(custody):
+    def _database_provider_child_custody_reason(custody):
+        """Name the existing quiescence gate without authorizing any cleanup."""
         from .native_cli_subreaper import _PR_GET_CHILD_SUBREAPER
         import ctypes
+        reason = "custody_owner_unavailable"
         try:
+            if custody is None:
+                return "custody_not_established"
+            if custody != (os.getpid(), PortalImplementationDaemon._provider_process_identity(os.getpid())):
+                return "custody_owner_changed"
+            reason = "subreaper_status_unavailable"
             enabled = ctypes.c_int(0)
             prctl = ctypes.CDLL(None, use_errno=True).prctl
             prctl.restype = ctypes.c_int
-            return bool(custody is not None
-                and custody == (os.getpid(), PortalImplementationDaemon._provider_process_identity(os.getpid()))
-                and prctl(_PR_GET_CHILD_SUBREAPER, ctypes.byref(enabled), 0, 0, 0) == 0
-                and enabled.value == 1 and PortalImplementationDaemon._database_provider_children_empty())
+            if prctl(_PR_GET_CHILD_SUBREAPER, ctypes.byref(enabled), 0, 0, 0) != 0:
+                return reason
+            if enabled.value != 1:
+                return "subreaper_disabled"
+            reason = "child_census_unavailable"
+            if not PortalImplementationDaemon._database_provider_children_empty():
+                return "child_census_not_empty_or_unstable"
+            return "verified"
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
-            return False
+            return reason
+
+    @staticmethod
+    def _database_provider_children_quiesced(custody):
+        return PortalImplementationDaemon._database_provider_child_custody_reason(custody) == "verified"
 
     def _take_database_provider_exit(self, authority, implementation):
         """Consume native waited-child custody, without granting task authority."""
+        def refused(reason):
+            self._observe_database_provider_custody("native_exit", reason)
+            return None
+
         issued, self._database_provider_exit = self._database_provider_exit, None
         if issued is None:
-            return None
+            return refused("not_issued")
         process, bound_authority, result_json, custody, event_json = issued
         native_result = json.loads(result_json)
         returned_result = dict(implementation)
@@ -33140,25 +33191,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         for key in ("context_receipt_path", "retry_probe_result"):
             if key not in native_result:
                 returned_result.pop(key, None)
-        if (not self._database_provider_children_quiesced(custody)
-                or type(process) is not subprocess.Popen
-                or bound_authority != authority
-                or self._database_attempt_authority != authority
-                or json.dumps(returned_result, sort_keys=True, allow_nan=False) != result_json
-                or type(process.returncode) is not int or process.returncode == 0
-                or process.poll() != process.returncode
-                or implementation.get("returncode") != process.returncode):
-            return None
+        custody_reason = self._database_provider_child_custody_reason(custody)
+        if custody_reason != "verified":
+            return refused(custody_reason)
+        if type(process) is not subprocess.Popen:
+            return refused("not_native_process")
+        if bound_authority != authority or self._database_attempt_authority != authority:
+            return refused("attempt_authority_changed")
+        if json.dumps(returned_result, sort_keys=True, allow_nan=False) != result_json:
+            return refused("implementation_result_changed")
+        if (type(process.returncode) is not int or process.returncode == 0
+                or process.poll() != process.returncode):
+            return refused("process_not_reaped")
+        if implementation.get("returncode") != process.returncode:
+            return refused("returncode_changed")
         try:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
+            self._observe_database_provider_custody("native_exit", "verified")
             return {"pid": process.pid, "returncode": process.returncode,
                     "reaped": True, "process_group_absent": True,
                     "subreaper_children_absent": True, "implementation_result": native_result,
                     "finished_event": json.loads(event_json)}
         except OSError:
-            return None
-        return None
+            return refused("process_group_unreadable")
+        return refused("process_group_present")
 
     def _take_issued_no_change_policy_gate(
         self,

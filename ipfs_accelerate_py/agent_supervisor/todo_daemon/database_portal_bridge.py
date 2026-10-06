@@ -11088,6 +11088,21 @@ class DatabasePortalExecutionBridge:
         return payload, _sha256_bytes(_canonical_json({"target": target, "lane_key": paths.state.stem,
                                                      "state_path": str(paths.state.resolve())}))
 
+    @staticmethod
+    def _observe_native_custody(summary, stage, reason_code, *, daemon=None):
+        """Closed telemetry only; a failed sink must not affect native custody."""
+        try:
+            from .native_provider_custody_observation import (
+                append_native_provider_custody_check, validate_native_provider_custody_observation)
+            previous = (getattr(daemon, "_database_provider_custody_observation", None)
+                        if daemon is not None else summary.get("native_provider_custody_observation"))
+            previous = validate_native_provider_custody_observation(previous)
+            observation = append_native_provider_custody_check(previous, stage, reason_code)
+            if observation is not None:
+                summary["native_provider_custody_observation"] = observation
+        except Exception:
+            pass
+
     def _native_provider_exit_failure(self, *, attempt, paths, binding, daemon,
                                       authority, implementation, summary):
         """Join actual child custody to this sealed, durably finished projection."""
@@ -11096,24 +11111,34 @@ class DatabasePortalExecutionBridge:
         if (type(daemon) is not PortalImplementationDaemon
                 or daemon.state_path.resolve() != paths.state.resolve()
                 or daemon.events_path.resolve() != paths.events.resolve()):
+            self._observe_native_custody(summary, "bridge_join", "not_native_daemon")
             return None
         observed = daemon._take_database_provider_exit(authority, implementation)
         if observed is None:
+            self._observe_native_custody(summary, "bridge_join", "native_exit_unavailable", daemon=daemon)
+            return None
+        def refused(reason):
+            self._observe_native_custody(summary, "bridge_join", reason, daemon=daemon)
             return None
         implementation = observed["implementation_result"]
+        unavailable_reason = "directory_unavailable"
         try:
             directory = self._seal_attempt_directory(
                 paths, attempt_id=str(attempt.attempt_id), create=False)
+            unavailable_reason = "binding_unavailable"
             if self._strict_binding(paths.binding) != dict(binding):
-                return None
+                return refused("binding_changed")
+            unavailable_reason = "projection_unverified"
             self._verify_projection(paths, binding)
+            unavailable_reason = "events_unavailable"
             records, events_digest = _accepted_source_events(paths.events)
             finished = [item for item in records
                         if item.get("type") == "implementation_finished"]
             if (len(finished) != 1
                     or _canonical_json({key: finished[0].get(key) for key in observed["finished_event"]})
-                    != _canonical_json(observed["finished_event"])
-                    or implementation.get("task_id") != binding["task_alias"]
+                    != _canonical_json(observed["finished_event"])):
+                return refused("finished_event_mismatch")
+            if (implementation.get("task_id") != binding["task_alias"]
                     or implementation.get("canonical_task_cid") != authority["canonical_task_cid"]
                     or implementation.get("provider_dispatched") is not True
                     or implementation.get("attempt_consumed") is not True
@@ -11121,7 +11146,8 @@ class DatabasePortalExecutionBridge:
                     or not 1 <= implementation["attempt"] < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
                     or implementation.get("returncode") != observed["returncode"]
                     or implementation.get("lifecycle_finalize", {}).get("finalized") is not True):
-                return None
+                return refused("implementation_mismatch")
+            unavailable_reason = "state_unavailable"
             state_bytes, state_target_digest = self._native_provider_state(paths)
             state = json.loads(state_bytes, object_pairs_hook=_reject_duplicate_control_keys)
             if (type(state) is not dict
@@ -11135,9 +11161,12 @@ class DatabasePortalExecutionBridge:
                     or state.get("last_implementation_task_cid") != authority["canonical_task_cid"]
                     or type(state.get("last_implementation_returncode")) is not int
                     or state.get("last_implementation_returncode") != observed["returncode"]
-                    or state.get("last_implementation_commit") not in (None, "")
-                    or not self.protected_path_failure_rearm_ready(attempt)):
-                return None
+                    or state.get("last_implementation_commit") not in (None, "")):
+                return refused("state_mismatch")
+            unavailable_reason = "rearm_check_unavailable"
+            if not self.protected_path_failure_rearm_ready(attempt):
+                return refused("protected_path_not_rearmed")
+            unavailable_reason = "check_unavailable"
             # The native subreaper proves this callback's whole descendant
             # custody empty, including new sessions and changed working dirs.
             # Unrelated host processes are not evidence about this callback.
@@ -11158,34 +11187,63 @@ class DatabasePortalExecutionBridge:
                 "completion_authority": False, "automatic_retry_admitted": False,
             }
             receipt["receipt_id"] = content_identity(receipt)
+            self._observe_native_custody(summary, "bridge_join", "verified", daemon=daemon)
             failure = DatabasePortalBridgeError("portal_provider_failed", result=summary)
             self._issued_provider_exit_failure = (
                 failure, receipt, paths, dict(binding), directory, state_bytes)
             return failure
         except Exception:
             # A returned CLI status never substitutes for missing native proof.
-            return None
+            return refused(unavailable_reason)
 
     def take_native_provider_exit_failure(self, attempt, failure):
         """Take this bridge's one-use capability after callback cleanup returns."""
+        def observe(reason):
+            if type(failure) is DatabasePortalBridgeError:
+                self._observe_native_custody(failure.result, "capability_take", reason)
+
         issued, self._issued_provider_exit_failure = self._issued_provider_exit_failure, None
-        if issued is None or issued[0] is not failure:
+        if issued is None:
+            observe("not_issued")
+            return None
+        if issued[0] is not failure:
+            observe("foreign_exception")
             return None
         _, receipt, paths, binding, directory, state_bytes = issued
+        unavailable_reason = "attempt_check_unavailable"
         try:
-            if (any(type(receipt[key]) is not type(getattr(attempt, key))
+            if any(type(receipt[key]) is not type(getattr(attempt, key))
                     or receipt[key] != getattr(attempt, key) for key in (
                         "attempt_id", "task_cid", "task_alias", "claim_id", "lease_id",
-                        "owner_session_id", "fencing_token", "fence_epoch"))
-                    or self._strict_binding(paths.binding) != binding
-                    or self._seal_attempt_directory(paths, attempt_id=attempt.attempt_id, create=False) != directory
-                    or self._native_provider_state(paths) != (state_bytes, receipt["state_target_digest"])
-                    or _accepted_source_events(paths.events)[1] != receipt["events_digest"]
-                    or not self.protected_path_failure_rearm_ready(attempt)):
+                        "owner_session_id", "fencing_token", "fence_epoch")):
+                observe("attempt_changed")
                 return None
+            unavailable_reason = "binding_unavailable"
+            if self._strict_binding(paths.binding) != binding:
+                observe("binding_changed")
+                return None
+            unavailable_reason = "directory_unavailable"
+            if self._seal_attempt_directory(paths, attempt_id=attempt.attempt_id, create=False) != directory:
+                observe("directory_changed")
+                return None
+            unavailable_reason = "state_unavailable"
+            if self._native_provider_state(paths) != (state_bytes, receipt["state_target_digest"]):
+                observe("state_changed")
+                return None
+            unavailable_reason = "events_unavailable"
+            if _accepted_source_events(paths.events)[1] != receipt["events_digest"]:
+                observe("events_changed")
+                return None
+            unavailable_reason = "rearm_check_unavailable"
+            if not self.protected_path_failure_rearm_ready(attempt):
+                observe("protected_path_not_rearmed")
+                return None
+            unavailable_reason = "projection_unverified"
             self._verify_projection(paths, binding)
+            observe("verified")
             return dict(receipt)
         except Exception:
+            observe(unavailable_reason)
             return None
 
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
