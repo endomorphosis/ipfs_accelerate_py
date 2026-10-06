@@ -938,6 +938,10 @@ def build_runtime_archive(
         "task_inputs_in_archive": intent_request_binding is not None,
         **({"task_modeling_premises_included": True} if intent_request_binding is not None else {}),
     }
+    from .terminal_worker_capability import KEY, worker_capability_for_inventory
+    worker_capability = worker_capability_for_inventory(inventory)
+    if worker_capability is not None:
+        manifest[KEY] = worker_capability
     if grok_binary is not None:
         from .terminal_grok_deployment import grok_binding, validate_grok_binding
         manifest["grok_cli_assets"] = grok_binding()
