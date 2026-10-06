@@ -25,7 +25,7 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import (
     FullSupervisorAgent, source384_asset_arguments,
 )
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs
 from benchmarks.agent_supervisor.container_coding.test_benchmark_controls import observation
 from benchmarks.agent_supervisor.container_coding.benchmark_controls import compare_controls
 from ipfs_accelerate_py.agent_supervisor.runtime import source384_config as selection
@@ -63,7 +63,7 @@ def selected(tmp_path, monkeypatch):
 
 
 def build(tmp_path, selected):
-    return deployment.build_runtime_archive(output=tmp_path/'bundle', source384_config=selected[0], **_inputs(tmp_path))
+    return deployment.build_runtime_archive(output=tmp_path/'bundle', source384_config=selected[0], **_supervisor_inputs(tmp_path))
 
 
 def test_offline_selection_uses_native_compatibility_and_relocates_exact_assets(tmp_path, selected):

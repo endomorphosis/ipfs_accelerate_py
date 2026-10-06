@@ -1,7 +1,8 @@
-"""Bind extended coding budgets to the installer and router in a runtime archive.
+"""Bind every supervisor archive to its worker, router and child custody helper.
 
 This is an archive compatibility check, not execution or completion authority.
-Legacy archives remain usable with the original at-most-300-second profiles.
+Older archives must be rebuilt: the current worker requires child custody even
+with the original at-most-300-second profiles.
 """
 from __future__ import annotations
 
@@ -11,11 +12,12 @@ from pathlib import Path
 from .benchmark_resource_profile import coding_timeout_seconds
 
 KEY = "router_worker_capability"
-SCHEMA = "terminal-router-worker-capability@1"
-LEGACY_MAX_TIMEOUT_SECONDS = 300
+SCHEMA = "terminal-router-worker-capability@2"
+WORKER_CHILD_CUSTODY_SCHEMA = "terminal-worker-child-custody@1"
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
 )
 
 
@@ -28,6 +30,7 @@ def _current_capability():
     root = Path(__file__).resolve().parents[3]
     return {
         "schema": SCHEMA,
+        "worker_child_custody_schema": WORKER_CHILD_CUSTODY_SCHEMA,
         "max_timeout_seconds": MAX_IMPLEMENTATION_TIMEOUT_SECONDS,
         "worker_entry_sha256": hashlib.sha256(WORKER_ENTRY.encode()).hexdigest(),
         "source_sha256": {
@@ -51,7 +54,7 @@ def worker_capability_for_inventory(inventory):
     """Advertise only the exact executing installer's reviewed source bytes.
 
     Partial fixtures and archives of other source versions get no new capability.
-    They can still serve legacy budgets, but cannot silently claim the extension.
+    They cannot be used for current supervisor preparation or deployment.
     """
     expected_names = {"source/" + name for name in SOURCE_PATHS}
     if type(inventory) is not list or not expected_names.issubset(
@@ -63,17 +66,20 @@ def worker_capability_for_inventory(inventory):
 
 
 def require_worker_capability(manifest, resource_profile):
-    """Reject an unsupported extended budget before planning or deployment."""
+    """Require matching child custody support before planning or deployment.
+
+    No legacy profile bypass is safe: every current worker imports the helper.
+    The exact source join also refuses a changed helper under a copied feature
+    declaration; this declaration never grants process cleanup authority.
+    """
     selected = coding_timeout_seconds(resource_profile)
-    if selected <= LEGACY_MAX_TIMEOUT_SECONDS:
-        return None
     if type(manifest) is not dict:
-        raise ValueError("extended coding budget requires a worker archive capability")
+        raise ValueError("rebuild runtime archive: matching worker archive capability required")
     expected = _current_capability()
     capability = manifest.get(KEY)
     if (type(capability) is not dict or capability != expected
             or type(capability.get("max_timeout_seconds")) is not int
             or selected > capability["max_timeout_seconds"]
             or not _matching_inventory(manifest.get("files"), expected)):
-        raise ValueError("extended coding budget requires the matching worker archive capability")
+        raise ValueError("rebuild runtime archive: matching worker archive capability required")
     return dict(capability)

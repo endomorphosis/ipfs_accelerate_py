@@ -18,7 +18,7 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import (
     FullSupervisorAgent, intent_asset_arguments,
 )
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs
 from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
 
@@ -51,7 +51,7 @@ def selected(tmp_path, monkeypatch):
 
 def _build(tmp_path, selected):
     return deployment.build_runtime_archive(output=tmp_path / 'bundle',
-        intent_action_384_config=selected[0], **_inputs(tmp_path))
+        intent_action_384_config=selected[0], **_supervisor_inputs(tmp_path))
 
 
 def test_closed_assets_relocate_and_leave_retrieval_disabled(tmp_path, selected):

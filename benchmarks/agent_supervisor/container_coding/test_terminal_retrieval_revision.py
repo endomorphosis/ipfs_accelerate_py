@@ -15,7 +15,7 @@ from benchmarks.agent_supervisor.container_coding.terminal_deployment import ROO
 from benchmarks.agent_supervisor.container_coding.terminal_retrieval_selection import (
     selected_retrieval_revision, require_retrieval_revision,
 )
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_inputs
 
 GTE_REVISION = "17e1f347d17fe144873b1201da91788898c639cd"
 LEGACY_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
@@ -28,7 +28,7 @@ def packaged(tmp_path):
     # Packaging fixture only: neural inference is not claimed by these bytes.
     (snapshot / "config.json").write_text('{"fixture":true}')
     archive = tmp_path / "bundle"
-    manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **_inputs(tmp_path))
+    manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **_supervisor_inputs(tmp_path))
     dataset = tmp_path / "dataset"
     task = dataset / benchmark.TASK
     task.mkdir(parents=True)

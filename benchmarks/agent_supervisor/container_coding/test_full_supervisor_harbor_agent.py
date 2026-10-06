@@ -6,6 +6,7 @@ import shlex
 from unittest.mock import AsyncMock, patch
 from types import SimpleNamespace
 from pathlib import Path
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 
 from benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark import config_for
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import FullSupervisorAgent, measured_usage, security_asset_arguments
@@ -125,7 +126,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
                 raise FileNotFoundError(source)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "manifest.json").write_text(json.dumps({"archive_sha256": "authored", "learned_requirements": []}))
+            (root / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "authored", "learned_requirements": []})))
             instruction = root / "public.md"
             instruction.write_text("Inspect bottle.py, repair problems and write report.jsonl with file_path and cwe_id fields.")
             contract = _requirements(instruction, symbolic=True)
@@ -163,7 +164,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
                 raise FileNotFoundError(source)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'manifest.json').write_text(json.dumps({'archive_sha256': 'authored', 'learned_requirements': []}))
+            (root / 'manifest.json').write_text(json.dumps(_supervisor_manifest({'archive_sha256': 'authored', 'learned_requirements': []})))
             agent = FullSupervisorAgent(logs_dir=root / 'logs', model_name='gpt-6.1-sol',
                 runtime_archive=str(root), arm='no-index')
             context = AgentContext()
@@ -200,7 +201,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
                 'canonical_cve_training': {'path': CANONICAL_CVE_PATH, 'raw_source_included': False,
                     'manifest_sha256': 'd' * 64, 'canonical_dataset_cid': 'authored-cid',
                     'canonical_record_count': 5, 'training_pair_count': 2}}
-            (root / 'manifest.json').write_text(json.dumps(manifest))
+            (root / 'manifest.json').write_text(json.dumps(_supervisor_manifest(manifest)))
             for arm in ('full', 'no-index'):
                 agent = FullSupervisorAgent(logs_dir=root / arm, model_name='gpt-6.1-sol',
                     runtime_archive=str(root), arm=arm)
@@ -235,7 +236,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "manifest.json").write_text(json.dumps({"archive_sha256": "test", "learned_requirements": []}))
+            (root / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "test", "learned_requirements": []})))
             agent = FullSupervisorAgent(logs_dir=root / "logs", model_name="gpt-6.1-sol",
                                         runtime_archive=str(root), arm="no-index")
             context = AgentContext()

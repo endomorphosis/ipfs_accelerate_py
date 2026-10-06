@@ -15,7 +15,7 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
 from benchmarks.agent_supervisor.container_coding import terminal_deployment as deployment
 from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original, _proposal_json  # noqa: F401
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs, _supervisor_inputs
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import FullSupervisorAgent, intent_asset_arguments
 from ipfs_accelerate_py.agent_supervisor.runtime import intent_autoencoder_advisor as advisor
 from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import build_prompt_goal_provider_request
@@ -57,9 +57,26 @@ def _plan(state, prepared, monkeypatch):
 
 
 def _original_prompt(prepared):
-    return build_prompt_goal_provider_request(PromptWorkflowRequest.from_dict(prepared["request"]),
-        DirectoryScanReceipt.from_dict(prepared["scan"]), config=prep._config(Path(prepared["repository"])),
+    from benchmarks.agent_supervisor.container_coding.terminal_planner_instruction import bind_public_instruction
+    from ipfs_accelerate_py.agent_supervisor.runtime.terminal_planner_contract import bind_terminal_task_contract
+    config = prep._config(Path(prepared["repository"]))
+    canonical = build_prompt_goal_provider_request(PromptWorkflowRequest.from_dict(prepared["request"]),
+        DirectoryScanReceipt.from_dict(prepared["scan"]), config=config,
         constraint_summaries=prepared["constraints"])
+    # Even without optional model advice, the current planner always carries
+    # the independently signed public instruction and typed task declaration.
+    expected = bind_public_instruction(canonical, prepared=prepared,
+        maximum_bytes=config.max_provider_request_bytes)
+    expected = bind_terminal_task_contract(expected, prepared=prepared,
+        maximum_bytes=config.max_provider_request_bytes)
+    unchanged = json.loads(expected)
+    for field in ("terminal_public_instruction", "terminal_planner_task_contract"):
+        binding = unchanged.pop(field)
+        assert binding["execution_authority"] is binding["completion_authority"] is False
+    # Binding adds only those two fields. Constraints and the canonical request
+    # remain exact, with no autoencoder advice or extra authority introduced.
+    assert unchanged == json.loads(canonical)
+    return expected
 
 
 @pytest.mark.parametrize("disabled", [False, True])
@@ -226,7 +243,7 @@ def test_ablation_selection_requires_boolean():
 @pytest.mark.parametrize("disabled", [False, True])
 def test_harbor_forwards_intent_selection_in_both_arms(tmp_path, intent_checkpoint, arm, disabled):
     from harbor.models.agent.context import AgentContext
-    built = deployment.build_runtime_archive(output=tmp_path / "archive", **_inputs(tmp_path),
+    built = deployment.build_runtime_archive(output=tmp_path / "archive", **_supervisor_inputs(tmp_path),
         intent_checkpoint=intent_checkpoint)
     commands = []
     report = {"task_completed": False, "seconds": 0, "phases": {}, "provider_invocations": []}

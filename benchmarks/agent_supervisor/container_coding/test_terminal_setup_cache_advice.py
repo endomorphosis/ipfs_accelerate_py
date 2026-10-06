@@ -311,7 +311,12 @@ def test_harbor_selected_order_is_deploy_boundary_then_advice(selected_cache, tm
     # Exercise the retained historical policy with its historical configured
     # CLI; current-profile refusal is covered separately before any deployment.
     monkeypatch.setattr(benchmark_provider_profile, "CLI_VERSION", "0.158.0")
-    root, _, selection, auth = selected_cache
+    root, manifest, _, auth = selected_cache
+    from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
+    # Deployment is mocked in this ordering test; keep its cache binding current
+    # after supplying the explicit current worker capability metadata.
+    (root / "manifest.json").write_text(json.dumps(_supervisor_manifest(manifest)))
+    selection = policy.select_setup_cache(root, policy.POLICY)
     events = []
     async def deployed(*args, **kwargs):
         assert kwargs["setup_cache_selection"] == selection
