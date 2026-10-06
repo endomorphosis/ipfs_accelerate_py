@@ -30507,6 +30507,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_process = None
         provider_process_returned = False
         provider_child_custody = None
+        child_reported_router_failure = None
         # A no-change gate is valid for one implementation attempt only.
         self._implementation_no_change_policy_gates.clear()
         if self.manual_completion_authority_revalidation_only:
@@ -30928,7 +30929,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             }
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
-                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody
+                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody, child_reported_router_failure
                             # Fail closed if gate identity drifted.
                             if not provider_gate.get("provider_authorized"):
                                 raise RuntimeError(
@@ -31013,6 +31014,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 on_progress=progress_observer,
                             )
                             provider_process_returned = True
+                            if provider_completed.returncode != 0:
+                                try:
+                                    from .bridge_failure_diagnostics import child_report_from_log
+                                    child_reported_router_failure = child_report_from_log(log_path, log_fh)
+                                except Exception:
+                                    # Observational diagnostics cannot change native outcome/custody.
+                                    pass
                             return provider_completed
 
                         completed = self._decision_runtime_mutation(
@@ -33058,6 +33066,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     reason="implementation_attempt_finished",
                 )
             )
+        if child_reported_router_failure is not None:
+            result["child_reported_router_failure"] = child_reported_router_failure
         finished_event = self._record_event("implementation_finished", result)
         if (provider_process_returned and provider_process is not None
                 and self._database_attempt_authority is not None
@@ -76483,6 +76493,24 @@ class DatabaseImplementationDaemon:
                 body["reason"], backoff_seconds=body["backoff_seconds"],
             ))
 
+    def _observe_bridge_failure(self, attempt, failure, callback, *, phase):
+        """Persist closed diagnostic evidence without changing any decision."""
+        try:
+            from .bridge_failure_diagnostics import EVENT, LOG_PREFIX, observe_bridge_failure
+            diagnostic = observe_bridge_failure(failure, callback, phase=phase)
+        except Exception:
+            return None
+        try:
+            self._record_event(EVENT, attempt_id=attempt.attempt_id,
+                               task_cid=attempt.task_cid, body=diagnostic)
+        except Exception:
+            pass
+        try:
+            logger.error("%s%s", LOG_PREFIX, json.dumps(diagnostic, sort_keys=True))
+        except Exception:
+            pass
+        return diagnostic
+
     def _resume_attempt_without_process_crash(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -76563,29 +76591,14 @@ class DatabaseImplementationDaemon:
             if callback is not None and callback.get("callback_state") == "started_outcome_unknown":
                 # A bridge exception cannot settle a dispatch intent. Native
                 # callback/effect reconciliation must supply that evidence.
-                import traceback
-                diagnostics = []
-                observed_exception = exc
-                while observed_exception is not None and len(diagnostics) < 4:
-                    diagnostics.append({
-                        "exception_type": type(observed_exception).__name__,
-                        "message_sha256": hashlib.sha256(str(observed_exception).encode()).hexdigest(),
-                        "frames": [{"file": Path(frame.filename).name, "line": frame.lineno,
-                                    "function": frame.name}
-                                   for frame in traceback.extract_tb(observed_exception.__traceback__)[-8:]],
-                    })
-                    observed_exception = observed_exception.__cause__ or observed_exception.__context__
-                diagnostic = {"schema": "database-bridge-unknown-diagnostic@1",
-                              "exceptions": diagnostics, "settlement_authority": False}
-                self._record_event("provider_callback_outcome_unknown_diagnostic",
-                                   attempt_id=attempt.attempt_id, task_cid=attempt.task_cid,
-                                   body=diagnostic)
-                logger.error("Native bridge callback retains unresolved custody: %s", diagnostic)
+                diagnostic = self._observe_bridge_failure(
+                    attempt, exc, callback, phase="unknown_callback")
                 return {
                     "resumed": True, "deferred": True,
                     "reason": "provider_callback_outcome_unknown",
                     "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
                     "status": "running",
+                    "bridge_failure_diagnostic": diagnostic,
                 }
             if operator_session_stop_failure(exc) or self._attempt_operator_stop_projection(
                 attempt
@@ -76609,6 +76622,7 @@ class DatabaseImplementationDaemon:
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": "running",
                 }
+            diagnostic = self._observe_bridge_failure(attempt, exc, callback, phase="terminal_failure")
             try:
                 settlement = self._settle_terminal_portal_failure(
                     attempt,
@@ -76642,6 +76656,7 @@ class DatabaseImplementationDaemon:
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": "portal_failure_settlement_failed",
+                    "bridge_failure_diagnostic": diagnostic,
                 }
             return {
                 "resumed": True,
@@ -76651,6 +76666,7 @@ class DatabaseImplementationDaemon:
                 "task_alias": str(settlement["task_alias"]),
                 "settlement": settlement,
                 "status": "blocked",
+                "bridge_failure_diagnostic": diagnostic,
             }
 
     def _quarantine_unsettled_portal_attempt(
