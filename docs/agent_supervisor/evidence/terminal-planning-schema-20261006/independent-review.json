@@ -1,0 +1,174 @@
+{
+  "checks": [
+    {
+      "name": "canonical_factory_equality_rejects_lookalike_schemas",
+      "passed": true
+    },
+    {
+      "name": "annotation_reference_const_projection_preserves_assertions",
+      "passed": true
+    },
+    {
+      "name": "original_model_task_title_rejected_without_discard_or_repair",
+      "passed": true
+    },
+    {
+      "name": "native_scope_evidence_and_plan_admission_remain_independent",
+      "passed": true
+    },
+    {
+      "name": "only_canonical_codex_direct_planning_selects_generation_schema",
+      "passed": true
+    },
+    {
+      "name": "ordinary_codex_and_coding_argv_unchanged_when_schema_absent",
+      "passed": true
+    },
+    {
+      "name": "grok_policy_and_validation_unaffected",
+      "passed": true
+    },
+    {
+      "name": "temporary_schema_private_and_cleanup_attempted_on_all_exit_paths",
+      "passed": true
+    },
+    {
+      "name": "timeout_and_nonzero_exit_do_not_invent_success_or_complete_usage",
+      "passed": true
+    },
+    {
+      "name": "trusted_cli_schema_digest_and_bytes_match_requested_projection",
+      "passed": true
+    },
+    {
+      "name": "receipt_exports_digest_and_size_without_schema_body_or_temp_path",
+      "passed": true
+    },
+    {
+      "name": "native_usage_completion_and_failed_attempt_cost_preserved",
+      "passed": true
+    },
+    {
+      "name": "integration_suite_45_passes_after_receipt_projection_fix",
+      "passed": true
+    }
+  ],
+  "findings": [
+    {
+      "finding": "The first reviewed revision omitted the two Codex schema digest/size fields from the usage allowlist. Four integration tests failed while the other 41 passed. The final revision includes those fields and also requires current trusted CLI observation to equal the requested native wire schema digest/size before returning a planning response. All 45 rerun integration tests passed.",
+      "location": "router_implementation_runner.py usage projection",
+      "severity": "resolved"
+    }
+  ],
+  "input_bindings": [
+    {
+      "bytes": 53,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02-exit.json",
+      "sha256": "53fe2ee96f099fd5069fdc33bd2567f309f39cbd28d6f8d6d6dafcc36f3ba428"
+    },
+    {
+      "bytes": 7708,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02.xml",
+      "sha256": "25069b10d251efbceda50eec44923270b0b13e8ba4a5954f8f47f2da14da7f63"
+    },
+    {
+      "bytes": 1492,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02-command.json",
+      "sha256": "f70fc39094cc6f88ee9e90f0c64cb150488b1bf540ba909e4afdb286f165aa1f"
+    },
+    {
+      "bytes": 1919,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-output-schema-provider-tests-01.json",
+      "sha256": "8d31b7591703c5991e977acc8f15a3a26ada75b7f385070a2f325cd5b539e0c7"
+    },
+    {
+      "bytes": 18472,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/failed-baseline-01-accounting.json",
+      "sha256": "1599bf2dab4efd612d606568ad10547bdd803928ada8644605c2e688d3a58666"
+    }
+  ],
+  "limitations": [
+    "Generation schema conformance is a shape check; native graph scope/evidence checks and signed admission remain authoritative.",
+    "Reviewed tests use fake CLI/provider fixtures and do not establish real provider structured generation support or benchmark savings.",
+    "Cleanup is attempted on all exit paths; unlink errors are handled on a best-effort basis as in the prior provider.",
+    "The native rollout completion flag, not successful parsing, determines whether observed session token totals are complete.",
+    "The failed first baseline cost is retained separately and is not promoted into the paired comparison."
+  ],
+  "model_outputs_repaired_or_fields_discarded": false,
+  "new_benchmark_runs_by_review": 0,
+  "new_provider_calls": 0,
+  "passed": true,
+  "recorded_at_utc": "2026-10-06T13:21:16.248886+00:00",
+  "review_mode": "read-only source/test review; metadata-only test and failed-attempt readback",
+  "reviewer": "/root/matched_transport_accounting",
+  "runtime_generation_support_verified_with_real_provider": false,
+  "schema": "codex-planning-generation-schema-independent-review@1",
+  "source_bindings": [
+    {
+      "bytes": 553806,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/llm_router.py",
+      "relative_path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 6186,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 25594,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e9373e4c0f10ac8a856a6d258ba4023dba960b9e20935bea86040d48f1a81238"
+    },
+    {
+      "bytes": 10277,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/test/api/test_codex_cli_output_schema.py",
+      "relative_path": "test/api/test_codex_cli_output_schema.py",
+      "sha256": "917107ca89008d4bd5d9b70d2317f782ad0fd8d9506154dd5f8dc8bd9d01e41f"
+    },
+    {
+      "bytes": 9857,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/test/api/test_codex_planning_schema.py",
+      "relative_path": "test/api/test_codex_planning_schema.py",
+      "sha256": "b5e9e19fed206d71747aba9ba811f5b3496864f9b3ffff15b4c498c8aa0a5f11"
+    },
+    {
+      "bytes": 5424,
+      "changed_file_reviewed": true,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/test/api/test_codex_structured_plan_roundtrip.py",
+      "relative_path": "test/api/test_codex_structured_plan_roundtrip.py",
+      "sha256": "b05281c671650628c7ec44421e8625455298e6298bc6fc2883ffc3cde419ee23"
+    },
+    {
+      "bytes": 13799,
+      "changed_file_reviewed": false,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 115963,
+      "changed_file_reviewed": false,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    },
+    {
+      "bytes": 8032,
+      "changed_file_reviewed": false,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+      "sha256": "a6e9faff0e86bfff3bb5d17ad9b072c9324a3520487fd3c8a61287becf094949"
+    }
+  ],
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006",
+  "source_edits_by_review": 0,
+  "unresolved_blockers": []
+}

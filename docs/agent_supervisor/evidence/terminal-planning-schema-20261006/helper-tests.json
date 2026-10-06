@@ -1,0 +1,60 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-planning-helper-tests-02.xml",
+    "test/api/test_codex_planning_schema.py"
+  ],
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-planning-helper-tests-02.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+  },
+  "exit_code": 0,
+  "failures": 0,
+  "fresh_seal_database_used": true,
+  "machine_receipt": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-planning-helper-tests-02.xml",
+    "sha256": "9ed99b78a5646ca9096237e34ddbad41adaa910b97d2d1565c401420b101430c"
+  },
+  "model_calls": 0,
+  "new_provider_calls": 0,
+  "passed": true,
+  "production_edits_by_this_run": 0,
+  "recorded_at": "2026-10-06T13:25:09.642670+00:00",
+  "schema": "codex-planning-helper-tests@1",
+  "seconds": 15.912290300009772,
+  "skipped": 0,
+  "source_bindings": [
+    {
+      "bytes": 6186,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 9857,
+      "path": "test/api/test_codex_planning_schema.py",
+      "sha256": "b5e9e19fed206d71747aba9ba811f5b3496864f9b3ffff15b4c498c8aa0a5f11"
+    }
+  ],
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006",
+  "source_files_unchanged": true,
+  "source_head": "a98308e4c162bd4cd2977a3ac37394f55d3a06c0",
+  "supersedes_skipped_attempt": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-planning-helper-tests.json",
+  "test_log": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/codex-planning-helper-tests-02.log",
+    "sha256": "7dd9352cba7e7c030ad7c2bd0c1a5e0717238a49e74ad563d317a4b51b84c6bd"
+  },
+  "tests": 20
+}

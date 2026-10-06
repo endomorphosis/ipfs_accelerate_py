@@ -1091,10 +1091,15 @@ existing records, activity timestamps, schema and indexes exactly.
 
 The original contextual cache, transforms, mask producer and ordered codec are
 now freshly witnessed. Exact supervisor nominations authenticate both registered
-checkpoint byte pins. Native IR schema/profile/format identities remain unknown,
-and the contextual runtime wrapper remains pending. Historical 48/48 semantic
-IR replay remains distinct from originating prose reconstruction, fresh holdout,
-8192-token decoding, executed distillation and checked proof-index entries.
+checkpoint byte pins. Native IR schema/profile/format identities remain unknown.
+The later [cached contextual replay and improvement plan](contextual_ir_checkpoint_recovery.md#next-implementation-gates)
+adds an explicit datasets runtime using the original full states and caches.
+Fresh replay gets 48/48 ordered exact IRs at each width, while the existing
+source-withheld text renderer gets 0/48 originating-prose byte or normalized-text
+matches at either width. Its 48 text outputs per width are all present. The
+454 relevant controls pass; all reference qualifiers remain empty. This closes
+the cached numerical replay gap while retaining separate prose-training,
+fresh-holdout, native route, 8192-token, distillation and proof-index gates.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 

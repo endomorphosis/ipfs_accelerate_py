@@ -1,0 +1,94 @@
+{
+  "documentation_checks": {
+    "ast_parse_files": 6,
+    "diff_check_passed": true,
+    "exit_code": 0,
+    "maintained_surface_gates_passed": true,
+    "new_readme_relative_links_passed": true
+  },
+  "failed_prior_trial": {
+    "cached_input_tokens_included_in_input": 12288,
+    "coding_sessions": 0,
+    "input_tokens": 22198,
+    "output_tokens": 1539,
+    "planning_sessions": 1,
+    "reward": 0.0,
+    "total_tokens": 23737
+  },
+  "fresh_matched_pair_completed": false,
+  "helper_tests": {
+    "passed": 20,
+    "receipt": "helper-tests.json",
+    "skipped": 0
+  },
+  "independent_review": "independent-review.json",
+  "integration_tests": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 45
+    },
+    "evidence": [
+      {
+        "bytes": 7708,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02.xml",
+        "sha256": "25069b10d251efbceda50eec44923270b0b13e8ba4a5954f8f47f2da14da7f63"
+      },
+      {
+        "bytes": 7344,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02.log",
+        "sha256": "de98b2e78a2fb3ee02ccbc8778dbb76af74b42444ac3d4b30268cc27423766c7"
+      },
+      {
+        "bytes": 1492,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/schema-integration-tests-02-command.json",
+        "sha256": "f70fc39094cc6f88ee9e90f0c64cb150488b1bf540ba909e4afdb286f165aa1f"
+      }
+    ],
+    "exit": {
+      "exit_code": 0,
+      "seconds": 64.89443946199026
+    }
+  },
+  "offline_provider_calls": 0,
+  "passed": true,
+  "provider_tests": {
+    "passed": 58,
+    "receipt": "provider-tests.json"
+  },
+  "schema": "codex-planning-schema-offline-qualification@1",
+  "source_base_commit": "a98308e4c162bd4cd2977a3ac37394f55d3a06c0",
+  "source_bindings": [
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 25594,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e9373e4c0f10ac8a856a6d258ba4023dba960b9e20935bea86040d48f1a81238"
+    },
+    {
+      "bytes": 6186,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 10277,
+      "path": "test/api/test_codex_cli_output_schema.py",
+      "sha256": "917107ca89008d4bd5d9b70d2317f782ad0fd8d9506154dd5f8dc8bd9d01e41f"
+    },
+    {
+      "bytes": 9857,
+      "path": "test/api/test_codex_planning_schema.py",
+      "sha256": "b5e9e19fed206d71747aba9ba811f5b3496864f9b3ffff15b4c498c8aa0a5f11"
+    },
+    {
+      "bytes": 5424,
+      "path": "test/api/test_codex_structured_plan_roundtrip.py",
+      "sha256": "b05281c671650628c7ec44421e8625455298e6298bc6fc2883ffc3cde419ee23"
+    }
+  ]
+}

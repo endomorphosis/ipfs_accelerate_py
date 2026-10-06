@@ -1,0 +1,35 @@
+{
+  "files": [
+    {
+      "bytes": 3769,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/README.md",
+      "sha256": "94d8857a357bb6289b1dc65e3f0b676e2fa1b8cb814f7b653543c7e35d68036e"
+    },
+    {
+      "bytes": 18472,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/failed-attempt-accounting.json",
+      "sha256": "1599bf2dab4efd612d606568ad10547bdd803928ada8644605c2e688d3a58666"
+    },
+    {
+      "bytes": 2654,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/helper-tests.json",
+      "sha256": "ca18bcd7c67764394e268c2c5c635d04b60e581286c3268f183fd238908096fa"
+    },
+    {
+      "bytes": 7967,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/independent-review.json",
+      "sha256": "72035209ccdc419a01c53061503cd568a2849003c795794617650c4eafb647df"
+    },
+    {
+      "bytes": 1919,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/provider-tests.json",
+      "sha256": "8d31b7591703c5991e977acc8f15a3a26ada75b7f385070a2f325cd5b539e0c7"
+    },
+    {
+      "bytes": 3023,
+      "path": "docs/agent_supervisor/evidence/terminal-planning-schema-20261006/qualification.json",
+      "sha256": "1a26253ac693b164795677f4432182b8b2ebf0072dd9c9fb961d60d63130f2ee"
+    }
+  ],
+  "schema": "codex-planning-schema-artifact-manifest@1"
+}

@@ -130,6 +130,49 @@ different contracts and evaluation populations.
 
 ## Next implementation gates
 
+The later October 6
+[cached contextual runtime and reconstruction measurements](https://github.com/endomorphosis/ipfs_datasets_py/blob/main/docs/autoencoders/contextual_legal_reconstruction_runtime.md)
+implement the explicit original-asset replay portion of gates 1 and 2 below.
+Frozen datasets source `37c2d63f0bf9490e5b019788afcafbc3b806d8c7`
+restores every selected tensor from the existing 384D/768D states, original
+raw384 donor and saved preprocessing. The public metadata path remains
+Torch-free; opening and inference explicitly use the source-only cached
+paragraph/clause packets. Fitting helpers, optimizers, encoders, databases,
+network operations and historical reference/evaluation-file reads are blocked
+in the actual qualification run. The original 44 surveyed files remain
+unchanged. The only existing numerical-owner edit moves an unused training
+helper import into its training-only function.
+
+Fresh replay reproduces **48/48 ordered exact semantic IRs and 180/180 rules at
+each width**, with exact token/status/EOS parity against the original retained
+outputs. The separate Torch-free evaluator also observes **0/48 original-text
+UTF-8 matches and 0/48 NFC/whitespace matches at each width** when the existing
+source-withheld canonical decompiler renders the generated IR. All 48 text
+outputs are present; this is not a missing-output denominator effect. That
+owner receives no source text or reference IR and is a deterministic baseline,
+not a trained prose decoder. Every reference qualifier is empty; the exposed
+authored panel does not establish fresh-holdout or broad legal-meaning quality.
+The source change passed 244 contextual/source-value and 210 historical-owner
+regression controls, with separate independent source and execution reviews.
+
+This runtime does not update the registered record IDs, immutable Hugging Face
+bindings, database generations or existing native fragment routes. There are
+no new weights or embeddings to register or upload. Its generated documents
+remain candidates; native schema/profile/format identities and teacher,
+production runtime, holdout and proof authority remain unqualified. The native
+canonical output inspector's contract conformance does not mint a checkpoint
+profile identity. The linked plan now separates original-text decoder training,
+fresh semantic holdout/qualifier ablations, warm-started 8D/384D-to-768D task
+distillation and independent source/output token-budget increases.
+
+For the supervisor, use these retained-state observations when choosing
+candidate assets. Admit an execution route only through its complete native
+task contract and source-currentness gates. Keep family/width/schema/task
+namespaces separate, and require current repository evidence and an independent
+checker before any generated CodebaseIR or logic projection becomes a checked
+proof-index entry. On-the-fly training records a new run/catalog generation;
+it does not rewrite a sealed planner context or grant its output proof status.
+
 1. Add an explicit contextual Legal decoder runtime that authenticates the
    complete state, source/context generations, ordered codec, TRAIN transforms,
    mask producer and frozen split identities before numerical loading. Infer

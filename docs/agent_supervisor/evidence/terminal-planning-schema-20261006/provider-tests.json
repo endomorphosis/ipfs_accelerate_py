@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "test/api/test_codex_cli_output_schema.py",
+    "test/api/test_supervisor_codex_command_owner.py",
+    "test/api/test_codex_tool_diagnostics.py"
+  ],
+  "created_at_utc": "2026-10-06T13:13:48.726980+00:00",
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006",
+  "diff_check_passed": true,
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+  },
+  "fake_cli_only": true,
+  "logs": {
+    "codex-output-schema-provider-tests-01.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "codex-output-schema-provider-tests-01.stdout": {
+      "bytes": 10846,
+      "sha256": "8ec15edb31fbe35959d1868b8267f36701326cd314463d9b8f0929d962829694"
+    }
+  },
+  "new_provider_calls": 0,
+  "passed": true,
+  "returncode": 0,
+  "seconds": 21.6060253320029,
+  "source_bindings": [
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 10277,
+      "path": "test/api/test_codex_cli_output_schema.py",
+      "sha256": "917107ca89008d4bd5d9b70d2317f782ad0fd8d9506154dd5f8dc8bd9d01e41f"
+    },
+    {
+      "bytes": 13799,
+      "path": "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    }
+  ],
+  "tests_passed": 58
+}
