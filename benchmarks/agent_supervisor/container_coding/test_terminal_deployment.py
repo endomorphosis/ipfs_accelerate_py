@@ -52,16 +52,19 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
     assert "OPENAI_API_KEY" not in runtime_environment()
 
 
-def test_base_archive_pins_scalar_binding_dependencies_without_learned_assets(tmp_path):
+def test_base_archive_pins_scalar_and_schema_dependencies_without_learned_assets(tmp_path):
     result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
     assert "duckdb==1.5.5" in result["base_requirements"]
     assert "pandas==3.0.2" in result["base_requirements"]
     assert "numpy==1.26.4" in result["base_requirements"]
+    assert "jsonschema==4.26.0" in result["base_requirements"]
+    assert "referencing==0.37.0" in result["base_requirements"]
     assert result["learned_requirements"] == []
     assert result["source384_requirements"] == []
 
 
 def test_exact_native_import_probe_reports_available_scalar_dependencies(capsys):
+    from importlib.metadata import version
     import duckdb
     import numpy
     import pandas
@@ -72,18 +75,21 @@ def test_exact_native_import_probe_reports_available_scalar_dependencies(capsys)
     assert report["duckdb"] == duckdb.__version__
     assert report["numpy"] == numpy.__version__
     assert report["pandas"] == pandas.__version__
+    assert report["jsonschema"] == version("jsonschema")
+    assert report["referencing"] == version("referencing")
 
 
-def test_exact_native_import_probe_refuses_missing_pandas(monkeypatch, capsys):
+@pytest.mark.parametrize("missing", ["pandas", "jsonschema", "referencing"])
+def test_exact_native_import_probe_refuses_missing_runtime_dependency(monkeypatch, capsys, missing):
     original = builtins.__import__
 
-    def without_pandas(name, *args, **kwargs):
-        if name == "pandas":
-            raise ModuleNotFoundError("pandas unavailable for native scalar binding", name="pandas")
+    def without_dependency(name, *args, **kwargs):
+        if name == missing:
+            raise ModuleNotFoundError(f"{missing} unavailable for native runtime", name=missing)
         return original(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "__import__", without_pandas)
-    with pytest.raises(ModuleNotFoundError, match="pandas unavailable"):
+    monkeypatch.setattr(builtins, "__import__", without_dependency)
+    with pytest.raises(ModuleNotFoundError, match=f"{missing} unavailable"):
         exec(compile(NATIVE_IMPORT_PROBE, "native-imports", "exec"), {})
     assert capsys.readouterr().out == ""
 

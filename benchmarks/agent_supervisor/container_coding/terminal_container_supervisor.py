@@ -777,7 +777,22 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     except Exception as error:
                         report["native_diagnostics_error"] = type(error).__name__
                     finally:
-                        runtime.close()
+                        # STOP's tracked tree can be empty while the runtime
+                        # still holds a live launched child. Keep the separate
+                        # custody-close observation and preserve its failure.
+                        report["runtime_close"] = {"attempted": True, "succeeded": False}
+                        try:
+                            runtime.close()
+                        except BaseException as error:
+                            kind = type(error).__name__
+                            report["runtime_close"]["error_type"] = kind if kind in {
+                                "RuntimeError", "TimeoutError", "ValueError", "OSError",
+                                "PermissionError", "ProcessLookupError", "InterruptedError",
+                                "KeyboardInterrupt", "SystemExit",
+                            } else "other"
+                            raise
+                        else:
+                            report["runtime_close"]["succeeded"] = True
         report["task_completed"] = (
             report.get("task_state", {}).get("status") == "completed"
             and report["stop"]["status"] == "succeeded" and report["remaining_processes"] == 0

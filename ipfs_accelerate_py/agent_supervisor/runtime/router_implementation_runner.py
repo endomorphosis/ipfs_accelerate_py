@@ -92,6 +92,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit supported reasoning effort required")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
+    response_format = None
+    if provider == "grok_cli" and purpose == "planning":
+        from ipfs_accelerate_py.cli_runtime.grok_structured_output import planning_response_format
+        response_format = planning_response_format(prompt)
     root = Path.cwd().resolve()
     boundary = None
     if container_boundary is not None or container_boundary_sha256:
@@ -223,6 +227,18 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if response_format is not None:
+            provider_options["response_format"] = response_format
+            schema_json = json.dumps(response_format["json_schema"]["schema"],
+                ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
+            receipt["provider_invocation_policy"]["structured_output"] = {
+                "schema": "grok-native-json-schema@1",
+                "response_schema_sha256": hashlib.sha256(schema_json.encode()).hexdigest(),
+                "response_schema_bytes": len(schema_json.encode()),
+                "native_schema_requested": True,
+                "response_schema_validated": False,
+                "plan_admitted": False,
+            }
     try:
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
@@ -241,6 +257,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
             raise RuntimeError("coding router returned an empty response")
+        if response_format is not None:
+            # The shared adapter enforces this too. Keep the runner boundary
+            # explicit in case an injected provider returns unchecked text.
+            from ipfs_accelerate_py.cli_runtime.grok_structured_output import validate_response_format, decode_response
+            _schema, _argument, validator = validate_response_format(response_format)
+            output = decode_response(json.dumps({"text": output}), validator)
+            receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if encoded is not None:
             failure_phase = "semantic_response_decode"
             from .semantic_router_translation import decode_semantic_router_response

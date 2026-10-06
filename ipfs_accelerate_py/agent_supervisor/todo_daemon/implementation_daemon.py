@@ -70631,22 +70631,10 @@ class DatabaseImplementationDaemon:
                         # Lease/completion bookkeeping stays on the local
                         # sidecar. The Quack-owned control file is the task
                         # board, not the coordinator DDL surface.
-                        coord_target = (
-                            self._strict_lane_coordination_path
-                            if self.task_shard_count > 1 or self._typed_quack_authority_binding is not None
-                            else (
-                                _checkout_sidecar_duckdb(
-                                    self.database_path.with_name(
-                                        f"{self.database_path.stem}.coordination.duckdb"
-                                    )
-                                )
-                                if self.database_path.suffix.lower()
-                                in {".duckdb", ".ddb"}
-                                else _checkout_sidecar_duckdb(
-                                    Path("control.coordination.duckdb").absolute()
-                                )
-                            )
-                        )
+                        # The constructor resolves both explicit paths and
+                        # legacy defaults. Re-deriving a single-lane default
+                        # here discarded an explicit run-local destination.
+                        coord_target = self._strict_lane_coordination_path
                     else:
                         coord_target = self.coordination_path
                     finite_serialized = self._finite_proof_query_serialized_coordinator()
