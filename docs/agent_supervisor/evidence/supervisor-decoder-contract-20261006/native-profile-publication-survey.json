@@ -1,0 +1,19 @@
+{
+  "schema": "supervisor-native-profile-publication-survey@1",
+  "dataset_repository": "https://github.com/endomorphosis/ipfs_datasets_py",
+  "fresh_remote_main": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "ls_remote_main": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11\trefs/heads/main",
+  "profile_owner_path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+  "profile_owner_present_in_current_main_tree": false,
+  "native_owner_commit": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+  "committed_owner_pin": {
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+    "bytes": 20396,
+    "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+  },
+  "owner_present_in_clean_native_worktree": true,
+  "native_owner_tracked_status": "",
+  "scope": "Actual Git-tree/file presence after fresh fetch and remote head readback. Commit ancestry alone does not establish file content in main. No source histories merged or worktrees changed by this survey.",
+  "remaining_integration": "Recover the complete native metadata owner closure against current datasets main, verify codec/profile identities and current owner APIs, then qualify/publish that source integration; do not mix partial old modules into the supervisor runtime pin.",
+  "completion_authority": false
+}

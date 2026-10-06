@@ -1,0 +1,65 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/context-closing-fences-02.xml",
+    "--basetemp=/tmp/ordinary-supervisor-context-closing-fences-02-9742d47c265c4c58990e2492fcdba4d4",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_later_task_authentication_closes_earlier_task_checkpoint_identity",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-context-closing-fences-02-841d7aa0db274c2699c70f50ca301761.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 0,
+  "elapsed_seconds": 77.11670188704738,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 5,
+    "closure_files_min": 989,
+    "closure_files_max": 989,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 5,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_later_task_authentication_closes_earlier_task_checkpoint_identity": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-prepare]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-cold_reopen]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-prepare]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-cold_reopen]": "passed"
+  },
+  "evidence_files": {
+    "context-closing-fences-02.xml": {
+      "bytes": 1318,
+      "sha256": "76cbd985e28828ff7eefd2ea3f9681a6dbb0b2b80bba8fa0bb68d62edf6a4a65"
+    },
+    "context-closing-fences-02.log": {
+      "bytes": 2616,
+      "sha256": "e51ee9518500e1bea87b17842c324fc736534e4f4c1327053c2e036a69c8fe2d"
+    }
+  }
+}

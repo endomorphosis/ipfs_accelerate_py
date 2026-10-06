@@ -1,0 +1,174 @@
+{
+  "schema": "supervisor-decoder-contract-qualification@1",
+  "implementation_baseline": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "owned_implementation_commit": "9764fbe0a3c042cc1a8ba2da1680f474108b9511",
+  "qualified_source_base_commit": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "phase": "original checkpoint byte authentication for advisory independent ready-root contexts",
+  "receipt_schema": "terminal-reviewed-ready-task-contexts@2",
+  "default_receipt_schema": "terminal-reviewed-ready-task-contexts@1",
+  "final_run": "final-02.qualification.json",
+  "counts": {
+    "passed": 512,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "distinct_passing_cases": 512,
+  "selection": "final-selection-01.json",
+  "ast_sealing": {
+    "records": 512,
+    "closure_files_min": 17,
+    "closure_files_max": 1054,
+    "any_completion_authority": false
+  },
+  "current_source_pins": "final-02-before.json",
+  "manually_pinned_source_and_test_files": 68,
+  "source_assets_and_datasets_pins_unchanged": true,
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "retained_assets": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json": {
+      "bytes": 2799098,
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json": {
+      "bytes": 4781613,
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json": {
+      "bytes": 125540,
+      "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json": {
+      "bytes": 673933,
+      "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+    },
+    "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930": {
+      "bytes": 304490,
+      "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json": {
+      "bytes": 1786933,
+      "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json": {
+      "bytes": 597741,
+      "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json": {
+      "bytes": 17392573,
+      "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json": {
+      "bytes": 1646128,
+      "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json": {
+      "bytes": 76824494,
+      "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json": {
+      "bytes": 586049,
+      "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json": {
+      "bytes": 6360717,
+      "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  },
+  "retained_files_scope": "16 files: preceding13 assets plus2 stronger contextual states and original profile inventory. This preserves bytes and does not perform model quality replay.",
+  "new_checkpoint_byte_controls": 41,
+  "new_native_context_controls": 26,
+  "prior_ready_root_regression": {
+    "record": "../supervisor-task-context-20261005/final-01.qualification.json",
+    "counts": {
+      "passed": 445,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0
+    },
+    "all_prior_nodes_retained": true
+  },
+  "count_scope": "Only512 distinct final-02 nodes contribute. Focused/development/prior cases overlap and are not added; interrupted final-01 is incomplete.",
+  "independent_review": "independent-source-review.json",
+  "historical_diagnostics": "development-diagnostics.json",
+  "native_process_audit": "final-02.native-process-audit.json",
+  "actual_retained_authentication": {
+    "record": "retained-checkpoint-authentication.json",
+    "authenticated_existing_files": 8,
+    "authenticated_existing_bytes": 105868568,
+    "original_nine_batch_refusal": "Codebase384 original locator traverses an ancestor current alias; requires reviewed canonical binding"
+  },
+  "native_profile_custody": {
+    "survey": "native-profile-custody-survey.json",
+    "rebind": "original-profile-custody-rebind-receipt.json",
+    "original_routes_refused": 2,
+    "rebound_routes_resolved": 2,
+    "lanes_preserved": 12,
+    "supported_format_scope": "Original Intent/Security384 serialized fragments only",
+    "native_owner_commit": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+    "mixed_into_987_runtime": false
+  },
+  "stronger_retained_reconstruction": {
+    "survey": "retained-decoder-contract-survey.json",
+    "scope": "Historical cached paragraph/clause input semantic replay, not new inference/generalization/sourceprose/8192 qualification",
+    "contextual384_exact_ir": "48/48",
+    "contextual768_exact_ir": "48/48",
+    "selected_store_exact_sha_matches": 0,
+    "fresh_numerical_replay_performed": false
+  },
+  "limitations": [
+    "Byte authentication does not deserialize or verify tensor shape/ABI, family output schema, token/span/input contracts, inventory or remoteHub bytes.",
+    "Native catalog flags remain unchanged; only separate local byte observations become true.",
+    "Source/native/catalog/file fences are cooperative endpoint observations, not atomic snapshots or leases.",
+    "Authored native byte fixtures do not qualify GTE model inference; inherited Source384 tests are transport controls with separatevalidator stubs.",
+    "Contextual historical success includes cachedclausevectors and masks; no single-vector, independentholdout, originalprose or8192 decodingclaim.",
+    "Original supported nativeprofile rebind does not fill7unsupported legacy namespaces or admitruntime.",
+    "Defaultmetadata nomination, dependenttask refusal and reviewed-profile executionguards remain."
+  ],
+  "native_profile_publication": "native-profile-publication-survey.json",
+  "remaining_plan": [
+    "Recover and qualify the complete original native metadata-owner closure against datasets main, where its committed historical file is absent; preserve current API and exact codec/profile identity.",
+    "Review append-only input/output format contracts and publish/import exact complete strongercontextual384/768 states with originalcachedparagraph/clausevectors, masks and codecs; preserve unknownhistoricalrecords.",
+    "Bind Codebase384 to reviewedcanonical originalbytes with borrowedSecurity payload and incomplete-native status preserved.",
+    "Separate semanticIR, source-text reconstruction and FOL/TDFOL decoder tasks; count source-form anchors/residuals and evaluate ablations.",
+    "Qualify exact tensor/ABI/encoder/token/span/inventory/Hub runtime contracts before decoderadmission; reuse8/384 teacherheads for768 interface/distillation.",
+    "Qualify dependentcontexts against predecessor publications and then parallelleases/review/mergecurrentness/durablecompletion."
+  ],
+  "new_path_embeddings": 0,
+  "new_path_training_steps": 0,
+  "new_path_model_loads": 0,
+  "new_path_provider_calls": 0,
+  "model_manager_writes": false,
+  "remote_hub_writes": false,
+  "retained_model_assets_regenerated": false,
+  "new_benchmark_score": false,
+  "decoder_runtime_admitted": false,
+  "execution_authority": false,
+  "completion_authority": false,
+  "proof_authority": false,
+  "hosted_ci": "Separate publication check; these are local qualifications.",
+  "source_binding_note": "Final regression used published c09113ff source base plus four frozen new/modified files. All68 manual source/test bindings match the committed implementation objects. Later changes in this publication are documentation/evidence only.",
+  "local_documentation_gates": {
+    "record": "documentation-gates.json",
+    "returncode": 0,
+    "allowlisted_documentation_files": 46,
+    "version": "0.0.45"
+  },
+  "publication_integration": "publication-integration.json"
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "supervisor-decoder-contract-publication-integration@1",
+  "publication_source_commit": "f4a3e79a0aa11c125a5495ba8280cd74272e4f0c",
+  "owned_source_commit": "9764fbe0a3c042cc1a8ba2da1680f474108b9511",
+  "observed_accelerate_origin_main": "7f0389671e91dadb6d3724e0cdf52c042cf7a41b",
+  "incoming_files": [
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/README.md",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/artifact-manifest.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/coding-audit.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/documentation-gates.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/independent-plan-review.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/measure_retained_prompt_metadata.py",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/planning-audit.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/prompt-accounting.json",
+    "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/provenance.json",
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md"
+  ],
+  "incoming_scope": "Independent context-compaction/LLM-planning documentation only, retained by merge.",
+  "sourcebase_is_current_main_ancestor": true,
+  "changes_after_owned_source_scope": "documentation/evidence only",
+  "manual_source_and_test_bindings_matching_final_run": 68,
+  "retained_files_matching_final_run": 16,
+  "all_final_source_and_asset_pins_match": true,
+  "qualification": "final-02.qualification.json",
+  "counts": {
+    "passed": 512,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "raw_evidence_whitespace": "Four pytest-generated trailing-space lines in unit-01 raw log/XML intentionally preserved byte-for-byte; source diff whitespace check passed.",
+  "requalification_note": "All implementation/test bytes match the frozen final run; no repeated model/control regression after documentation-only publication changes.",
+  "completion_authority": false
+}

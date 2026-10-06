@@ -1,0 +1,52 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 512 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py . [  0%]
+.........................                                                [  5%]
+test/api/test_task_ir_checkpoint.py .................................... [ 12%]
+.....                                                                    [ 13%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py . [ 13%]
+..................................................................       [ 26%]
+test/api/test_task_ir_selection.py ..................................... [ 33%]
+...                                                                      [ 33%]
+test/api/semantic_state/test_supervised_task_context.py ..........       [ 35%]
+test/api/semantic_state/test_published_empty_task_context.py ........... [ 38%]
+....                                                                     [ 38%]
+test/test_ir_persistent_catalog.py ..................................... [ 46%]
+......................                                                   [ 50%]
+benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py . [ 50%]
+........................................                                 [ 58%]
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [ 58%]
+........................................................................ [ 72%]
+....................................................                     [ 82%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 83%]
+................                                                         [ 86%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 86%]
+......                                                                   [ 87%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 87%]
+...........                                                              [ 89%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 90%]
+..                                                                       [ 90%]
+test/api/semantic_state/test_intent_world_snapshot.py .........          [ 92%]
+test/api/semantic_state/test_semantic_context_runtime.py ............... [ 95%]
+........                                                                 [ 96%]
+test/api/semantic_state/test_code_retrieval_context.py ....              [ 97%]
+test/api/semantic_state/test_source384_task_context_bundle.py .......... [ 99%]
+...                                                                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/final-02.xml -
+============================= slowest 10 durations =============================
+29.93s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_two_actual_roots_authenticate_parallel_family_dimension_assets_without_runtime
+21.16s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-cold_reopen]
+20.84s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-cold_reopen]
+19.65s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[task_binding]
+19.62s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[witness]
+19.61s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[missing]
+19.59s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[catalog_path]
+19.54s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[authority_flag_as_integer]
+19.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[same_bytes_new_inode]
+19.51s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[checkpoint_flag_as_integer]
+======================= 512 passed in 1487.58s (0:24:47) =======================

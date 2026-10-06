@@ -1,0 +1,25 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 509 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py . [  0%]
+....
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/final-01.xml -
+============================= slowest 10 durations =============================
+30.06s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_two_actual_roots_authenticate_parallel_family_dimension_assets_without_runtime
+19.48s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[missing]
+19.48s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[same_bytes_new_inode]
+19.45s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[bytes]
+15.22s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_default_receipt_preserves_metadata_only_scope_and_missing_assets
+3.35s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_two_actual_roots_authenticate_parallel_family_dimension_assets_without_runtime
+3.14s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[catalog_path]
+3.03s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[bytes]
+2.98s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[same_bytes_new_inode]
+2.95s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_default_receipt_preserves_metadata_only_scope_and_missing_assets
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py:976: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+======================== 5 passed in 245.99s (0:04:05) =========================

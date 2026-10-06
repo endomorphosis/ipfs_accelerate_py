@@ -1,0 +1,55 @@
+{
+  "artifacts": [
+    {
+      "bytes": 16816,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/README.md",
+      "sha256": "4420b74608451d43a80956211cd76d240f9755a228f4118b12a3c78d370ba5ee"
+    },
+    {
+      "bytes": 21586,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/coding-audit.json",
+      "sha256": "5accd5e1bc89c6b193affc28050b8ecd759ef5468c8b4d2d36014c1bbb68f2cc"
+    },
+    {
+      "bytes": 1450,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/documentation-gates.json",
+      "sha256": "2877f975a70be21d0d89d946863182d82b1ac01a8e25b8ad663c37c89cd8353a"
+    },
+    {
+      "bytes": 10350,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/independent-plan-review.json",
+      "sha256": "b94e5973302fe6c5f2f6e5c7efbbc977ae0c54dcc49789919c662138e504d815"
+    },
+    {
+      "bytes": 7703,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/measure_retained_prompt_metadata.py",
+      "sha256": "88c68519f9be3467e44da655147ec20a41ea75ac6ff2d917ed0461fa0b34091f"
+    },
+    {
+      "bytes": 20317,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/planning-audit.json",
+      "sha256": "0ce76d9feabc477d9250311b81234f45e76cb5c9c4e6833cf32dbbac32fa7022"
+    },
+    {
+      "bytes": 4700,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/prompt-accounting.json",
+      "sha256": "c4f228869eb33db50b6282e89a1534dc04dce47d052d0ba1414b3ba705525996"
+    },
+    {
+      "bytes": 2518,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/provenance.json",
+      "sha256": "a008866bd2b936415be3c0c1804e8cbe822d1ae251f709a620c4ca831a429242"
+    }
+  ],
+  "maintained_document": {
+    "bytes": 77501,
+    "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+    "sha256": "bec76a97829498e5306613347ce171e10e015507c0da4bc9ca52c50bb64024e7"
+  },
+  "manifest_self_excluded": true,
+  "new_provider_calls": 0,
+  "production_runtime_changed": false,
+  "recorded_at_utc": "2026-10-06T07:57:47.139123+00:00",
+  "schema": "supervisor-context-token-economy-artifact-manifest@1",
+  "source_head": "c09113ff67c999d058c0df87dd01f5997dd792d1"
+}

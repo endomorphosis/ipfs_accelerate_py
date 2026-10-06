@@ -1,0 +1,127 @@
+{
+  "authority": {
+    "new_quality_measured": false,
+    "proof_authority": false,
+    "runtime_admitted": false,
+    "teacher_qualified": false
+  },
+  "authorship_disclosure": "Reviewer authored retained-decoder-contract-survey.py/.json. Review verifies correspondence and scope, not independent reexecution of that survey or production implementation verification.",
+  "fact_checks": {
+    "48_of48_historical_IR_replay_requires_paragraph_and_clause_vectors_masks_codec": true,
+    "authenticated_bytes_105868568": true,
+    "byteauthentication_distinct_from_runtime_qualification": true,
+    "current_selected_store_zero_contextual_stateSHA_matches_scoped_to_one668binding_catalog": true,
+    "eight_authenticated_files_plus_one_explicit_noncanonical_alias_refusal": true,
+    "embedded_native_catalog_false_authority_retained": true,
+    "historical_replay_is_not_independent_holdout_prose_or_single_vector_claim": true,
+    "legacy_nullfields_preserved_no_filename_or_serialization_inference": true,
+    "native768_encoder8192_does_not_enlarge_inherited_outputbudgets": true,
+    "nine_legacy_nominations": true,
+    "two_native_supported_profiles_plus_seven_unsupported_nominations": true,
+    "two_successful_rebound_routes_preserve_original_format_profile_record_ids": true
+  },
+  "inspected_bytes_unchanged_during_review": true,
+  "inspected_file_pins_after": [
+    {
+      "bytes": 84145,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "b838d92a8919a310fcf552ee5a91c2feb21ec6c5feacc8294180514c0f1159f3"
+    },
+    {
+      "bytes": 7274,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-decoder-contract-20261006/README.md",
+      "sha256": "94b4d027e10e74d60ca2ca784a8564bd833f50f90ee98e64045a6aeba58a4195"
+    },
+    {
+      "bytes": 102696,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+      "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+    },
+    {
+      "bytes": 39910,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-checkpoint-authentication.json",
+      "sha256": "c12825c9980f3205fcd739991cc8ab5c5768bcd34444fe4d615664e4cd8811f8"
+    },
+    {
+      "bytes": 10946,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/native-profile-custody-survey.json",
+      "sha256": "6cc4a014af7bd1637dbd2961d63744f666cc3e43538abea52f2e40ad68674ec1"
+    },
+    {
+      "bytes": 73292,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/original-profile-custody-rebind-receipt.json",
+      "sha256": "ea3bdf0e27e0771e9357f1bd1ceba69689522fe3bfb399bb5c83562e4ee18b90"
+    },
+    {
+      "bytes": 834,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/profile-custody-probe-diagnostic.json",
+      "sha256": "e9c81082a855de808d7f2581dfae407d5149c3aa0dec855df0d300d361877f28"
+    }
+  ],
+  "inspected_file_pins_before": [
+    {
+      "bytes": 84145,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "b838d92a8919a310fcf552ee5a91c2feb21ec6c5feacc8294180514c0f1159f3"
+    },
+    {
+      "bytes": 7274,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-decoder-contract-20261006/README.md",
+      "sha256": "94b4d027e10e74d60ca2ca784a8564bd833f50f90ee98e64045a6aeba58a4195"
+    },
+    {
+      "bytes": 102696,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+      "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+    },
+    {
+      "bytes": 39910,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-checkpoint-authentication.json",
+      "sha256": "c12825c9980f3205fcd739991cc8ab5c5768bcd34444fe4d615664e4cd8811f8"
+    },
+    {
+      "bytes": 10946,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/native-profile-custody-survey.json",
+      "sha256": "6cc4a014af7bd1637dbd2961d63744f666cc3e43538abea52f2e40ad68674ec1"
+    },
+    {
+      "bytes": 73292,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/original-profile-custody-rebind-receipt.json",
+      "sha256": "ea3bdf0e27e0771e9357f1bd1ceba69689522fe3bfb399bb5c83562e4ee18b90"
+    },
+    {
+      "bytes": 834,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/profile-custody-probe-diagnostic.json",
+      "sha256": "e9c81082a855de808d7f2581dfae407d5149c3aa0dec855df0d300d361877f28"
+    }
+  ],
+  "no_unresolved_material_findings": true,
+  "operations": {
+    "database_access": false,
+    "inference_executed": false,
+    "model_loaded": false,
+    "network_calls": false,
+    "only_new_fact_review_JSON_written": true,
+    "source_or_docs_edited": false,
+    "test_reruns": false,
+    "training_executed": false
+  },
+  "resolved_factual_corrections": [
+    {
+      "correction_verified": "States remain present/byte-bound; original replay used paragraph/clause cachedvectors and masks, with explicit no fresh cachewitness claim.",
+      "finding": "Survey independently hashes contextual statefiles and historical replay reports, not fresh contextual vector cachefiles."
+    },
+    {
+      "correction_verified": "README now states bothroutes initially refuse becauseeight locator/contractfields change.",
+      "finding": "Eight concrete fielddifferences caused two originalroute refusals, not eightrefusals."
+    },
+    {
+      "correction_verified": "Budgetsentence now specifies64/512token decoderoutputbudgets and inheritedvocabularies separately.",
+      "finding": "Contextual32 denotes vocabularysize, not decoderoutputlength."
+    }
+  ],
+  "reviewed_at_utc": "2026-10-06T08:04:46.967292+00:00",
+  "reviewer": "decoder_asset_survey",
+  "schema": "supervisor-retained-decoder-doc-fact-review/v1",
+  "scope": "Read-only factual/scope review of October6capabilitysection and evidenceREADME against retained actual survey, authentication, native custody and rebind reports. These are the inspected document bytes; root may append final qualification counts separately."
+}

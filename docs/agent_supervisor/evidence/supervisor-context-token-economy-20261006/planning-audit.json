@@ -1,0 +1,405 @@
+{
+  "checkout": {
+    "head": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+    "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006"
+  },
+  "evidence_bindings": [
+    {
+      "bytes": 106462,
+      "kind": "bounded_historical_supervisor_result",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/jobs/supervisor-full-largest-eigenval/largest-eigenval__iieLP5S/agent/supervisor-result.json",
+      "sha256": "50b878cb1546168a275bea1e347c8b1b3164e46fd4c93f03a9ee7588da6d445b"
+    }
+  ],
+  "historical_direct_observation": {
+    "billing_total_verified": false,
+    "cached_input_already_included_within_input": true,
+    "coding": {
+      "combined_representation_reduction_bytes": 7443,
+      "combined_representation_reduction_fraction": 0.11905180825029191,
+      "doctor_residual_advisory_bytes": 2109,
+      "identifier_mappings": 19,
+      "identifier_occurrences": 50,
+      "model_prompt_bytes": 59301,
+      "native_prompt_bytes": 62519,
+      "observed_native_token_count_records": 7,
+      "public_instruction_block_bytes": 1226,
+      "reduction_scope": "combined nested JSON representation/escaping changes and typed identifier aliases; not pure alias savings",
+      "reported_usage": {
+        "cached_input_tokens": 232704,
+        "input_tokens": 263483,
+        "output_tokens": 4183,
+        "reasoning_output_tokens": 1183,
+        "total_tokens": 267666
+      },
+      "router_prompt_bytes_after_advisories": 58411,
+      "router_sessions": 1,
+      "translated_prompt_bytes": 55076,
+      "workspace_advisory_bytes": 890
+    },
+    "cumulative_usage_is_single_prompt_tokenization": false,
+    "dollar_cost": null,
+    "exact_token_claim_from_byte_sizes": false,
+    "fresh_savings_measured": false,
+    "native_capsules": {
+      "full": 8,
+      "indexed_symbols": 4,
+      "selected_worker": 4
+    },
+    "native_context_body_components": {
+      "component_sum_bytes": 43196,
+      "intent_world_context_bytes": 6425,
+      "intent_world_context_chunks": 2,
+      "retrieval_context_bytes": 4832,
+      "retrieval_context_chunks": 1,
+      "scope": "Retained audit reports concatenated body bytes; native wrapper and other task fields are outside this component sum. These are not post-translation field sizes.",
+      "semantic_context_bytes": 31939,
+      "semantic_context_chunks": 6
+    },
+    "planning": {
+      "model_prompt_bytes": 23292,
+      "native_prompt_bytes": 23292,
+      "observed_native_token_count_records": 1,
+      "reported_usage": {
+        "cached_input_tokens": 12288,
+        "input_tokens": 22075,
+        "output_tokens": 1691,
+        "reasoning_output_tokens": 115,
+        "total_tokens": 23766
+      },
+      "response_bytes": 6172,
+      "router_sessions": 1
+    },
+    "provider_harness_system_context_bound_by_prompt_digest": false,
+    "public_original_input_bytes": {
+      "eigen_py": 642,
+      "eval_py": 2246,
+      "instruction_md": 716,
+      "sum": 3604
+    },
+    "reported_usage_counters_observed": true,
+    "total_reported_usage": {
+      "cached_input_tokens": 244992,
+      "input_tokens": 285558,
+      "output_tokens": 5874,
+      "total_tokens": 291432
+    },
+    "trial": "largest-eigenval__iieLP5S"
+  },
+  "implemented_mechanisms": [
+    {
+      "limit": "Further whitespace removal alone is not a meaningful new mechanism.",
+      "mechanism": "canonical_whitespace_minified_JSON",
+      "terminal_integrated": true
+    },
+    {
+      "mechanism": "bounded_selected_evidence_and_initial_context_summaries",
+      "terminal_integrated": true
+    },
+    {
+      "mechanism": "query_selected_verified_producer_capsules",
+      "terminal_integrated": true
+    },
+    {
+      "limit": "Python names, paths, signatures, comments, source strings, literals and authority remain literal; current transport emits an alias dictionary and instructions.",
+      "mechanism": "reversible_semantic_router_representation_and_typed_aliases",
+      "terminal_integrated": true
+    },
+    {
+      "limit": "Catalog locators and DuckLake historical records nominate evidence; they do not establish current truth, authority or completion.",
+      "mechanism": "DuckDB_Quack_DuckLake_content_identity_meta_index",
+      "terminal_integrated": "native preparation/context metadata available"
+    },
+    {
+      "limit": "Separate from datasets producer capsules; do not introduce a second authority.",
+      "mechanism": "dependency_graph_and_Datalog_capsule_invalidation_reuse",
+      "terminal_integrated": "building block exists"
+    },
+    {
+      "existing_callers": [
+        "context/decision_runtime.py",
+        "proof/code_proof_context.py",
+        "context/planner_doctor_context.py"
+      ],
+      "mechanism": "ContextCompiler_decision_completeness_closure_and_context_deltas",
+      "terminal_cli_internal_turn_delta_consumption_qualified": false,
+      "terminal_planner_integrated": false
+    }
+  ],
+  "limits": [
+    "All observations are from one historical direct run.",
+    "Full original planner/provider prompt bytes were not exported or inspected for this audit.",
+    "No individual native planner field sizes were inferred from missing request artifacts.",
+    "Native context body sizes are retained audit observations, not additive tokenizer savings.",
+    "Current transport savings combine representation/escaping and aliasing.",
+    "This artifact records an implementation audit and priorities; it does not itself change runtime behavior or establish benchmark improvement."
+  ],
+  "observed_at_utc": "2026-10-06",
+  "priorities": [
+    {
+      "change": "Measure model-facing component tokens and cumulative session replay before changing either LLM session.",
+      "gates": [
+        "Hash-only receipts; no prompt/benchmark-source export.",
+        "Separate input/cached-input/output/reasoning/session counters.",
+        "Treat byte-size qualification separately from observed session token savings."
+      ],
+      "hooks": [
+        "router_implementation_runner.py:187",
+        "terminal_context_audit.py",
+        "provider native usage counters"
+      ],
+      "phase": 1
+    },
+    {
+      "change": "Versioned compact planner projection retains planning LLM: one task declaration, concise candidate grammar, local evidence handles, applicable constraints, literal public instruction and uncertainty.",
+      "gates": [
+        "Strict local-handle expansion before existing candidate parser.",
+        "Unknown/stale/ambiguous alias rejection.",
+        "Unchanged strict scope, output, validation, PlanCritic/formal compiler and admission checks.",
+        "Semantic constraints needed by model remain visible; no silent omission or false semantic-equivalence claim."
+      ],
+      "hooks": [
+        "terminal_indexed_preparation.py:831-837",
+        "prompt_goal_planner.py:845",
+        "terminal_initial_context.py:91"
+      ],
+      "phase": 2,
+      "server_side_records": [
+        "Full JSON response schema and canonical request roots.",
+        "Signed manifests, all source hashes, complete evidence handle map and audit receipts."
+      ]
+    },
+    {
+      "change": "Integrate existing decision-context completeness and closure compiler into verified coding view; include relevant signature/effects/interfaces, required raw edit source, public validation facts and unresolved obligations.",
+      "gates": [
+        "Exact task/source/dependency/revision bindings.",
+        "Required raw target and original public instruction preserved.",
+        "Explicit completeness witness and omission reasons.",
+        "Content-addressed bounded expansion when facts are needed.",
+        "No forceful substitution of opaque or non-substitutable dependency source."
+      ],
+      "hooks": [
+        "semantic_context_runtime.py:102",
+        "router_implementation_runner.py:128",
+        "context_compiler.py:5350"
+      ],
+      "phase": 3,
+      "server_side_records": [
+        "Catalog locators and timestamps.",
+        "Complete source inventory/reconstruction receipts.",
+        "Repeated roots and full proof certificates."
+      ]
+    },
+    {
+      "change": "Extend existing representation transport only to additional typed administrative identifiers in planner/world/retrieval/Doctor projections.",
+      "gates": [
+        "Keep complete canonical mapping controller-side.",
+        "Require task/root/schema/source-bound reversible decoding.",
+        "No source/name/path/literal/authority rewriting.",
+        "Measure dictionary/grammar overhead and reject representations that are larger."
+      ],
+      "hooks": [
+        "semantic_router_translation.py:398",
+        "router_implementation_runner.py:128"
+      ],
+      "phase": 4
+    },
+    {
+      "change": "Use formal checks to project actionable residual constraints and counterexamples; reuse source/dependency-bound certificates instead of sending prover logs.",
+      "gates": [
+        "Explicit proved/disproved/unknown/unsupported status and assumptions.",
+        "Proof cache reuse only after source/dependency freshness checks.",
+        "Float/complex eigensolver semantics remain unsupported by the existing scalar verification frontend; no universal numerical or timing claim."
+      ],
+      "hooks": [
+        "supervisor_meta_index.py:670",
+        "doctor_residual_context.py:197",
+        "analysis/semantic_capsule.py"
+      ],
+      "phase": 5
+    },
+    {
+      "change": "Use existing retry deltas/progressive disclosure only after provider parent-context retention is qualified.",
+      "gates": [
+        "Exact parent capsule/root/authority binding.",
+        "Invariant requirements remain present or reconstruct exactly.",
+        "Delta cheaper than full replay.",
+        "Fresh CLI session cannot receive an isolated parent hash and be assumed to know its body.",
+        "Cached provider prefixes still count in total input-token objective."
+      ],
+      "hooks": [
+        "context_compiler.py:5107",
+        "context_compiler.py:6450",
+        "context/decision_runtime.py:1361"
+      ],
+      "phase": 6
+    }
+  ],
+  "recommended_matched_trial": {
+    "arms": [
+      "full_context_with_llm_planning_and_llm_coding",
+      "projected_context_with_llm_planning_and_llm_coding"
+    ],
+    "hold_fixed": [
+      "task public sources and verifier input inventory",
+      "provider model and reasoning effort",
+      "resource and timeout profiles",
+      "planning/coding budget and max attempts",
+      "validation/admission/cleanup requirements"
+    ],
+    "report": [
+      "initial planner and coding input tokens",
+      "cumulative input and cached-input tokens",
+      "output and reasoning tokens",
+      "context expansions and retries",
+      "per-turn unchanged context replay",
+      "authority/coverage/freshness checks",
+      "official reward"
+    ],
+    "router_sessions_each_arm": 2,
+    "savings_claim_allowed_before_provider_trial": false
+  },
+  "schema": "supervisor-planning-token-path-audit@1",
+  "scope": {
+    "benchmark_source_or_instruction_exported": false,
+    "completion_authority": false,
+    "execution_authority": false,
+    "expected_router_sessions_per_attempt": 2,
+    "hidden_test_or_reference_bodies_read": false,
+    "keep_llm_coding_session": true,
+    "keep_llm_planning_session": true,
+    "model_raw_thoughts_read": false,
+    "no_benchmark_runs": true,
+    "no_docker_runs": true,
+    "no_new_provider_calls": true,
+    "no_source_edits": true,
+    "no_tests_run": true,
+    "raw_model_prompts_exported": false,
+    "remaining_model_route": "llm_router",
+    "training_authority": false
+  },
+  "source_bindings": [
+    {
+      "bytes": 69552,
+      "finding": "Independent task constraints repeat acceptance and full task declarations; direct LLM dispatch checks unchanged preparation and source/initial-context freshness before rendering.",
+      "line": 91,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "5c2cebfd4c0bcf04e6174aed3ce853bfdcd4efd8ee04b031b3f2d157f908e3d6"
+    },
+    {
+      "bytes": 46937,
+      "finding": "Initial planning summaries project world, capsules, retrieval and optional learned advice with native identities and explicit omission counts.",
+      "line": 91,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d"
+    },
+    {
+      "bytes": 2174,
+      "finding": "Verbatim public instruction is separately bound to the signed source digest.",
+      "line": 11,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/benchmarks/agent_supervisor/container_coding/terminal_planner_instruction.py",
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_planner_instruction.py",
+      "sha256": "052ae6ac4db607755d424727743373d0774a55e2c52c257b59d4cc8e67b9687c"
+    },
+    {
+      "bytes": 115722,
+      "finding": "Bounded canonical provider request includes selected evidence, response JSON Schema, full request identities and constraints; existing strict response parser remains authoritative for candidate grammar.",
+      "line": 845,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "09168760a63d32b3305191e72501d9776f7c967212c9e9beb33791c499003811"
+    },
+    {
+      "bytes": 4212,
+      "finding": "Selects native immutable-bundle capsules using lexical symbol relevance and configured byte/capsule bounds; preserves producer and freshness admission checks.",
+      "line": 57,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "9b3c359c8fbfa1f6f4ebfafaf038f7df9c441e478db16443796ad82191eb0e54"
+    },
+    {
+      "bytes": 42334,
+      "finding": "Worker payload contains full selected capsules/admissions, required raw sources and native context-pack/audit metadata; optional projection retains omission reasons and raw-source-before-edit rules.",
+      "line": 102,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "5bcf46d0c826faae00eefabf635fd0a68c445e5fd5b01b6ae26d6566930fef60"
+    },
+    {
+      "bytes": 33314,
+      "finding": "Already implemented reversible semantic representation combines nested JSON representation changes and typed repeated identifier aliases; exact native prompt reconstruction is checked.",
+      "line": 398,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+    },
+    {
+      "bytes": 20466,
+      "finding": "Coding route calls existing semantic transport before appending verified Doctor/public instruction advisories and workspace mapping; uses shared llm_router.",
+      "line": 128,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "83bb4334b076533b8e485df4d46d1c9147d41d3b66e485e01e47245a4853f1f0"
+    },
+    {
+      "bytes": 53490,
+      "finding": "Parameterized compose_for_subject joins content-identity catalog links; DuckLake historical projection is observational and exclusive control.duckdb is not attached.",
+      "line": 670,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 75990,
+      "finding": "Dependency-graph capsule projection and Datalog invalidation/reuse are implemented separately from datasets producer capsule authority.",
+      "line": 1,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/analysis/semantic_capsule.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/analysis/semantic_capsule.py",
+      "sha256": "6052d8f2e94c351bbb96811abd8bfd5b63808b6d90295a7c1020302e788009b5"
+    },
+    {
+      "bytes": 293498,
+      "finding": "Existing compile_delta preserves parent required evidence and changed/requested reference bindings; decision contexts, completeness witnesses and bounded expansion are implemented in this compiler.",
+      "line": 5107,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406"
+    },
+    {
+      "bytes": 99999,
+      "finding": "Existing decision runtime invokes compiler expansion; this is distinct from Terminal-Bench planner integration.",
+      "line": 1361,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+      "sha256": "ee8cf60218a2b9fe86ca1ec717da57a478996ddcde4a5705eab52397be126839"
+    },
+    {
+      "bytes": 31332,
+      "finding": "Existing proof-context route uses compiler deltas.",
+      "line": 793,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/proof/code_proof_context.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_context.py",
+      "sha256": "a8b3a6e568a48f9d73af0a4ad52de867bbd1e645f478f75db8b3cd4cc6942897"
+    },
+    {
+      "bytes": 102188,
+      "finding": "Existing planner/Doctor context route uses compiler deltas.",
+      "line": 2082,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603"
+    },
+    {
+      "bytes": 14744,
+      "finding": "Coding advisory already projects native residuals; full repeated administrative identities and unsupported-operator context remain candidates for bounded model-facing projection.",
+      "line": 197,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    }
+  ],
+  "status": "read_only_source_and_retained_metadata_audit",
+  "task": "largest-eigenval"
+}

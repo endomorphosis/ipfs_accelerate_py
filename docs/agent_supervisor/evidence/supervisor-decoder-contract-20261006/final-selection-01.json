@@ -1,0 +1,25 @@
+{
+  "schema": "supervisor-checkpoint-context-final-selection@1",
+  "selections": [
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py",
+    "test/api/test_task_ir_checkpoint.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py",
+    "test/api/test_task_ir_selection.py",
+    "test/api/semantic_state/test_supervised_task_context.py",
+    "test/api/semantic_state/test_published_empty_task_context.py",
+    "test/test_ir_persistent_catalog.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+    "test/api/semantic_state/test_intent_world_snapshot.py",
+    "test/api/semantic_state/test_semantic_context_runtime.py",
+    "test/api/semantic_state/test_code_retrieval_context.py",
+    "test/api/semantic_state/test_source384_task_context_bundle.py"
+  ],
+  "scope": "Frozen checkpoint authentication and opt-in actualnative context controls, all preceding ready-root/catalog/directnative/regression selections against current published main. No model/training/inference in the new path.",
+  "counts_overlap_prior_and_development": true,
+  "completion_authority": false
+}

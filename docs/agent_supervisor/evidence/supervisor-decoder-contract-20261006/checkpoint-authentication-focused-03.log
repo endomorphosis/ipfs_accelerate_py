@@ -1,0 +1,24 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 81 items
+
+test/api/test_task_ir_checkpoint.py .................................... [ 44%]
+.....                                                                    [ 50%]
+test/api/test_task_ir_selection.py ..................................... [ 96%]
+...                                                                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/checkpoint-authentication-focused-03.xml -
+============================= slowest 10 durations =============================
+0.61s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[True]
+0.27s call     test/api/test_task_ir_selection.py::test_parallel_family_and_dimension_nominations_preserve_native_declarations[True]
+0.18s call     test/api/test_task_ir_checkpoint.py::test_exact_selection_upper_population_bound[16]
+0.15s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[False]
+0.10s call     test/api/test_task_ir_checkpoint.py::test_actual_catalog_metadata_change_during_authentication_refuses[during_read-True]
+0.10s call     test/api/test_task_ir_checkpoint.py::test_actual_catalog_metadata_change_during_authentication_refuses[after_closing_resolution-True]
+0.09s call     test/api/test_task_ir_selection.py::test_exact_upper_selection_population[16-True]
+0.07s call     test/api/test_task_ir_selection.py::test_duplicate_persisted_json_identity_field_refuses_without_store_changes[True]
+0.05s call     test/api/test_task_ir_selection.py::test_parallel_family_and_dimension_nominations_preserve_native_declarations[False]
+0.03s call     test/api/test_task_ir_selection.py::test_catalog_path_refuses_without_creating_or_modifying_a_store[wrong_table]
+============================== 81 passed in 2.73s ==============================

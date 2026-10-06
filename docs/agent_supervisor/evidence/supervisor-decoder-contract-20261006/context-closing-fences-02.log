@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 5 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py . [ 20%]
+....                                                                     [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/context-closing-fences-02.xml -
+============================= slowest 10 durations =============================
+21.35s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-cold_reopen]
+20.83s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-cold_reopen]
+3.70s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-prepare]
+3.36s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_later_task_authentication_closes_earlier_task_checkpoint_identity
+2.98s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-cold_reopen]
+2.98s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-cold_reopen]
+2.95s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-prepare]
+2.92s setup    benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[native_event-prepare]
+2.61s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_source_and_native_fences_close_after_genuine_checkpoint_authentication[source-prepare]
+0.39s call     benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py::test_later_task_authentication_closes_earlier_task_checkpoint_identity
+========================= 5 passed in 76.30s (0:01:16) =========================

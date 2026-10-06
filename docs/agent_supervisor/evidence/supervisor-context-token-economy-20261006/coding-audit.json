@@ -1,0 +1,369 @@
+{
+  "benchmark_runs": 0,
+  "comparison_binding": {
+    "bytes": 27327,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/comparison-02.json",
+    "sha256": "58e2966692dd726850ad5b8e07ccf11fd39199c1231bf07e23f8c819e4413cfd"
+  },
+  "completion_authority": false,
+  "created_utc": "2026-10-06T07:48:35.585000+00:00",
+  "execution_authority": false,
+  "findings": [
+    {
+      "finding": "Current @1 aliases only repeated long identifiers at a closed set of typed JSON slots. The complete alias-to-CID map remains provider-facing. Raw source strings, executable spellings, paths, signatures, literals and comments stay literal. There is a size bound but no non-expansion guard.",
+      "id": "reversible_transport_limits",
+      "limit": "The observed 7443-byte transport saving includes de-escaping semantic JSON previously nested in ContextReference summary strings; it cannot all be attributed to identifier aliases.",
+      "source": "semantic_router_translation.py:393"
+    },
+    {
+      "finding": "After semantic transport, the router separately appends Doctor residual advisory, original public instruction, and any task-specific IntentIR context, then prepends the workspace contract. Receipts bind each component and final complete provider input.",
+      "id": "full_boundary_append_growth",
+      "priority": "high",
+      "source": "router_implementation_runner.py:131"
+    },
+    {
+      "finding": "Each requirement repeats its source-unit text/span/hash, native atom, output/validation grounding, binding, and seven authority flags. The top level repeats operations/matchers and task-contract scope/validations/acceptance. router_public_instruction.py:330 also sends the verbatim source requirements.",
+      "id": "requirements_duplicate_material",
+      "source": "intent_requirement_context.py:65"
+    },
+    {
+      "finding": "The advisory repeats output scope, validation commands, acceptance IDs, security roots, open-obligation IDs and per-residual evidence refs which overlap independently retained task/plan evidence. It must keep unresolved obligations and candidate-only status visible.",
+      "id": "doctor_overlap",
+      "source": "doctor_residual_context.py:210"
+    },
+    {
+      "finding": "Preparation persists immutable native capsule/source blocks, ProgramWorld DuckDB records, SupervisorMetaIndex catalog and identity links, and a DuckLake projection. These can nominate bounded root-bound lookups; a catalog locator alone does not deliver a verified local reader to the coding model.",
+      "id": "native_store_is_offprompt",
+      "source": "semantic_context_runtime.py:389"
+    },
+    {
+      "finding": "compose_for_subject yields bounded catalog locators and identity links, with decision/completion/DuckLake authority false. It lacks a current root argument. Any operational lookup must independently pin task/source/root and validate native freshness rather than trust an old catalog row or mtime.",
+      "id": "metastore_locator_not_authority",
+      "source": "supervisor_meta_index.py:670"
+    },
+    {
+      "finding": "Worker selection is currently lexical-query-symbol-name@1, bounded capsule count/bytes with native freshness/admission checks. Preparation reports minification as lossless JSON whitespace removal only. Optional omitted raw paths remain mandatory exact-source fetches before editing.",
+      "id": "worker_selection_and_minification",
+      "source": "semantic_capsule_selection.py:61"
+    },
+    {
+      "finding": "DeltaTaskPacket offers invariant-preserving residual frontier and typed expansion handles, but the production search found no references to its request/service/build/admit functions outside that module. This is a distinct contract from the active native ContextCompiler route; its use cannot be assumed.",
+      "id": "delta_task_packet_not_wired",
+      "source": "delta_task_packet.py:1262"
+    },
+    {
+      "finding": "Delta budgets sum unresolved member bytes/tokens; token estimate is ceil(bytes/4). The final provider_packet wrapper, scope, requirements, frontier, omitted-authority table and full workspace/advisory additions are not included in those member budgets. Count the actual assembled provider boundary separately.",
+      "id": "delta_budget_is_partial_estimate",
+      "source": "delta_task_packet.py:1413"
+    },
+    {
+      "finding": "The Codex CLI provider passes one initial prompt to a subprocess with capture_output. Native tool results and growing per-turn model context are internal to that session. Generic chat history-CID persistence is a separate route and is not a benchmark coding-context compressor. Router max_output_tokens is requested but the native runner receipt states no enforced output cap.",
+      "id": "native_cli_history_not_intercepted",
+      "source": "llm_router.py:6311"
+    }
+  ],
+  "git_head": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "limits": [
+    "Read-only source and metadata audit; no provider, benchmark, container or verifier execution.",
+    "No raw model thoughts, transcripts, hidden test/reference source bodies or candidate solution bodies exported.",
+    "The fresh symbolic run differs in planning route and appended candidate IntentIR context; it is observational evidence and not a causal minification trial.",
+    "Byte reductions are not native measured token reductions; a matching tokenizer and later two-session trial are needed."
+  ],
+  "model_thought_or_solution_bodies_exported": false,
+  "observations": {
+    "fresh_symbolic": {
+      "coding_byte_observations": {
+        "appended_doctor_bytes": 2109,
+        "appended_public_instruction_bytes": 20076,
+        "complete_provider_input_bytes": 75724,
+        "complete_provider_input_minus_native_bytes": 15632,
+        "complete_provider_input_minus_native_fraction": 0.2601344604939093,
+        "native_input_bytes": 60092,
+        "provider_token_savings_attributable_to_representation": null,
+        "semantic_transport_bytes": 52649,
+        "semantic_transport_bytes_saved": 7443,
+        "workspace_advisory_bytes": 890
+      },
+      "duplicate_router_metadata_occurrences_deduplicated": 0,
+      "receipt_binding": {
+        "bytes": 212168,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+        "sha256": "0cd4ad83a5ddf948286101e6ddc79dc8446b80ef0ee8e28d2b50bb6283d130c7"
+      },
+      "router_receipts_unique": [
+        {
+          "doctor_residual_context": {
+            "advisory_bytes": 2109,
+            "advisory_sha256": "77a138615aa84e6f8c3497f8fcae03fdc2c2d50a0278516557a135c955e681fe",
+            "artifact_sha256": "ae3dadbf10b56b2c49cc8d56fb0b01c975f799cc3a87be4fdd7a4fd207154fb9",
+            "candidate_only": true,
+            "completion_authority": false,
+            "derived_runtime_admitted": false,
+            "extra_provider_calls": 0,
+            "historical_replay": false,
+            "schema": "doctor-residual-router-context@1",
+            "source_freshness_verified": true
+          },
+          "model_prompt_bytes": 75724,
+          "model_prompt_sha256": "ef6c073a3eef9bac102165ed5369aadc08aadfbd6a6f6a0f911f0e94d817bf9a",
+          "native_prompt_bytes": 60092,
+          "native_prompt_sha256": "2589841091e14f3b9eb7a879d5adb308d787189133067d4e7d4be6ccaa0fba99",
+          "public_instruction": {
+            "artifact_sha256": "20ea427794097a87a762b43c00a6ffc20dd99045c7d850119cd97e0950e08de3",
+            "block_bytes": 20076,
+            "block_sha256": "2795072c4b86e7954775602675b6a291b00ccf60f0d09dd4dda9ec5664693f8a",
+            "completion_authority": false,
+            "extra_provider_calls": 0,
+            "historical_replay": false,
+            "manifest_signature_verified": true,
+            "schema": "supervisor-public-instruction-inclusion@2",
+            "scope_expansion_authority": false,
+            "semantic_minification_applied": false,
+            "source_bytes": 716,
+            "source_freshness_verified": true,
+            "source_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "verbatim_utf8": true
+          },
+          "purpose": "coding",
+          "router_prompt_bytes": 74834,
+          "router_prompt_sha256": "aabece694df6cc4d5d266c0a6ee2f1ef52025f16efb4dca31079c001204351e0",
+          "semantic_translation": {
+            "completion_authority": false,
+            "execution_authority": false,
+            "freshness_checked": true,
+            "identifier_mappings": 19,
+            "identifier_occurrences": 50,
+            "native_prompt_bytes": 60092,
+            "native_prompt_sha256": "2589841091e14f3b9eb7a879d5adb308d787189133067d4e7d4be6ccaa0fba99",
+            "provider_prompt_bytes": 52649,
+            "provider_prompt_sha256": "b428c82d26f927667a56ebacc08c90f1857ca16519f7bf36db0add3de40e9fa9",
+            "schema": "supervisor-semantic-router-encoding@1",
+            "semantic_equivalence_claimed": false
+          },
+          "workspace_advisory_bytes": 890,
+          "workspace_advisory_sha256": "93ae73a3f967fc6d3677c0ee76e33e9630bd97da66209bdce8fba35cd7674584"
+        }
+      ]
+    },
+    "historical_direct": {
+      "coding_byte_observations": {
+        "appended_doctor_bytes": 2109,
+        "appended_public_instruction_bytes": 1226,
+        "complete_provider_input_bytes": 59301,
+        "complete_provider_input_minus_native_bytes": -3218,
+        "complete_provider_input_minus_native_fraction": -0.05147235240486892,
+        "native_input_bytes": 62519,
+        "provider_token_savings_attributable_to_representation": null,
+        "semantic_transport_bytes": 55076,
+        "semantic_transport_bytes_saved": 7443,
+        "workspace_advisory_bytes": 890
+      },
+      "duplicate_router_metadata_occurrences_deduplicated": 1,
+      "receipt_binding": {
+        "bytes": 199232,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+        "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+      },
+      "router_receipts_unique": [
+        {
+          "doctor_residual_context": null,
+          "model_prompt_bytes": 23292,
+          "model_prompt_sha256": "bcaecd78b5b42c94f58e0c5068302c784d4b78873757ca30c7b861f0c6555f9c",
+          "native_prompt_bytes": 23292,
+          "native_prompt_sha256": "bcaecd78b5b42c94f58e0c5068302c784d4b78873757ca30c7b861f0c6555f9c",
+          "public_instruction": null,
+          "purpose": "planning",
+          "router_prompt_bytes": 23292,
+          "router_prompt_sha256": "bcaecd78b5b42c94f58e0c5068302c784d4b78873757ca30c7b861f0c6555f9c",
+          "semantic_translation": null,
+          "workspace_advisory_bytes": 0,
+          "workspace_advisory_sha256": null
+        },
+        {
+          "doctor_residual_context": {
+            "advisory_bytes": 2109,
+            "advisory_sha256": "452ce5b083ca4108e7257fc95dc255c2916d19146070876277af25e0fb4cc7e4",
+            "artifact_sha256": "fe577383b1652014779d942c6234569724c928d0d1e8b5537dd1b3464922de57",
+            "candidate_only": true,
+            "completion_authority": false,
+            "derived_runtime_admitted": false,
+            "extra_provider_calls": 0,
+            "historical_replay": false,
+            "schema": "doctor-residual-router-context@1",
+            "source_freshness_verified": true
+          },
+          "model_prompt_bytes": 59301,
+          "model_prompt_sha256": "f6730ad245445959f0c024029ffbf3ad578cba78753b8cc6349da3b688de5160",
+          "native_prompt_bytes": 62519,
+          "native_prompt_sha256": "61d4095b300b88987d34b36af9a717c15573b8b7cdb1134bf08ad849d3b7a4f9",
+          "public_instruction": {
+            "artifact_sha256": "061eb3cab85612ce94c69ec63e5c681253721571de306bf28bd104d43a2c3831",
+            "block_bytes": 1226,
+            "block_sha256": "ab05a317ed3eb2a7248cb7e20d6f91d895954803d7c3b92754a9c7099a73b240",
+            "completion_authority": false,
+            "extra_provider_calls": 0,
+            "historical_replay": false,
+            "manifest_signature_verified": true,
+            "schema": "supervisor-public-instruction-inclusion@1",
+            "scope_expansion_authority": false,
+            "semantic_minification_applied": false,
+            "source_bytes": 716,
+            "source_freshness_verified": true,
+            "source_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "verbatim_utf8": true
+          },
+          "purpose": "coding",
+          "router_prompt_bytes": 58411,
+          "router_prompt_sha256": "f416faca66ced982921905093794f354cf7e3d06ab9e06d486f0e2e2835fb43b",
+          "semantic_translation": {
+            "completion_authority": false,
+            "execution_authority": false,
+            "freshness_checked": true,
+            "identifier_mappings": 19,
+            "identifier_occurrences": 50,
+            "native_prompt_bytes": 62519,
+            "native_prompt_sha256": "61d4095b300b88987d34b36af9a717c15573b8b7cdb1134bf08ad849d3b7a4f9",
+            "provider_prompt_bytes": 55076,
+            "provider_prompt_sha256": "41efdedc06616d6ee1b99f55ac60a8601a99122c6594b6c98d92db752b135aca",
+            "schema": "supervisor-semantic-router-encoding@1",
+            "semantic_equivalence_claimed": false
+          },
+          "workspace_advisory_bytes": 890,
+          "workspace_advisory_sha256": "76e323eb32680402c49e54248b62e1dd37d8e564327cc0be6621599a840f1cdb"
+        }
+      ]
+    }
+  },
+  "primary_goal": "Keep the planning LLM session and coding LLM session; reduce their total observed tokens through grounded context selection and representation compaction.",
+  "proof_authority": false,
+  "proposed_work": [
+    {
+      "action": "Record native context, semantic transport, Doctor advisory, public verbatim requirements, task-specific requirement context and workspace contract byte counts plus tokenizer-named estimates at the final provider boundary. Keep provider native input/cache/output counters separate, with cache already included in input.",
+      "id": "component_ledger",
+      "implemented": false
+    },
+    {
+      "action": "Add an opt-in versioned compact requirement/Doctor representation using source-unit and atom tables, typed references, shared output/validation dictionaries and shared authority status. Retain the full native signed artifact and exact reconstruction binding; preserve all applicable requirements, prerequisites, prohibitions and unresolved obligations.",
+      "id": "lossless_shared_tables",
+      "implemented": false
+    },
+    {
+      "action": "Prototype @2 transport which retains full CID map in immutable owner storage and sends translation-CID/root/task/scope bindings plus typed aliases. Restore through the retained native table, verify exact native prompt roundtrip and native response grammar, and use the native representation when compaction would expand the complete provider input. This is a proposal, not a current implementation.",
+      "id": "offprompt_alias_dictionary_v2",
+      "implemented": false
+    },
+    {
+      "action": "Provide an explicitly deployed read-only lookup over exact native capsule/source/obligation records with task/root/source binding, item/byte/token quotas and explicit omission frontier. Do not expose raw SQL, Quack credentials, control.duckdb, arbitrary catalog attachments or owner mutation routes.",
+      "id": "bounded_owner_lookup",
+      "implemented": false
+    },
+    {
+      "action": "Use logic/coverage/critics to select relevant assumptions, dependency and obligation closure and verified fact/certificate handles for both LLM sessions; replace repetitive transcripts with compact outcomes. Selection certificates do not establish floating-point eigensolver semantics or measured speed.",
+      "id": "formal_filter_and_residual_capsule",
+      "implemented": false
+    },
+    {
+      "action": "Compare direct-planning full-context and direct-planning compact-context arms with the same two router/CLI sessions, model, routing, budgets, task/profile and official verifier. Report total native input/output/cache tokens, all attempts, on-demand expansion tokens, quality and wall time; do not attribute historical symbolic savings to context compaction.",
+      "id": "hold_sessions_constant_experiment",
+      "implemented": false
+    }
+  ],
+  "provider_calls": 0,
+  "qualification_requirements": [
+    "Exact finite encode/decode native byte roundtrip, with literal source spelling and immutable scope/authority preserved.",
+    "Native stale-source, foreign repository/root/task/scope/table, corrupt-alias and unknown-reference refusals before dispatch, with candidate-only response grammar.",
+    "Bounded lookup identity/CID/schema checks, exact source freshness, inaccessible-owner credentials and stale/historical record refusal.",
+    "Complete assembled prompt byte/token budget checks, including maps/frontier/advisories, and fallback/non-expansion behavior on tiny or unrepetitive inputs.",
+    "Requirement/dependency/prohibition/open-obligation coverage must remain complete; semantic omission requires explicit selection support and cannot be declared lossless without reconstruction.",
+    "Both planning and coding sessions remain enabled; qualify live native usage separately from offline representation bytes."
+  ],
+  "repository": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006",
+  "schema": "supervisor-coding-context-token-economy-audit@1",
+  "semantic_equivalence_claimed": false,
+  "source_bindings": [
+    {
+      "bytes": 33314,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+    },
+    {
+      "bytes": 20466,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "83bb4334b076533b8e485df4d46d1c9147d41d3b66e485e01e47245a4853f1f0"
+    },
+    {
+      "bytes": 42334,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "5bcf46d0c826faae00eefabf635fd0a68c445e5fd5b01b6ae26d6566930fef60"
+    },
+    {
+      "bytes": 4212,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "9b3c359c8fbfa1f6f4ebfafaf038f7df9c441e478db16443796ad82191eb0e54"
+    },
+    {
+      "bytes": 53490,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 25515,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 5309,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_context.py",
+      "sha256": "d293d3177366ab5b546f43555889f9fb6e5af04bc05347d3297c35be9f3836dd"
+    },
+    {
+      "bytes": 14744,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 117263,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py",
+      "sha256": "a1bd04036dae92477d6c101ead0f38be22030b51a5a187a03323fe97ad96104a"
+    },
+    {
+      "bytes": 549621,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/ipfs_accelerate_py/llm_router.py",
+      "sha256": "e0054cc15a489c5d8f226fed7d72fff8db4272af11b2ed487ef138e76e006d06"
+    },
+    {
+      "bytes": 20382,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/test/api/test_semantic_router_translation.py",
+      "sha256": "7f9c837e8fb0449cfab8f25590e0b07a31820edc45356b4ee85748d57009cc8e"
+    },
+    {
+      "bytes": 12027,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/test/api/test_semantic_router_integration.py",
+      "sha256": "514f561234759fbeab14c1f98b440de528311186e1351a667257c20570d96e72"
+    }
+  ],
+  "source_edits": 0,
+  "status": "read_only_audit_complete",
+  "usage_context": {
+    "fresh_symbolic": {
+      "input_dominates": true,
+      "router_sessions": 1,
+      "tokens": {
+        "cached_input_tokens": 217472,
+        "input_tokens": 251752,
+        "output_tokens": 4199,
+        "total_tokens": 255951
+      }
+    },
+    "historical_direct": {
+      "input_dominates": true,
+      "router_sessions": 2,
+      "tokens": {
+        "cached_input_tokens": 244992,
+        "input_tokens": 285558,
+        "output_tokens": 5874,
+        "total_tokens": 291432
+      }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schema": "supervisor-checkpoint-context-development-diagnostics@1",
+  "runs": [
+    {
+      "run": "checkpoint-authentication-unit-01",
+      "counts": {
+        "passed": 34,
+        "failure": 5,
+        "error": 0,
+        "skipped": 0
+      },
+      "role": "Initial red preserved: multi-file witness comprehension reused the last identity; fixed exact per-entry witness. Other failures corrected fixture expected unlinked descriptor semantics and targeted os.read injection to the actual checkpoint instead of catalog JSON."
+    },
+    {
+      "run": "checkpoint-authentication-unit-02",
+      "counts": {
+        "passed": 39,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "role": "39 focused controls passed; superseded by 41 new final controls and full final regression."
+    },
+    {
+      "run": "checkpoint-authentication-focused-03",
+      "counts": {
+        "passed": 81,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "role": "81 passing focused cases including41new+40previouscatalog; sourcepinsstable, freshASTseals. Overlaps final."
+    },
+    {
+      "run": "context-development-01",
+      "counts": {
+        "passed": 18,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "returncode": 0,
+      "pins_unchanged": false,
+      "ast_sealing": {
+        "records": 18,
+        "closure_files_min": 989,
+        "closure_files_max": 989,
+        "any_completion_authority": false
+      },
+      "role": "18 new context controls passed while source/test implementation changed; not frozen qualification."
+    },
+    {
+      "run": "context-closing-fences-02",
+      "counts": {
+        "passed": 5,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "returncode": 0,
+      "pins_unchanged": true,
+      "ast_sealing": {
+        "records": 5,
+        "closure_files_min": 989,
+        "closure_files_max": 989,
+        "any_completion_authority": false
+      },
+      "role": "Five real source/native/later-task file race controls passed with unchanged pins."
+    },
+    {
+      "run": "final-01",
+      "counts": {
+        "passed": 6,
+        "failure": 0,
+        "error": 0,
+        "skipped": 0
+      },
+      "returncode": 2,
+      "pins_unchanged": true,
+      "ast_sealing": {
+        "records": 5,
+        "closure_files_min": 989,
+        "closure_files_max": 989,
+        "any_completion_authority": false
+      },
+      "role": "Explicitly interrupted owned run before typed observation correction. Six JUnit passing cases/five ASTseals and exit2 are retained as incomplete, not a final passing qualification."
+    }
+  ],
+  "final_01_interruption": "final-01-interruption.json",
+  "native_profile_probe_diagnostic": "profile-custody-probe-diagnostic.json",
+  "count_scope": "All earlier runs overlap final-02 or are historical development/interruption controls; none added to final total. Native profile rebind is a separate metadata-only API replay, not a model or pytest quality result.",
+  "completion_authority": false
+}

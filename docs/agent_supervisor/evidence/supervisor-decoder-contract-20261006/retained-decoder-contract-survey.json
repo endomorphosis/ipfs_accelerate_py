@@ -1,0 +1,2138 @@
+{
+  "authority": {
+    "8192_span_reconstruction_qualified": false,
+    "independent_holdout": false,
+    "new_quality_measured": false,
+    "original_prose_reconstruction_qualified": false,
+    "proof_authority": false,
+    "runtime_admitted": false,
+    "teacher_qualified": false
+  },
+  "better_retained_contextual_states": [
+    {
+      "checkpoint_pin_before": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "current_presence_scope": "One native read-only load of the explicit selected store; this is not all-host inventory or remote-Hub discovery.",
+      "current_selected_catalog_exact_sha_matches": [],
+      "fresh_replay_performed_this_survey": false,
+      "historical_claim_source_pin": {
+        "bytes": 10046,
+        "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/comparison-and-next-gaps-v1.json",
+        "sha256": "5a4dc8a89517917da1dae5b9f76c327bd5c81a8bd57c1b75374030c465e56b78"
+      },
+      "historical_profile": {
+        "IR_contract": "Inherited32-token typed-json-lexical/v1 codec plus pinned canonical-single-rule validator; no inferred IR schema version.",
+        "architecture": "ordered-clause-recurrent-source-decoder-development/v1",
+        "checkpoint": {
+          "bytes": 2799098,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+        },
+        "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+        "declared_IR_schema_version": null,
+        "decoder_output_limit": 512,
+        "decoder_task": "semantic_IR_reconstruction",
+        "dimension": 384,
+        "encoder_context_tokens": 512,
+        "family": "legal_ir",
+        "format": "canonical_typed_JSON_rule_array",
+        "fresh_replay_correct_fields": 720,
+        "fresh_replay_exact_IR": 48,
+        "fresh_replay_rows": 48,
+        "fresh_replay_rules": 180,
+        "input_contract": [
+          "id",
+          "source_text",
+          "paragraph_vector384",
+          "explicit_literal_source_clause_vectors384",
+          "source_padding_masks"
+        ],
+        "manager_live_status_rechecked": false,
+        "manager_saved_export_matches": 0,
+        "production_serving_promoted": false,
+        "proof_authority": false,
+        "public_HF_binding_established_in_examined_snapshots": false,
+        "public_HF_live_rechecked": false,
+        "restored_state_entries": 32,
+        "runtime_replay_succeeded": true,
+        "serialization_schema": "private-native-dimension-source-state/v1",
+        "teacher_qualified": false
+      }
+    },
+    {
+      "checkpoint_pin_before": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "current_presence_scope": "One native read-only load of the explicit selected store; this is not all-host inventory or remote-Hub discovery.",
+      "current_selected_catalog_exact_sha_matches": [],
+      "fresh_replay_performed_this_survey": false,
+      "historical_claim_source_pin": {
+        "bytes": 10046,
+        "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/comparison-and-next-gaps-v1.json",
+        "sha256": "5a4dc8a89517917da1dae5b9f76c327bd5c81a8bd57c1b75374030c465e56b78"
+      },
+      "historical_profile": {
+        "IR_contract": "Inherited32-token typed-json-lexical/v1 codec plus pinned canonical-single-rule validator; no inferred IR schema version.",
+        "architecture": "ordered-clause-recurrent-source-decoder-development/v1",
+        "checkpoint": {
+          "bytes": 4781613,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+        },
+        "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+        "declared_IR_schema_version": null,
+        "decoder_output_limit": 512,
+        "decoder_task": "semantic_IR_reconstruction",
+        "dimension": 768,
+        "encoder_context_tokens": 512,
+        "family": "legal_ir",
+        "format": "canonical_typed_JSON_rule_array",
+        "fresh_replay_correct_fields": 720,
+        "fresh_replay_exact_IR": 48,
+        "fresh_replay_rows": 48,
+        "fresh_replay_rules": 180,
+        "input_contract": [
+          "id",
+          "source_text",
+          "paragraph_vector768",
+          "explicit_literal_source_clause_vectors768",
+          "source_padding_masks"
+        ],
+        "manager_live_status_rechecked": false,
+        "manager_saved_export_matches": 0,
+        "production_serving_promoted": false,
+        "proof_authority": false,
+        "public_HF_binding_established_in_examined_snapshots": false,
+        "public_HF_live_rechecked": false,
+        "restored_state_entries": 32,
+        "runtime_replay_succeeded": true,
+        "serialization_schema": "private-native-dimension-source-state/v1",
+        "teacher_qualified": false
+      }
+    }
+  ],
+  "bound_source_checkpoint_evidence_bytes_unchanged": true,
+  "current_selected_model_manager_catalog": {
+    "binding_count": 668,
+    "binding_snapshot_revision": "b4bad5614ed0cb0dc4a64e3e7b336ca44ded4049348b50a88f8d8f9ecf4b7081",
+    "catalog_authority": {
+      "checkpoint_bytes_authenticated": false,
+      "inference_executed": false,
+      "model_loaded": false,
+      "model_manager_constructed": false,
+      "proof_authority": false,
+      "runtime_admitted": false,
+      "teacher_qualified": false,
+      "training_executed": false
+    },
+    "catalog_revision": "bafkreif2saxw42mv7m6ktul6ou2pooq5mwozxnbiqbkfhxzaxyeqnimdru",
+    "current_contextual_exact_sha_match_counts": {
+      "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00": 0,
+      "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4": 0
+    },
+    "native_import_source_pins": [
+      {
+        "bytes": 40208,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/__init__.py",
+        "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+      },
+      {
+        "bytes": 1596,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/__init__.py",
+        "sha256": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0"
+      },
+      {
+        "bytes": 8918,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/identity.py",
+        "sha256": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44"
+      },
+      {
+        "bytes": 36178,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/schema.py",
+        "sha256": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49"
+      },
+      {
+        "bytes": 1043,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/__init__.py",
+        "sha256": "b771d4d00b5cf8f167e9bb7aa3951e25a8d5a225b78b0e872c1a21eabf5672f4"
+      },
+      {
+        "bytes": 19952,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+        "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+      },
+      {
+        "bytes": 3331,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/persistent.py",
+        "sha256": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8"
+      },
+      {
+        "bytes": 37159,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/static.py",
+        "sha256": "4f9b658aecc00820e2d87866445f298c248e6d9a39161b1499a884f6451281cf"
+      }
+    ],
+    "native_load_count": 1,
+    "native_source": "IRPersistentCatalogSource",
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+    "read_only": true,
+    "store_consistency_scope": "Cooperative metadata endpoint checks, not atomic snapshot or full store-byte authentication.",
+    "store_stat_after": {
+      "bytes": 2973249536,
+      "ctime_ns": 1791130096943436410,
+      "device": 66306,
+      "inode": 4587812,
+      "mode": 33204,
+      "mtime_ns": 1791130096943436410
+    },
+    "store_stat_before": {
+      "bytes": 2973249536,
+      "ctime_ns": 1791130096943436410,
+      "device": 66306,
+      "inode": 4587812,
+      "mode": 33204,
+      "mtime_ns": 1791130096943436410
+    },
+    "store_stat_unchanged": true,
+    "wal_stat_after": null,
+    "wal_stat_before": null,
+    "whole_store_sha256_performed": false
+  },
+  "file_evidence_after": [
+    {
+      "bytes": 12408,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/docs/autoencoders/pilots/intent_codebase_grounding/decoder_profile_inventory_handoff.json",
+      "sha256": "6fde5a8adaa68730058679722e4ec521312ac725033dc1f4395cbf5bc49c6246"
+    },
+    {
+      "bytes": 22669,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 20396,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 4869,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-task-context-20261005/retained-checkpoint-file-witnesses.json",
+      "sha256": "7ed5a9d63b4c72cd0657535ba74656b06b0bd548c751ca67295078b51cff7fed"
+    },
+    {
+      "bytes": 30100,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-task-context-20261005/retained-ir-catalog-nominations.json",
+      "sha256": "94e66bd2bb324a2c6bf57c6f147ce9dac2f901f7002f0652b4c27c1a3a4d47e9"
+    },
+    {
+      "bytes": 40208,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/__init__.py",
+      "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+    },
+    {
+      "bytes": 1596,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/__init__.py",
+      "sha256": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0"
+    },
+    {
+      "bytes": 8918,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/identity.py",
+      "sha256": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44"
+    },
+    {
+      "bytes": 36178,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/schema.py",
+      "sha256": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49"
+    },
+    {
+      "bytes": 1043,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/__init__.py",
+      "sha256": "b771d4d00b5cf8f167e9bb7aa3951e25a8d5a225b78b0e872c1a21eabf5672f4"
+    },
+    {
+      "bytes": 19952,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    },
+    {
+      "bytes": 3331,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/persistent.py",
+      "sha256": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8"
+    },
+    {
+      "bytes": 37159,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/static.py",
+      "sha256": "4f9b658aecc00820e2d87866445f298c248e6d9a39161b1499a884f6451281cf"
+    },
+    {
+      "bytes": 304490,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+      "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+    },
+    {
+      "bytes": 586049,
+      "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+      "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+    },
+    {
+      "bytes": 597741,
+      "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+      "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+    },
+    {
+      "bytes": 125540,
+      "path": "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json",
+      "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+    },
+    {
+      "bytes": 10046,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/comparison-and-next-gaps-v1.json",
+      "sha256": "5a4dc8a89517917da1dae5b9f76c327bd5c81a8bd57c1b75374030c465e56b78"
+    },
+    {
+      "bytes": 4198,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/discovery-registration-handoff-v1.json",
+      "sha256": "10e19814c4618a1548c4cfc404d75b642cb95335d0ffb27acc130a76663bbef9"
+    },
+    {
+      "bytes": 2263,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/latent-input-contract-constraints-v1.json",
+      "sha256": "06af89c2674d40352fbfc87a93e35e928d23f4c57dfdc29e0894f7ba14d40aba"
+    },
+    {
+      "bytes": 76824494,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json",
+      "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+    },
+    {
+      "bytes": 17392573,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json",
+      "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+    },
+    {
+      "bytes": 1786933,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json",
+      "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+    },
+    {
+      "bytes": 6360717,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+      "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+    },
+    {
+      "bytes": 1646128,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+      "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+    },
+    {
+      "bytes": 357773,
+      "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/structured-01/legal_ir/checkpoint.json",
+      "sha256": "2ac54a5c3789d7c7a29d6b6a0db5e3a3a69e41c8b335e7ada62e80ecc845f8f3"
+    },
+    {
+      "bytes": 39025,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/docs/autoencoders/inference_and_qualification.md",
+      "sha256": "ed2ae6270b2c19c2d3e0c8dc8f2eb3e83c1878c43e1f240b946caeeab188d86f"
+    },
+    {
+      "bytes": 673933,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+      "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    }
+  ],
+  "file_evidence_before": [
+    {
+      "bytes": 12408,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/docs/autoencoders/pilots/intent_codebase_grounding/decoder_profile_inventory_handoff.json",
+      "sha256": "6fde5a8adaa68730058679722e4ec521312ac725033dc1f4395cbf5bc49c6246"
+    },
+    {
+      "bytes": 22669,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 20396,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 4869,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-task-context-20261005/retained-checkpoint-file-witnesses.json",
+      "sha256": "7ed5a9d63b4c72cd0657535ba74656b06b0bd548c751ca67295078b51cff7fed"
+    },
+    {
+      "bytes": 30100,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/docs/agent_supervisor/evidence/supervisor-task-context-20261005/retained-ir-catalog-nominations.json",
+      "sha256": "94e66bd2bb324a2c6bf57c6f147ce9dac2f901f7002f0652b4c27c1a3a4d47e9"
+    },
+    {
+      "bytes": 40208,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/__init__.py",
+      "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+    },
+    {
+      "bytes": 1596,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/__init__.py",
+      "sha256": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0"
+    },
+    {
+      "bytes": 8918,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/identity.py",
+      "sha256": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44"
+    },
+    {
+      "bytes": 36178,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/schema.py",
+      "sha256": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49"
+    },
+    {
+      "bytes": 1043,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/__init__.py",
+      "sha256": "b771d4d00b5cf8f167e9bb7aa3951e25a8d5a225b78b0e872c1a21eabf5672f4"
+    },
+    {
+      "bytes": 19952,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    },
+    {
+      "bytes": 3331,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/persistent.py",
+      "sha256": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8"
+    },
+    {
+      "bytes": 37159,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006/ipfs_accelerate_py/model_catalog/sources/static.py",
+      "sha256": "4f9b658aecc00820e2d87866445f298c248e6d9a39161b1499a884f6451281cf"
+    },
+    {
+      "bytes": 304490,
+      "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+      "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+    },
+    {
+      "bytes": 586049,
+      "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+      "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+    },
+    {
+      "bytes": 597741,
+      "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+      "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+    },
+    {
+      "bytes": 125540,
+      "path": "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json",
+      "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+    },
+    {
+      "bytes": 10046,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/comparison-and-next-gaps-v1.json",
+      "sha256": "5a4dc8a89517917da1dae5b9f76c327bd5c81a8bd57c1b75374030c465e56b78"
+    },
+    {
+      "bytes": 4198,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/discovery-registration-handoff-v1.json",
+      "sha256": "10e19814c4618a1548c4cfc404d75b642cb95335d0ffb27acc130a76663bbef9"
+    },
+    {
+      "bytes": 2263,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/latent-input-contract-constraints-v1.json",
+      "sha256": "06af89c2674d40352fbfc87a93e35e928d23f4c57dfdc29e0894f7ba14d40aba"
+    },
+    {
+      "bytes": 76824494,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json",
+      "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+    },
+    {
+      "bytes": 17392573,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json",
+      "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+    },
+    {
+      "bytes": 1786933,
+      "path": "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json",
+      "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+    },
+    {
+      "bytes": 6360717,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+      "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+    },
+    {
+      "bytes": 1646128,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+      "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+    },
+    {
+      "bytes": 357773,
+      "path": "/home/barberb/lift_coding/artifacts/source-reconstruction-v2-20261001/structured-01/legal_ir/checkpoint.json",
+      "sha256": "2ac54a5c3789d7c7a29d6b6a0db5e3a3a69e41c8b335e7ada62e80ecc845f8f3"
+    },
+    {
+      "bytes": 39025,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/docs/autoencoders/inference_and_qualification.md",
+      "sha256": "ed2ae6270b2c19c2d3e0c8dc8f2eb3e83c1878c43e1f240b946caeeab188d86f"
+    },
+    {
+      "bytes": 673933,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+      "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    }
+  ],
+  "forbidden_imports_observed": [],
+  "git_observations_after": [
+    {
+      "head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "root": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+      "status_code_counts": {},
+      "status_entry_count": 0,
+      "tracked_clean": true
+    },
+    {
+      "head": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+      "root": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004",
+      "status_code_counts": {},
+      "status_entry_count": 0,
+      "tracked_clean": true
+    },
+    {
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "status_code_counts": {
+        " D": 28,
+        " M": 143,
+        "??": 1901
+      },
+      "status_entry_count": 2072,
+      "tracked_clean": false
+    }
+  ],
+  "git_observations_before": [
+    {
+      "head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "root": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+      "status_code_counts": {},
+      "status_entry_count": 0,
+      "tracked_clean": true
+    },
+    {
+      "head": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+      "root": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004",
+      "status_code_counts": {},
+      "status_entry_count": 0,
+      "tracked_clean": true
+    },
+    {
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "root": "/home/barberb/lift_coding/external/ipfs_datasets",
+      "status_code_counts": {
+        " D": 28,
+        " M": 143,
+        "??": 1901
+      },
+      "status_entry_count": 2072,
+      "tracked_clean": false
+    }
+  ],
+  "historical_registration_handoff": {
+    "ModelManager_storage_path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+    "contextual_model_IO": "Native paragraph embedding plus exact cached source-clause vectors/masks, matching preprocessing and32-token codec; complete32-entry wrapperstate required.",
+    "identity_policy": "Add a distinct declared decoder-role/profile record linking the existing structured unknown-profile binding; preserve old immutable ID/metadata. Existing deterministic ID includes family/dimension/dimension_role/role/checkpointSHA. Register two full contextual selected states under their own task/profile/input contracts. Do not infer IR schema version from checkpoint serialization.",
+    "importer_API": "import_ir_model_manager_records(manifest_pin, release_receipts=..., manager=..., readback=...)",
+    "live_network_or_database_checked": false,
+    "publisher_API": "publish_ir_model_hub_release(plan, api=..., operation_factory=...)",
+    "repositories": {
+      "legal_ir384": "Publicus/legal-ir-autoencoder-384d",
+      "legal_ir768": "Publicus/legal-ir-autoencoder-768d"
+    },
+    "schema": "retained-decoder-discovery-gap-handoff/v1",
+    "status": "read_only_existing_workflow_audit; adapter_and_live_binding_check_pending",
+    "work_needed": [
+      "Recheck live existingmanager/HF bindings for these exact3checkpointSHA values before adding records.",
+      "Adapt prior hardcoded two384 continuation-envelope selectors to these3 decoder profiles and2 existingrepositories, reusing owner APIs and workflow.",
+      "Publish pinnedruntime/inputcontract/replayevidence; create append-onlybindings without overwriting inherited assets or claimingproductionreadiness."
+    ]
+  },
+  "historical_replay_constraints": {
+    "comparison_pin": {
+      "bytes": 10046,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/comparison-and-next-gaps-v1.json",
+      "sha256": "5a4dc8a89517917da1dae5b9f76c327bd5c81a8bd57c1b75374030c465e56b78"
+    },
+    "contextual_replay_requires": [
+      "Nativeparagraphvector",
+      "Variablecount nativeclausevectors from literalsourceboundaries",
+      "Clausepaddingmask and matchingnormalization/codec"
+    ],
+    "dimension_unit": "Width per native source vector, not totalinformation supplied by variablelength cachedsourcecontexts.",
+    "direct_comparison_scope": "Same48 literaltexts, raw384paragraphvectors and canonicaltargets; embedding-only structuredprofile and contextualprofile intentionally have different auxiliarysourceinputs.",
+    "larger_span_options_to_evaluate": [
+      "Document-levelnativevector with variable-structure embedding-only decoder.",
+      "Source-derivedchunked/hierarchicalIRpackets retainingdimensionpervector and explicitcontext/retrievalrecipe."
+    ],
+    "paragraph_only_extension_if_needed": "Define a separatefamily/schema/task/runtimeprofile and measuredsource-onlycoverage; transfer compatible paragraphconditioning/token/GRU/outputweights and explicitly train any newlyspecifiedinterfaces. Do notsilentlydropcontextbranches orclaimtheir48/48score forsinglevectorinputs. Contextualteacher-to-paragraphonlydistillation requiresqualifiedteacher and exactsame-source receipts.",
+    "parallel_profiles_to_preserve": [
+      "Embedding-only fixedsingle-rule structured384 baseline.",
+      "Complete trainedcontextual384/768 wrappers as explicitparagraph-plusclause profiles.",
+      "Existing native8 linguistic/autoencoderprofiles, separatelyauthenticated."
+    ],
+    "perfect_contextual_replay_does_not_establish": "Multi-rule reconstruction from a single384D/768D embedding alone; arbitraryparagraphsegmentation; nonemptyqualifiers; freshwordinggeneralization.",
+    "recorded_at_utc": "2026-10-04T19:34:25.948105+00:00",
+    "schema": "semantic-IR-latent-input-comparison-constraints/v1",
+    "selection_before_fitting": "Seal newwording/composition/document-groupedholdout and useexistingcachesfirst; comparebothinputrecipes with completecoverage, omissioncounts and totalrepresentation/inferencecost."
+  },
+  "native_original_profile_inventory": {
+    "dataset_head": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+    "legacy_recovery_policy": "Recover literal metadata as evidence; preserve null catalog selectors. New unsupported family/task/schema/format contracts require separate reviewed append-only records, not inferred defaults.",
+    "native_supported_binding_count": 2,
+    "only_two_original_intent_security_384_fragment_contracts_supported": true,
+    "pin": {
+      "bytes": 125540,
+      "path": "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json",
+      "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+    },
+    "seven_nominated_other_assets_have_no_supported_native_format_binding": true,
+    "supported_bindings": [
+      {
+        "checkpoint_receipt": {
+          "bytes": 586049,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+          "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+        },
+        "corpus_receipt": {
+          "bytes": 321176,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/authored-corpus.json",
+          "sha256": "7cd0dbbbcfadf8a3a02ca307ff356e10a6090f5b2a1b9434abaa9ce7e50b6830"
+        },
+        "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+        "format_request": {
+          "schema_version": "intent-rich-grammar/v1",
+          "target_format_id": "intent_ir/intent_rich_ast",
+          "task_id": "source_to_native_ir"
+        },
+        "package_manifest_receipt": {
+          "bytes": 8126,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/manifest.json",
+          "sha256": "250b6bf9cd93e32ee2db77498432d4dc5c7d705f333f9d99e92de69cdf2c727f"
+        },
+        "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+        "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+        "request": {
+          "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "ir_family_id": "intent_ir",
+          "task_id": "source_to_native_ir"
+        },
+        "run_id": "recorded-intent-ir-original-fit",
+        "run_id_provenance": "operator_assigned_inventory_alias"
+      },
+      {
+        "checkpoint_receipt": {
+          "bytes": 597741,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+          "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+        },
+        "corpus_receipt": {
+          "bytes": 180619,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/authored-corpus.json",
+          "sha256": "db7746b86c1149785a23802d545a9fdf329e209b175c625c8ce4e89d1361eb64"
+        },
+        "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+        "format_request": {
+          "schema_version": "program-ir/v1",
+          "target_format_id": "security_ir/program_expression",
+          "task_id": "source_to_native_ir"
+        },
+        "package_manifest_receipt": {
+          "bytes": 8156,
+          "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/manifest.json",
+          "sha256": "d9fc241c7c6a039068681fab18b6a36fbcbd1752c2683ba1dc16423ce94aba2a"
+        },
+        "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+        "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+        "request": {
+          "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "ir_family_id": "security_ir",
+          "task_id": "source_to_native_ir"
+        },
+        "run_id": "recorded-security-ir-original-fit",
+        "run_id_provenance": "operator_assigned_inventory_alias"
+      }
+    ],
+    "supported_profile_identities": [
+      {
+        "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+        "identity": {
+          "declared_shape": {
+            "hidden_size": 32,
+            "input_width": 384,
+            "projection_width": 8,
+            "status": "declared_not_tensor_verified",
+            "tensor_shapes_verified": false,
+            "token_embedding_dim": 16
+          },
+          "decoder_architecture_id": "residual-projection-latent-formula-gru/v1",
+          "decoder_configuration": {
+            "embedding_provenance": {
+              "assets": [
+                {
+                  "bytes": 190,
+                  "name": "1_Pooling/config.json",
+                  "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+                },
+                {
+                  "bytes": 583,
+                  "name": "config.json",
+                  "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+                },
+                {
+                  "bytes": 66746168,
+                  "name": "model.safetensors",
+                  "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+                },
+                {
+                  "bytes": 385,
+                  "name": "modules.json",
+                  "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+                },
+                {
+                  "bytes": 57,
+                  "name": "sentence_bert_config.json",
+                  "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+                },
+                {
+                  "bytes": 125,
+                  "name": "special_tokens_map.json",
+                  "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+                },
+                {
+                  "bytes": 711661,
+                  "name": "tokenizer.json",
+                  "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+                },
+                {
+                  "bytes": 394,
+                  "name": "tokenizer_config.json",
+                  "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+                },
+                {
+                  "bytes": 231508,
+                  "name": "vocab.txt",
+                  "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+                }
+              ],
+              "device": "cpu",
+              "dimension": 384,
+              "dtype": "float32",
+              "model_id": "thenlper/gte-small",
+              "normalized": true,
+              "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+              "truncated": false
+            },
+            "hidden_size": 32,
+            "max_target_tokens": 512,
+            "projection_width": 8,
+            "token_embedding_dim": 16
+          },
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+          "format_implementation_content_sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+          "implementation_content_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+          "ir_family_id": "security_ir",
+          "ordered_codec_sha256": "4a3ca13f023db7283e5e81cd0793cd47082ca7fd211e087ca40fc5860563d917",
+          "source_budget_policy": {
+            "dimension": 384,
+            "dimension_role_required": true,
+            "encoder_kind": "GTE-small source embedding for source-conditioned tasks",
+            "hard_encoder_token_limit": 512,
+            "model_id": "thenlper/gte-small",
+            "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "normalization": "l2",
+            "pooling": "mean",
+            "qualified_source_token_limit": null,
+            "unknown_limit_policy": "freeze task/span-specific admitted budget within encoder ceiling; historical compiler profiles remain separate"
+          },
+          "source_producer": {
+            "corpus_embedding_model": "thenlper/gte-small",
+            "corpus_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "embedding_provenance": {
+              "assets": [
+                {
+                  "bytes": 190,
+                  "name": "1_Pooling/config.json",
+                  "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+                },
+                {
+                  "bytes": 583,
+                  "name": "config.json",
+                  "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+                },
+                {
+                  "bytes": 66746168,
+                  "name": "model.safetensors",
+                  "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+                },
+                {
+                  "bytes": 385,
+                  "name": "modules.json",
+                  "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+                },
+                {
+                  "bytes": 57,
+                  "name": "sentence_bert_config.json",
+                  "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+                },
+                {
+                  "bytes": 125,
+                  "name": "special_tokens_map.json",
+                  "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+                },
+                {
+                  "bytes": 711661,
+                  "name": "tokenizer.json",
+                  "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+                },
+                {
+                  "bytes": 394,
+                  "name": "tokenizer_config.json",
+                  "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+                },
+                {
+                  "bytes": 231508,
+                  "name": "vocab.txt",
+                  "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+                }
+              ],
+              "device": "cpu",
+              "dimension": 384,
+              "dtype": "float32",
+              "model_id": "thenlper/gte-small",
+              "normalized": true,
+              "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+              "truncated": false
+            },
+            "status": "declared_not_execution_authenticated"
+          },
+          "target_budget_policy": {
+            "max_target_tokens": 512,
+            "qualified_target_token_limit": null
+          }
+        },
+        "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1"
+      },
+      {
+        "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+        "identity": {
+          "declared_shape": {
+            "hidden_size": 32,
+            "input_width": 384,
+            "projection_width": 8,
+            "status": "declared_not_tensor_verified",
+            "tensor_shapes_verified": false,
+            "token_embedding_dim": 16
+          },
+          "decoder_architecture_id": "residual-projection-latent-formula-gru/v1",
+          "decoder_configuration": {
+            "embedding_provenance": {
+              "assets": [
+                {
+                  "bytes": 190,
+                  "name": "1_Pooling/config.json",
+                  "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+                },
+                {
+                  "bytes": 583,
+                  "name": "config.json",
+                  "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+                },
+                {
+                  "bytes": 66746168,
+                  "name": "model.safetensors",
+                  "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+                },
+                {
+                  "bytes": 385,
+                  "name": "modules.json",
+                  "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+                },
+                {
+                  "bytes": 57,
+                  "name": "sentence_bert_config.json",
+                  "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+                },
+                {
+                  "bytes": 125,
+                  "name": "special_tokens_map.json",
+                  "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+                },
+                {
+                  "bytes": 711661,
+                  "name": "tokenizer.json",
+                  "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+                },
+                {
+                  "bytes": 394,
+                  "name": "tokenizer_config.json",
+                  "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+                },
+                {
+                  "bytes": 231508,
+                  "name": "vocab.txt",
+                  "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+                }
+              ],
+              "device": "cpu",
+              "dimension": 384,
+              "dtype": "float32",
+              "model_id": "thenlper/gte-small",
+              "normalized": true,
+              "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+              "truncated": false
+            },
+            "hidden_size": 32,
+            "max_target_tokens": 512,
+            "projection_width": 8,
+            "token_embedding_dim": 16
+          },
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+          "format_implementation_content_sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+          "implementation_content_sha256": "9bf30a6c434fbda055107f5e0092537868fcfc4812732667ab82ec136148b533",
+          "ir_family_id": "intent_ir",
+          "ordered_codec_sha256": "865663d2950bec54ddfd6d675310c11e0c4b7b25851f8ccc90f7ca62d06e22b7",
+          "source_budget_policy": {
+            "dimension": 384,
+            "dimension_role_required": true,
+            "encoder_kind": "GTE-small source embedding for source-conditioned tasks",
+            "hard_encoder_token_limit": 512,
+            "model_id": "thenlper/gte-small",
+            "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "normalization": "l2",
+            "pooling": "mean",
+            "qualified_source_token_limit": null,
+            "unknown_limit_policy": "freeze task/span-specific admitted budget within encoder ceiling; historical compiler profiles remain separate"
+          },
+          "source_producer": {
+            "corpus_embedding_model": "thenlper/gte-small",
+            "corpus_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+            "embedding_provenance": {
+              "assets": [
+                {
+                  "bytes": 190,
+                  "name": "1_Pooling/config.json",
+                  "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+                },
+                {
+                  "bytes": 583,
+                  "name": "config.json",
+                  "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+                },
+                {
+                  "bytes": 66746168,
+                  "name": "model.safetensors",
+                  "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+                },
+                {
+                  "bytes": 385,
+                  "name": "modules.json",
+                  "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+                },
+                {
+                  "bytes": 57,
+                  "name": "sentence_bert_config.json",
+                  "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+                },
+                {
+                  "bytes": 125,
+                  "name": "special_tokens_map.json",
+                  "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+                },
+                {
+                  "bytes": 711661,
+                  "name": "tokenizer.json",
+                  "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+                },
+                {
+                  "bytes": 394,
+                  "name": "tokenizer_config.json",
+                  "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+                },
+                {
+                  "bytes": 231508,
+                  "name": "vocab.txt",
+                  "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+                }
+              ],
+              "device": "cpu",
+              "dimension": 384,
+              "dtype": "float32",
+              "model_id": "thenlper/gte-small",
+              "normalized": true,
+              "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+              "truncated": false
+            },
+            "status": "declared_not_execution_authenticated"
+          },
+          "target_budget_policy": {
+            "max_target_tokens": 512,
+            "qualified_target_token_limit": null
+          }
+        },
+        "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274"
+      }
+    ]
+  },
+  "observed_at_utc": "2026-10-06T07:47:38.620823+00:00",
+  "operations": {
+    "HF_writes": false,
+    "database_writes": false,
+    "inference_executed": false,
+    "model_loaded": false,
+    "model_manager_constructed": false,
+    "network_or_provider_calls": false,
+    "new_embeddings_generated": false,
+    "registrations": false,
+    "training_executed": false
+  },
+  "original_nominated_assets": [
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c",
+        "dimension": 8,
+        "dimension_role": "latent",
+        "format_id": null,
+        "ir_family_id": "codebase_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:159874d5af2ed0030b99b46c07855331e7340237efc8572dcabaac3f5430edf2",
+        "role": "trained structural parent",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c",
+          "dimension": 8,
+          "dimension_role": "latent",
+          "format_id": null,
+          "ir_family_id": "codebase_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:159874d5af2ed0030b99b46c07855331e7340237efc8572dcabaac3f5430edf2",
+          "role": "trained structural parent",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 8,
+      "dimension_role": "latent",
+      "existing_native_format_binding": false,
+      "ir_family_id": "codebase_ir",
+      "measurement": "53 compiler-derived structural features -> latent8 -> structural feature reconstruction; no original-text decoder",
+      "metadata": {
+        "contract": {
+          "adapter": {
+            "identifier": "native-domain-target-adapter",
+            "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf",
+            "version": "1"
+          },
+          "domain": "codebase_ir",
+          "embedding": {
+            "dimension": 53,
+            "model_id": "native-projection-features",
+            "provenance_sha256": "7cdca4ae4e6bd6f0fc0f26b4e91178dc2f8a5a621fed08439804f2602ad61ff6",
+            "revision": "v1"
+          },
+          "input_schema": "native-projection-feature-space/v1",
+          "ir_schema": "codebase-ir-source-bound-feature-targets@1",
+          "objective_id": "native-projection-reconstruction/v1",
+          "objective_sha256": "37ea48aecb09a3c44883fc69fe55f06393bb8db065b4a36a8d01cb60bf495b3d",
+          "optimizer": {
+            "identifier": "native-projection-feature-autoencoder/v1",
+            "sha256": "a058d1cdb403e3b185b9965a88a0b60ccbcdea9ea4ccab3048e3782c21efe5f4",
+            "version": "1"
+          },
+          "projections": [
+            {
+              "catalog_binding": {
+                "composition": null,
+                "family_sha256": "2f97d18441e518304a373946799fe09766d46f17c7fc890fe8cc365e57a2df3e",
+                "profile_sha256": null,
+                "property_sha256": [],
+                "view_sha256": "f1eca8074edf7c32227e19397de9c0fed371096049f1b29ddfb7f292dfbd59d5"
+              },
+              "composition_id": null,
+              "family_id": "program",
+              "native_profile_id": "dynamic_hoare",
+              "native_view_role": null,
+              "profile_id": null,
+              "projection_id": "codebase_ir.contracts@1",
+              "property_ids": [],
+              "required": true,
+              "target_schema": "native_structural_feature_view",
+              "view_role": "normalized"
+            },
+            {
+              "catalog_binding": {
+                "composition": null,
+                "family_sha256": "2f97d18441e518304a373946799fe09766d46f17c7fc890fe8cc365e57a2df3e",
+                "profile_sha256": null,
+                "property_sha256": [],
+                "view_sha256": "f1eca8074edf7c32227e19397de9c0fed371096049f1b29ddfb7f292dfbd59d5"
+              },
+              "composition_id": null,
+              "family_id": "program",
+              "native_profile_id": "program_ir",
+              "native_view_role": null,
+              "profile_id": null,
+              "projection_id": "codebase_ir.program@1",
+              "property_ids": [],
+              "required": true,
+              "target_schema": "native_structural_feature_view",
+              "view_role": "normalized"
+            }
+          ],
+          "schema": "autoencoder-modality-contract/v1",
+          "source_language": "structured",
+          "state_codec": {
+            "identifier": "native-projection-feature-state/v1",
+            "sha256": "a058d1cdb403e3b185b9965a88a0b60ccbcdea9ea4ccab3048e3782c21efe5f4",
+            "version": "1:latent-8"
+          },
+          "target_codec": {
+            "identifier": "native-domain-target-envelope",
+            "sha256": "b373c8b26310a761525459880de7fa7ba052e0fde57f1d0cbe2ddd9d2f85b586",
+            "version": "1"
+          },
+          "training_purpose": "feature_pretraining",
+          "validators": [
+            {
+              "authority": "advisory",
+              "evidence_kind": "declaration",
+              "projection_ids": [
+                "codebase_ir.contracts@1",
+                "codebase_ir.program@1"
+              ],
+              "required": true,
+              "validator_id": "native-target-structure"
+            }
+          ]
+        },
+        "report": {
+          "admitted": false,
+          "formalized": false,
+          "qualified": false,
+          "schema": "native-projection-feature-training/v1",
+          "training_target_count": 1
+        },
+        "state": {
+          "contract_sha256": "edca4681de354832acf8d23d7e4020f1897d22c3ece4404b4c186551334ba730",
+          "feature_space_sha256": "7cdca4ae4e6bd6f0fc0f26b4e91178dc2f8a5a621fed08439804f2602ad61ff6",
+          "latent_width": 8,
+          "schema": "native-projection-feature-state/v1"
+        }
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 673933,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json",
+        "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+      },
+      "record_id": "ir-model-asset-binding/v1:159874d5af2ed0030b99b46c07855331e7340237efc8572dcabaac3f5430edf2",
+      "top_level_keys": [
+        "contract",
+        "feature_space",
+        "report",
+        "state"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "ir_family_id": "codebase_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:327b68fdd5889632e5752370a9c168a80ada5597436264fb1d6fb5fc483e778f",
+        "role": "unpromoted repository child envelope",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": null,
+          "ir_family_id": "codebase_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:327b68fdd5889632e5752370a9c168a80ada5597436264fb1d6fb5fc483e778f",
+          "role": "unpromoted repository child envelope",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "existing_native_format_binding": false,
+      "ir_family_id": "codebase_ir",
+      "measurement": "SecurityIR fixed-tree/ridge payload inside Codebase owner envelope; native Codebase decoder incomplete and child unpromoted",
+      "metadata": {
+        "authority": {
+          "admitted": false,
+          "behavioral_satisfaction": false,
+          "promotion_performed": false,
+          "proof_authority": false,
+          "source_runtime_semantics_verified": false
+        },
+        "embedded_checkpoint": {
+          "dimension": 384,
+          "domain_id": "security_ir",
+          "parent_binding": {
+            "core_sha256": "bec522e21c4efcfa763b965f655e86cc5afca80c8e1449be7d9b8fac144c646c",
+            "dimension": 384,
+            "domain": "legal_ir",
+            "lineage_id": "current_legal_v2",
+            "runtime_profile": "modal-latent-joint-formula/v1"
+          },
+          "projection_width": 8,
+          "schema": "structured-source-384-autoencoder/v1"
+        },
+        "fit": {
+          "qualified": false,
+          "schema": "distributed-structured-384-merge/v1",
+          "source_semantics_verified": false,
+          "training_rows": 9
+        },
+        "profile": "codebase_ir/source_conditioned_384_v1",
+        "schema": "codebase-source-384-generation@1",
+        "target_schema_kind": "fixed-typed-json-consensus/v1"
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 304490,
+        "path": "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930",
+        "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+      },
+      "record_id": "ir-model-asset-binding/v1:327b68fdd5889632e5752370a9c168a80ada5597436264fb1d6fb5fc483e778f",
+      "top_level_keys": [
+        "authority",
+        "checkpoint",
+        "corpus",
+        "embedding_assets",
+        "evaluation",
+        "fit",
+        "kind",
+        "parent_version_id",
+        "producer",
+        "profile",
+        "request",
+        "schema",
+        "worker_receipt"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a",
+        "dimension": 8,
+        "dimension_role": "latent",
+        "format_id": null,
+        "ir_family_id": "security_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:071271a7f4ea577092091837b38503d049075ec74026e17b7d1d0a5cce4ea34e",
+        "role": "run-01/security_ir/candidate-1730/family_checkpoint",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a",
+          "dimension": 8,
+          "dimension_role": "latent",
+          "format_id": null,
+          "ir_family_id": "security_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:071271a7f4ea577092091837b38503d049075ec74026e17b7d1d0a5cce4ea34e",
+          "role": "run-01/security_ir/candidate-1730/family_checkpoint",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 8,
+      "dimension_role": "latent",
+      "existing_native_format_binding": false,
+      "ir_family_id": "security_ir",
+      "measurement": "native compiler/projection feature MSE and cosine losses; no original-text reconstruction or textual token budget",
+      "metadata": {
+        "checkpoint_schema": "native-family-ridge-path/v1",
+        "feature_column_count": 2791,
+        "projection_ids": [
+          "hyperproperty.ir/v1",
+          "program.program_contract/v1",
+          "program.program_ir/v1",
+          "separation_logic.heap_model/v1",
+          "separation_logic.ir/v1",
+          "temporal.formula/v1",
+          "transition_system.state_transition_ir/v1"
+        ],
+        "report": {
+          "latent_width": 8,
+          "required_families": [],
+          "schema": "native-family-ridge-path/v1",
+          "source_text_decoder_trained": false,
+          "trained_logic_families": [
+            "hyperproperty",
+            "program",
+            "separation_logic",
+            "temporal",
+            "transition_system"
+          ],
+          "training_executed": true,
+          "training_rows": 60,
+          "validation_rows": 12
+        },
+        "space": {
+          "domain_id": "security_ir",
+          "normalization": "log1p_l2_per_native_projection",
+          "producer_pins": {
+            "ipfs_datasets_py.logic.families.canonical_catalog": "348639b3dd82d6382da85ad039c5c675e083400c50ad28cb20b8ada5e54a43ba",
+            "ipfs_datasets_py.logic.families.registry": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+            "ipfs_datasets_py.logic.formalization.autoencoder.domain_targets": "b373c8b26310a761525459880de7fa7ba052e0fde57f1d0cbe2ddd9d2f85b586",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training": "e42e5314a59966ade1163e062817484357feb97e86158e21360ad39fa1558e64",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training_v2": "c5b66780a5ed5b5247f3de1467d34ed17cba89bf250e9b2490218fe9e71f2e02",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.security_ir.code_logic_projection": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b",
+            "ipfs_datasets_py.logic.software_verification.syntax_bridge": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+            "ipfs_datasets_py.logic.syntax_core.ast": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+            "ipfs_datasets_py.logic.syntax_core.contracts": "ce6d49e05ca2b09a84a3125ed6ad4c4aae4adf2c5943d3a4fd4eeeb057b444a8",
+            "ipfs_datasets_py.logic.syntax_core.extensions": "4842bef325044b0bce9f14958d385864ba8d34273bc48618188f451f6832edf9",
+            "ipfs_datasets_py.logic.syntax_core.signatures": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+          },
+          "training_reports_sha256": "d2f804a4295ebd78840c4fbfbce5ee867f9109658921df4391a95691e5181db8"
+        }
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 1786933,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json",
+        "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+      },
+      "record_id": "ir-model-asset-binding/v1:071271a7f4ea577092091837b38503d049075ec74026e17b7d1d0a5cce4ea34e",
+      "top_level_keys": [
+        "admitted",
+        "formalized",
+        "implementation",
+        "parameters",
+        "promotion_performed",
+        "qualified",
+        "report",
+        "schema",
+        "space"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+        "ir_family_id": "security_ir",
+        "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+        "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+        "role": "published development GTE-conditioned GRU",
+        "schema_version": "program-ir/v1",
+        "task_id": "source_to_native_ir"
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+          "ir_family_id": "security_ir",
+          "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+          "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+          "role": "published development GTE-conditioned GRU",
+          "schema_version": "program-ir/v1",
+          "task_id": "source_to_native_ir"
+        }
+      ],
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "existing_native_format_binding": true,
+      "ir_family_id": "security_ir",
+      "measurement": "source embedding -> family-specific native fragment, not full-document or prose reconstruction; release panel0/2 exact2/2 valid",
+      "metadata": {
+        "architecture": "residual-projection-latent-formula-gru/v1",
+        "codec_schema": "typed-json-lexical/v1",
+        "config": {
+          "hidden_size": 32,
+          "max_target_tokens": 512,
+          "projection_width": 8,
+          "token_embedding_dim": 16
+        },
+        "dimension": 384,
+        "domain_id": "security_ir",
+        "embedding_provenance": {
+          "device": "cpu",
+          "dimension": 384,
+          "dtype": "float32",
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "truncated": false
+        },
+        "ordered_target_vocabulary_count": 39,
+        "schema": "domain-384-typed-autoencoder/v1",
+        "training": {
+          "selected_epoch": 500,
+          "selected_validation": {
+            "embedding_mse": 0.0008037185180000961,
+            "objective": 0.05385923758149147,
+            "token_cross_entropy": 0.053778864443302155
+          },
+          "training": {
+            "embedding_mse": 0.0022483596112579107,
+            "objective": 0.05336768180131912,
+            "token_cross_entropy": 0.05314284563064575
+          },
+          "training_tokens": 372000
+        }
+      },
+      "new_contract_required_for_runtime_admission": false,
+      "original_pin_before": {
+        "bytes": 597741,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+        "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+      },
+      "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+      "top_level_keys": [
+        "admitted",
+        "architecture",
+        "codec",
+        "config",
+        "dimension",
+        "domain_id",
+        "implementation",
+        "lineage",
+        "model_state",
+        "parent_binding",
+        "parent_sha256",
+        "proof_authority",
+        "publication_performed",
+        "qualified",
+        "schema",
+        "source_semantics_verified",
+        "training",
+        "training_manifest",
+        "validation_manifest",
+        "weights_sha256"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086",
+        "dimension": 8,
+        "dimension_role": "latent",
+        "format_id": null,
+        "ir_family_id": "legal_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:0667978d2ddf1bc81bab1fe6a56852b4fd00471d2aa75666d11331bd06db1542",
+        "role": "run-02/legal_ir/ridge_path-1730/family_checkpoint",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086",
+          "dimension": 8,
+          "dimension_role": "latent",
+          "format_id": null,
+          "ir_family_id": "legal_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:0667978d2ddf1bc81bab1fe6a56852b4fd00471d2aa75666d11331bd06db1542",
+          "role": "run-02/legal_ir/ridge_path-1730/family_checkpoint",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 8,
+      "dimension_role": "latent",
+      "existing_native_format_binding": false,
+      "ir_family_id": "legal_ir",
+      "measurement": "native compiler/projection feature MSE and cosine losses; no original-text reconstruction or textual token budget",
+      "metadata": {
+        "checkpoint_schema": "native-family-complete-autoencoder/v1",
+        "feature_column_count": 31274,
+        "projection_ids": [
+          "legal-ir/bridge-view/cec/v1",
+          "legal-ir/bridge-view/deontic/v1",
+          "legal-ir/bridge-view/frame_logic/v1",
+          "legal-ir/bridge-view/tdfol/v1",
+          "legal_ir/supplemental/authorization/v2",
+          "legal_ir/supplemental/temporal/v2"
+        ],
+        "report": {
+          "latent_width": 8,
+          "required_families": [
+            "authorization",
+            "deontic",
+            "event_calculus",
+            "frame_logic",
+            "tdfol",
+            "temporal"
+          ],
+          "schema": "native-family-complete-autoencoder/v1",
+          "source_text_decoder_trained": false,
+          "trained_logic_families": [
+            "authorization",
+            "deontic",
+            "event_calculus",
+            "frame_logic",
+            "tdfol",
+            "temporal"
+          ],
+          "training_executed": true,
+          "training_rows": 84,
+          "validation_rows": 14
+        },
+        "space": {
+          "domain_id": "legal_ir",
+          "normalization": "log1p_l2_per_native_projection",
+          "producer_pins": {
+            "ipfs_datasets_py.logic.bridge.multiview": "089adb25bc018e9bddf41af3be05ca7036f13ec2e9bb792fd8b78845e82fe2aa",
+            "ipfs_datasets_py.logic.bridge.types": "713160f546ee4e0c28a77b23b6f3c6264d8e5cdd7bb12535b5e28a271464591c",
+            "ipfs_datasets_py.logic.families.canonical_catalog": "348639b3dd82d6382da85ad039c5c675e083400c50ad28cb20b8ada5e54a43ba",
+            "ipfs_datasets_py.logic.families.registry": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training": "e42e5314a59966ade1163e062817484357feb97e86158e21360ad39fa1558e64",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training_v2": "c5b66780a5ed5b5247f3de1467d34ed17cba89bf250e9b2490218fe9e71f2e02",
+            "ipfs_datasets_py.logic.integration.reasoning.legal_ir_contract_telemetry": "f7d4200c27298cec4755caf8d8b9f1f9383d84d83bda8e7d2d474949ec952eb4",
+            "ipfs_datasets_py.logic.integration.reasoning.legal_ir_view_contracts": "086997b67133df2437435b417324b11ede49b503ca92f5af6c67146c765fd875",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.legal_ir.canonical_contracts": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+            "ipfs_datasets_py.logic.legal_ir.typed_adapter": "80204883247be10831b6d2c3f831336a80bab2a00f427f6dc35f363edd96fbb2",
+            "ipfs_datasets_py.logic.security_ir.code_logic_projection": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b",
+            "ipfs_datasets_py.logic.software_verification.authorization": "78f04e9231f9d04d98ab3597e52e8bb8c49d63047544657d33491b161effeeb7",
+            "ipfs_datasets_py.logic.software_verification.syntax_bridge": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+            "ipfs_datasets_py.logic.software_verification.temporal": "56d8a6d3a5e7f11dd9f4d9d2096ec0f787a481b006abac311d212bbc622558dc",
+            "ipfs_datasets_py.logic.syntax_core.ast": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+            "ipfs_datasets_py.logic.syntax_core.contracts": "ce6d49e05ca2b09a84a3125ed6ad4c4aae4adf2c5943d3a4fd4eeeb057b444a8",
+            "ipfs_datasets_py.logic.syntax_core.extensions": "4842bef325044b0bce9f14958d385864ba8d34273bc48618188f451f6832edf9",
+            "ipfs_datasets_py.logic.syntax_core.signatures": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+          },
+          "schema": "native-family-complete-compositional-features/v1",
+          "training_reports_sha256": "5a9296485cf7e2f31b6a1f45f519115107d5c677da235c431630e1744264e6c7"
+        }
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 17392573,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json",
+        "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+      },
+      "record_id": "ir-model-asset-binding/v1:0667978d2ddf1bc81bab1fe6a56852b4fd00471d2aa75666d11331bd06db1542",
+      "top_level_keys": [
+        "admitted",
+        "formalized",
+        "implementation",
+        "parameters",
+        "promotion_performed",
+        "qualified",
+        "report",
+        "schema",
+        "space"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "ir_family_id": "legal_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:0223722e8243fbe34bebc9ad0bdf4b90e820e93ec4d0a59f1699cf0d836a0c06",
+        "role": "retained legal_decoder_or_output_head from legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": null,
+          "ir_family_id": "legal_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:0223722e8243fbe34bebc9ad0bdf4b90e820e93ec4d0a59f1699cf0d836a0c06",
+          "role": "retained legal_decoder_or_output_head from legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "existing_native_format_binding": false,
+      "ir_family_id": "legal_ir",
+      "measurement": "one CanonicalRoundTripIR@1 deontic rule/seven facets; max source/target codec64; source_input provenance_only_not_neural_input; not originating legal prose",
+      "metadata": {
+        "binding": {
+          "core_sha256": "ab430ff1b7acb05ea8f423034f0eb9d21fe9adca1d2ff04f95fa9a26714c33bf",
+          "dimension": 384,
+          "domain": "legal_ir",
+          "lineage_id": "current_legal_v2",
+          "runtime_profile": "modal-latent-joint-formula/v1"
+        },
+        "codec_policy": {
+          "field_order": [
+            "modality",
+            "actor",
+            "action",
+            "object",
+            "conditions",
+            "exceptions",
+            "temporal"
+          ],
+          "generation_fallback": "none",
+          "identifier_hashing": false,
+          "max_qualifiers_per_facet": 4,
+          "max_source_tokens": 64,
+          "max_target_tokens": 64,
+          "max_vocabulary": 4096,
+          "qualifiers": "sorted_unique_input_required",
+          "rule_count": 1,
+          "source_pad_id": 0,
+          "source_tokenization": "unicode_casefold_word_or_punctuation/v1",
+          "source_unk_id": 1,
+          "source_unknown": "reject",
+          "target_bos_id": 1,
+          "target_eos_id": 2,
+          "target_pad_id": 0,
+          "target_schema": "CanonicalRoundTripIR@1",
+          "target_unknown": "reject",
+          "truncation": "reject",
+          "vocabulary_origin": "training_examples_only"
+        },
+        "codec_schema": "legal-source-formula-codec/v1",
+        "config": {
+          "architecture": "residual-projection-latent-formula-gru/v1",
+          "batch_size": 8,
+          "device": "cpu",
+          "dtype": "float32",
+          "formula_weight": 1.0,
+          "hidden_size": 32,
+          "learning_rate": 0.005,
+          "max_target_tokens": 64,
+          "projection_width": 8,
+          "reconstruction_weight": 1.0,
+          "seed": 1730,
+          "source_input": "provenance_only_not_neural_input",
+          "temperature": 0,
+          "token_embedding_dim": 16,
+          "torch_version": "2.9.1+cu130"
+        },
+        "projection_id": "typed_deontic_rule_v1",
+        "schema": "modal-latent-formula-checkpoint/v1",
+        "training_count": 72,
+        "training_manifest_sha256": "55677045ab251a682e1791bc7ee1f51a12895f0a68b2dd80126b4c4914aae2e2"
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 1646128,
+        "path": "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json",
+        "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+      },
+      "record_id": "ir-model-asset-binding/v1:0223722e8243fbe34bebc9ad0bdf4b90e820e93ec4d0a59f1699cf0d836a0c06",
+      "top_level_keys": [
+        "admitted",
+        "binding",
+        "codec",
+        "config",
+        "formalized",
+        "implementation",
+        "lake_executed",
+        "model_state",
+        "optimizer_state",
+        "parent_checkpoint_sha256",
+        "progress",
+        "projection_id",
+        "promotion_performed",
+        "proof_authority",
+        "publication_performed",
+        "qualified",
+        "roundtrip_ok",
+        "schema",
+        "semantic_correctness_verified",
+        "training_count",
+        "training_manifest_sha256",
+        "tuning_count",
+        "tuning_manifest_sha256"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71",
+        "dimension": 8,
+        "dimension_role": "latent",
+        "format_id": null,
+        "ir_family_id": "intent_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:075582d348e5c583e399ea30065ffa2c1ccfb0488cb8123a5be60e496c4068f9",
+        "role": "run-02/intent_ir/ridge_path-1729/family_checkpoint",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71",
+          "dimension": 8,
+          "dimension_role": "latent",
+          "format_id": null,
+          "ir_family_id": "intent_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:075582d348e5c583e399ea30065ffa2c1ccfb0488cb8123a5be60e496c4068f9",
+          "role": "run-02/intent_ir/ridge_path-1729/family_checkpoint",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 8,
+      "dimension_role": "latent",
+      "existing_native_format_binding": false,
+      "ir_family_id": "intent_ir",
+      "measurement": "native compiler/projection feature MSE and cosine losses; no original-text reconstruction or textual token budget",
+      "metadata": {
+        "checkpoint_schema": "native-family-complete-autoencoder/v1",
+        "feature_column_count": 147253,
+        "projection_ids": [
+          "intent-extended/datalog/default/v1",
+          "intent-extended/dcec/default/v1",
+          "intent-extended/event_calculus/default/v1",
+          "intent-extended/frame_logic/default/v1",
+          "intent-extended/higher_order/default/v1",
+          "intent-extended/horn_chc/default/v1",
+          "intent-extended/refinement/default/v1",
+          "intent-extended/tdfol/default/v1",
+          "intent-extended/transition_system/default/v1",
+          "intent-extended/transition_system/tla_plus/v1",
+          "intent-route/action-hoare/v1",
+          "intent-route/facts/v1",
+          "intent-route/intentions/v1",
+          "intent-route/norms/v1",
+          "intent-route/safety/v1",
+          "intent-route/workflow-temporal/v1",
+          "intent_ir/supplemental/authorization/v2"
+        ],
+        "report": {
+          "latent_width": 8,
+          "required_families": [
+            "authorization",
+            "datalog",
+            "dcec",
+            "deontic",
+            "event_calculus",
+            "first_order",
+            "frame_logic",
+            "higher_order",
+            "horn_chc",
+            "intention_agency",
+            "program",
+            "refinement",
+            "tdfol",
+            "temporal",
+            "transition_system"
+          ],
+          "schema": "native-family-complete-autoencoder/v1",
+          "source_text_decoder_trained": false,
+          "trained_logic_families": [
+            "authorization",
+            "datalog",
+            "dcec",
+            "deontic",
+            "event_calculus",
+            "first_order",
+            "frame_logic",
+            "higher_order",
+            "horn_chc",
+            "intention_agency",
+            "program",
+            "refinement",
+            "tdfol",
+            "temporal",
+            "transition_system"
+          ],
+          "training_executed": true,
+          "training_rows": 84,
+          "validation_rows": 14
+        },
+        "space": {
+          "domain_id": "intent_ir",
+          "normalization": "log1p_l2_per_native_projection",
+          "producer_pins": {
+            "ipfs_datasets_py.logic.CEC.native.dcec_core": "bb977f411605fc1f0715ed23c988102d55fa012029053c21c8fc5b14aea17e14",
+            "ipfs_datasets_py.logic.CEC.native.dcec_integration": "f039af934dba224d6c4984e8840fd8a4de00fe5e69837b0678d1d670dc26ac82",
+            "ipfs_datasets_py.logic.CEC.native.dcec_namespace": "9e6903c74d3b95634f86f4f67392ca61bf9a284b577294d2b12ff001d9fbeb24",
+            "ipfs_datasets_py.logic.CEC.native.dcec_parsing": "2756e3c94acf902579bfc54d469e01ddd25b72f53d177b88921829d71df7da70",
+            "ipfs_datasets_py.logic.TDFOL.tdfol_core": "67be350d1fb0422a64ab040349b2d51c4008fbeeb8b59a99b8901d681d7d71c7",
+            "ipfs_datasets_py.logic.TDFOL.tdfol_parser": "8e1f8885be6dc2a7d692ecdf0364ccc4d01692c38c81137775d9d222d8b8d9d3",
+            "ipfs_datasets_py.logic.backends.tla.compiler": "f06c6244cd68191b29139d6476a5a4c5a2c2a167bdc06b4951665a02fba5b573",
+            "ipfs_datasets_py.logic.families.canonical_catalog": "348639b3dd82d6382da85ad039c5c675e083400c50ad28cb20b8ada5e54a43ba",
+            "ipfs_datasets_py.logic.families.registry": "669c4d90dbbac1014bd3dced401027be0391d304477b904f9da04d5a2d6c0450",
+            "ipfs_datasets_py.logic.formalization.autoencoder.domain_targets": "b373c8b26310a761525459880de7fa7ba052e0fde57f1d0cbe2ddd9d2f85b586",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training": "e42e5314a59966ade1163e062817484357feb97e86158e21360ad39fa1558e64",
+            "ipfs_datasets_py.logic.formalization.autoencoder.family_training_v2": "c5b66780a5ed5b5247f3de1467d34ed17cba89bf250e9b2490218fe9e71f2e02",
+            "ipfs_datasets_py.logic.intent_ir.formalize.extended_projections": "20163bc5eb509065475bbe85716467b106f0b9dd74a1aa530bb61755600697eb",
+            "ipfs_datasets_py.logic.intent_ir.formalize.guarded_workflow": "27f57fe52c30c59d24386acf7e66785270ed33351791ad72b9d6f55d8df08b57",
+            "ipfs_datasets_py.logic.intent_ir.formalize.lean_projection": "aef6ff43d470857e67dbbc16707d213db0acac2439c1eddf1538a6f8eb930ed7",
+            "ipfs_datasets_py.logic.intent_ir.formalize.modal_projections": "7337b9266ed4f171ec7ee763828f8b637bf57930d8b89fa0d47139650996a14d",
+            "ipfs_datasets_py.logic.intent_ir.formalize.projection_contracts": "86386464d599b4fc5af66b3e6f634e797594bbde0c3e2bcff087d802c478fdaf",
+            "ipfs_datasets_py.logic.intent_ir.formalize.state_projections": "d22aa49f30252bf70c63ab76ee8338a045751f37d8cfeb5314c0587a0658ccb1",
+            "ipfs_datasets_py.logic.intent_ir.formalize.structural_projections": "c03ce3a4a083c463a3ced8d8dd8e08b9693711e35829cf8f44b9b007ab1bd6b9",
+            "ipfs_datasets_py.logic.intent_ir.formalize.workflow_state": "075283eb7eebb4426f535db2e20b714b6a208910c31e71c3c44752bca0464e0f",
+            "ipfs_datasets_py.logic.ir_core.canonical": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+            "ipfs_datasets_py.logic.ir_core.claims": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+            "ipfs_datasets_py.logic.ir_core.identity": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+            "ipfs_datasets_py.logic.ir_core.provenance": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+            "ipfs_datasets_py.logic.parsers.event_calculus": "8bd7217febef6daf86f76bae7e03ab0cbf7eb22a1b64f3040fd26a3d2ebfc390",
+            "ipfs_datasets_py.logic.parsers.flogic": "85ac4353d2bd15fee7cfcf345a4f7afe33d27baca49b1b273f08a217298d1bb7",
+            "ipfs_datasets_py.logic.parsers.rules": "14b04bd0e77a99a7f99a7c76e0f126552f9fc256d94bfb53280c3a75131c24ed",
+            "ipfs_datasets_py.logic.security_ir.code_logic_projection": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b",
+            "ipfs_datasets_py.logic.software_verification.authorization": "78f04e9231f9d04d98ab3597e52e8bb8c49d63047544657d33491b161effeeb7",
+            "ipfs_datasets_py.logic.software_verification.refinement": "975b8493035f414e82a611499c119aab9843b0b8546bd1cb82d04344f170874d",
+            "ipfs_datasets_py.logic.software_verification.state": "085841a600ed8f8fde202e720d1f70e5a0432e4bf80d20ff11fe60c90107c54c",
+            "ipfs_datasets_py.logic.software_verification.syntax_bridge": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+            "ipfs_datasets_py.logic.software_verification.transitions": "982d7e3a243fb70f5f797b7b6efdb45faebb3895945b06c04a9421fbe4ba7d86",
+            "ipfs_datasets_py.logic.syntax_core.ast": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+            "ipfs_datasets_py.logic.syntax_core.contracts": "ce6d49e05ca2b09a84a3125ed6ad4c4aae4adf2c5943d3a4fd4eeeb057b444a8",
+            "ipfs_datasets_py.logic.syntax_core.extensions": "4842bef325044b0bce9f14958d385864ba8d34273bc48618188f451f6832edf9",
+            "ipfs_datasets_py.logic.syntax_core.signatures": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf"
+          },
+          "schema": "native-family-complete-compositional-features/v1",
+          "training_reports_sha256": "9f7a5829f19e9a0f8c2024bfc42417df124174407e3187cb8179721bff3dfc38"
+        }
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 76824494,
+        "path": "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json",
+        "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+      },
+      "record_id": "ir-model-asset-binding/v1:075582d348e5c583e399ea30065ffa2c1ccfb0488cb8123a5be60e496c4068f9",
+      "top_level_keys": [
+        "admitted",
+        "formalized",
+        "implementation",
+        "parameters",
+        "promotion_performed",
+        "qualified",
+        "report",
+        "schema",
+        "space"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+        "ir_family_id": "intent_ir",
+        "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+        "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+        "role": "published development GTE-conditioned GRU",
+        "schema_version": "intent-rich-grammar/v1",
+        "task_id": "source_to_native_ir"
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+          "ir_family_id": "intent_ir",
+          "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+          "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+          "role": "published development GTE-conditioned GRU",
+          "schema_version": "intent-rich-grammar/v1",
+          "task_id": "source_to_native_ir"
+        }
+      ],
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "existing_native_format_binding": true,
+      "ir_family_id": "intent_ir",
+      "measurement": "source embedding -> family-specific native fragment, not full-document or prose reconstruction; release panel0/2 exact2/2 valid",
+      "metadata": {
+        "architecture": "residual-projection-latent-formula-gru/v1",
+        "codec_schema": "typed-json-lexical/v1",
+        "config": {
+          "hidden_size": 32,
+          "max_target_tokens": 512,
+          "projection_width": 8,
+          "token_embedding_dim": 16
+        },
+        "dimension": 384,
+        "domain_id": "intent_ir",
+        "embedding_provenance": {
+          "device": "cpu",
+          "dimension": 384,
+          "dtype": "float32",
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "truncated": false
+        },
+        "ordered_target_vocabulary_count": 27,
+        "schema": "domain-384-typed-autoencoder/v1",
+        "training": {
+          "selected_epoch": 484,
+          "selected_validation": {
+            "embedding_mse": 0.0005897167720831931,
+            "objective": 0.09906058013439178,
+            "token_cross_entropy": 0.09900160878896713
+          },
+          "training": {
+            "embedding_mse": 0.0011627827771008015,
+            "objective": 0.09354705363512039,
+            "token_cross_entropy": 0.0934307724237442
+          },
+          "training_tokens": 180000
+        }
+      },
+      "new_contract_required_for_runtime_admission": false,
+      "original_pin_before": {
+        "bytes": 586049,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+        "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+      },
+      "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+      "top_level_keys": [
+        "admitted",
+        "architecture",
+        "codec",
+        "config",
+        "dimension",
+        "domain_id",
+        "implementation",
+        "lineage",
+        "model_state",
+        "parent_binding",
+        "parent_sha256",
+        "proof_authority",
+        "publication_performed",
+        "qualified",
+        "schema",
+        "source_semantics_verified",
+        "training",
+        "training_manifest",
+        "validation_manifest",
+        "weights_sha256"
+      ]
+    },
+    {
+      "catalog_request_from_prior_receipt": {
+        "checkpoint_sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef",
+        "dimension": 768,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "ir_family_id": "legal_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:2071f8de906f83bd3febdd8834ee7f17133e9b888cf592d05fbea797b98eb689",
+        "role": "retained legal_decoder_or_output_head from legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+        "schema_version": null,
+        "task_id": null
+      },
+      "catalog_unknown_fields_remain_unknown": true,
+      "current_selected_catalog_exact_sha_matches": [
+        {
+          "checkpoint_sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef",
+          "dimension": 768,
+          "dimension_role": "input_embedding",
+          "format_id": null,
+          "ir_family_id": "legal_ir",
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:2071f8de906f83bd3febdd8834ee7f17133e9b888cf592d05fbea797b98eb689",
+          "role": "retained legal_decoder_or_output_head from legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+          "schema_version": null,
+          "task_id": null
+        }
+      ],
+      "dimension": 768,
+      "dimension_role": "input_embedding",
+      "existing_native_format_binding": false,
+      "ir_family_id": "legal_ir",
+      "measurement": "trained aligned dual-donor interfaces, retained primary512/grammar64 output budgets; encoder profile8192 is independent; no source-fidelity or distillation qualification",
+      "metadata": {
+        "aligned_representation_id": "legal_ir:aligned_dual_decoder_768:ef4aa3d7a59e671d519a5387ab39a18d64f1bcd7d41ec3af39d5705f64100431",
+        "all_26_inherited_tensors_unchanged": true,
+        "architecture": "factorized-768-shared-condition-dual-decoder/v1",
+        "codec_sha256": {
+          "legacy8": "25d32d252ce8ef0fab2b6315068898fa3205246bc5f8abfad1ffbce8a1bfd6e1",
+          "primary384": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2"
+        },
+        "dimension": 768,
+        "distillation_executed": false,
+        "domain_id": "legal_ir",
+        "donor_pins": {
+          "legacy8_checkpoint_sha256": "ffca84492b81ab94fa291ae6ddbe52cfc84318f3516a22f901d468de255b6cbe",
+          "legacy8_codec_sha256": "25d32d252ce8ef0fab2b6315068898fa3205246bc5f8abfad1ffbce8a1bfd6e1",
+          "legacy8_weights_sha256": "e96a6e3ff5771b9227aa98919aee2745d42cd3361e0f85d5d2771ed88e9d1995",
+          "teacher384_checkpoint_sha256": "6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61",
+          "teacher384_codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+          "teacher384_weights_sha256": "17ddd2026a72eda808e5223cc32c5c6fd0b523fc2ec771f620c9b3179793a05a"
+        },
+        "encoder_inference_executed": false,
+        "initialization_representation_id": "legal_ir:dual_donor_768_decoder:e7effa4359407382e4b984e6b777f77f53428e728151466276c5501ce5ad70ce",
+        "mode_policy": {
+          "auxiliary_connector_trainable": true,
+          "construction_threads": 1,
+          "default_module_mode": "evaluation",
+          "device": "cpu",
+          "dtype": "float32",
+          "inherited_legacy8_decoder_frozen": true,
+          "inherited_primary_decoder_frozen": true,
+          "primary_input_boundary_trainable": true
+        },
+        "native768_inputs_used": true,
+        "production_kd_eligible": false,
+        "profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+        "proof_authority": false,
+        "reference_supervised_training_executed": true,
+        "representation_id": "gte-768-aligned-reference-interfaces:sha256:596a337ae6423e7bd28fb2ed63817467a4ef87d989011794eee8ec9bb6b64bb9",
+        "schema": "gte-aligned-interface-checkpoint/v1",
+        "source_fidelity_qualified": false,
+        "training_executed": true
+      },
+      "new_contract_required_for_runtime_admission": true,
+      "original_pin_before": {
+        "bytes": 6360717,
+        "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json",
+        "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+      },
+      "record_id": "ir-model-asset-binding/v1:2071f8de906f83bd3febdd8834ee7f17133e9b888cf592d05fbea797b98eb689",
+      "top_level_keys": [
+        "aligned_checkpoint_content_sha256",
+        "aligned_handoff_sha256",
+        "aligned_parent_file_pins",
+        "aligned_representation_id",
+        "aligned_start_model_state_sha256",
+        "alignment_file_pins",
+        "all_26_inherited_tensors_unchanged",
+        "all_selected_reference_outputs_preserved_on_reload",
+        "architecture",
+        "asset_manifest_sha256",
+        "auxiliary_connector_exercised",
+        "batch_sha256",
+        "codec_sha256",
+        "dimension",
+        "distillation_executed",
+        "domain_id",
+        "donor_pins",
+        "download_executed",
+        "encoder_inference_executed",
+        "exact_trained_reload_passed",
+        "implementation",
+        "inherited_gradients_absent",
+        "inherited_state_sha256",
+        "initialization_content_sha256",
+        "initialization_representation_id",
+        "input_adapter_exercised",
+        "interface_state_sha256",
+        "interfaces",
+        "interfaces_changed",
+        "logits_combined",
+        "mode_policy",
+        "model_state_sha256",
+        "native768_inputs_used",
+        "optimizer",
+        "optimizer_resume_supported",
+        "optimizer_steps",
+        "original_decoder_initialization_unchanged",
+        "plan_sha256",
+        "primary_start",
+        "producer_execution_authenticated",
+        "production_kd_eligible",
+        "production_kd_enabled",
+        "profile_id",
+        "proof_authority",
+        "reference_supervised_objective_computed",
+        "reference_supervised_training_executed",
+        "replay_sha256",
+        "representation_id",
+        "schema",
+        "source_fidelity_qualified",
+        "teacher_qualified",
+        "tensor_inventory",
+        "tensor_inventory_sha256",
+        "trainable_tensor_names",
+        "training_executed",
+        "training_report",
+        "training_report_sha256"
+      ]
+    }
+  ],
+  "python_executable": "/home/barberb/lift_coding/.venv/bin/python",
+  "reconstruction_measurements_are_distinct": [
+    "embedding/structural feature loss",
+    "learned canonical semantic IR generation",
+    "deterministic compiler/decompiler roundtrip",
+    "original source-text reconstruction",
+    "syntax and theorem/proof qualification"
+  ],
+  "schema": "retained-decoder-contract-readonly-survey/v1",
+  "scope": "Bounded metadata and independent streamed file witnesses; no decoder/runtime execution or original prose reconstruction claim.",
+  "script_pin": {
+    "bytes": 19294,
+    "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.py",
+    "sha256": "a417a40c48b0b3d22af13cf1dd0a5601b44f9b835a8f8cc7a8b1731ab088acf6"
+  },
+  "source_checkouts_modified_by_survey": false,
+  "source_head_observation": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "source_root": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006"
+}

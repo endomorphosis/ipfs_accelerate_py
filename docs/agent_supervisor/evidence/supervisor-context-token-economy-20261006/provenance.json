@@ -1,0 +1,55 @@
+{
+  "accounting_command": {
+    "argv": [
+      "/home/barberb/.local/bin/python",
+      "/home/barberb/lift_coding_worktrees/supervisor-context-token-economy-20261006/docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/measure_retained_prompt_metadata.py",
+      "--direct",
+      "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+      "--symbolic-ablation",
+      "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/supervisor-context-token-economy-20261006/prompt-accounting.json"
+    ],
+    "exit_code": 0,
+    "producer": {
+      "bytes": 7703,
+      "sha256": "88c68519f9be3467e44da655147ec20a41ea75ac6ff2d917ed0461fa0b34091f"
+    }
+  },
+  "audits": {
+    "coding-audit.json": {
+      "bytes": 21586,
+      "sha256": "5accd5e1bc89c6b193affc28050b8ecd759ef5468c8b4d2d36014c1bbb68f2cc"
+    },
+    "planning-audit.json": {
+      "bytes": 20317,
+      "sha256": "0ce76d9feabc477d9250311b81234f45e76cb5c9c4e6833cf32dbbac32fa7022"
+    },
+    "prompt-accounting.json": {
+      "bytes": 4700,
+      "sha256": "c4f228869eb33db50b6282e89a1534dc04dce47d052d0ba1414b3ba705525996"
+    }
+  },
+  "baseline_coding_sessions": 1,
+  "baseline_planning_sessions": 1,
+  "first_accounting_attempt": {
+    "exit_code": 1,
+    "reason": "Receipt field is block_bytes, not model_context_bytes; producer key corrected and rerun. No provider/runtime/benchmark mutation."
+  },
+  "new_model_weights": false,
+  "new_official_trials": 0,
+  "new_provider_calls": 0,
+  "new_training_steps": 0,
+  "original_root_head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+  "original_root_index_sha256": "80b0426031778d38c8b762a273739e08edbf2ce2b18690efb4f541fa6de120a4",
+  "original_root_source_and_index_preserved": true,
+  "planning_preserved_context_token_saving_measured": false,
+  "planning_preserved_context_trial_executed": false,
+  "planning_removed_as_primary_treatment": false,
+  "primary_goal": "Keep LLM planning and coding; reduce total session tokens using checked context selection, compaction and progressive disclosure.",
+  "production_runtime_changed": false,
+  "recorded_at_utc": "2026-10-06T07:53:53.923200+00:00",
+  "schema": "supervisor-context-token-economy-provenance@1",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/supervisor-context-token-economy-20261006",
+  "source_head": "c09113ff67c999d058c0df87dd01f5997dd792d1"
+}
