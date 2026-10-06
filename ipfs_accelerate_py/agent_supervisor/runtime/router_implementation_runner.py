@@ -16,7 +16,7 @@ import sys
 import time
 import uuid
 
-
+MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 
 # Diagnostic vocabulary is intentionally closed: exception messages, dynamic
 # type names, caller paths and locals never enter the child-reported record.
@@ -193,7 +193,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit supported shared-router coding provider required")
     if provider == "grok_cli" and model != "grok-4.7":
         raise ValueError("explicit pinned Grok benchmark model required")
-    if not model or not 1 <= timeout <= 600 or not 1 <= max_output_tokens <= 16_384:
+    if not model or not 1 <= timeout <= MAX_IMPLEMENTATION_TIMEOUT_SECONDS or not 1 <= max_output_tokens <= 16_384:
         raise ValueError("explicit model and bounded invocation settings required")
     if reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
         raise ValueError("explicit supported reasoning effort required")
