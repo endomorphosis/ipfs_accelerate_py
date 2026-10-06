@@ -5,7 +5,7 @@
     "-B",
     "scripts/docs/run_documentation_gates.py"
   ],
-  "source_base_commit": "9764fbe0a3c042cc1a8ba2da1680f474108b9511",
+  "source_base_commit": "f4a3e79a0aa11c125a5495ba8280cd74272e4f0c",
   "returncode": 0,
   "output": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n",
   "completion_authority": false

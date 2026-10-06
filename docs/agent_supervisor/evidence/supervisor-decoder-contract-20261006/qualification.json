@@ -169,5 +169,6 @@
     "returncode": 0,
     "allowlisted_documentation_files": 46,
     "version": "0.0.45"
-  }
+  },
+  "publication_integration": "publication-integration.json"
 }

@@ -134,7 +134,13 @@ Exact selections, raw logs/XML/commands and before/after witnesses are retained.
 Overlapping and interrupted runs are not added. The scoped native-process audit
 observed no live matching fixture process or unavailable recorded worker.
 
-The [committed source readback](committed-source-readback.json) verifies all68
+The [committed source readback](committed-source-readback.json) verifies all 68
 manual bindings against the implementation commit. The [local documentation
-gates](documentation-gates.json) passed for46 allowlisted files at0.0.45. Hosted
+gates](documentation-gates.json) passed for 46 allowlisted files at 0.0.45. Hosted
 CI is a separate publication check.
+
+[Publication integration](publication-integration.json) rechecks all 68
+committed source/test objects and 16 retained files against the frozen run.
+The independent incoming context-compaction plan was preserved. Only
+documentation/evidence changed after the source commit. Raw diagnostic
+JUnit/log whitespace is preserved intentionally with its original byte hashes.
