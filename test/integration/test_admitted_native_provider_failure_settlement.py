@@ -149,7 +149,21 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
             assert not runtime.process.snapshot(runtime.profile).members
             assert (repository / "answer.py").read_bytes() == initial_answer
             assert (repository / "test_answer.py").read_bytes() == initial_check
-            execution = database.with_name(f"{database.stem}.execution.duckdb")
+            from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+                ORCHESTRATION_DIR_ENV, repo_resident_duckdb)
+            # Artifact-backed basetemp can itself live inside a Git checkout.
+            # Match the native runtime's signed sidecar routing instead of
+            # assuming the /tmp-only control-adjacent storage layout.
+            with monkeypatch.context() as storage_environment:
+                storage_environment.setenv(ORCHESTRATION_DIR_ENV,
+                    dict(runtime.profile.environment)[ORCHESTRATION_DIR_ENV])
+                execution = repo_resident_duckdb(
+                    database.with_name(f"{database.stem}.execution.duckdb"), relocate=False)
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+                _database_daemon_quack_sidecar_paths)
+            coordination, execution = _database_daemon_quack_sidecar_paths(
+                database, execution_path=execution)
+            assert execution.is_file() and coordination.is_file()
             with duckdb.connect(str(execution), read_only=True) as connection:
                 attempts = connection.execute("SELECT attempt_id, claim_id, status, body_json FROM database_task_attempts").fetchall()
                 assert len(attempts) == 1
@@ -167,7 +181,7 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
                 assert receipt["native_exit"]["completion_authority"] is False
                 assert connection.execute("SELECT count(*) FROM effect_claims").fetchone()[0] == 0
                 assert connection.execute("SELECT count(*) FROM daemon_execution_events WHERE event_type='native_provider_failure_observed'").fetchone()[0] == 1
-            coordinator = open_database_coordinator(database.with_name(f"{database.stem}.coordination.duckdb"))
+            coordinator = open_database_coordinator(coordination)
             try:
                 assert coordinator.get_task_claim(claim_id).state.value == "released"
             finally:
