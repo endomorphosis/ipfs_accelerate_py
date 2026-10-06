@@ -173,8 +173,11 @@ if any(instruction_values) and (not all(instruction_values) or args.preflight or
 if any(contract_values) and (not all(contract_values) or any(doctor_values) or any(residual_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact local contract candidate invocation required')
 if any(doctor_values) and (not all(doctor_values) or args.preflight or args.semantic_repository is not None or any(residual_values)):raise SystemExit('exact Doctor handoff or router invocation required')
 if any(residual_values) and (not all(residual_values) or args.preflight or args.semantic_repository is None or args.purpose!='coding'):raise SystemExit('exact Doctor residual context requires semantic coding route')
-from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import MAX_IMPLEMENTATION_TIMEOUT_SECONDS
-if not 1<=args.timeout<=MAX_IMPLEMENTATION_TIMEOUT_SECONDS or not 0<=args.preflight_sleep<=30:raise SystemExit('bounded timeout required')
+from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as router_runtime
+# Earlier archives have no shared constant and retain the original worker cap.
+worker_timeout_limit=getattr(router_runtime,'MAX_IMPLEMENTATION_TIMEOUT_SECONDS',300)
+if type(worker_timeout_limit)is not int or not 1<=worker_timeout_limit<=600:raise SystemExit('invalid runtime timeout ceiling')
+if not 1<=args.timeout<=worker_timeout_limit or not 0<=args.preflight_sleep<=30:raise SystemExit('bounded timeout required')
 if args.preflight:
  prompt=sys.stdin.buffer.read(2*1024*1024+1)
  if len(prompt)>2*1024*1024:raise SystemExit('preflight prompt exceeds bound')
