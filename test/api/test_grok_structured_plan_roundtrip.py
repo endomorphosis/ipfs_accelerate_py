@@ -52,7 +52,9 @@ def test_native_structured_result_reaches_independent_plan_checks(tmp_path, monk
         "prompt_path = pathlib.Path(option('--prompt-file'))\n"
         "prompt = json.loads(prompt_path.read_text())\n"
         "schema = json.loads(option('--json-schema'))\n"
-        "assert schema == prompt['response_schema']\n"
+        "canonical = dict(prompt['response_schema'])\n"
+        "assert canonical.pop('$id') == 'ipfs_accelerate_py/agent-supervisor/prompt-goal-proposal@1'\n"
+        "assert schema == canonical\n"
         "assert option('--tools') == 'read_file'\n"
         "assert option('--disallowed-tools') == 'read_file,search_tool,use_tool'\n"
         "assert option('--max-turns') == '2'\n"
@@ -84,6 +86,11 @@ def test_native_structured_result_reaches_independent_plan_checks(tmp_path, monk
     assert receipt["completion_authority"] is False
     assert receipt["native_rollout_usage"]["usage"]["total_tokens"] == 15
     assert receipt["provider_invocation_policy"]["effective_toolset_verified"] is False
+    projection = receipt["provider_invocation_policy"]["structured_output"]["native_schema_projection"]
+    assert projection["top_level_id_omitted"] is True
+    assert projection["canonical_validation_preserved"] is True
+    assert projection["canonical_schema_sha256"] != projection["native_wire_schema_sha256"]
+    assert projection["canonical_schema_sha256"] == receipt["provider_invocation_policy"]["structured_output"]["response_schema_sha256"]
     if case == "valid":
         graph = parse_prompt_goal_graph(text, request, scan)
         assert graph.request_cid == request.request_cid

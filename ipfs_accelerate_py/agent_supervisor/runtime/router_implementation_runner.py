@@ -229,12 +229,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         }
         if response_format is not None:
             provider_options["response_format"] = response_format
+            from ipfs_accelerate_py.cli_runtime.grok_structured_output import native_schema_projection
+            _wire_schema, _wire_argument, projection = native_schema_projection(response_format["json_schema"]["schema"])
             schema_json = json.dumps(response_format["json_schema"]["schema"],
                 ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
             receipt["provider_invocation_policy"]["structured_output"] = {
                 "schema": "grok-native-json-schema@1",
                 "response_schema_sha256": hashlib.sha256(schema_json.encode()).hexdigest(),
                 "response_schema_bytes": len(schema_json.encode()),
+                "native_schema_projection": projection,
                 "native_schema_requested": True,
                 "response_schema_validated": False,
                 "plan_admitted": False,

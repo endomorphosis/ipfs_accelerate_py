@@ -1,5 +1,7 @@
 """Native schema transport must preserve exact output and independent admission."""
 import json
+import copy
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -238,3 +240,106 @@ def test_recognized_malformed_planner_request_never_downgrades_to_text(change):
         prompt = json.dumps(value)
     with pytest.raises(ValueError):
         structured.planning_response_format(prompt)
+
+
+def canonical_response_format():
+    from test.api.test_agent_supervisor_prompt_goal_planner import _request, _scan
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import build_prompt_goal_provider_request
+    request = _request()
+    return structured.planning_response_format(build_prompt_goal_provider_request(request, _scan(request)))
+
+
+def test_native_projection_omits_only_canonical_top_level_id_without_mutation():
+    selected = canonical_response_format()
+    schema, canonical, validator = structured.validate_response_format(selected)
+    before = copy.deepcopy(schema)
+    wire, encoded, receipt = structured.native_schema_projection(schema)
+    expected = dict(before)
+    del expected["$id"]
+    assert wire == expected
+    assert schema == before == selected["json_schema"]["schema"]
+    assert wire["definitions"] == before["definitions"]
+    assert wire["bounds"] == before["bounds"]
+    assert receipt == {
+        "projection_id": "canonical-prompt-goal-native-id-omission@1",
+        "top_level_id_omitted": True,
+        "canonical_schema_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+        "canonical_schema_bytes": len(canonical.encode()),
+        "native_wire_schema_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+        "native_wire_schema_bytes": len(encoded.encode()),
+        "canonical_validation_preserved": True,
+    }
+    assert json.loads(encoded) == wire
+    assert validator.schema == before
+
+
+@pytest.mark.parametrize("change", ["generic", "id", "required", "nested_assertion", "budget_inconsistent", "extra", "nested_id"])
+def test_native_projection_leaves_other_schemas_and_planner_lookalikes_unchanged(change):
+    schema = canonical_response_format()["json_schema"]["schema"]
+    if change == "generic":
+        schema = response_format()["json_schema"]["schema"]
+        schema["$id"] = "https://example.invalid/probe"
+    elif change == "id":
+        schema["$id"] = "https://example.invalid/other-planner"
+    elif change == "required":
+        schema["required"] = ["schema"]
+    elif change == "nested_assertion":
+        schema["definitions"]["task"]["additionalProperties"] = True
+    elif change == "budget_inconsistent":
+        schema["bounds"]["max_tasks"] += 1
+    elif change == "extra":
+        schema["description"] = "Another schema"
+    else:
+        schema["definitions"]["task"]["$id"] = "https://example.invalid/nested"
+    before = copy.deepcopy(schema)
+    wire, encoded, receipt = structured.native_schema_projection(schema)
+    assert wire == before == schema == json.loads(encoded)
+    assert receipt["projection_id"] == "identity@1"
+    assert receipt["top_level_id_omitted"] is False
+    assert receipt["canonical_schema_sha256"] == receipt["native_wire_schema_sha256"]
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_projected_native_call_validates_original_canonical_schema(adapter, monkeypatch, valid):
+    from test.api.test_agent_supervisor_prompt_goal_planner import _request, _scan, _proposal
+    selected = canonical_response_format()
+    original = copy.deepcopy(selected)
+    proposal = _proposal(_scan(_request()))
+    if not valid:
+        proposal["schema"] = "provider-created-schema"
+    def execute(argv, **kwargs):
+        wire = json.loads(argv[argv.index("--json-schema") + 1])
+        canonical = dict(selected["json_schema"]["schema"])
+        del canonical["$id"]
+        assert wire == canonical
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"structuredOutput": proposal, "stopReason": "end_turn"}), stderr="")
+    monkeypatch.setattr(adapter.subprocess, "run", execute)
+    if valid:
+        text = adapter._get_grok_cli_provider().generate("authored proposal", response_format=selected)
+        assert json.loads(text) == proposal
+    else:
+        with pytest.raises(adapter.LLMRouterError, match="structured response failed validation"):
+            adapter._get_grok_cli_provider().generate("authored proposal", response_format=selected)
+    assert selected == original
+
+
+@pytest.mark.parametrize("command_schema", ["original", "assertion_changed", "matching_wire"])
+def test_cli_override_compares_actual_projected_schema(adapter, monkeypatch, command_schema):
+    from test.api.test_agent_supervisor_prompt_goal_planner import _request, _scan, _proposal
+    selected = canonical_response_format()
+    schema = copy.deepcopy(selected["json_schema"]["schema"])
+    if command_schema != "original":
+        del schema["$id"]
+    if command_schema == "assertion_changed":
+        schema["additionalProperties"] = True
+    command = ["grok", "--json-schema", json.dumps(schema)]
+    def execute(argv, **kwargs):
+        assert command_schema == "matching_wire", "conflicting override reached native CLI"
+        assert argv.count("--json-schema") == 1
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"structuredOutput": _proposal(_scan(_request()))}), stderr="")
+    monkeypatch.setattr(adapter.subprocess, "run", execute)
+    if command_schema == "matching_wire":
+        adapter._get_grok_cli_provider().generate("authored proposal", response_format=selected, grok_cli_cmd=command)
+    else:
+        with pytest.raises(ValueError, match="schema conflicts"):
+            adapter._get_grok_cli_provider().generate("authored proposal", response_format=selected, grok_cli_cmd=command)

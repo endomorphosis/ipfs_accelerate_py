@@ -246,6 +246,142 @@ def test_closed_outcome_projection_rejects_spoofed_observation_fields():
     assert "private" not in json.dumps(value)
 
 
+def _native_schema_rejection(*, identifier='authored/plan@1', status=400):
+    """Sanitized shape captured from the pinned native CLI, not model text."""
+    message = ('API error (status 400 Bad Request): invalid-argument: Invalid request content: '
+        'Schema validation failed: [standard_violation] /$id: '
+        + json.dumps(identifier) + ' is not a "uri-reference"')
+    return {'type': 'error', 'message': 'Internal error: ' + json.dumps({
+        'message': message, 'http_status': status}, indent=2)}
+
+
+@pytest.mark.parametrize('timeout', [False, True])
+def test_native_schema_rejection_survives_without_usage_or_reflected_text(timeout):
+    payload = _native_schema_rejection(identifier='PRIVATE_SCHEMA_IDENTIFIER')
+    observation = native_grok_observation(payload, exit_code=None if timeout else 1,
+                                         timed_out=timeout)
+    assert grok_usage_receipt(observation) is None
+    receipt = grok_outcome_receipt(observation)
+    assert receipt['reason_code'] == ('timeout' if timeout else 'schema_rejected')
+    assert receipt['classification_source'] == ('process' if timeout else 'native_schema_error')
+    assert receipt['http_status'] == 400
+    assert receipt['schema_error_code'] == 'schema_id_invalid'
+    assert receipt['schema_error_path'] == '/$id'
+    assert receipt['completion_authority'] is False
+    assert receipt['raw_provider_data_exported'] is False
+    assert 'PRIVATE_SCHEMA_IDENTIFIER' not in json.dumps(observation)
+    assert 'PRIVATE_SCHEMA_IDENTIFIER' not in json.dumps(receipt)
+    assert 'message' not in receipt
+
+
+@pytest.mark.parametrize('case', [
+    'model_text', 'model_type', 'nested_result', 'extra_top_field', 'extra_native_field',
+    'conflicting_stop', 'conflicting_error_marker', 'status_string', 'status_float',
+    'status_bool', 'status_conflict', 'duplicate_status', 'duplicate_message', 'nonfinite',
+    'nested_message', 'nested_status', 'array_error', 'malformed_json', 'trailing_text',
+    'wrong_prefix', 'wrong_path', 'wrong_standard', 'wrong_constraint', 'message_prefix',
+    'message_suffix', 'oversized', 'oversized_identifier',
+])
+def test_native_schema_error_classification_rejects_ambiguous_or_nested_input(case):
+    payload = _native_schema_rejection()
+    inner = json.loads(payload['message'].removeprefix('Internal error: '))
+    if case == 'model_text':
+        payload = {'text': payload['message']}
+    elif case == 'model_type':
+        payload['type'] = 'result'
+    elif case == 'nested_result':
+        payload = {'type': 'result', 'response': payload}
+    elif case == 'extra_top_field':
+        payload['text'] = 'PRIVATE_MODEL_TEXT'
+    elif case == 'conflicting_stop':
+        payload['stopReason'] = 'end_turn'
+    elif case == 'conflicting_error_marker':
+        payload['is_error'] = False
+    elif case == 'extra_native_field':
+        inner['text'] = 'PRIVATE_MODEL_TEXT'
+    elif case.startswith('status_'):
+        inner['http_status'] = {'status_string': '400', 'status_float': 400.0,
+            'status_bool': True, 'status_conflict': 429}[case]
+    elif case == 'nested_message':
+        inner['message'] = {'message': inner['message']}
+    elif case == 'nested_status':
+        inner['http_status'] = {'http_status': 400}
+    elif case == 'array_error':
+        inner = [inner]
+    elif case == 'wrong_path':
+        inner['message'] = inner['message'].replace('/$id:', '/PRIVATE_MODEL_PATH:')
+    elif case == 'wrong_standard':
+        inner['message'] = inner['message'].replace('[standard_violation]', '[other_error]')
+    elif case == 'wrong_constraint':
+        inner['message'] = inner['message'].replace('"uri-reference"', '"other-constraint"')
+    elif case == 'message_prefix':
+        inner['message'] = 'PRIVATE_MODEL_TEXT ' + inner['message']
+    elif case == 'message_suffix':
+        inner['message'] += ' PRIVATE_MODEL_TEXT'
+    elif case == 'oversized_identifier':
+        payload = _native_schema_rejection(identifier='x' * 2049)
+    if case in {'extra_native_field', 'nested_message', 'nested_status', 'array_error',
+                'wrong_path', 'wrong_standard', 'wrong_constraint', 'message_prefix',
+                'message_suffix'} or case.startswith('status_'):
+        payload['message'] = 'Internal error: ' + json.dumps(inner)
+    if case == 'duplicate_status':
+        payload['message'] = 'Internal error: ' + json.dumps(inner)[:-1] + ', "http_status": 429}'
+    elif case == 'duplicate_message':
+        payload['message'] = 'Internal error: ' + json.dumps(inner)[:-1] + ', "message": "PRIVATE_MODEL_TEXT"}'
+    elif case == 'nonfinite':
+        payload['message'] = payload['message'].replace('400\n}', 'NaN\n}')
+    elif case == 'malformed_json':
+        payload['message'] = 'Internal error: {'
+    elif case == 'trailing_text':
+        payload['message'] += ' PRIVATE_MODEL_TEXT'
+    elif case == 'wrong_prefix':
+        payload['message'] = 'PRIVATE_MODEL_TEXT ' + payload['message']
+    elif case == 'oversized':
+        payload['message'] += ' ' * 8192
+    receipt = grok_outcome_receipt(native_grok_observation(payload, exit_code=1))
+    assert receipt['reason_code'] != 'schema_rejected'
+    assert receipt['classification_source'] != 'native_schema_error'
+    assert not {'http_status', 'schema_error_code', 'schema_error_path'} & receipt.keys()
+    assert 'PRIVATE_MODEL' not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize('exit_code', [0, None, True, '1'])
+def test_success_or_unknown_process_cannot_claim_schema_rejection(exit_code):
+    receipt = grok_outcome_receipt(native_grok_observation(_native_schema_rejection(), exit_code=exit_code))
+    assert receipt['reason_code'] != 'schema_rejected'
+    assert 'http_status' not in receipt
+
+
+@pytest.mark.parametrize('field,value', [
+    ('native_grok_http_status', True), ('native_grok_http_status', '400'),
+    ('native_grok_http_status', 429), ('native_grok_schema_error_code', 'PRIVATE_MODEL_TEXT'),
+    ('native_grok_schema_error_path', '/PRIVATE_MODEL_PATH'),
+    ('native_grok_process_outcome', 'returned'), ('native_grok_envelope_observed', False),
+    ('native_grok_error_observed', False), ('native_grok_classification_source', 'message_marker'),
+])
+def test_schema_error_receipt_requires_consistent_closed_observation(field, value):
+    observation = native_grok_observation(_native_schema_rejection(), exit_code=1)
+    observation[field] = value
+    receipt = grok_outcome_receipt(observation)
+    assert not {'http_status', 'schema_error_code', 'schema_error_path'} & receipt.keys()
+    assert 'PRIVATE_MODEL' not in json.dumps(receipt)
+
+
+def test_shared_adapter_retains_closed_native_schema_failure(monkeypatch):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation
+    monkeypatch.setattr(llm_router, 'find_grok_cli', lambda: '/fixture/grok')
+    monkeypatch.setattr(llm_router, '_cli_available', lambda _: True)
+    monkeypatch.setattr(llm_router.subprocess, 'run', lambda *_a, **_kw:
+        SimpleNamespace(returncode=1, stdout=json.dumps(_native_schema_rejection()), stderr=''))
+    with pytest.raises(llm_router.LLMRouterError):
+        llm_router._get_grok_cli_provider().generate('private instruction', model_name='grok-4.7')
+    receipt = grok_outcome_receipt(get_last_cli_observation('grok_cli'))
+    assert receipt['reason_code'] == 'schema_rejected'
+    assert receipt['http_status'] == 400
+    assert receipt['schema_error_path'] == '/$id'
+
+
 def test_shared_adapter_retains_usage_free_native_error_outcome(monkeypatch):
     from ipfs_accelerate_py import llm_router
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation

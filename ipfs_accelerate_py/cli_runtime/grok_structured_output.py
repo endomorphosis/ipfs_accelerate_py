@@ -6,11 +6,49 @@ references, scope, evidence, resource bounds and authority after this layer.
 from __future__ import annotations
 
 import json
+import hashlib
+from types import SimpleNamespace
 from typing import Any
 
 MAX_SCHEMA_BYTES = 65_536
 MAX_RESPONSE_BYTES = 262_144
 MAX_ENVELOPE_BYTES = 4_194_304
+
+
+def native_schema_projection(schema):
+    """Omit only the canonical planner's native-rejected top-level ID annotation.
+
+    All validation assertions and local references remain byte-equivalent under
+    canonical serialization. The caller retains the original schema validator.
+    Other schemas, including a modified planner lookalike, remain unchanged.
+    """
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+        PROMPT_GOAL_PROPOSAL_SCHEMA, _proposal_schema,
+    )
+    canonical = _bounded_json(schema, MAX_SCHEMA_BYTES, schema=True)
+    wire = _loads(canonical)
+    bounds = schema.get("bounds")
+    matches = False
+    if (schema.get("$id") == PROMPT_GOAL_PROPOSAL_SCHEMA and isinstance(bounds, dict)
+            and set(bounds) == {"max_goals", "max_tasks", "max_graph_depth", "max_serialized_bytes"}
+            and all(type(value) is int and value > 0 for value in bounds.values())):
+        # Reconstruct the trusted grammar using its four variable budget
+        # fields, then compare the whole shape rather than trusting an ID.
+        budget = SimpleNamespace(**bounds, max_provider_tokens=bounds["max_serialized_bytes"])
+        matches = schema == _proposal_schema(SimpleNamespace(budget=budget))
+    if matches:
+        del wire["$id"]
+    encoded = _bounded_json(wire, MAX_SCHEMA_BYTES, schema=True)
+    receipt = {
+        "projection_id": "canonical-prompt-goal-native-id-omission@1" if matches else "identity@1",
+        "top_level_id_omitted": matches,
+        "canonical_schema_sha256": hashlib.sha256(canonical.encode()).hexdigest(),
+        "canonical_schema_bytes": len(canonical.encode()),
+        "native_wire_schema_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+        "native_wire_schema_bytes": len(encoded.encode()),
+        "canonical_validation_preserved": True,
+    }
+    return wire, encoded, receipt
 
 
 def _pairs(items):

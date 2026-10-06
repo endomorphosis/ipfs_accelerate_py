@@ -7949,8 +7949,9 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if response_format is not None:
                 if not structured_cli:
                     raise ValueError("response_format requires a structured Grok CLI command")
-                from .cli_runtime.grok_structured_output import validate_response_format, bind_schema_argument
-                _schema, schema_argument, response_validator = validate_response_format(response_format)
+                from .cli_runtime.grok_structured_output import validate_response_format, bind_schema_argument, native_schema_projection
+                _schema, _canonical_argument, response_validator = validate_response_format(response_format)
+                _wire_schema, schema_argument, _projection = native_schema_projection(_schema)
                 bind_schema_argument(base_parts, schema_argument)
 
             extra_env: Dict[str, Optional[str]] = {}

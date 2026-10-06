@@ -23,9 +23,54 @@ _ERROR_SUBTYPES = frozenset({"error_max_turns", "error_during_execution",
 _PROCESS_OUTCOMES = frozenset({"returned", "failed", "timeout", "unknown"})
 _REASON_CODES = frozenset({"end_turn", "max_turns", "max_tokens", "refusal", "cancelled",
                           "structured_output_retries", "execution_error", "process_error",
-                          "timeout", "other_stop", "unknown"})
+                          "schema_rejected", "timeout", "other_stop", "unknown"})
 _CLASSIFICATION_SOURCES = frozenset({"stop_reason", "error_subtype", "native_type",
-                                    "message_marker", "process", "none"})
+                                    "message_marker", "native_schema_error", "process", "none"})
+
+# Captured Grok 1.0.46 native error envelope. Match the fixed protocol grammar,
+# never retain or classify the reflected schema identifier itself.
+_SCHEMA_ID_ERROR = re.compile(
+    r'API error \(status 400 Bad Request\): invalid-argument: Invalid request content: '
+    r'Schema validation failed: \[standard_violation\] /\$id: '
+    r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})){0,2048}"'
+    r' is not a "uri-reference"'
+)
+
+
+def _native_schema_error(payload: dict, *, exit_code: int | None, timed_out: bool) -> dict:
+    """Recognize one bounded native error shape, not nested model/tool text."""
+    if (set(payload) != {"type", "message"} or payload.get("type") != "error"
+            or not (timed_out is True or type(exit_code) is int and exit_code != 0)):
+        return {}
+    message = payload.get("message")
+    prefix = "Internal error: "
+    if type(message) is not str or len(message) > 8192 or not message.startswith(prefix):
+        return {}
+
+    def unique_object(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise ValueError("duplicate native error field")
+            result[name] = value
+        return result
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite native error field")
+
+    try:
+        error = json.loads(message[len(prefix):], object_pairs_hook=unique_object,
+                           parse_constant=nonfinite)
+    except (ValueError, TypeError, RecursionError):
+        return {}
+    if (type(error) is not dict or set(error) != {"message", "http_status"}
+            or type(error["http_status"]) is not int or error["http_status"] != 400
+            or type(error["message"]) is not str
+            or _SCHEMA_ID_ERROR.fullmatch(error["message"]) is None):
+        return {}
+    return {"native_grok_http_status": 400,
+            "native_grok_schema_error_code": "schema_id_invalid",
+            "native_grok_schema_error_path": "/$id"}
 
 
 def _closed_alias(payload: dict, names: tuple[str, ...], allowed: frozenset) -> str:
@@ -53,8 +98,11 @@ def _outcome_observation(payload: object, *, exit_code: int | None, timed_out: b
             data[key]) is not None for key in ("message", "error"))
     process = ("timeout" if timed_out is True else "returned" if type(exit_code) is int and exit_code == 0
                else "failed" if type(exit_code) is int else "unknown")
+    schema_error = _native_schema_error(data, exit_code=exit_code, timed_out=timed_out)
     if process == "timeout":
         reason, source = "timeout", "process"
+    elif schema_error:
+        reason, source = "schema_rejected", "native_schema_error"
     elif stop == "max_turn_requests":
         reason, source = "max_turns", "stop_reason"
     elif subtype == "error_max_turns":
@@ -80,7 +128,7 @@ def _outcome_observation(payload: object, *, exit_code: int | None, timed_out: b
     return {"native_grok_envelope_observed": envelope, "native_grok_process_outcome": process,
             "native_grok_stop_reason": stop, "native_grok_error_subtype": subtype,
             "native_grok_error_observed": native_error, "native_grok_reason_code": reason,
-            "native_grok_classification_source": source}
+            "native_grok_classification_source": source, **schema_error}
 
 
 def grok_outcome_receipt(observation: dict) -> dict:
@@ -88,7 +136,7 @@ def grok_outcome_receipt(observation: dict) -> dict:
     def enum(name, choices):
         value = observation.get("native_grok_" + name)
         return value if type(value) is str and value in choices else "unknown"
-    return {"schema": "native-grok-outcome@1",
+    result = {"schema": "native-grok-outcome@1",
             "envelope_observed": observation.get("native_grok_envelope_observed") is True,
             "process_outcome": enum("process_outcome", _PROCESS_OUTCOMES),
             "stop_reason": enum("stop_reason", _STOP_REASONS),
@@ -97,6 +145,18 @@ def grok_outcome_receipt(observation: dict) -> dict:
             "reason_code": enum("reason_code", _REASON_CODES),
             "classification_source": enum("classification_source", _CLASSIFICATION_SOURCES),
             "raw_provider_data_exported": False, "completion_authority": False}
+    schema_error = (type(observation.get("native_grok_http_status")) is int
+        and observation["native_grok_http_status"] == 400
+        and observation.get("native_grok_schema_error_code") == "schema_id_invalid"
+        and observation.get("native_grok_schema_error_path") == "/$id"
+        and result["envelope_observed"] and result["error_observed"]
+        and ((result["process_outcome"], result["reason_code"], result["classification_source"])
+             in {("failed", "schema_rejected", "native_schema_error"),
+                 ("timeout", "timeout", "process")}))
+    if schema_error:
+        result.update(http_status=400, schema_error_code="schema_id_invalid",
+                      schema_error_path="/$id")
+    return result
 
 
 def native_grok_observation(payload: object, *, exit_code: int | None, timed_out: bool = False) -> dict:
