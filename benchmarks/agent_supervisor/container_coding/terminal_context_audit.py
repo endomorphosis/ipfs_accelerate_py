@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract")
 
 
 def _sha(raw: bytes) -> str:
@@ -227,9 +227,33 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                     raise ValueError("invalid intent requirement identity population")
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
+    reply = result.get("coding_reply_contract")
+    reply_bytes = 0
+    if reply is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
+        if type(reply) is not dict or reply.get("mode") != "ordinary-completion@1" or item.get("provider") != "codex_cli":
+            raise ValueError("invalid coding reply contract receipt")
+        _, expected = apply_coding_reply_contract(model_prompt="", mode=reply["mode"],
+            purpose="coding", provider="codex_cli")
+        dynamic = {"model_prompt_before_sha256", "model_prompt_before_bytes",
+                   "model_prompt_after_sha256", "model_prompt_after_bytes", "response_validated"}
+        if (set(reply) != set(expected) or type(reply["response_validated"]) is not bool
+                or any(type(reply[key]) is not type(expected[key]) or reply[key] != expected[key]
+                       for key in expected if key not in dynamic)):
+            raise ValueError("invalid coding reply contract receipt")
+        for field in ("model_prompt_before_sha256", "model_prompt_after_sha256"):
+            _digest(reply[field])
+        for field in ("model_prompt_before_bytes", "model_prompt_after_bytes"):
+            if type(reply[field]) is not int or not 0 < reply[field] <= 256_000:
+                raise ValueError("invalid coding reply contract byte count")
+        reply_bytes = reply["instruction_bytes"]
+        if (reply["model_prompt_before_bytes"] != router_bytes + result["workspace_advisory_bytes"]
+                or reply["model_prompt_after_bytes"] != result["model_prompt_bytes"]
+                or reply["model_prompt_after_sha256"] != result["model_prompt_sha256"]):
+            raise ValueError("inconsistent coding reply contract input identities")
     if (result["prompt_sha256"] != result["native_prompt_sha256"]
             or result["prompt_bytes"] != result["native_prompt_bytes"]
-            or router_bytes + result["workspace_advisory_bytes"] != result["model_prompt_bytes"]):
+            or router_bytes + result["workspace_advisory_bytes"] + reply_bytes != result["model_prompt_bytes"]):
         raise ValueError("inconsistent router input identities")
     return result
 
@@ -281,6 +305,14 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
             router_prompt_bytes=len(router_prompt.encode()) == receipt["router_prompt_bytes"])
     model, advisory = render_model_prompt(prompt=router_prompt, purpose="coding",
         workspace=Path(receipt["workspace"]), semantic_transport=translated)
+    reply = receipt.get("coding_reply_contract")
+    if reply is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
+        model, expected = apply_coding_reply_contract(model_prompt=model, mode=reply["mode"],
+            purpose="coding", provider="codex_cli")
+        for field in expected:
+            if field != "response_validated":
+                checks["coding_reply_" + field] = reply[field] == expected[field]
     checks.update(model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],
         model_prompt_bytes=len(model.encode()) == receipt["model_prompt_bytes"],
         workspace_advisory_sha256=_sha(advisory.encode()) == receipt["workspace_advisory_sha256"],

@@ -1,0 +1,35 @@
+{
+  "artifact_bindings": [
+    {
+      "bytes": 43357,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compare_reply_contract_receipts.py",
+      "sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6"
+    },
+    {
+      "bytes": 14247,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/check_reply_contract_accounting.py",
+      "sha256": "a3db8918e30111cb2a7856080969d246de57871ce594e94d4eb54f2930166471"
+    },
+    {
+      "bytes": 12976,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/accounting-controls-02.json",
+      "sha256": "3c1619ed369948263a33627753d1c124756d07e93e251da6ad405d21b33cf882"
+    },
+    {
+      "bytes": 4123,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/accounting-scope.md",
+      "sha256": "5af65347d82fd02417499d36dcee518e8843c7ed65162b30acb894a7682c8e4a"
+    }
+  ],
+  "authored_controls_passed": 22,
+  "coding_archive_sources": 13,
+  "current_source_bindings_match": true,
+  "fixtures_are_not_benchmark_results": true,
+  "fresh_token_savings_measured": false,
+  "historical_legacy_total_tokens": 292378,
+  "new_provider_calls": 0,
+  "new_real_benchmark_runs": 0,
+  "old_comparator_unchanged_sha256": "e3cde58b7e8c98962582c98adcbd988cc570f65b1e7dd75bbacf12387dcfd1ac",
+  "recorded_at_utc": "2026-10-06T14:54:26.637553+00:00",
+  "schema": "coding-reply-contract-accounting-delivery@1"
+}

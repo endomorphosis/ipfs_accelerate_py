@@ -30,7 +30,96 @@ def _repository(path):
     return subprocess.check_output(["git", "branch", "--show-current"], cwd=path, text=True).strip()
 
 
-def _native_chain(tmp_path, monkeypatch, *, partial_edit=False, pooled=False):
+def _authored_router_postdecode(path, *, repository, source_path, replacement, task_id="DQP-T001"):
+    """Real CLI adapter and semantic decoder; only the executable is authored.
+
+    All source, response, usage and allocation records belong to this fixture.
+    The model-facing reply has a foreign task binding and must remain rejected
+    even though its native CLI exited successfully after a partial edit.
+    """
+    from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+        ContextCompiler, build_text_context_references, render_context_capsule,
+    )
+    from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import prepare_semantic_context
+    from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
+
+    exclude = repository / ".git/info/exclude"
+    exclude.write_text(exclude.read_text() + "\n.runtime/\n")
+    output = repository / ".runtime/postdecode-context"
+    prepare_semantic_context(repository=repository, paths=[source_path],
+        required_raw_paths=[source_path], objective="Repair the authored fixture.",
+        task_id=task_id, output=output)
+    artifact = output / "worker-context.json"
+    refs = build_text_context_references(artifact.read_text(), reference_prefix="semantic-context",
+        kind="semantic-context", path=artifact.relative_to(repository).as_posix(),
+        repository_id="repo:postdecode", tree_id="tree:postdecode", required=True, chunk_bytes=1201)
+    context = ContextCompiler(ContextBudget(max_input_tokens=32768, max_items=128,
+        max_item_bytes=16384, max_serialized_bytes=262144)).compile(
+        repository_id="repo:postdecode", tree_id="tree:postdecode", objective_id=task_id,
+        objective_revision="sha256:fixture", policy_id="policy:fixture", policy_revision="sha256:fixture",
+        caller="supervisor:fixture", stage="implementation", goal={"id": task_id},
+        authority={"mode": "candidate_only", "completion_authority": False},
+        scope={"allowed_paths": [source_path]}, acceptance={"criteria": ["pending native validation"]},
+        evidence=refs)
+    prompt = render_context_capsule(context.capsule)
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=repository,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    table = encoded.table.to_dict()
+    reply = {"schema": codec.REPLY_SCHEMA, "translation_cid": encoded.table.translation_cid,
+        "task_id": "FOREIGN-POSTDECODE", "scope_cid": table["scope_cid"],
+        "semantic_root_cid": table["semantic_root_cid"], "task_family": "PATCH_SKETCH_GENERATION",
+        "response": {"candidate_only": True}}
+    fixture_root = path.parent / "postdecode-provider"
+    fixture_root.mkdir(mode=0o700)
+    capture = fixture_root / "dispatches.jsonl"
+    executable = fixture_root / "codex"
+    executable.write_text(f'''#!{sys.executable}
+import hashlib,json,os,pathlib,sys
+argv=sys.argv[1:]
+assert argv.count('--output-last-message')==1
+prompt=sys.stdin.read()
+cwd=pathlib.Path.cwd()
+capture=pathlib.Path({str(capture)!r})
+with capture.open('a') as stream:
+    stream.write(json.dumps({{"cwd":str(cwd),"prompt_sha256":hashlib.sha256(prompt.encode()).hexdigest(),"prompt_bytes":len(prompt.encode())}})+'\\n')
+(cwd / {source_path!r}).write_text({replacement!r})
+pathlib.Path(argv[argv.index('--output-last-message')+1]).write_text({json.dumps(reply)!r})
+thread_id='fixture-postdecode-0001'
+session=pathlib.Path(os.environ['CODEX_HOME']) / 'sessions/2026/10/06' / ('rollout-'+thread_id+'.jsonl')
+session.parent.mkdir(parents=True,mode=0o700)
+rows=[{{"type":"session_meta","payload":{{"id":thread_id,"cwd":str(cwd)}}}},
+      {{"type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":15,"cached_input_tokens":5,"cache_write_input_tokens":0,"output_tokens":4,"reasoning_output_tokens":2,"total_tokens":19}}}}}}}},
+      {{"type":"event_msg","payload":{{"type":"task_complete"}}}}]
+session.write_text(''.join(json.dumps(row)+'\\n' for row in rows))
+print(json.dumps({{"type":"thread.started","thread_id":thread_id}}))
+print(json.dumps({{"type":"turn.completed","usage":{{"input_tokens":15,"output_tokens":4,"cached_tokens":5}}}}))
+''')
+    executable.chmod(0o700)
+    root = Path(__file__).resolve().parents[2]
+    path.write_text(f'''import io,os,sys
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0, {str(root)!r})
+os.environ['PATH']={str(fixture_root)!r}+os.pathsep+os.environ.get('PATH','')
+os.environ['CODEX_HOME']={str(fixture_root / 'empty-codex-home')!r}
+from ipfs_accelerate_py import llm_router
+from ipfs_accelerate_py.llm_allocation import duckdb_store,intelligence_index
+from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+intelligence_index.discover_available_providers=lambda: ['codex_cli']
+intelligence_index.select_efficient_route=lambda **kwargs: SimpleNamespace(provider='codex_cli',model_name='fixture',reasoning_effort='high',catalog_revision='authored-postdecode')
+duckdb_store._DEFAULT_STORE=duckdb_store.AllocationStore(Path({str(fixture_root / 'allocation.duckdb')!r}))
+llm_router.get_llm_provider=lambda *args,**kwargs: llm_router._get_codex_cli_provider()
+sys.argv=['authored-router','--provider','codex_cli','--model','fixture','--timeout','10',
+    '--max-output-tokens','128','--semantic-repository',{str(repository)!r},
+    '--semantic-transport-schema',{codec.COMPACT_TRANSPORT_SCHEMA!r}]
+sys.stdin=io.TextIOWrapper(io.BytesIO({prompt.encode()!r}),encoding='utf-8')
+raise SystemExit(runner.main())
+''')
+    return capture
+
+
+def _native_chain(tmp_path, monkeypatch, *, partial_edit=False, pooled=False, postdecode=False):
     repository = tmp_path / "repository"
     branch = _repository(repository)
     script = tmp_path / "router_timeout.py"
@@ -54,7 +143,10 @@ def timeout(*args, **kwargs):
 llm_router.generate_text = timeout
 runner.run(prompt="Repair the fixture", provider="codex_cli", model="fixture", timeout=1, max_output_tokens=128)
 '''.replace("ROOT", repr(str(root))))
-    if partial_edit:
+    if postdecode:
+        assert partial_edit, "post-decode qualification requires an actual candidate edit"
+        _authored_router_postdecode(script, repository=repository, source_path="result.py", replacement="VALUE = 1\n")
+    elif partial_edit:
         script.write_text("from pathlib import Path\nPath('result.py').write_text('VALUE = 1\\n')\n" + script.read_text())
     database = _open_daemon(tmp_path, max_task_attempts=1)
     population = _population(1)
@@ -127,6 +219,92 @@ def test_actual_router_timeout_settles_native_failure_without_retry(tmp_path, mo
         events, _ = _accepted_source_events(bridge._paths(attempt).events)
         finished = [item for item in events if item.get("type") == "implementation_finished"]
         assert len(finished) == 1 and finished[0]["implementation_commit"] == ""
+        assert finished[0]["lifecycle_finalize"]["finalized"] is True
+        if pooled:
+            cleanup = finished[0]["cleanup_result"]
+            original = cleanup["pool_release"]["lifecycle_finalize"]
+            assert original["finalized"] is True
+            assert cleanup["lifecycle_finalize"] == original
+            assert finished[0]["lifecycle_finalize"]["fence"] == original["fence"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("pooled", [False, True])
+def test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit(tmp_path, monkeypatch, pooled):
+    """CLI exit zero does not settle effects; its waited router exit owns failure."""
+    daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, partial_edit=True,
+        pooled=pooled, postdecode=True)
+    try:
+        result = daemon.run_once()
+        assert result["implementation_result"].get("portal_terminal_failure") is True, result
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt.status == "failed"
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        assert daemon.coordinator.get_task_claim(attempt.claim_id).state.value == "released"
+        receipt = daemon.provider_invocation_recorded(attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}")
+        assert receipt["callback_state"] == "failed_outcome_settled"
+        native = receipt["native_exit"]
+        assert native["returncode"] != 0
+        assert native["reaped"] is True
+        assert native["process_group_absent"] is True
+        assert native["subreaper_children_absent"] is True
+        assert native["lifecycle_finalized"] is True
+        assert native["automatic_retry_admitted"] is False
+        assert native["completion_authority"] is False
+        assert native["attempt_id"] == attempt.attempt_id
+        assert native["task_cid"] == attempt.task_cid
+        assert native["claim_id"] == attempt.claim_id
+        assert native["events_digest"] and native["state_digest"] and native["state_target_digest"]
+        assert bridge._issued_provider_exit_failure is None
+        assert len(portals) == 1 and portals[0]._database_provider_exit is None
+        assert daemon.claim_next() is None
+        dispatches = [json.loads(row) for row in
+            (tmp_path / "postdecode-provider/dispatches.jsonl").read_text().splitlines()]
+        assert len(dispatches) == 1
+        workspace = Path(dispatches[0]["cwd"])
+        assert workspace != tmp_path / "repository"
+        assert (tmp_path / "repository/result.py").read_text() == "VALUE = 0\n"
+        assert subprocess.check_output(["git", "status", "--porcelain"],
+            cwd=tmp_path / "repository", text=True) == ""
+        if not pooled:
+            assert (workspace / "result.py").read_text() == "VALUE = 1\n"
+        logs = list(bridge._paths(attempt).root.rglob("*.log"))
+        rows = [json.loads(line) for path in logs for line in path.read_text().splitlines()
+                if line.startswith('{"') and 'router-implementation-invocation@1' in line]
+        assert len(rows) == 1
+        invocation = rows[0]
+        assert invocation["status"] == "failed"
+        assert invocation["failure_phase"] == "semantic_response_decode"
+        assert invocation["error_type"] == "SemanticTranslationError"
+        assert invocation["semantic_response_failure"]["reason_code"] == "response_envelope_binding_mismatch"
+        assert invocation["usage"]["exit_code"] == 0
+        assert invocation["usage"]["prompt_tokens"] == 15
+        assert invocation["usage"]["completion_tokens"] == 4
+        assert invocation["usage"]["cached_tokens"] == 5
+        assert invocation["completion_authority"] is False
+        errors = [json.loads(line) for path in logs for line in path.read_text().splitlines()
+            if line.startswith('{"') and 'router-implementation-error@2' in line]
+        assert len(errors) == 1
+        diagnostic = errors[0]["diagnostic"]
+        assert errors[0]["error_type"] == "SemanticTranslationError"
+        assert diagnostic["phase"] == "semantic_response_decode"
+        assert diagnostic["completion_authority"] is False
+        assert diagnostic["automatic_retry_admitted"] is False
+        assert diagnostic["settlement_authority"] is False
+        assert "FOREIGN-POSTDECODE" not in json.dumps(errors[0])
+        assert invocation["model_prompt_sha256"] == dispatches[0]["prompt_sha256"]
+        usage = invocation["native_rollout_usage"]
+        assert usage["task_complete_observed"] is True
+        assert usage["observed_token_count_records"] == 1
+        assert usage["usage"] == {"input_tokens": 15, "cached_input_tokens": 5,
+            "cache_write_input_tokens": 0, "output_tokens": 4, "reasoning_output_tokens": 2, "total_tokens": 19}
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import _accepted_source_events
+        events, _ = _accepted_source_events(bridge._paths(attempt).events)
+        finished = [item for item in events if item.get("type") == "implementation_finished"]
+        assert len(finished) == 1
+        assert finished[0]["implementation_commit"] == ""
         assert finished[0]["lifecycle_finalize"]["finalized"] is True
         if pooled:
             cleanup = finished[0]["cleanup_result"]

@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "bytes": 5654,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/README.md",
+      "sha256": "2320ecfc950e8588ceee328a6226720de4ec847ee05a609de5e66b5635386678"
+    },
+    {
+      "bytes": 12976,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/accounting-controls.json",
+      "sha256": "3c1619ed369948263a33627753d1c124756d07e93e251da6ad405d21b33cf882"
+    },
+    {
+      "bytes": 1483,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/accounting-delivery.json",
+      "sha256": "b39da9147baff504f8e92ed6c21e9bd5ef352e8ad9925120ee9f10966601083a"
+    },
+    {
+      "bytes": 12853,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/benchmark-review.json",
+      "sha256": "52e2f5dda047b9ac9882e30c2652a12f493ec59147be579e06391538f2d05b19"
+    },
+    {
+      "bytes": 43357,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/compare_reply_contract_receipts.py",
+      "sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6"
+    },
+    {
+      "bytes": 2830,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/contract-tests.json",
+      "sha256": "c8a3b6c805842bcd9f558623b20a0586f69230e12e71955be3e2efe46c7340f1"
+    },
+    {
+      "bytes": 6976,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/qualification.json",
+      "sha256": "2b604be09876aceb570453a14d86abdd2b21e4436f942131cdcc9231cff8e7eb"
+    },
+    {
+      "bytes": 6706,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/runtime-review.json",
+      "sha256": "5fd661ceb21311a8c1c4c5e7db83206f0723d71577aabdb6a1ac8e0d5439f28b"
+    },
+    {
+      "bytes": 21810,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/settlement-controls.json",
+      "sha256": "e47cf39b908d6d5d707fb416ebc65f3374c8c442fb6aadcf7c5f95e7ab005767"
+    },
+    {
+      "bytes": 7874,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/settlement-entrypoint.json",
+      "sha256": "a02d1f6b378bd155f4e3b5749a99577cec6e9309c2c4f821eaaf4fd7bbad2091"
+    },
+    {
+      "bytes": 5734,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/settlement-summary.json",
+      "sha256": "c4a8e85008d315b236597ec27d5d9aad8852eec46728496aa4646a356a1a8d85"
+    }
+  ],
+  "schema": "terminal-coding-reply-public-artifact-manifest@1"
+}

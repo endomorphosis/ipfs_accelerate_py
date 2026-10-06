@@ -1,0 +1,62 @@
+{
+  "schema": "coding-reply-contract-offline-qualification@1",
+  "passed": true,
+  "test_count": 92,
+  "test_counts_by_module": {
+    "api.test_coding_reply_contract": 47,
+    "api.test_router_implementation_runner": 20,
+    "api.test_codex_structured_plan_roundtrip": 4,
+    "api.test_router_failure_diagnostics": 21
+  },
+  "provider_calls": 0,
+  "native_cli_fixture": "authored local executable only",
+  "real_benchmark_runs": 0,
+  "instruction_bytes": 506,
+  "instruction_sha256": "abd57dd0db7f134b7613479da5cc93ed9ebbbe79d40c1568c3d0d02eeba451e1",
+  "native_output_schema_bytes": 215,
+  "native_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76",
+  "source_bindings": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "bytes": 5423,
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "bytes": 34785,
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "path": "test/api/test_coding_reply_contract.py",
+      "bytes": 18100,
+      "sha256": "2e5f8b0cf1ef4d2c1925ccd5242f945c08be4d9bfc94ef21e5007de51939a147"
+    }
+  ],
+  "artifact_bindings": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/coding-reply-contract-tests-01-command.json",
+      "bytes": 2060,
+      "sha256": "1ba950264b86a4c737e6d084817b3d89cf10d30090ca6b72b3d99c3fc7c59d49"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/coding-reply-contract-tests-01-exit.json",
+      "bytes": 779,
+      "sha256": "db2f00c8bfab6189e3b93e4c10431a46496ad87dd4641d4d73180b51980a713f"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/coding-reply-contract-tests-01.log",
+      "bytes": 15397,
+      "sha256": "f17f9cb9d7883668032a2136428bc82dcde59f4d8aaf47c647fb455986a66cdb"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/coding-reply-contract-tests-01.xml",
+      "bytes": 17194,
+      "sha256": "e4eda1b834da692227a5d706495eed6262d842c25b328a2410f71be89c01c4b2"
+    }
+  ],
+  "limitations": [
+    "Offline qualification establishes source and fixture behavior, not a successful real model generation or Terminal Bench outcome.",
+    "No token saving is established; the final instruction adds 506 UTF-8 bytes to each selected coding input and native schema generation is a separately measured provider option.",
+    "The two-field acknowledgment grants no execution, completion, retry or settlement authority. Structured residual-candidate output selection remains unsupported by this new mode."
+  ]
+}

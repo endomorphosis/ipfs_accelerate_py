@@ -1,0 +1,127 @@
+{
+  "blocking_findings": [],
+  "checks": {
+    "bridge_reuses_runner_error_parser": true,
+    "closed_diagnostic_vocabulary_contains_both_phases": true,
+    "closed_diagnostic_vocabulary_contains_contract_file": true,
+    "contract_receipt_exact_18_fields": true,
+    "contract_receipt_non_authority": true,
+    "contract_suffix_follows_public_instruction_and_workspace_advisory": true,
+    "legacy_native_receipt_dictionary_ast_unchanged": true,
+    "legacy_planning_contract_branches_ast_unchanged": true,
+    "legacy_workspace_advisory_function_ast_unchanged": true,
+    "native_schema_canonical_bytes_215": true,
+    "reply_mode_validation_precedes_provider_dispatch": true,
+    "review_source_stable": true,
+    "schema_closed_two_required_singleton_string_fields": true,
+    "semantic_decoder_and_native_plan_public_context_provider_source_unchanged": true,
+    "strict_semantic_decode_precedes_acknowledgment_validation": true
+  },
+  "contract_receipt_fields": [
+    "schema",
+    "mode",
+    "owner_selected",
+    "instruction_sha256",
+    "instruction_bytes",
+    "model_prompt_before_sha256",
+    "model_prompt_before_bytes",
+    "model_prompt_after_sha256",
+    "model_prompt_after_bytes",
+    "response_validated",
+    "native_output_schema_sha256",
+    "native_output_schema_bytes",
+    "native_output_schema_requested",
+    "residual_task_family_selected",
+    "execution_authority",
+    "completion_authority",
+    "settlement_authority",
+    "automatic_retry_admitted"
+  ],
+  "created_at_utc": "2026-10-06T14:52:55.225482+00:00",
+  "limitations": [
+    "Static independent source review establishes no fresh Terminal Bench reward or token saving."
+  ],
+  "mode": "read_only_source_and_test_source_review",
+  "native_schema": {
+    "bytes": 215,
+    "sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76"
+  },
+  "new_provider_calls": 0,
+  "nonblocking_observations": [
+    "The legacy direct run API retains its inherited lack of a general purpose whitelist. New ordinary mode requires exact coding purpose; the CLI itself restricts purpose to coding/planning. Preserving legacy does not require changing this unrelated existing behavior.",
+    "This review read the authored test source, including both transports, reserved binding negatives, schema-custody negatives and actual fake CLI custody. It did not execute tests or inspect benchmark bodies."
+  ],
+  "passed": true,
+  "private_database_reads": 0,
+  "raw_benchmark_body_reads": 0,
+  "raw_provider_response_reads": 0,
+  "recommended_source_changes": [],
+  "reviewed_properties": [
+    "Legacy default emits no contract suffix, coding receipt or coding output schema; native input, public/residual context and planning branches remain unchanged.",
+    "Owner-selected ordinary mode appends one fixed suffix after complete existing task/public/workspace presentation and attests both before/after model prompt hashes and bytes.",
+    "The same canonical closed 215-byte schema mapping reaches the private Codex adapter; unchanged adapter writes mode0600 schema, records digest and size and removes temporary files. Final acceptance independently requires observed digest/size equality.",
+    "Only ordinary coding via Codex may select the new mode; unknown modes and ordinary planning/non-Codex choices refuse before dispatch.",
+    "When semantic encoding is active, the unchanged strict native decoder runs before coding schema custody and acknowledgment validation. Foreign/missing/extra reserved bindings, stale producers, unknown aliases and native grammar failures cannot be relabeled as acknowledgment.",
+    "Acknowledgment validation requires a bounded 1024-byte exact two-field object with literal singleton values; duplicate keys, nonfinite constants, extra fields and malformed values fail without repair. Valid original text is returned unchanged.",
+    "Acknowledgment validation grants no execution, task completion, settlement or automatic retry authority; native candidate and owner admission remain external mandatory gates.",
+    "Both new failure phases and the coding contract file are already in the closed runner vocabulary; bridge child diagnostic validation imports that vocabulary through the existing runner parser."
+  ],
+  "reviewer": "/root/postdecode_settlement_qualification",
+  "schema": "terminal-coding-reply-contract-independent-review@1",
+  "source_bindings": [
+    {
+      "bytes": 5423,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 6186,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 14744,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 14403,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "sha256": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 18100,
+      "path": "test/api/test_coding_reply_contract.py",
+      "sha256": "2e5f8b0cf1ef4d2c1925ccd5242f945c08be4d9bfc94ef21e5007de51939a147"
+    }
+  ],
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "test_runs": 0,
+  "unchanged_source_comparisons_to_head": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py": true,
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": true,
+    "ipfs_accelerate_py/llm_router.py": true
+  }
+}

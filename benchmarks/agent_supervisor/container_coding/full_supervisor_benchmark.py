@@ -27,6 +27,10 @@ from .terminal_semantic_transport_policy import (
     DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS,
     validate_semantic_transport_schema, semantic_transport_selection, require_semantic_transport_archive,
 )
+from .terminal_coding_reply_policy import (
+    DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES, validate_coding_reply_mode,
+    coding_reply_selection, require_coding_reply_archive,
+)
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -161,9 +165,11 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
                task_profile: dict | None = None, provider_profile: str | None = None,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+               coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                model_revision: str = "") -> dict:
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
+    validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
@@ -177,7 +183,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "override_setup_timeout_sec": 1800.0,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
                    "model_revision": model_revision if arm == "full" else "",
-                   **semantic_transport_selection(semantic_transport_schema)},
+                   **semantic_transport_selection(semantic_transport_schema),
+                   **coding_reply_selection(coding_reply_mode)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -221,9 +228,11 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             source384_config: Path | None = None, resource_profile=None,
             setup_cache_policy: str | None = None, task_name: str = TASK,
             task_profile: Path | None = None, provider_profile: str | None = None,
-            semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA) -> dict:
+            semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+            coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE) -> dict:
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
+    validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
@@ -240,6 +249,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_worker_capability(manifest, resource_profile)
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
+    require_coding_reply_archive(manifest, coding_reply_mode)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
         verify_grok_archive(archive / "runtime.tar.gz", manifest)
@@ -275,6 +285,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
+        coding_reply_mode=coding_reply_mode,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
@@ -301,6 +312,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               "command": command, **{key: selected_provider[key] for key in ("model", "reasoning_effort", "cli_version")},
               **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
               **semantic_transport_selection(semantic_transport_schema),
+              **coding_reply_selection(coding_reply_mode),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
@@ -321,6 +333,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
+    reply_mode = validate_coding_reply_mode(prepared.get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
+        arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_reply_mode = validate_coding_reply_mode(
+        config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
+        arm=prepared["arm"])
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     configured_transport = validate_semantic_transport_schema(
@@ -350,6 +367,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "task": task.name, **profile,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               **semantic_transport_selection(transport),
+              **coding_reply_selection(reply_mode),
+              **({"coding_reply_config_unchanged": configured_reply_mode == reply_mode}
+                 if "coding_reply_mode" in prepared or "coding_reply_mode" in config["agents"][0].get("kwargs", {}) else {}),
               **({"semantic_transport_config_unchanged": configured_transport == transport}
                  if "semantic_transport_schema" in prepared or "semantic_transport_schema" in config["agents"][0].get("kwargs", {}) else {}),
               "original_task_inputs_unchanged": unchanged,
@@ -358,7 +378,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
-                  and configured_transport == transport,
+                  and configured_transport == transport and configured_reply_mode == reply_mode,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -377,6 +397,10 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
+    reply_mode = validate_coding_reply_mode(prepared.get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
+        arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    if reply_mode != config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE):
+        raise ValueError("prepared coding reply selection changed")
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     if transport != config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
@@ -388,6 +412,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
+    require_coding_reply_archive(current_manifest, reply_mode)
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
     from .terminal_worker_capability import require_worker_capability
@@ -421,6 +446,8 @@ def main():
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES, help="Explicit immutable router route; no cross-provider fallback")
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
+    parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
+        default=DEFAULT_CODING_REPLY_MODE, help="Explicit coding acknowledgment contract; frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     from .terminal_setup_cache_advice import POLICIES
     parser.add_argument("--setup-cache-policy", choices=POLICIES,
@@ -433,6 +460,8 @@ def main():
     args = parser.parse_args()
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.coding_reply_mode != DEFAULT_CODING_REPLY_MODE:
+        parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -443,7 +472,8 @@ def main():
                          setup_cache_policy=args.setup_cache_policy,
                          task_name=TASK if args.task is None else args.task,
                          task_profile=args.task_profile, provider_profile=args.provider_profile,
-                         semantic_transport_schema=args.semantic_transport_schema)
+                         semantic_transport_schema=args.semantic_transport_schema,
+                         coding_reply_mode=args.coding_reply_mode)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))

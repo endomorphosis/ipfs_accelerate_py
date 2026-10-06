@@ -23,10 +23,10 @@ MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 RUNNER_FAILURE_PHASES = frozenset({
     "runner_initialization", "argument_validation", "planning_contract",
     "container_boundary", "workspace_identity", "semantic_context",
-    "doctor_residual", "public_instruction", "model_prompt",
+    "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
-    "semantic_response_decode", "unclassified",
+    "semantic_response_decode", "coding_reply_validation", "unclassified",
 })
 RUNNER_FAILURE_TYPES = frozenset({
     "ValueError", "TypeError", "RuntimeError", "PermissionError", "FileNotFoundError",
@@ -38,7 +38,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "router_implementation_runner.py", "container_worker_boundary.py",
     "semantic_router_translation.py", "doctor_residual_context.py",
     "router_public_instruction.py", "local_planning_admission.py",
-    "terminal_planner_contract.py", "doctor_candidate_runner.py",
+    "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
 })
 
 
@@ -178,6 +178,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         container_boundary_sha256: str = "", purpose: str = "coding",
         semantic_repository: Path | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+        coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
@@ -197,6 +198,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit model and bounded invocation settings required")
     if reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
         raise ValueError("explicit supported reasoning effort required")
+    from .coding_reply_contract import validate_coding_reply_mode
+    validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     if semantic_transport_schema not in {"supervisor-semantic-router-input@1",
                                          "supervisor-semantic-router-input@2"}:
         raise ValueError("unsupported semantic transport schema")
@@ -290,6 +293,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     failure_phase = "model_prompt"
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None)
+    coding_reply_receipt = None
+    if coding_reply_mode != "legacy":
+        failure_phase = "coding_reply_contract"
+        from .coding_reply_contract import apply_coding_reply_contract
+        model_prompt, coding_reply_receipt = apply_coding_reply_contract(
+            model_prompt=model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
     # Native provider children must never inherit a typed owner token, private
@@ -343,6 +352,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
+    if coding_reply_receipt is not None:
+        receipt["coding_reply_contract"] = coding_reply_receipt
     failure_phase = "provider_invocation"
     provider_options = {}
     if codex_planning_schema is not None:
@@ -353,6 +364,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "native_schema_requested": True,
             "response_schema_validated": False,
             "plan_admitted": False,
+        }}
+    if coding_reply_receipt is not None:
+        from .coding_reply_contract import coding_completion_schema
+        provider_options["codex_output_schema"] = coding_completion_schema()
+        receipt["provider_invocation_policy"] = {"structured_output": {
+            "schema": "codex-native-coding-completion-json-schema@1",
+            "native_schema_requested": True,
+            "response_schema_validated": False,
+            "execution_authority": False,
+            "completion_authority": False,
+            "settlement_authority": False,
         }}
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
@@ -435,6 +457,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                                                       repository=semantic_repository)
             receipt["semantic_response_translation"] = dict(decoded.receipt)
             output = decoded.text
+        if coding_reply_receipt is not None:
+            # Reserved semantic envelopes always pass through the unchanged
+            # strict decoder above; the ordinary contract cannot relabel them.
+            failure_phase = "coding_reply_validation"
+            if (observation.get("codex_output_schema_sha256") != coding_reply_receipt["native_output_schema_sha256"]
+                    or observation.get("codex_output_schema_bytes") != coding_reply_receipt["native_output_schema_bytes"]):
+                raise RuntimeError("Codex coding reply schema invocation metadata is missing or differs")
+            from .coding_reply_contract import validate_coding_completion_reply
+            output = validate_coding_completion_reply(output)
+            coding_reply_receipt["response_validated"] = True
+            receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         receipt["status"] = "provider_returned"
         return output, receipt
     except BaseException as error:
@@ -496,6 +529,8 @@ def main():
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
+    parser.add_argument("--coding-reply-mode", default="legacy",
+                        choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
     parser.add_argument("--doctor-residual-sha256", default="")
     parser.add_argument("--doctor-residual-task-cid", default="")
@@ -512,6 +547,7 @@ def main():
                         container_boundary_sha256=args.container_boundary_sha256,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         semantic_transport_schema=args.semantic_transport_schema,
+                        coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,
                         doctor_residual_task_cid=args.doctor_residual_task_cid,

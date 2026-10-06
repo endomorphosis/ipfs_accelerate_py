@@ -84,8 +84,8 @@ run_with_child_custody(lambda: runner.run(prompt="Authored signed custody fixtur
     return marker
 
 
-@pytest.mark.parametrize("provider_boundary", ["authored_leaf", "real_grok_detached"])
-def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(tmp_path, monkeypatch, provider_boundary):
+@pytest.mark.parametrize("failure", ["timeout", "postdecode", "grok_detached"])
+def test_signed_native_router_failure_settles_failed_attempt_and_releases_claim(tmp_path, monkeypatch, failure):
     """Actual START/owner/claim/Portal/STOP; no authority guard is replaced."""
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import open_database_coordinator
@@ -99,9 +99,13 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
     database = Path(prepared["intent_database"])
     initial_answer = (repository / "answer.py").read_bytes()
     initial_check = (repository / "test_answer.py").read_bytes()
-    script = tmp_path / "authored_router_timeout.py"
-    descendant_marker = None
-    if provider_boundary == "real_grok_detached":
+    script = tmp_path / "authored_router_failure.py"
+    capture = descendant_marker = None
+    if failure == "postdecode":
+        from test.api.test_native_provider_failure_settlement import _authored_router_postdecode
+        capture = _authored_router_postdecode(script, repository=repository,
+            source_path="answer.py", replacement="def answer():\n    return 2\n", task_id=prepared["task_id"])
+    elif failure == "grok_detached":
         descendant_marker = _real_grok_detached_timeout(script)
     else:
         _authored_router_timeout(script)
@@ -124,10 +128,16 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
             started = runtime.start()
             assert started.succeeded, started.error
             deadline = time.monotonic() + 90
+            dispatch_observed = False
             while True:
                 task = owner.source.get_task(prepared["task_cid"])
                 if task.status in {"failed", "blocked", "completed", "cancelled"}:
                     break
+                if capture is not None and capture.exists() and not dispatch_observed:
+                    # This authored CLI finishes immediately. Settlement must
+                    # follow its native router exit without a benchmark cutoff.
+                    deadline = min(deadline, time.monotonic() + 15)
+                    dispatch_observed = True
                 assert time.monotonic() < deadline, (task.status, task.revision)
                 assert runtime.process.snapshot(runtime.profile).members
                 time.sleep(.25)
@@ -176,9 +186,16 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
                 receipt = json.loads(rows[0][0])
                 assert receipt["schema"] == "database-native-provider-failure@1"
                 assert receipt["callback_state"] == "failed_outcome_settled"
+                assert receipt["native_exit"]["returncode"] != 0
+                assert receipt["native_exit"]["reaped"] is True
+                assert receipt["native_exit"]["process_group_absent"] is True
                 assert receipt["native_exit"]["subreaper_children_absent"] is True
+                assert receipt["native_exit"]["lifecycle_finalized"] is True
                 assert receipt["native_exit"]["automatic_retry_admitted"] is False
                 assert receipt["native_exit"]["completion_authority"] is False
+                assert receipt["native_exit"]["attempt_id"] == attempt_id
+                assert receipt["native_exit"]["claim_id"] == claim_id
+                assert receipt["native_exit"]["events_digest"] and receipt["native_exit"]["state_digest"]
                 assert connection.execute("SELECT count(*) FROM effect_claims").fetchone()[0] == 0
                 assert connection.execute("SELECT count(*) FROM daemon_execution_events WHERE event_type='native_provider_failure_observed'").fetchone()[0] == 1
             coordinator = open_database_coordinator(coordination)
@@ -189,7 +206,30 @@ def test_signed_native_router_timeout_settles_failed_attempt_and_releases_claim(
             logs = list((runtime.state / "run/admitted_database_portal_attempts").rglob("*.log"))
             invocations = [json.loads(line) for path in logs for line in path.read_text().splitlines()
                            if line.startswith('{"') and 'router-implementation-invocation@1' in line]
-            assert len(invocations) == 1 and invocations[0]["error_type"] == "TimeoutExpired"
+            assert len(invocations) == 1
+            invocation = invocations[0]
+            assert invocation["status"] == "failed"
+            assert invocation["completion_authority"] is False
+            if failure == "postdecode":
+                dispatches = [json.loads(row) for row in capture.read_text().splitlines()]
+                assert len(dispatches) == 1
+                assert invocation["error_type"] == "SemanticTranslationError"
+                assert invocation["failure_phase"] == "semantic_response_decode"
+                assert invocation["semantic_response_failure"]["reason_code"] == "response_envelope_binding_mismatch"
+                assert invocation["usage"]["exit_code"] == 0
+                assert invocation["usage"]["prompt_tokens"] == 15
+                assert invocation["usage"]["completion_tokens"] == 4
+                assert invocation["model_prompt_sha256"] == dispatches[0]["prompt_sha256"]
+                assert invocation["native_rollout_usage"]["task_complete_observed"] is True
+                assert invocation["native_rollout_usage"]["usage"]["total_tokens"] == 19
+                assert invocation["native_rollout_usage"]["usage"]["cached_input_tokens"] == 5
+                errors = [json.loads(line) for path in logs for line in path.read_text().splitlines()
+                    if line.startswith('{"') and 'router-implementation-error@2' in line]
+                assert len(errors) == 1
+                assert errors[0]["diagnostic"]["phase"] == "semantic_response_decode"
+                assert errors[0]["diagnostic"]["settlement_authority"] is False
+            else:
+                assert invocation["error_type"] == "TimeoutExpired"
             from ipfs_accelerate_py.agent_supervisor.todo_daemon.bridge_failure_diagnostics import (
                 OBSERVATION_FILENAME, validate_bridge_failure_observation)
             # The native producer writes this even with JSONL projections disabled.

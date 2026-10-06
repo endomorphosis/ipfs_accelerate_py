@@ -1,0 +1,198 @@
+{
+  "artifacts": [
+    {
+      "bytes": 784,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.xml",
+      "sha256": "2c1152dfc0730bbd8fb3c6a08285877a170a3ded1a23646c782faf671018ec66"
+    },
+    {
+      "bytes": 1803,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.stdout",
+      "sha256": "2df73f24e961a353002159577fa17e50461eb427b1118f45ef14123055cc678a"
+    },
+    {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "cases": [
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[False]",
+      "passed": true,
+      "seconds": "7.588"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[True]",
+      "passed": true,
+      "seconds": "6.620"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_signed_native_router_failure_settles_failed_attempt_and_releases_claim[postdecode]",
+      "passed": true,
+      "seconds": "13.765"
+    }
+  ],
+  "claims": {
+    "automatic_retries": false,
+    "benchmark_task_state_overrides": false,
+    "cached_input_already_in_input": true,
+    "native_fences_state_events_lifecycle_unchanged": true,
+    "partial_candidate_not_accepted": true,
+    "pooled_and_detached_postdecode_custody": true,
+    "postdecode_cli_exit_zero": true,
+    "postdecode_native_usage_completed": true,
+    "postdecode_router_exit_nonzero": true,
+    "postdecode_usage_tokens_per_fixture": 19,
+    "signed_native_start_owner_stop_postdecode": true
+  },
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "test/api/test_native_provider_failure_settlement.py",
+    "test/integration/test_admitted_native_provider_failure_settlement.py",
+    "-k",
+    "postdecode",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.duckdb",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "exit_code": 0,
+  "finished_at_utc": "2026-10-06T14:40:05.832315+00:00",
+  "hidden_evaluation_reads": 0,
+  "junit_suites": [
+    {
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "3",
+      "time": "52.908"
+    }
+  ],
+  "limitations": [
+    "Offline authored fixtures qualify source behavior, not a fresh Terminal Bench outcome.",
+    "Raw authored pytest logs remain local; publication should use this closed receipt."
+  ],
+  "new_real_provider_calls": 0,
+  "passed": true,
+  "private_database_reads": 0,
+  "provider_boundary": "authored executable and timeout fixtures; real router/Portal/native owner",
+  "schema": "terminal-postdecode-native-settlement-qualification@1",
+  "seconds": 55.47024988400517,
+  "source_bindings_after": [
+    {
+      "bytes": 33170,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "4d625478411db081f537f6e040dea87c21965c29a3431a7f1622a26c70a436ad"
+    },
+    {
+      "bytes": 15486,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "cbbe4b35cd00c44d4e06064609d3d7f166f2bd04937f34d56bdcaee0c0088e78"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    {
+      "bytes": 6089,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    }
+  ],
+  "source_bindings_before": [
+    {
+      "bytes": 33170,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "4d625478411db081f537f6e040dea87c21965c29a3431a7f1622a26c70a436ad"
+    },
+    {
+      "bytes": 15486,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "cbbe4b35cd00c44d4e06064609d3d7f166f2bd04937f34d56bdcaee0c0088e78"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    {
+      "bytes": 6089,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    }
+  ],
+  "source_bindings_stable": true,
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "started_at_utc": "2026-10-06T14:39:10.358683+00:00"
+}
