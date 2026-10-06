@@ -17,6 +17,109 @@ import time
 import uuid
 
 
+
+# Diagnostic vocabulary is intentionally closed: exception messages, dynamic
+# type names, caller paths and locals never enter the child-reported record.
+RUNNER_FAILURE_PHASES = frozenset({
+    "runner_initialization", "argument_validation", "planning_contract",
+    "container_boundary", "workspace_identity", "semantic_context",
+    "doctor_residual", "public_instruction", "model_prompt",
+    "credential_isolation", "provider_discovery", "provider_allocation",
+    "provider_initialization", "provider_invocation", "provider_result_validation",
+    "semantic_response_decode", "unclassified",
+})
+RUNNER_FAILURE_TYPES = frozenset({
+    "ValueError", "TypeError", "RuntimeError", "PermissionError", "FileNotFoundError",
+    "CalledProcessError", "TimeoutExpired", "TimeoutError", "JSONDecodeError",
+    "UnicodeDecodeError", "ImportError", "ModuleNotFoundError", "OSError",
+    "SemanticTranslationError", "other",
+})
+RUNNER_FAILURE_FILES = frozenset({
+    "router_implementation_runner.py", "container_worker_boundary.py",
+    "semantic_router_translation.py", "doctor_residual_context.py",
+    "router_public_instruction.py", "local_planning_admission.py",
+    "terminal_planner_contract.py", "doctor_candidate_runner.py",
+})
+
+
+def validate_runner_failure_diagnostic(value: object) -> dict:
+    """Validate child-reported metadata, never evidence of dispatch or custody."""
+    if (type(value) is not dict or set(value) != {
+            "schema", "phase", "exceptions", "chain_truncated", "completion_authority",
+            "automatic_retry_admitted", "settlement_authority", "provider_dispatch_observed"}
+            or value["schema"] != "router-implementation-failure-diagnostic@1"
+            or type(value["phase"]) is not str or value["phase"] not in RUNNER_FAILURE_PHASES
+            or type(value["chain_truncated"]) is not bool
+            or any(value[key] is not False for key in (
+                "completion_authority", "automatic_retry_admitted", "settlement_authority"))
+            or value["provider_dispatch_observed"] is not None
+            or type(value["exceptions"]) is not list or not 1 <= len(value["exceptions"]) <= 4):
+        raise ValueError("invalid closed router failure diagnostic")
+    for item in value["exceptions"]:
+        if (type(item) is not dict or set(item) != {"exception_type", "frames"}
+                or type(item["exception_type"]) is not str or item["exception_type"] not in RUNNER_FAILURE_TYPES
+                or type(item["frames"]) is not list or len(item["frames"]) > 12):
+            raise ValueError("invalid closed router exception diagnostic")
+        for frame in item["frames"]:
+            if (type(frame) is not dict or set(frame) != {"file", "line"}
+                    or type(frame["file"]) is not str or frame["file"] not in RUNNER_FAILURE_FILES
+                    or type(frame["line"]) is not int or not 1 <= frame["line"] <= 1_000_000):
+                raise ValueError("invalid closed router failure frame")
+    return json.loads(json.dumps(value, allow_nan=False))
+
+
+def _runner_failure_diagnostic(error: BaseException) -> dict:
+    """Walk bounded code metadata directly; do not load traceback source text."""
+    phase = "unclassified"
+    exceptions = []
+    seen = set()
+    walked = 0
+    truncated = False
+    runtime_dir = os.path.dirname(os.path.abspath(__file__))
+    current = error
+    while current is not None and len(exceptions) < 4 and id(current) not in seen:
+        seen.add(id(current))
+        kind = type(current).__name__
+        kind = kind if kind in RUNNER_FAILURE_TYPES else "other"
+        frames = []
+        trace = current.__traceback__
+        while trace is not None and walked < 256:
+            walked += 1
+            code = trace.tb_frame.f_code
+            if code is run.__code__:
+                selected = trace.tb_frame.f_locals.get("failure_phase")
+                if phase == "unclassified" and type(selected) is str and selected in RUNNER_FAILURE_PHASES:
+                    phase = selected
+            filename = os.path.abspath(code.co_filename)
+            name = os.path.basename(filename)
+            if (os.path.dirname(filename) == runtime_dir and name in RUNNER_FAILURE_FILES
+                    and 1 <= trace.tb_lineno <= 1_000_000):
+                frames.append({"file": name, "line": trace.tb_lineno})
+                frames = frames[-12:]
+            trace = trace.tb_next
+        truncated = truncated or trace is not None
+        exceptions.append({"exception_type": kind, "frames": frames})
+        current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+    return validate_runner_failure_diagnostic({
+        "schema": "router-implementation-failure-diagnostic@1", "phase": phase,
+        "exceptions": exceptions, "chain_truncated": truncated or current is not None,
+        "completion_authority": False, "automatic_retry_admitted": False,
+        "settlement_authority": False, "provider_dispatch_observed": None,
+    })
+
+
+def validate_runner_error_envelope(value: object) -> dict:
+    """Require an exact wrapper error, without assigning trust to its author."""
+    if (type(value) is not dict or set(value) != {"schema", "error_type", "diagnostic"}
+            or value["schema"] != "router-implementation-error@2"):
+        raise ValueError("invalid closed router error envelope")
+    diagnostic = validate_runner_failure_diagnostic(value["diagnostic"])
+    if (type(value["error_type"]) is not str
+            or value["error_type"] != diagnostic["exceptions"][0]["exception_type"]):
+        raise ValueError("router error type differs from its diagnostic")
+    return {"schema": value["schema"], "error_type": value["error_type"], "diagnostic": diagnostic}
+
+
 def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict:
     """Project the shared provider classifier without retaining its message."""
     from ipfs_accelerate_py.llm_allocation.observations import CallErrorKind, classify_provider_failure
@@ -79,11 +182,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
         public_instruction_task_cid: str = "") -> tuple[str, dict]:
+    failure_phase = "runner_initialization"
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
     from ipfs_accelerate_py.router_deps import RouterDeps
 
+    failure_phase = "argument_validation"
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported shared-router coding provider required")
     if provider == "grok_cli" and model != "grok-4.7":
@@ -100,6 +205,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("compact semantic transport requires a semantic coding route")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
+    failure_phase = "planning_contract"
     response_format = None
     task_contract = None
     if provider == "grok_cli" and purpose == "planning":
@@ -109,6 +215,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         task_contract = contract_from_prompt(prompt)
         if task_contract is not None and response_format is None:
             raise ValueError("terminal task constraints require canonical structured planning")
+    failure_phase = "container_boundary"
     root = Path.cwd().resolve()
     boundary = None
     if container_boundary is not None or container_boundary_sha256:
@@ -120,9 +227,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         )
     if provider == "grok_cli" and purpose == "coding" and boundary is None:
         raise ValueError("Grok coding requires the verified isolated container worker boundary")
+    failure_phase = "workspace_identity"
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     if Path(top).resolve() != root:
         raise ValueError("implementation must start at its allocated Git worktree root")
+    failure_phase = "semantic_context"
     encoded = None
     residual_receipt = None
     residual_advisory = ""
@@ -146,6 +255,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+    failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
         if not all(residual_args) or semantic_repository is None or purpose != "coding":
@@ -155,6 +265,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
             repository=semantic_repository, task_cid=doctor_residual_task_cid, prompt=prompt, workspace=root)
         router_prompt += residual_advisory
+    failure_phase = "public_instruction"
     instruction_receipt = None
     instruction_args = (public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid)
     if any(instruction_args):
@@ -168,22 +279,27 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # Preserve the literal requirements after semantic encoding. Native
         # capsule identity remains the stdin identity, not this projection.
         router_prompt += instruction
+    failure_phase = "model_prompt"
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None)
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
     # Native provider children must never inherit a typed owner token, private
     # bootstrap channel, or database program. The daemon supplies this scrub.
+    failure_phase = "credential_isolation"
     from .multi_supervisor_runner import DATABASE_PROGRAM_ENV_NAMES, STATE_CREDENTIAL_ENV_NAMES
     if any(name in os.environ for name in (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,
                                            "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN")):
         raise ValueError("implementation inherited database authority")
+    failure_phase = "provider_discovery"
     available = discover_available_providers()
     if provider not in available:
         raise ValueError("configured shared-router provider is unavailable")
+    failure_phase = "provider_allocation"
     route = select_efficient_route(model_name=model, provider=provider, task_kind="coding", available_providers=available)
     if route.provider != provider or route.model_name != model:
         raise ValueError("model manager changed the explicit benchmark route")
+    failure_phase = "provider_initialization"
     deps = RouterDeps()
     instance = get_llm_provider(provider, deps=deps, use_cache=False)
     set_last_cli_observation(provider, {})
@@ -362,8 +478,8 @@ def main():
     parser.add_argument("--public-instruction-sha256", default="")
     parser.add_argument("--public-instruction-task-cid", default="")
     args = parser.parse_args()
-    prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
     try:
+        prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
         output, _ = run(prompt=prompt, provider=args.provider, model=args.model,
                         timeout=args.timeout, max_output_tokens=args.max_output_tokens,
                         reasoning_effort=args.reasoning_effort,
@@ -378,7 +494,15 @@ def main():
                         public_instruction_sha256=args.public_instruction_sha256,
                         public_instruction_task_cid=args.public_instruction_task_cid)
     except Exception as error:
-        print(json.dumps({"schema": "router-implementation-error@1", "error_type": type(error).__name__}), file=sys.stderr)
+        try:
+            diagnostic = _runner_failure_diagnostic(error)
+            failure = {"schema": "router-implementation-error@2",
+                       "error_type": diagnostic["exceptions"][0]["exception_type"],
+                       "diagnostic": diagnostic}
+        except Exception:
+            # Preserve the failure exit even if observation itself fails.
+            failure = {"schema": "router-implementation-error@1", "error_type": "other"}
+        print(json.dumps(failure, sort_keys=True), file=sys.stderr, flush=True)
         return 1
     print(output)
     return 0
