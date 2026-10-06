@@ -20,7 +20,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_deployment as 
 from benchmarks.agent_supervisor.container_coding import full_supervisor_benchmark as benchmark
 from benchmarks.agent_supervisor.container_coding import native_codex_baseline as baseline
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    SOURCE384_PROFILE, SOURCE384_ENVIRONMENT, apply_resource_profile,
+    SOURCE384_PROFILE, SOURCE384_ENVIRONMENT, PROFILES, apply_resource_profile,
 )
 from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import (
     FullSupervisorAgent, source384_asset_arguments,
@@ -188,7 +188,7 @@ def test_manifest_rejects_all_legacy_security_bindings_even_empty(tmp_path, sele
 
 
 @pytest.mark.parametrize('arm', ['full','no-index'])
-@pytest.mark.parametrize('profile', ['source384-5cpu-12gib@1', 'source384-5cpu-16gib-extended@1'])
+@pytest.mark.parametrize('profile', PROFILES)
 def test_actual_harbor_adapter_forwards_only_full_selection(tmp_path, selected, monkeypatch, arm, profile):
     build(tmp_path, selected)
     from harbor.models.agent.context import AgentContext
