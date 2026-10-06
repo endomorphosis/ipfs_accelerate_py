@@ -1,0 +1,19 @@
+{
+  "hf_cli_skill": "/home/barberb/.codex/plugins/cache/openai-curated-remote/hugging-face/1.0.0/skills/cli/SKILL.md",
+  "native_publisher_revision": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+  "proof_authority": false,
+  "recipes": {
+    "publish_dimension_mirrors.py": {
+      "bytes": 10529,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/publish_dimension_mirrors.py",
+      "sha256": "c67fdc0fb27e285a5afe9a12d8a8cc964c181c4117b9e940732dfd51536d4431"
+    },
+    "stage_dimension_mirrors.py": {
+      "bytes": 17899,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/stage_dimension_mirrors.py",
+      "sha256": "3f0d31262a0b869d1e6f37e185c786d6c774d3f0da21cbe36c264b5267f89434"
+    }
+  },
+  "runtime_admitted": false,
+  "schema": "dimension-mirror-operation-recipe-pins/v1"
+}

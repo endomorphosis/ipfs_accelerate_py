@@ -1,0 +1,188 @@
+{
+  "database_opened_or_mutated": false,
+  "historical_pinned_dependencies": [
+    {
+      "bytes": 34679,
+      "historical_pin_matches": true,
+      "relative": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+    },
+    {
+      "bytes": 14622,
+      "historical_pin_matches": true,
+      "relative": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_formula_codec.py",
+      "sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290"
+    },
+    {
+      "bytes": 35427,
+      "historical_pin_matches": true,
+      "relative": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_latent_formula.py",
+      "sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+    },
+    {
+      "bytes": 11527,
+      "historical_pin_matches": true,
+      "relative": "ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+      "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+    },
+    {
+      "bytes": 58065,
+      "historical_pin_matches": true,
+      "relative": "ipfs_datasets_py/logic/software_verification/program.py",
+      "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+    }
+  ],
+  "models_loaded": false,
+  "network_or_provider_calls": 0,
+  "no_source_defect_found_in_restored_metadata_owners": true,
+  "original_head": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+  "original_registry_pin": {
+    "bytes": 125540,
+    "path": "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json",
+    "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+  },
+  "original_stable_record_identities": [
+    {
+      "checkpoint_receipt": {
+        "bytes": 586049,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+        "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+      },
+      "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+      "format_request": {
+        "schema_version": "intent-rich-grammar/v1",
+        "target_format_id": "intent_ir/intent_rich_ast",
+        "task_id": "source_to_native_ir"
+      },
+      "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+      "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+      "request": {
+        "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "intent_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-intent-ir-original-fit"
+    },
+    {
+      "checkpoint_receipt": {
+        "bytes": 597741,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+        "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+      },
+      "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+      "format_request": {
+        "schema_version": "program-ir/v1",
+        "target_format_id": "security_ir/program_expression",
+        "task_id": "source_to_native_ir"
+      },
+      "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+      "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+      "request": {
+        "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "security_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-security-ir-original-fit"
+    }
+  ],
+  "proof_authority": false,
+  "public_owner_status": "Six restored metadata owners callable; no public profile numerical loader exists in the original contract. Explicit profile route resolution supplies original pins to separate explicit format replay loader.",
+  "required_checks": [
+    "Fresh original-assets build and explicit detached rebind under current source custody must preserve original format/profile/record IDs exactly.",
+    "Old saved registry must still refuse unannounced source-locator/contract-hash mismatch.",
+    "Fresh exact route resolution must retain all false authority flags and original checkpoint/corpus/vector/inventory pins.",
+    "Existing six focused metadata/replay suites and shared checkpoint loader regressions should run against frozen current source; mocks in numerical boundary tests must be labeled.",
+    "No arbitrary source text, target leakage, encoder execution, numerical model quality or full-document/logic capability may be inferred from metadata rebuild."
+  ],
+  "reviewed_head": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+  "risks": [
+    "File and catalog observations are cooperative endpoints; no ongoing atomic lease.",
+    "Original source-pinned readers permit symlink aliases, unlike stricter supervisor checkpoint authentication. Do not relabel one authority as the other.",
+    "Concrete format-contract digests include checkout-dependent absolute implementation source paths; explicit custody rebind creates a new export while compatibility IDs stay stable.",
+    "Profiles cover only original Intent/Security 384D serialized-native fragments; twelve declared lanes do not establish twelve supported/trained runtimes.",
+    "Hub model loading is separate and can execute fixture inference. This read-only review performs neither."
+  ],
+  "runtime_admitted": false,
+  "schema": "independent-native-profile-restoration-source-review/v1",
+  "shared_loader_difference": "Current Legal optimization option/helper/default retained; original four optional replay wrapper functions unchanged. Intent/Security profiles use unchanged fixed domain loader.",
+  "source_and_test_comparisons": [
+    {
+      "bytes": 20396,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 24982,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_decoder_profile_inventory.py",
+      "sha256": "991acbeae8e6faf4e631de2eeb792db4b4fbe5e1e6903eab7c298e0026b1305e"
+    },
+    {
+      "bytes": 22669,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 36795,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_decoder_format_runtime.py",
+      "sha256": "42270c0d7528b88da26b061e6e7fb74c265bfb56f5720a7aae4ac4b2a1aa14eb"
+    },
+    {
+      "bytes": 14468,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_original_corpus_runtime.py",
+      "sha256": "03b9dd075227982f67543bdd7352f52186ba33f1dd98158342bab2aa37735b4f"
+    },
+    {
+      "bytes": 23374,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_original_corpus_runtime.py",
+      "sha256": "6a0dcc17f6bb30cf8ae5a49add473315a15ac10ab5df6006cfd60c9efa7667bc"
+    },
+    {
+      "bytes": 15209,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_runtime.py",
+      "sha256": "673702cc415b37d9597bbe5ccf259717d77f8335a0c2269265cddc4dff49ffdd"
+    },
+    {
+      "bytes": 29082,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_cell_runtime.py",
+      "sha256": "10d3dba7ffbf4867cac35e2a4e43bc7ef84955278a20d5c815c6d0aed8b98805"
+    },
+    {
+      "bytes": 20422,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_routing.py",
+      "sha256": "e5ad1d9ca5187abf39d66f18be7c4ec5a891a2da6d2e571ad4132edae8b7528a"
+    },
+    {
+      "bytes": 38015,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_cell_routing.py",
+      "sha256": "cd941d503c18fb752202cfeceb72184c0496ea9f7cecfb5fa8721b450fc04bd4"
+    },
+    {
+      "bytes": 18253,
+      "exact_original_bytes": true,
+      "relative": "ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_target_compatibility.py",
+      "sha256": "49251451146d94bf0ba784b4d9e439174efcb602d17daa16fc0bf9986fea33ab"
+    },
+    {
+      "bytes": 31880,
+      "exact_original_bytes": true,
+      "relative": "tests/unit/logic/formalization/autoencoder/test_ir_cell_target_compatibility.py",
+      "sha256": "7386436c9efe3d8360cd0c90acaae33f9fa1a4e8f02258e3d6f4388e26f3fe33"
+    }
+  ],
+  "tests_executed_by_this_review": false,
+  "training_or_inference_executed": false
+}

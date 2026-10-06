@@ -1,0 +1,92 @@
+{
+  "files": [
+    {
+      "bytes": 2799098,
+      "file_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "path_in_repo": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "remote_identity": {
+        "blob_id": "133591e3646e7b8dd77428694015ec5ba7020257",
+        "bytes": 2799098,
+        "scheme": "git-blob-sha1"
+      },
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+      "verified": true
+    },
+    {
+      "bytes": 4781613,
+      "file_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "path_in_repo": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "remote_identity": {
+        "blob_id": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+        "bytes": 4781613,
+        "scheme": "git-blob-sha1"
+      },
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+      "verified": true
+    }
+  ],
+  "files_verified": true,
+  "fresh_remote_verifications": [
+    {
+      "dimension": 384,
+      "exact_remote_bytes_equal_original": true,
+      "fresh_download_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "git_blob_sha1": "133591e3646e7b8dd77428694015ec5ba7020257",
+      "historical_receipt_pin": {
+        "bytes": 55536,
+        "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+        "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+      },
+      "original_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "remote_path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json"
+    },
+    {
+      "dimension": 768,
+      "exact_remote_bytes_equal_original": true,
+      "fresh_download_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/remote-download/releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "git_blob_sha1": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+      "historical_receipt_pin": {
+        "bytes": 55536,
+        "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+        "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+      },
+      "original_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "remote_path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json"
+    }
+  ],
+  "historical_append_publication_pin": {
+    "bytes": 55536,
+    "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+    "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+  },
+  "observation_scope": "Two immutable-revision HF CLI downloads freshly hashed and compared with original retained bytes; no new upload.",
+  "proof_authority": false,
+  "repository_id": "Publicus/legal-ir-autoencoder",
+  "revision": "49839a5e55e2ef8ab3815f4e2650dc69ee72d5b8",
+  "runtime_ready": false,
+  "schema": "ir-model-hub-publication-receipt/v1"
+}

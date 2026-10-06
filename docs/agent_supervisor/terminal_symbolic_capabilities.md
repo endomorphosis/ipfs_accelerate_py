@@ -1029,14 +1029,16 @@ replay used paragraph vectors plus explicit cached source-clause vectors,
 clause masks and the original codec/preprocessing; this survey does not freshly
 witness those contextual cache files. This is historical replay
 on its specified panel, not a fresh holdout or original legal-text reconstruction.
-Both profiles use declared 512-token budgets; the result does not qualify an
+Both contextual decoders retain 512-token output limits; the new
+[custody recovery](contextual_ir_checkpoint_recovery.md) distinguishes their
+actual source-producer scopes. The result does not qualify an
 8192-token span or single-vector reconstruction. Neither selected-state SHA
-appears in the current 668-binding selected ModelManager store. Remote Hub
+appears in that survey's 668-binding selected ModelManager store. Remote Hub
 publication of those exact complete states is unestablished in this evidence.
 
 A [fresh publication survey](evidence/supervisor-decoder-contract-20261006/native-profile-publication-survey.json)
 confirms that the native profile owner file exists in clean committed `73db2c8f`
-but is absent from the current datasets `origin/main` tree at `5171a632`.
+but is absent from the surveyed datasets `origin/main` tree at `5171a632`.
 Commit ancestry alone does not establish that a runtime checkout contains the
 owner. Recover its complete metadata-owner closure against current main and
 qualify codec/profile identity and API compatibility before publishing that
@@ -1074,6 +1076,25 @@ Missing family runtimes or format contracts refuse rather than substitute a
 borrowed payload. After those decoder/inventory gates pass, bind dependent
 contexts to verified predecessor source successors and qualify parallel leases,
 review, merge currentness and durable completion before lifting execution gates.
+
+### Original contextual state registration (2026-10-06)
+
+The [contextual checkpoint recovery](contextual_ir_checkpoint_recovery.md)
+closes the availability gaps identified above. Datasets main at `3b3b9944`
+restores the complete native metadata owner; a fresh original-asset rebind
+preserves all twelve lanes and both original fragment profile identities.
+Freshly downloaded complete contextual384/768 states match their original
+hashes at the already published immutable Hugging Face revision. Genuine
+ModelManager registration and cold reload add both separate selected-state
+records, moving the selected store from 668 to 670 records while preserving all
+existing records, activity timestamps, schema and indexes exactly.
+
+The original contextual cache, transforms, mask producer and ordered codec are
+now freshly witnessed. Exact supervisor nominations authenticate both registered
+checkpoint byte pins. Native IR schema/profile/format identities remain unknown,
+and the contextual runtime wrapper remains pending. Historical 48/48 semantic
+IR replay remains distinct from originating prose reconstruction, fresh holdout,
+8192-token decoding, executed distillation and checked proof-index entries.
 
 ## Terminal-Bench finishing gates (2026-10-05)
 

@@ -1,0 +1,485 @@
+{
+  "bound_files_unchanged": true,
+  "completed": true,
+  "custody_survey_pin": {
+    "bytes": 169498,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+    "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+  },
+  "file_pins_after": [
+    {
+      "bytes": 169498,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+      "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+    },
+    {
+      "bytes": 22953,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/survey.py",
+      "sha256": "c66bf7ca85a266281721689cf7af66bb43df27a29f11b6f18d107cdf9168104e"
+    },
+    {
+      "bytes": 4106903,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/embeddings-complete/producer-report.json",
+      "sha256": "0f857b7947f1d05e0dfd242c35c825e9ca72d36e24a3960c17a83b98f4a14f13"
+    },
+    {
+      "bytes": 431363,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/metadata384.json",
+      "sha256": "de5ef43e8d81be193993258177b706a92bc65ac5a9cb488af327db921ed37d86"
+    },
+    {
+      "bytes": 2034617,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/prepared384-train.json",
+      "sha256": "7452be739ba851899e6a3374caeceeca5db08e043073e073e36bc9ea3222214e"
+    },
+    {
+      "bytes": 677960,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/prepared384-validation.json",
+      "sha256": "26eb933cf0e7266b9d822c5404ff4002b410f259df58669b1f94aa9f673f0002"
+    },
+    {
+      "bytes": 825180,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/embedding-results.json",
+      "sha256": "72a812c21cb266b44cf17fd5db60541390a7391d0e10683ed5c17e836189b07e"
+    },
+    {
+      "bytes": 652662,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/paragraphs.json",
+      "sha256": "d8418379af64cdce826ae29f9ce9014248d164ab33da417b9585d0329c82dbef"
+    },
+    {
+      "bytes": 3032308,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/source-contexts.json",
+      "sha256": "85415c5cef1c25450119cc419797c7f53b2817658d975cd4b357fdde01362a8c"
+    },
+    {
+      "bytes": 841411,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/training-rows.json",
+      "sha256": "854c059a7f7b2f9285eac10795191a9439b24ad6141d80406ffa9d6726892359"
+    },
+    {
+      "bytes": 5960181,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/source-contexts.json",
+      "sha256": "88406d13f72794934d4c9dc8aa69238004e1f6c5d7bd855ba319c14486392104"
+    },
+    {
+      "bytes": 1621518,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/training-rows.json",
+      "sha256": "a66ba07b38d101b48f8cd995cc82b2f22f220323ba6f7fc676b87638c4e05254"
+    },
+    {
+      "bytes": 397659,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-multiplicative-source-training-20261003/clause-cache-inventory.json",
+      "sha256": "6737141022b0e9e2bea79ecc7273000679ff310b4e84f77ddcca1b1a6abb0991"
+    },
+    {
+      "bytes": 1322442,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/bounded768-production.json",
+      "sha256": "cf56272d3ea638560c3442953d3b0b212518f2c6a0c9575d79d6ce1f05bd828a"
+    },
+    {
+      "bytes": 16005367,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/dimension-inputs.json",
+      "sha256": "74f4bfa37469724583a27a90704f6abd020b73fc27174cd3b4fdd4dec8fe6f2d"
+    },
+    {
+      "bytes": 146849,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-manifest.json",
+      "sha256": "aeb47fbc8c5563abad0f6cce2776291581b686d727afb0bbf8109aa49d026930"
+    }
+  ],
+  "file_pins_before": [
+    {
+      "bytes": 169498,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+      "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+    },
+    {
+      "bytes": 22953,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/survey.py",
+      "sha256": "c66bf7ca85a266281721689cf7af66bb43df27a29f11b6f18d107cdf9168104e"
+    },
+    {
+      "bytes": 4106903,
+      "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/embeddings-complete/producer-report.json",
+      "sha256": "0f857b7947f1d05e0dfd242c35c825e9ca72d36e24a3960c17a83b98f4a14f13"
+    },
+    {
+      "bytes": 431363,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/metadata384.json",
+      "sha256": "de5ef43e8d81be193993258177b706a92bc65ac5a9cb488af327db921ed37d86"
+    },
+    {
+      "bytes": 2034617,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/prepared384-train.json",
+      "sha256": "7452be739ba851899e6a3374caeceeca5db08e043073e073e36bc9ea3222214e"
+    },
+    {
+      "bytes": 677960,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/prepared384-validation.json",
+      "sha256": "26eb933cf0e7266b9d822c5404ff4002b410f259df58669b1f94aa9f673f0002"
+    },
+    {
+      "bytes": 825180,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/embedding-results.json",
+      "sha256": "72a812c21cb266b44cf17fd5db60541390a7391d0e10683ed5c17e836189b07e"
+    },
+    {
+      "bytes": 652662,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/paragraphs.json",
+      "sha256": "d8418379af64cdce826ae29f9ce9014248d164ab33da417b9585d0329c82dbef"
+    },
+    {
+      "bytes": 3032308,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/source-contexts.json",
+      "sha256": "85415c5cef1c25450119cc419797c7f53b2817658d975cd4b357fdde01362a8c"
+    },
+    {
+      "bytes": 841411,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/training-rows.json",
+      "sha256": "854c059a7f7b2f9285eac10795191a9439b24ad6141d80406ffa9d6726892359"
+    },
+    {
+      "bytes": 5960181,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/source-contexts.json",
+      "sha256": "88406d13f72794934d4c9dc8aa69238004e1f6c5d7bd855ba319c14486392104"
+    },
+    {
+      "bytes": 1621518,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/training-rows.json",
+      "sha256": "a66ba07b38d101b48f8cd995cc82b2f22f220323ba6f7fc676b87638c4e05254"
+    },
+    {
+      "bytes": 397659,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-multiplicative-source-training-20261003/clause-cache-inventory.json",
+      "sha256": "6737141022b0e9e2bea79ecc7273000679ff310b4e84f77ddcca1b1a6abb0991"
+    },
+    {
+      "bytes": 1322442,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/bounded768-production.json",
+      "sha256": "cf56272d3ea638560c3442953d3b0b212518f2c6a0c9575d79d6ce1f05bd828a"
+    },
+    {
+      "bytes": 16005367,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/dimension-inputs.json",
+      "sha256": "74f4bfa37469724583a27a90704f6abd020b73fc27174cd3b4fdd4dec8fe6f2d"
+    },
+    {
+      "bytes": 146849,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-manifest.json",
+      "sha256": "aeb47fbc8c5563abad0f6cce2776291581b686d727afb0bbf8109aa49d026930"
+    }
+  ],
+  "lanes": [
+    {
+      "canonical_input_representation_profile_id": null,
+      "clause_occurrences_matched": 360,
+      "clause_producer_evidence": {
+        "inventory_receipt_pin": {
+          "bytes": 397659,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-multiplicative-source-training-20261003/clause-cache-inventory.json",
+          "sha256": "6737141022b0e9e2bea79ecc7273000679ff310b4e84f77ddcca1b1a6abb0991"
+        },
+        "metadata_receipt_pin": {
+          "bytes": 431363,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/prepared-r1/metadata384.json",
+          "sha256": "de5ef43e8d81be193993258177b706a92bc65ac5a9cb488af327db921ed37d86"
+        },
+        "producer_metadata": {
+          "assets": [
+            {
+              "bytes": 190,
+              "name": "1_Pooling/config.json",
+              "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+            },
+            {
+              "bytes": 583,
+              "name": "config.json",
+              "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+            },
+            {
+              "bytes": 66746168,
+              "name": "model.safetensors",
+              "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+            },
+            {
+              "bytes": 385,
+              "name": "modules.json",
+              "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+            },
+            {
+              "bytes": 57,
+              "name": "sentence_bert_config.json",
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+            },
+            {
+              "bytes": 125,
+              "name": "special_tokens_map.json",
+              "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+            },
+            {
+              "bytes": 711661,
+              "name": "tokenizer.json",
+              "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+            },
+            {
+              "bytes": 394,
+              "name": "tokenizer_config.json",
+              "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+            },
+            {
+              "bytes": 231508,
+              "name": "vocab.txt",
+              "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+            }
+          ],
+          "batch_size": 32,
+          "device": "cuda",
+          "dimension": 384,
+          "dtype": "float32",
+          "encode_rows_per_second": 1343.4959378817957,
+          "encode_seconds": 0.7145537049509585,
+          "load_seconds": 0.6230878659989685,
+          "max_tokens_observed": 26,
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "rows": 960,
+          "truncated": false
+        },
+        "scope": "360clauseoccurrences joined to original TRAIN180/VALIDATION60 cached clause rows byliteraltext andexactvectorSHA; original CUDAfloat32 GTE-small recordedprovenance, no currentencoderexecution"
+      },
+      "decoder_output_budget_tokens": 512,
+      "decoder_profile_id_still_none": true,
+      "dimension": 384,
+      "experiment_encoder_budget_tokens": 512,
+      "native_input_paragraph_vectors_and_clause_contexts_exact_original_cache": true,
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "original_native_input_pin": {
+        "bytes": 16005367,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/dimension-inputs.json",
+        "sha256": "74f4bfa37469724583a27a90704f6abd020b73fc27174cd3b4fdd4dec8fe6f2d"
+      },
+      "paragraph_producer_evidence": {
+        "paragraph_source_pin": {
+          "bytes": 652662,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/paragraphs.json",
+          "sha256": "d8418379af64cdce826ae29f9ce9014248d164ab33da417b9585d0329c82dbef"
+        },
+        "producer_metadata": {
+          "actual_forward_tokens_checked": true,
+          "asset_manifest": [
+            {
+              "bytes": 190,
+              "name": "1_Pooling/config.json",
+              "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+            },
+            {
+              "bytes": 583,
+              "name": "config.json",
+              "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+            },
+            {
+              "bytes": 66746168,
+              "name": "model.safetensors",
+              "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+            },
+            {
+              "bytes": 385,
+              "name": "modules.json",
+              "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+            },
+            {
+              "bytes": 57,
+              "name": "sentence_bert_config.json",
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+            },
+            {
+              "bytes": 125,
+              "name": "special_tokens_map.json",
+              "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+            },
+            {
+              "bytes": 711661,
+              "name": "tokenizer.json",
+              "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+            },
+            {
+              "bytes": 394,
+              "name": "tokenizer_config.json",
+              "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+            },
+            {
+              "bytes": 231508,
+              "name": "vocab.txt",
+              "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+            }
+          ],
+          "cpu_threads": 1,
+          "device": "cpu",
+          "dimension": 384,
+          "downloads_performed": false,
+          "dtype": "float32",
+          "elapsed_seconds": 4.238767500966787,
+          "encoder_context_changed": false,
+          "encoder_context_tokens": 512,
+          "full_source_reencoded": true,
+          "model_id": "thenlper/gte-small",
+          "normalized": true,
+          "revision": "17e1f347d17fe144873b1201da91788898c639cd",
+          "rows": 96,
+          "scope": "verified local numerical execution; not corpus source authentication",
+          "tokenizer_sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+        },
+        "receipt_pin": {
+          "bytes": 825180,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-distillation-limits-20261002/smoke-r2/results/embedding-results.json",
+          "sha256": "72a812c21cb266b44cf17fd5db60541390a7391d0e10683ed5c17e836189b07e"
+        },
+        "scope": "96exactparagraphvectors joined byoriginalID/sourceSHA/vector; original CPUfloat32 GTE-small512 producer receipt, no currentencoderexecution"
+      },
+      "paragraph_vectors_matched": 96,
+      "profile_id_none_is_preserved": true,
+      "proof_authority": false,
+      "runtime_admitted": false,
+      "teacher_qualified": false
+    },
+    {
+      "canonical_input_representation_profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+      "clause_occurrences_matched": 360,
+      "clause_producer_evidence": {
+        "asset_code_revision": "40ced75c3017eb27626c9d4ea981bde21a2662f4",
+        "asset_manifest_sha256": "8beb874aa7b06599346173fde12e95f9f926b3028942d5014cdd2f99c4385166",
+        "asset_model_revision": "9bbca17d9273fd0d03d5725c7a4b0f6b45142062",
+        "bounded512_execution_profile": {
+          "attention_implementation": "eager",
+          "batch_size": 4,
+          "deadline_cooperative": true,
+          "device": "cpu",
+          "dtype": "float32",
+          "max_seconds": 600,
+          "max_tokens_including_special_tokens": 512,
+          "normalization": "l2",
+          "padding_side": "right",
+          "pooling": "cls"
+        },
+        "bounded512_producer_receipt_pin": {
+          "bytes": 1322442,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/bounded768-production.json",
+          "sha256": "cf56272d3ea638560c3442953d3b0b212518f2c6a0c9575d79d6ce1f05bd828a"
+        },
+        "cache_origin_counts": {
+          "bounded512_receipt": 0,
+          "original_complete_receipt": 360
+        },
+        "execution_profile": {
+          "attention_implementation": "eager",
+          "batch_size": 4,
+          "device": "cpu",
+          "dtype": "float32",
+          "max_tokens_including_special_tokens": 8192,
+          "normalization": "l2",
+          "overlength_policy": "reject",
+          "padding_side": "right",
+          "pooling": "cls"
+        },
+        "maximum_context_numerics_verified": false,
+        "profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+        "receipt_pin": {
+          "bytes": 4106903,
+          "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/embeddings-complete/producer-report.json",
+          "sha256": "0f857b7947f1d05e0dfd242c35c825e9ca72d36e24a3960c17a83b98f4a14f13"
+        },
+        "scope": "360clause occurrences joined to exact originalcomplete or bounded512 historicalreceipts bysourceSHA+vectorSHA; separate producer scopes retained without reenactment."
+      },
+      "decoder_output_budget_tokens": 512,
+      "decoder_profile_id_still_none": true,
+      "dimension": 768,
+      "experiment_encoder_budget_tokens": 512,
+      "native_input_paragraph_vectors_and_clause_contexts_exact_original_cache": true,
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "original_native_input_pin": {
+        "bytes": 16005367,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/dimension-inputs.json",
+        "sha256": "74f4bfa37469724583a27a90704f6abd020b73fc27174cd3b4fdd4dec8fe6f2d"
+      },
+      "paragraph_producer_evidence": {
+        "asset_code_revision": "40ced75c3017eb27626c9d4ea981bde21a2662f4",
+        "asset_manifest_sha256": "8beb874aa7b06599346173fde12e95f9f926b3028942d5014cdd2f99c4385166",
+        "asset_model_revision": "9bbca17d9273fd0d03d5725c7a4b0f6b45142062",
+        "bounded512_actual_forward_width_checked": true,
+        "bounded512_execution_profile": {
+          "attention_implementation": "eager",
+          "batch_size": 4,
+          "deadline_cooperative": true,
+          "device": "cpu",
+          "dtype": "float32",
+          "max_seconds": 600,
+          "max_tokens_including_special_tokens": 512,
+          "normalization": "l2",
+          "padding_side": "right",
+          "pooling": "cls"
+        },
+        "bounded512_producer_receipt_pin": {
+          "bytes": 1322442,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-native-dimensions-20261003/preparation-r2/results/bounded768-production.json",
+          "sha256": "cf56272d3ea638560c3442953d3b0b212518f2c6a0c9575d79d6ce1f05bd828a"
+        },
+        "bounded512_profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+        "cache_origin_counts": {
+          "bounded512_receipt": 72,
+          "original_complete_receipt": 24
+        },
+        "execution_profile": {
+          "attention_implementation": "eager",
+          "batch_size": 4,
+          "device": "cpu",
+          "dtype": "float32",
+          "max_tokens_including_special_tokens": 8192,
+          "normalization": "l2",
+          "overlength_policy": "reject",
+          "padding_side": "right",
+          "pooling": "cls"
+        },
+        "maximum_context_numerics_verified": false,
+        "profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+        "receipt_pin": {
+          "bytes": 4106903,
+          "path": "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/embeddings-complete/producer-report.json",
+          "sha256": "0f857b7947f1d05e0dfd242c35c825e9ca72d36e24a3960c17a83b98f4a14f13"
+        },
+        "scope": "96paragraph vectors joined to exact originalcomplete or bounded512 historicalreceipts bysourceSHA+vectorSHA; separate producer scopes retained without reenactment."
+      },
+      "paragraph_vectors_matched": 96,
+      "profile_id_none_is_preserved": false,
+      "proof_authority": false,
+      "runtime_admitted": false,
+      "teacher_qualified": false
+    }
+  ],
+  "observed_at_utc": "2026-10-06T08:57:53.182697+00:00",
+  "operations": {
+    "asset_or_catalog_mutations": false,
+    "database_access": false,
+    "encoder_invoked": false,
+    "model_loaded": false,
+    "network_calls": false,
+    "new_embeddings_generated": false,
+    "training_executed": false
+  },
+  "qualification_scope": "Fresh exact source/cache/vector joins and immutable local original producer receipts; no current model/provenance reenactment, sourcefidelity,8192capability,teacher or runtimequalification.",
+  "schema": "retained-contextual-source-producer-joins/v1",
+  "script_pin": {
+    "bytes": 11637,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source_producer_joins.py",
+    "sha256": "58647e89e82613f5b84a6dfd2bfe582942d964f53fa0aca1e1174f6fbd2d1038"
+  }
+}

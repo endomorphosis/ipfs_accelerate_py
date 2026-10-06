@@ -1,0 +1,57 @@
+{
+  "database_or_model_assets_mutated": false,
+  "findings": [
+    {
+      "finding": "Canonical add_model and close save every object in this isolated manager.models dictionary and set persisted updated_at. Narrow save population to two planned IDs only after full cold-load and collision validation; also bound failure cleanup.",
+      "id": "all-model-reserialization",
+      "status": "root_fix_planned"
+    },
+    {
+      "finding": "Closing source() uses git subprocesses. An audit blanket subprocess denial must explicitly allow the exact reviewed read-only git witness commands or use another independently reviewed closing fence.",
+      "id": "source-fence-versus-process-denial",
+      "status": "root_fix_planned"
+    },
+    {
+      "finding": "ModelManager optional-import ImportError handlers refer to logger before source defines it. A meta-path refusal needs an explicit stdlib logger bootstrap on the genuine module object, preserving exact committed source and public methods.",
+      "id": "optional-import-logger-bootstrap",
+      "status": "root_fix_planned"
+    },
+    {
+      "finding": "Actual survey has file_pins_after/file_pins_before, not protected_file_pins. Lane original_checkpoint_pin must equal corresponding original state pin and lanes must be exactly unique {384,768}.",
+      "id": "custody-field-join",
+      "status": "root_fix_planned"
+    },
+    {
+      "finding": "Need exact baseline non-target row comparison including activity timestamps, schema and unrelated table fingerprints before/after constructor/add/close/cold reload; native _matches intentionally ignores activity fields.",
+      "id": "all-store-preservation",
+      "status": "root_fix_planned"
+    },
+    {
+      "finding": "Native _prepare fences original states/import plan/publication records but arbitrary survey/download/historical/source references need additional driver-owned endpoint fences.",
+      "id": "closing-preparation-pins",
+      "status": "root_fix_planned"
+    }
+  ],
+  "model_manager_store_opened_by_review": false,
+  "registration_not_executed": true,
+  "reviewed_draft_pins": {
+    "build_registration_plan.py": {
+      "bytes": 10266,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/build_registration_plan.py",
+      "sha256": "ecca5da4d2c8b0f3f7ceda2c9663ebb31d8f0438db8c158b56d78b1862cb0a18"
+    },
+    "custody.py": {
+      "bytes": 2714,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/custody.py",
+      "sha256": "c3b355c2b3e4743a839a721b61c1d2868fe25c609b8da562a6b302fbe0cb6864"
+    },
+    "register_original_contextual_states.py": {
+      "bytes": 18660,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/register_original_contextual_states.py",
+      "sha256": "b5e6a77425bd738bb65b92d75de2a8563d411219882efa3a7286ccac1bc458bf"
+    }
+  },
+  "schema": "registration-draft-independent-review/v1",
+  "source_edits_performed": false,
+  "status": "preliminary_not_execution_approval"
+}

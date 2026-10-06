@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/observe_registered_contextual_states.py", line 61, in <module>
+    main()
+  File "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/observe_registered_contextual_states.py", line 41, in main
+    require(len(outcomes) == 2 and all(row['authority']['checkpoint_bytes_authenticated'] is True for row in outcomes),
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/observe_registered_contextual_states.py", line 41, in <genexpr>
+    require(len(outcomes) == 2 and all(row['authority']['checkpoint_bytes_authenticated'] is True for row in outcomes),
+                                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'checkpoint_bytes_authenticated'

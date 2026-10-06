@@ -1,0 +1,52 @@
+{
+  "completed": true,
+  "current_live_service_process_refreshed": false,
+  "datasets_metadata_owner": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+  "diagnostics_retained": [
+    "review/registration-draft-review-01.json",
+    "asset-survey/development-diagnostics.json",
+    "observe_registered_contextual_states-diagnostic-01.py",
+    "supervisor-registered-state-observation.log"
+  ],
+  "dimension_repositories_mirrored": 2,
+  "distillation_executed_in_this_increment": false,
+  "fresh_holdout_qualified": false,
+  "fresh_mirror_downloads_match_original_states": 2,
+  "historical_semantic_replay_scores_not_rerun": true,
+  "long_context_8192_qualified": false,
+  "model_inference_executed_in_this_increment": false,
+  "model_quality_qualified": false,
+  "native_control_tests": {
+    "command": "env IPFS_DATASETS_PY_MINIMAL_IMPORTS=1 IPFS_DATASETS_AUTO_INSTALL=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest tests/unit/logic/formalization/autoencoder/test_ir_model_manager_import.py tests/unit/logic/formalization/autoencoder/test_ir_decoder_profile_inventory.py -q -o addopts= --junitxml=<retained XML>",
+    "errors": 0,
+    "failed": 0,
+    "files": [
+      "tests/unit/logic/formalization/autoencoder/test_ir_model_manager_import.py",
+      "tests/unit/logic/formalization/autoencoder/test_ir_decoder_profile_inventory.py"
+    ],
+    "passed": 158,
+    "skipped": 0
+  },
+  "new_files_per_repository": 3,
+  "original_contextual_source_cache_custody_recovered": true,
+  "original_declared_lanes_preserved": 12,
+  "original_native_fragment_routes_resolved": 2,
+  "prior_HF_paths_preserved": {
+    "384D": 502,
+    "768D": 142
+  },
+  "prior_records_and_activity_exactly_preserved": true,
+  "proof_authority": false,
+  "runtime_ready": false,
+  "schema": "contextual-state-recovery-qualification/v1",
+  "schema_and_indexes_unchanged": true,
+  "scope": "Original asset custody, native metadata recovery, genuine persisted registration, public dimension mirrors and a concrete next-gate plan. Current production contextual inference remains unqualified.",
+  "selected_manager_after_count": 670,
+  "selected_manager_before_count": 668,
+  "source_base": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+  "source_text_reconstruction_qualified": false,
+  "strong_contextual_states_registered": 2,
+  "supervisor_nominated_and_byte_authenticated": 2,
+  "supervisor_observation_diagnostic": "Initial read-only probe expected checkpoint_bytes_authenticated inside authority; corrected to the existing top-level API field. No product code or guards changed.",
+  "training_executed_in_this_increment": false
+}

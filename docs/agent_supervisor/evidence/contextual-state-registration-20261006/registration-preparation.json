@@ -1,0 +1,44 @@
+{
+  "completed": true,
+  "contextual_custody_survey_pin": {
+    "bytes": 169498,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+    "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+  },
+  "database_mutated": false,
+  "huggingface_uploaded": false,
+  "import_plan_pin": {
+    "bytes": 172556,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+    "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+  },
+  "importer_owner": {
+    "head": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+    "pin": {
+      "bytes": 29300,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py",
+      "sha256": "5d50f879d6e1e80fc68a29060680fcac9e234f62a3732f7c697f31360ca9506b"
+    },
+    "relative_path": "ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py"
+  },
+  "inference_executed": false,
+  "model_count": 2,
+  "model_ids": [
+    "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+    "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+  ],
+  "model_loaded": false,
+  "model_manager_constructed": false,
+  "native_preparation_passed": true,
+  "native_schema_profile_format_remain_null": true,
+  "original_assets_preserved": true,
+  "proof_authority": false,
+  "publication_receipt_pin": {
+    "bytes": 5143,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+    "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+  },
+  "runtime_ready": false,
+  "schema": "contextual-state-registration-preparation/v1",
+  "training_executed": false
+}
