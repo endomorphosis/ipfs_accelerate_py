@@ -1,0 +1,85 @@
+{
+  "actual_shared_grok_adapter": true,
+  "classification": "substantive_expected_settlement_regression_with_actual_adopted_zombie",
+  "closed_result": {
+    "actual_shared_grok_adapter": true,
+    "attempt_status": "running",
+    "authored_cli_invocations": 1,
+    "callback_state": "started_outcome_unknown",
+    "case": "same_group",
+    "claim_state": "accepted",
+    "descendant_present_before_fixture_cleanup": true,
+    "descendant_state_before_fixture_cleanup": "Z",
+    "fixture_owned_children_absent_after_cleanup": true,
+    "later_process_cleanup_did_not_settle_or_retry": true,
+    "native_custody_observation": {
+      "checks": [
+        {
+          "reason_code": "process_did_not_return",
+          "stage": "issuance",
+          "status": "denied"
+        },
+        {
+          "reason_code": "not_issued",
+          "stage": "native_exit",
+          "status": "denied"
+        },
+        {
+          "reason_code": "native_exit_unavailable",
+          "stage": "bridge_join",
+          "status": "denied"
+        },
+        {
+          "reason_code": "not_issued",
+          "stage": "capability_take",
+          "status": "denied"
+        }
+      ],
+      "completion_authority": false,
+      "observation_only": true,
+      "retry_authority": false,
+      "schema": "database-native-provider-custody-observation@1",
+      "settlement_authority": false
+    },
+    "native_exit_present": false,
+    "partial_edit_verified_before_timeout": true,
+    "provider_calls": 0,
+    "router_error_type": "TimeoutExpired",
+    "router_purpose": "planning",
+    "scratch_worktree_disposition": "removed",
+    "signed_repository_unchanged": true,
+    "task_status": "in_progress"
+  },
+  "coding_container_identity_qualified": false,
+  "counts": {
+    "errors": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0
+  },
+  "first_assertion": "callback_remained_unknown_instead_of_settled_native_failure",
+  "historical_distinction": "This group-cleanup refusal precedes normal outer return; trial11 retained child router diagnostics after normal outer return, so this is a separate proven gap, not attribution of trial11.",
+  "historical_trial11_exact_cause_established": false,
+  "label": "native-grok-custody-baseline-02",
+  "log_sha256": "3f20375501d40a18f36519c1be9e09747fcdd018d0c75ee5295797d43ce517ca",
+  "provider_calls": 0,
+  "raw_source_logs_or_model_bodies_exported": false,
+  "runner_purpose": "planning",
+  "schema": "authored-grok-custody-baseline-review@1",
+  "seconds": 34.52940135600511,
+  "signed_native_qualification": false,
+  "source_clean": false,
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "9753a05ddc28df835e4e4739e41e278e313732eb992a23695c906592be52c81f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "ec539b508a1725a84f9dfd0601f695042ded9a3cca4fe5f000c2aa1db0be48ce",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "7b97629a7f3b037e91fa066c0b723b9d2f0b76f71dedccc0aef3084d7123b0c9",
+    "test/api/test_bridge_failure_diagnostics.py": "8d73f9fe091efc9f302ed22d9cd63e4189954412b8fd85e406b1f9713ff50fcb",
+    "test/api/test_native_grok_timeout_custody.py": "048daf2114bb30648702c13adfa56e4943c2d175c81d6a0cbc06bcdadb5aa6cb",
+    "test/api/test_native_provider_failure_settlement.py": "b9162664c855ad7c9961114da1080ac2357f762e73e7152a95119ada352c2141",
+    "test/api/test_terminal_failure_observation.py": "eb7b486e1f61f83145a12d76a214f22d2acda410d882285be845001bb2561560"
+  },
+  "source_unchanged": true,
+  "xml_sha256": "3cce7434c64ce801d36f3a3376e71187e68cbe940d138a9bac9cea258f5b7958"
+}

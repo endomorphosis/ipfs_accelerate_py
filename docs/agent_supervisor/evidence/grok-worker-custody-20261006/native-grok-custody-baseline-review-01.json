@@ -1,0 +1,51 @@
+{
+  "actual_shared_grok_adapter": true,
+  "coding_container_identity_qualified": false,
+  "counts": {
+    "failed": 1,
+    "passed": 2
+  },
+  "failed_case": {
+    "classification": "fixture_assumption_failure_with_separately_observed_native_custody_refusal",
+    "exact_group_cleanup_exception_independently_retained": false,
+    "first_assertion": "fixture_required_scratch_worktree_retention",
+    "intended_settlement_assertion_reached": false,
+    "name": "same_group",
+    "retained_custody_reasons": [
+      "process_did_not_return",
+      "not_issued",
+      "native_exit_unavailable",
+      "not_issued"
+    ],
+    "scratch_worktree_removed_by_exception_cleanup": true
+  },
+  "fixtures_use_embedded_legacy_owner": true,
+  "label": "native-grok-custody-baseline-01",
+  "log_sha256": "169f2adee6e554d1a476450ad0b34aeb2c157b904b970393f54d3e71db59493e",
+  "passed_cases": [
+    "real_adapter_no_child_timeout_with_partial_edit_settles_failed_blocked_released_without_retry",
+    "real_adapter_detached_live_survivor_refuses_and_later_exact_cleanup_does_not_settle_or_retry"
+  ],
+  "provider_calls": 0,
+  "raw_logs_or_model_data_exported": false,
+  "retained_evidence_basis": "source_bound_test_assertions_and_XML_outcomes",
+  "runner_purpose": "planning",
+  "schema": "authored-grok-custody-baseline-review@1",
+  "seconds": 52.14243912301026,
+  "signed_native_followup_required_for_repair_qualification": true,
+  "source_clean": false,
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "9753a05ddc28df835e4e4739e41e278e313732eb992a23695c906592be52c81f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "ec539b508a1725a84f9dfd0601f695042ded9a3cca4fe5f000c2aa1db0be48ce",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "7b97629a7f3b037e91fa066c0b723b9d2f0b76f71dedccc0aef3084d7123b0c9",
+    "test/api/test_bridge_failure_diagnostics.py": "8d73f9fe091efc9f302ed22d9cd63e4189954412b8fd85e406b1f9713ff50fcb",
+    "test/api/test_native_grok_timeout_custody.py": "dd7aafe33583baa2df720696d7eb3755be796afb5067bd0a51caf6d0087d90aa",
+    "test/api/test_native_provider_failure_settlement.py": "b9162664c855ad7c9961114da1080ac2357f762e73e7152a95119ada352c2141",
+    "test/api/test_terminal_failure_observation.py": "eb7b486e1f61f83145a12d76a214f22d2acda410d882285be845001bb2561560"
+  },
+  "source_unchanged": true,
+  "temporary_fixture_reports_retained": false,
+  "xml_sha256": "0149ee3bf07e63e969aa40233269740a7bba25834b6521474f99997479b0b171"
+}

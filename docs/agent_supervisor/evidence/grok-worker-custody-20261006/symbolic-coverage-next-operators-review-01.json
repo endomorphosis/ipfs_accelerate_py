@@ -1,0 +1,316 @@
+{
+  "actions": {
+    "benchmark_input_bodies_read": 0,
+    "downloads": 0,
+    "hidden_verifier_or_solution_reads": 0,
+    "paid_model_calls": 0,
+    "source_edits": 0,
+    "test_runs": 0,
+    "training_calls": 0
+  },
+  "current_support": [
+    {
+      "boundary": "Signed mixed-code/data inputs and bounded JSON/NDJSON/XML/calendar format validation exist; these are structural checks.",
+      "evidence": [
+        {
+          "line": 20,
+          "source": "profile"
+        },
+        {
+          "line": 64,
+          "source": "profile"
+        }
+      ]
+    },
+    {
+      "boundary": "The generic Doctor path deliberately retains a residual whenever task data exists, and only considers modify effects on existing Python outputs.",
+      "evidence": [
+        {
+          "line": 301,
+          "source": "doctor"
+        },
+        {
+          "line": 315,
+          "source": "doctor"
+        }
+      ]
+    },
+    {
+      "boundary": "Generic local-keyword and imported-alias repairs plus a separately reviewed WSGI header contract exist; they do not prove arbitrary task behavior.",
+      "evidence": [
+        {
+          "line": 23,
+          "source": "capabilities"
+        },
+        {
+          "line": 120,
+          "source": "dispatch"
+        }
+      ]
+    },
+    {
+      "boundary": "Imported-alias repair currently requires flat Python module paths, level-zero direct local imports, and the reviewed inert signature/expression grammar.",
+      "evidence": [
+        {
+          "line": 80,
+          "source": "alias"
+        },
+        {
+          "line": 152,
+          "source": "alias"
+        },
+        {
+          "line": 173,
+          "source": "alias"
+        }
+      ]
+    }
+  ],
+  "other_boundaries": [
+    "XML syntax is supported, but MJCF physics/optimization needs an explicit numerical/simulator contract; an XML edit or successful Lean compilation would not prove fitness.",
+    "The reviewed software-contract scalars exclude floats; current integer-offset proof lowering is not a general numeric-program proof frontend.",
+    "Current Doctor source partition requires a single signed task. Data-aware multi-task composition needs a separate reviewed contract before parallel operators may claim joint coverage."
+  ],
+  "prior_review": {
+    "path": "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/timeout-recovery/public-data-symbolic-gap-review-01.json",
+    "rechecked_current_source": true,
+    "sha256": "2211566d2f3a7ce37d64f56a527f7821322862c66b0bf9fb1d104fbba46a70e7"
+  },
+  "public_catalog": {
+    "all_catalog_outputs_created": true,
+    "data_media_types": [
+      "application/x-ndjson",
+      "application/xml",
+      "text/calendar"
+    ],
+    "profiles": 3,
+    "task_name_dispatch_proposed": false,
+    "this_catalog_is_not_the_whole_terminal_bench_suite": true
+  },
+  "qualification": {
+    "benchmark_score_claimed": false,
+    "completion_authority": false,
+    "implemented": false,
+    "measured_coverage_gain": null,
+    "tests_executed": false
+  },
+  "recommended_gaps": [
+    {
+      "coverage_limit": "Enables a generic finite transformation class. It does not establish scheduler feasibility, optimization or a benchmark reward.",
+      "evidence": [
+        {
+          "line": 301,
+          "source": "doctor"
+        },
+        {
+          "line": 315,
+          "source": "doctor"
+        },
+        {
+          "line": 37,
+          "source": "data_tests"
+        },
+        {
+          "line": 106,
+          "source": "pipeline_tests"
+        }
+      ],
+      "formal_contract": "Bind reviewed intent, complete input hashes, projection specification, schema, bounds and candidate output hashes. Use finite record correspondence with an independent native checker; optional Lean finite-map theorem is scoped to the declared projection, not inferred intent.",
+      "gap": "No admitted input-to-output record correspondence contract connects NDJSON parsing to Doctor repair; created data outputs therefore remain residual.",
+      "id": "finite_record_projection",
+      "implementation": {
+        "existing_dispatch": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+        "existing_workflow": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+        "proposed_datasets_owner": "ipfs_datasets_py/logic/software_contracts/finite_record_projection.py",
+        "proposed_supervisor_consumer": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_data_contract.py"
+      },
+      "kind": "typed data contract and deterministic create-output operator",
+      "minimal_scope": "Bounded scalar-only records with an explicitly reviewed field-copy/rename projection, exact record identities, order, cardinality, missing/null and duplicate policies. Stage one declared output; reject unreviewed filtering, aggregation or float semantics.",
+      "priority": 1,
+      "reuse": [
+        "contracts: DataContract, SchemaContract, BoundedPredicate and provenance",
+        "property_cache: source/snapshot/contract/compiler/checker binding with fresh checks",
+        "Existing isolated candidate staging, signed admission, current-source fences and publication"
+      ],
+      "tests": [
+        "Authored two-record rename/copy creates only the declared output and reaches the actual Doctor candidate route with model calls forbidden.",
+        "Missing/extra/swapped records, duplicate identities/keys, absent-vs-null and altered values fail the independent correspondence checker.",
+        "Forged declaration/proof, changed input or candidate hash, undeclared path and stale cache never publish.",
+        "An uncovered transformation retains the existing residual reason; parsing or a learned nomination alone never supplies authority."
+      ]
+    },
+    {
+      "coverage_limit": "Improves a narrow call-binding repair class. It does not prove donor behavior or bypass the separate task-data contract gap.",
+      "evidence": [
+        {
+          "line": 80,
+          "source": "alias"
+        },
+        {
+          "line": 152,
+          "source": "alias"
+        },
+        {
+          "line": 173,
+          "source": "alias"
+        },
+        {
+          "line": 48,
+          "source": "catalog"
+        }
+      ],
+      "formal_contract": "A unique qualified module/export resolves the existing alias; callee-only edits preserve all argument expressions/order and satisfy the declared signature. Recheck the whole dependency graph and source hashes at materialization.",
+      "gap": "Flat-module-only alias source resolution rejects otherwise closed package layouts; the public catalog already declares nested Python source paths.",
+      "id": "closed_package_alias_resolution",
+      "implementation": {
+        "existing_contract": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_alias_contract.py",
+        "existing_integration": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+        "existing_pipeline_tests": "benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py",
+        "existing_proof_tests": "test/api/test_doctor_alias_binding_coverage.py"
+      },
+      "kind": "Python source frontend extension",
+      "minimal_scope": "Resolve explicit absolute and relative imports over a complete signed finite package graph, initially only inert __init__ modules and existing alias-call edits. Never import source code to discover bindings.",
+      "priority": 2,
+      "tests": [
+        "Authored nested package and relative-import examples produce the same independently replayed binding and signature claims as the flat-module positive.",
+        "Namespace ambiguity, package/module collisions, star/dynamic imports, import cycles, __init__ side effects and shadowed builtins stay residual.",
+        "Donor deletion/change, package replacement, symlink escape and late candidate mutation refuse publication.",
+        "Actual indexed planning -> Doctor -> Lean/Z3 binding proof -> staged candidate remains provider-free and preserves the original checkout."
+      ]
+    },
+    {
+      "coverage_limit": "Could cover a finite scheduling class after explicit public intent contracts are supplied. No claim about the full requirements or reward of either catalog scheduling task.",
+      "evidence": [
+        {
+          "line": 64,
+          "source": "profile"
+        },
+        {
+          "line": 9,
+          "source": "runtime_scheduling"
+        },
+        {
+          "line": 237,
+          "source": "legal_calendar"
+        }
+      ],
+      "formal_contract": "Lower reviewed interval constraints to bounded integer arithmetic. Independently replay each model witness: identity/cardinality, duration, release/deadline, half-open overlap, availability and capacity. Treat UNSAT, unknown and timeout separately; optimality requires an independently checked objective/lower-bound contract.",
+      "gap": "Calendar validation checks framing only; no integrated Doctor lowering/checker covers event times or resource-capacity schedules. Runtime resource scheduling is not a semantic checker for task outputs.",
+      "id": "finite_interval_schedule",
+      "implementation": {
+        "existing_profile_owner": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+        "existing_resource_admitted_solver": "ipfs_datasets_py/logic/backends/smt/admitted.py",
+        "proposed_datasets_owner": "ipfs_datasets_py/logic/software_contracts/finite_interval_schedule.py",
+        "proposed_supervisor_consumer": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_data_contract.py"
+      },
+      "kind": "data frontend, scheduling contract and witness checker",
+      "minimal_scope": "Finite explicit UTC events or integer-tick jobs within a declared horizon: IDs, duration, release/deadline, availability and capacity. Start without recurrence, timezone conversion, floating-point cost models or implicit preferences.",
+      "priority": 3,
+      "tests": [
+        "Authored feasible and impossible schedules pass/fail by independent witness replay, with no hidden verifier input.",
+        "Boundary-touching intervals, duplicated IDs, missing jobs, duration changes and over-capacity witnesses are rejected or accepted according to the explicit half-open contract.",
+        "Reject unsupported TZID/RRULE/floating times rather than silently flattening them; calendar export must round-trip to the same typed event facts.",
+        "Solver timeout/unknown, forged SAT model, changed source/intent contract and stale cache remain residual without execution or completion authority."
+      ]
+    }
+  ],
+  "schema": "terminal-symbolic-coverage-next-operators-review@1",
+  "scope": "Read-only implementation and public profile metadata audit. Proposed work, not implemented or task-qualified.",
+  "shared_requirements": [
+    "Select operators from reviewed typed applicability contracts and source evidence, never benchmark task names or hidden test contents.",
+    "Keep extraction, autoencoder/embedding nomination, logic syntax checks, solver execution and independent task validation distinct.",
+    "Every new checker must bind source, input data, intent interpretation, assumptions, bounds, compiler and output; cache hits need fresh source/checker replay.",
+    "Reuse ipfs_datasets_py for data/logic owners and keep ipfs_accelerate_py as the admitted supervisor consumer.",
+    "Retain signed planning, mutation scope, staged worktrees, process custody and local resource admission unchanged."
+  ],
+  "source_bindings": {
+    "admitted_smt": {
+      "path": "ipfs_datasets_py/logic/backends/smt/admitted.py",
+      "repository": "datasets",
+      "sha256": "2d57675e66c7c2e632fa730f0a7c7e9bcd50ad3e8a74533e8061a875420b53b1"
+    },
+    "alias": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_alias_contract.py",
+      "repository": "accelerate",
+      "sha256": "34057fc7235e9e166ba11aa5f8edf7bf8e65017d92b5f7b81d9f5049b5f2e970"
+    },
+    "alias_tests": {
+      "path": "test/api/test_doctor_alias_binding_coverage.py",
+      "repository": "accelerate",
+      "sha256": "a1e2c36555d9536c19997c13960552e0465825b3f59c0d2684b3886518db8e8a"
+    },
+    "capabilities": {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py",
+      "repository": "accelerate",
+      "sha256": "1e5b51b758fa20e98bcf1540e5c3146400ef5ed0f9ae219a682db8da5c2dabc6"
+    },
+    "catalog": {
+      "path": "benchmarks/agent_supervisor/container_coding/task_profiles/terminal_bench_2_public.json",
+      "repository": "accelerate",
+      "sha256": "f9884fb8cf440c60c70ac7bfb8b4a4fe4c7c42d76aac40b21cec95f99ab3fa56"
+    },
+    "contracts": {
+      "path": "ipfs_datasets_py/logic/software_contracts/contracts.py",
+      "repository": "datasets",
+      "sha256": "23066fc0877eefe2fedcf58369497124299a1748648723616a76b16ebb53a3a8"
+    },
+    "data_tests": {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py",
+      "repository": "accelerate",
+      "sha256": "9aea7596c85b1b56e1e19b7c3908a0e06ad8848ccf952e6b8d33a5416879bafc"
+    },
+    "dispatch": {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "repository": "accelerate",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    "doctor": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "repository": "accelerate",
+      "sha256": "1b2be0ccc92ff1fd11b06f46f431d26c68b681a7cb53dd3f301bf4248da8f650"
+    },
+    "integer_profile": {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+      "repository": "datasets",
+      "sha256": "a059472331b2fbc0b5b0778bbd311912dffefb0d8f6c6557c4978070fc89e283"
+    },
+    "legal_calendar": {
+      "path": "ipfs_datasets_py/logic/autoformal/legal_canonical_calendar.py",
+      "repository": "datasets",
+      "sha256": "6e5275dbd1f15d58bc7c0e1480b2af68fae11b08c03a8fe6a1c0e3d97c959501"
+    },
+    "partition": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_source_partition.py",
+      "repository": "accelerate",
+      "sha256": "51c3a64cdbb8157726f7844e377b7074bcde90f33f06486075885ae023851c13"
+    },
+    "pipeline_tests": {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py",
+      "repository": "accelerate",
+      "sha256": "c83db2a81a5622d64fc53ca9ee9c628312a0a18600ef4774c5dd7d63e4e0134a"
+    },
+    "profile": {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "repository": "accelerate",
+      "sha256": "537665896a3664c7b917650e49d2cad539dfe484bc1d82406030c1f39e81d6e3"
+    },
+    "property_cache": {
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_property_cache.py",
+      "repository": "datasets",
+      "sha256": "d8d3614e435607de9ce1bb7b910af150dfbf6359dcebd3778593e411c3f6cbf1"
+    },
+    "runtime_scheduling": {
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+      "repository": "accelerate",
+      "sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9"
+    }
+  },
+  "source_clean": {
+    "accelerate": true,
+    "datasets": true
+  },
+  "source_heads": {
+    "accelerate": "092a467a560d150e904fc6f680720c781bdb7698",
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11"
+  }
+}

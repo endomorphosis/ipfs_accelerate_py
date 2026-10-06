@@ -1,0 +1,966 @@
+{
+  "checks": 307,
+  "container_mutations": 0,
+  "error_type": null,
+  "finished_utc": "2026-10-06T15:53:19Z",
+  "last_observation": {
+    "advertised_tool_count_frequencies": {
+      "0": 1,
+      "6": 1
+    },
+    "bounded_scan_truncated": false,
+    "credential_files_read": false,
+    "native_json_records": 390,
+    "native_log_files": 1,
+    "phase_markers": {
+      "admission.json": true,
+      "context-result.json": true,
+      "planning-result.json": true
+    },
+    "provider_calls": 0,
+    "raw_logs_exported": false,
+    "tool_outcome_counts": {
+      "grep:success": 6,
+      "list_dir:success": 1,
+      "other_tool:failed": 2,
+      "other_tool:success": 17,
+      "read_file:success": 6
+    }
+  },
+  "missing_native_logs_are_unknown": true,
+  "observation_completeness": "last_successful_bounded_snapshot_before_container_unavailable",
+  "observation_windows": [
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {},
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 0,
+        "native_log_files": 0,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 0.055535752966534346
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {},
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 144,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 209.31761440000264
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 151,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 212.374685984978
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 154,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 276.890603006992
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 155,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 279.9585844230023
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 155,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": false,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 283.01146021299064
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 155,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 286.0866153750103
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 274,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 313.704492571007
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 279,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "read_file:success": 1
+        }
+      },
+      "seconds": 332.1096213719575
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 283,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 335.1769441050128
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 287,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:success": 1,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 378.1659198270063
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 291,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:success": 2,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 402.74732866400154
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 295,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 1,
+          "other_tool:success": 2,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 427.311454367009
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 299,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 1,
+          "other_tool:success": 3,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 436.5266404749709
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 307,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 4,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 491.81172347499523
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 308,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 4,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 501.0419840780087
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 311,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 5,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 507.17112098197686
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 312,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 5,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 559.3082131129922
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 315,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 6,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 574.6648603199865
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 319,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 7,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 602.253665746015
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 323,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 8,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 611.437744032999
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 328,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 8,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 678.973144574964
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 332,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 9,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 706.5713686869713
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 336,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 10,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 709.6313231739914
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 340,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 11,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 712.6909711989574
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 344,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 12,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 715.7522646019934
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 345,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 12,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 734.1370693239733
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 348,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 2,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 13,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 737.215273875976
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 356,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 3,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 14,
+          "read_file:success": 2
+        }
+      },
+      "seconds": 749.5057701490005
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 360,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 3,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 14,
+          "read_file:success": 3
+        }
+      },
+      "seconds": 752.56193772197
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 364,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 3,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 15,
+          "read_file:success": 3
+        }
+      },
+      "seconds": 866.1102578690043
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 366,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 4,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 15,
+          "read_file:success": 3
+        }
+      },
+      "seconds": 872.2403887719847
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 369,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 4,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 16,
+          "read_file:success": 3
+        }
+      },
+      "seconds": 875.3187967939884
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 373,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 4,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 17,
+          "read_file:success": 3
+        }
+      },
+      "seconds": 878.3774499350111
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 377,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 4,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 17,
+          "read_file:success": 4
+        }
+      },
+      "seconds": 881.4479216149775
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 381,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 5,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 17,
+          "read_file:success": 4
+        }
+      },
+      "seconds": 884.5161859189975
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1,
+          "6": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 390,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {
+          "grep:success": 6,
+          "list_dir:success": 1,
+          "other_tool:failed": 2,
+          "other_tool:success": 17,
+          "read_file:success": 6
+        }
+      },
+      "seconds": 890.6578997359611
+    }
+  ],
+  "phase_interpretation": "Marker existence and native advertised tool counts are observations; they confer no START or task completion claim.",
+  "provider_calls": 0,
+  "raw_logs_exported": false,
+  "raw_model_source_or_credential_data_exported": false,
+  "schema": "grok-native-tool-observation@1",
+  "seconds": 939.737442002981,
+  "started_utc": "2026-10-06T15:37:39Z",
+  "status": "container_unavailable",
+  "task_completion_authority": false,
+  "trial_name": "grok-tune-mjcf-12",
+  "windows_omitted": 0
+}

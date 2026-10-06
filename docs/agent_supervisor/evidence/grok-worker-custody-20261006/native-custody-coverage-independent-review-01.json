@@ -1,0 +1,71 @@
+{
+  "diagnostic_constraints": [
+    "Closed enum stage/reason/count fields only; no process argv, paths, log bodies, model text or credentials.",
+    "Bound byte/count/depth and use immutable source/attempt bindings; missing evidence remains unknown.",
+    "Diagnostic failures cannot change exception propagation, source checks, settlement, retries or custody cleanup."
+  ],
+  "historical_trial11_exact_refused_gate_established": false,
+  "implementation_recommendation": "Prefer existing isolated subreaper ownership for one provider subprocess tree over treating all daemon children as provider-owned; final authority still requires current native joins.",
+  "minimum_provider_free_replay_cases": [
+    {
+      "case": "real_adapter_no_child_timeout",
+      "required": "one failed blocked attempt, exact native waited-child receipt, released claim, no retry or publication",
+      "route": "signed native owner -> production runner -> shared Grok adapter -> authored fake executable"
+    },
+    {
+      "case": "changed_file_same_group_descendant_timeout",
+      "required": "exact owned children terminated/reaped before settlement; signed repository unchanged; partial worktree handled by existing policy; no task-success authority",
+      "route": "same real adapter route; fake CLI edits allowed file and launches child in its group"
+    },
+    {
+      "case": "changed_file_detached_survivor",
+      "required": "surviving or unverifiable child refuses settlement and preserves claim; cleanup signals only exact owned identities; later STOP does not upgrade callback",
+      "route": "same route; child setsid, chdir outside checkout and closes inherited pipes"
+    },
+    {
+      "case": "adopted_zombie_vs_live_child",
+      "required": "only exact owner-established exited children may be reaped; live child and unknown census remain refusal; no global daemon waitpid(-1) or unrelated-child cleanup",
+      "route": "isolated process fixture with real fork/exit/wait state"
+    },
+    {
+      "case": "generic_exception_or_forged_diagnostic",
+      "required": "callback remains unknown; receipt fields, reported PID or late successful STOP cannot mint settlement",
+      "route": "generic TimeoutExpired or fabricated model/native dictionary without actual capability"
+    }
+  ],
+  "new_tests_run": 0,
+  "observed_test_gaps": [
+    "Signed native positive replaces llm_router.generate_text and times out a single leaf process; no real shared Grok adapter or grandchildren are exercised.",
+    "Partial edits and pool cases currently use the embedded legacy database fixture, while signed native positive covers no-write only.",
+    "Detached survivor unit test injects an issued native tuple; it does not traverse runner, shared adapter, lifecycle finalization and durable callback state.",
+    "Late STOP after an unresolved callback lacks a focused regression proving process cleanup cannot retroactively settle or retry."
+  ],
+  "preserved_authority_requirements": [
+    "Only the exact native Portal daemon with captured actual Popen may issue one-use exit custody.",
+    "Native child must have returned normally through outer process supervision with a waited nonzero status; inner TimeoutExpired metadata does not establish this.",
+    "Exact source/claim/admission/fence, finalized captured lifecycle, durable state/event/projection joins and callback-intent CAS remain necessary.",
+    "Failure settlement blocks the task and releases the claim without task completion, source publication or automatic retry.",
+    "Missing native receipt remains started_outcome_unknown even after unrelated STOP/close proves process cleanup."
+  ],
+  "production_diff_review_pending": true,
+  "production_files_edited": 0,
+  "provider_calls": 0,
+  "review_type": "read_only_committed_source_and_existing_test_review",
+  "schema": "native-callback-custody-independent-coverage-review@1",
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "source_mechanism": {
+    "historical_attribution": "hypothesis only; trial11 did not retain the exact refusal",
+    "outer_provider_supervision": "run_process_group_stream requires process-group absence before returning; provider_process_returned only set afterward",
+    "possible_failure": "a killed CLI can leave adopted descendants or zombies; group cleanup or child-empty custody check can refuse native capability",
+    "shared_grok_adapter": "plain subprocess.run capture with timeout; its TimeoutExpired handler records observation and reraises"
+  },
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004",
+    "ipfs_accelerate_py/llm_router.py": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659",
+    "test/api/test_native_provider_failure_settlement.py": "2f8c8465beda9597e5a12fc062784d011a4fa6712e232f9ba8ee114b9c6d62ee",
+    "test/integration/test_admitted_native_provider_failure_settlement.py": "5588c2ec14cf57ebc4b177b72e25b630609e133b7e413215d9f687bf83791c28"
+  }
+}

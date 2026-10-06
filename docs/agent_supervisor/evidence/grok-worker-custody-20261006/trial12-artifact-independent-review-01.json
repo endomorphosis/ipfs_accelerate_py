@@ -1,0 +1,82 @@
+{
+  "artifact_review_passed": true,
+  "artifact_sha256": {
+    "grok-container/monitor_closed_tools.py": "590e68cccd96505b06e3203ebcdd5f42292715c7783bedb57b2272120ea2489f",
+    "grok-container/observe_coding600_resources.py": "2400eb15a4d7b11ce7cf199c27573a47ec6d337445f9bd0ac09bb15979eafce8",
+    "grok-container/recipes/review_archive.py": "9afcdd014c395716ede9974e30db63db8d3ac45bd4a555523c05d9d6e68121cb",
+    "grok-container/recipes/review_custody_learned_preparation.py": "12d374dd6a6557b947cf50017570bcd74ff833a78f610b004e77532eb53446a1",
+    "grok-container/recipes/run_fresh_grok_learned_coding600.py": "77607d49d4225845f398289a85eae3db156774784c5bf9a7388c42d111dc8bc3",
+    "qualification/check_fresh_live_inspector.py": "505ea363f1a39d79644c010a3756ca9b22b67a251bf72a59504ecc48c5f4e9aa",
+    "qualification/inspect_live_trials.py": "a87a0583a04ddf208fff98352cf391aaca25b028aba2176a4a6165fe1a6e63e1",
+    "timeout-recovery/closed_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa",
+    "timeout-recovery/coordinate_trial12_observers.py": "7dab8c182f6c7407b16d24284752f79ff271918c14fb81d79f6b4354b7ee6a36",
+    "timeout-recovery/monitor_owned_native_trial.py": "eaa10beb75fe5c6f585d8c80b23ed949f3fcb16aa12af55fe8b48c81bdee9446"
+  },
+  "candidate_source_head": "1510686beaf2752713256d813e39567334a9eb45",
+  "checks": {
+    "archive_and_preparation_require_capability_v2_and_exact_subreaper_digest": true,
+    "archive_audit_hashes_actual_tar_and_all_regular_members_without_extraction": true,
+    "coordinator_cleanup_signals_only_its_own_Popen_observers": true,
+    "coordinator_requires_one_exact_generated_case_and_full_container_id": true,
+    "docker_observations_use_only_that_bound_container_id": true,
+    "final_exporter_requires_source_bound_full_v1_or_v2_validation": true,
+    "monitor_custody_vocabulary_exactly_matches_candidate_source": true,
+    "monitor_does_not_claim_full_bridge_validation": true,
+    "monitor_missing_or_cleanup_success_does_not_imply_callback_settlement": true,
+    "monitor_output_is_bounded_selected_field_observation": true,
+    "observer_deadlines_and_private_child_output_are_bounded": true,
+    "preparation_joins_eighteen_source_files_and_exact_model_checkpoints": true,
+    "raw_exception_provider_verifier_and_credential_bodies_excluded": true,
+    "resource_provider_index_and_reply_controls_unchanged_from_trial11": true,
+    "source_freeze_is_checked_before_and_after_recipe_stages": true,
+    "unknown_missing_malformed_custody_never_becomes_settlement": true
+  },
+  "command_plan_sha256": "a662fd865f8f0d39ea989059e1f7dcdf31333373050cd62ce528b869b2e64e1e",
+  "completion_authority": false,
+  "container_calls": 0,
+  "historical_trial11_cause_inferred": false,
+  "inspector_safety": {
+    "checks": 131,
+    "receipt_sha256": "e3bcaddca51fbe31cd015221caec080e780521544bd03d81e644db93015d7b45",
+    "source_head": "1510686beaf2752713256d813e39567334a9eb45"
+  },
+  "merged_source_qualification_pending": true,
+  "monitor_safety": {
+    "checks": 83,
+    "receipt_sha256": "74720c5714969269e7c0b1874e3838261d21c916a5bc28b1eeaad3a3bcbb3a47"
+  },
+  "provider_calls": 0,
+  "readiness": "artifact_code_review_passed_runtime_gates_pending",
+  "remaining_runtime_gates": [
+    "merged_source_qualification",
+    "fresh_archive_build_and_audit",
+    "fresh_preparation_source_profile_capability_review",
+    "root_execution_authorization"
+  ],
+  "retry_authority": false,
+  "reviewed_controls": {
+    "cleanup_seconds": 60,
+    "coding_cap_seconds": 600,
+    "coding_reply_mode": "legacy",
+    "coding_tools": 6,
+    "coding_watchdog_cap_seconds": 660,
+    "cpu_limit": 5,
+    "driver_seconds": 900,
+    "fallback": false,
+    "llm_router": true,
+    "memory_bytes": 21474836480,
+    "model": "grok-4.7",
+    "planning_seconds": 180,
+    "planning_tools": 0,
+    "provider_profile": "grok-4.7-cli-1.0.46@1",
+    "remaining_work_reserve_seconds": 25,
+    "required_capability_schema": "terminal-router-worker-capability@2",
+    "required_worker_custody_schema": "terminal-worker-child-custody@1",
+    "resource_profile": "source384-5cpu-20gib-coding600@1",
+    "work_seconds": 840
+  },
+  "schema": "trial12-artifact-independent-review@1",
+  "settlement_authority": false,
+  "source_mutations": 0,
+  "trial_stages_executed_by_review": 0
+}

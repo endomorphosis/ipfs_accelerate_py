@@ -1,0 +1,358 @@
+{
+  "archive_sha256": "52fecd888898ceef62dd4751a0e891c75ccf11cf315725ec4c6528bd45aacab9",
+  "baseline_source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "cases": [
+    {
+      "adopted_children_before_observer_reap": 0,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": null,
+      "detached_child_witness": false,
+      "exit_code": 1,
+      "mode": "none",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2674,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 3.46772733097896,
+      "stage": "baseline",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 1,
+      "worker_entry_sha256": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e"
+    },
+    {
+      "adopted_children_before_observer_reap": 1,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 1,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": 1001,
+      "detached_child_witness": true,
+      "exit_code": 1,
+      "mode": "setsid",
+      "observer_reaped_owned_children": 1,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2676,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 4.367166698968504,
+      "stage": "baseline",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 2,
+      "worker_entry_sha256": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e"
+    },
+    {
+      "adopted_children_before_observer_reap": 3,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 3,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": 1001,
+      "detached_child_witness": true,
+      "exit_code": 1,
+      "mode": "double_fork",
+      "observer_reaped_owned_children": 3,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2679,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 4.363218137994409,
+      "stage": "baseline",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 2,
+      "worker_entry_sha256": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e"
+    },
+    {
+      "adopted_children_before_observer_reap": 0,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": null,
+      "detached_child_witness": false,
+      "exit_code": 1,
+      "mode": "none",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2673,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 3.3306517070159316,
+      "stage": "patched",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 1,
+      "worker_entry_sha256": "c8cd52b2051ab0d80ef5651d9e3be6e2c15c423d73225a20d107b47b2ad48aca"
+    },
+    {
+      "adopted_children_before_observer_reap": 0,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": 1001,
+      "detached_child_witness": true,
+      "exit_code": 1,
+      "mode": "setsid",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2675,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 4.408160377002787,
+      "stage": "patched",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 2,
+      "worker_entry_sha256": "c8cd52b2051ab0d80ef5651d9e3be6e2c15c423d73225a20d107b47b2ad48aca"
+    },
+    {
+      "adopted_children_before_observer_reap": 0,
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "authored_cli_reached": true,
+      "authored_cli_uid": 1001,
+      "authored_result_owner_uid": 1001,
+      "authored_result_written": true,
+      "completion_authority": false,
+      "detached_child_uid": 1001,
+      "detached_child_witness": true,
+      "exit_code": 1,
+      "mode": "double_fork",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "owner_uid": 1000,
+      "raw_stderr_bytes": 681,
+      "raw_stdout_bytes": 2679,
+      "remote_provider_calls": 0,
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "TimeoutExpired",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 379
+                }
+              ]
+            }
+          ],
+          "phase": "provider_invocation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "TimeoutExpired",
+        "schema": "router-implementation-error@2"
+      },
+      "router_diagnostic_count": 1,
+      "seconds": 4.504573532030918,
+      "stage": "patched",
+      "synthetic_cli_only": true,
+      "timeout_seconds": 2,
+      "worker_entry_sha256": "c8cd52b2051ab0d80ef5651d9e3be6e2c15c423d73225a20d107b47b2ad48aca"
+    }
+  ],
+  "cases_network_disconnected": true,
+  "completion_authority": false,
+  "container_removed": true,
+  "explicit_container_cleanup_returncode": 0,
+  "explicit_network_cleanup_returncode": 0,
+  "image_id": "sha256:13343f030503c0d54218087d550238b91f3c7a9851fd17664704bbafb7c65f80",
+  "new_source_bytes_unchanged": true,
+  "new_source_head_at_snapshot": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "official_benchmark_or_native_Grok_model_qualification": false,
+  "qualified": true,
+  "real_credentials_used": false,
+  "remote_provider_calls": 0,
+  "same_image_as_prior_offline": true,
+  "schema": "disconnected-worker-child-custody-qualification@1",
+  "seconds": 164.33489947003545,
+  "settlement_authority": false,
+  "setup_network_allowed": true,
+  "source_sha256": {
+    "authored_cli": "231199d6622dfc557a46ea859b3e6200f256c30ead88c5e1cdcd94da12a79def",
+    "new_helper": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "new_worker_entry": "c8cd52b2051ab0d80ef5651d9e3be6e2c15c423d73225a20d107b47b2ad48aca",
+    "new_worker_module": "2e87ef8ed95cd72185f75814838352a5a61a31784289a9738074116fb7025407",
+    "old_helper": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037",
+    "old_worker_entry": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e",
+    "old_worker_module": "96be048ce5d00b70f2e0758cb0278f04729d6c58ea4f66731d68b70cee725e72"
+  },
+  "synthetic_authored_cli": true,
+  "worker_boundary_qualified": true
+}

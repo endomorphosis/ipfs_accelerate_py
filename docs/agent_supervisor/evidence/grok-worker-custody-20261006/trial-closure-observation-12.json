@@ -1,0 +1,96 @@
+{
+  "callback": {
+    "native_exit": {
+      "lifecycle_finalized": true,
+      "present": true,
+      "process_group_absent": true,
+      "reaped": true,
+      "returncode": 1,
+      "subreaper_children_absent": true
+    },
+    "provider_effect_state": "failed_provider_exited",
+    "schema": "database-native-provider-failure@1",
+    "state": "failed_outcome_settled"
+  },
+  "closed_at_utc": "2026-10-06T15:56:53Z",
+  "completion_authority": false,
+  "container_identity_sha256": "95d39ceeb55a279fd46f68e9f41fa6bc18c98d456e50d89505e5218370ca68fe",
+  "custody": {
+    "closure_inferred_from_stop": false,
+    "driver_error_type": null,
+    "remaining_processes": 0,
+    "runtime_close_attempted": true,
+    "runtime_close_error_type": null,
+    "runtime_close_succeeded": true,
+    "worker_cleanup_returncode": 0
+  },
+  "custody_gate_observation": {
+    "checks": [
+      {
+        "reason_code": "eligible",
+        "stage": "issuance",
+        "status": "passed"
+      },
+      {
+        "reason_code": "verified",
+        "stage": "native_exit",
+        "status": "passed"
+      },
+      {
+        "reason_code": "verified",
+        "stage": "bridge_join",
+        "status": "passed"
+      },
+      {
+        "reason_code": "verified",
+        "stage": "capability_take",
+        "status": "passed"
+      }
+    ],
+    "completion_authority": false,
+    "observation_only": true,
+    "retry_authority": false,
+    "schema": "database-native-provider-custody-observation@1",
+    "settlement_authority": false
+  },
+  "exact_owned_container_absent": true,
+  "first_settled_failure_elapsed_seconds": 918.61,
+  "first_start_elapsed_seconds": 304.593,
+  "first_stop_elapsed_seconds": 918.61,
+  "indexed_summary_sha256": "aa2079e0f150ab3c6bc16d34087816b1dc2b9dff6138399c0df324253d30363e",
+  "lifecycle": {
+    "start_status": "succeeded",
+    "stop_status": "succeeded"
+  },
+  "live_summary_sha256": "68a5286bc447c87093ec8a53cb9057124c2b38db31f902bcd9ea1c8ce696662c",
+  "max_observed_oom_kill_delta": 0,
+  "monitor_samples": 187,
+  "native_monitor_sha256": "f5ed699fc89dff0a454fcba4177bd6abf41951e0f67ba714a27fcb4b265b9bbd",
+  "observer_closure_seconds": 948.178,
+  "observer_exit_codes": {
+    "native": 0,
+    "resources": 0,
+    "tools": 0
+  },
+  "official_reward": 0.0,
+  "peak_memory_bytes": 7460016128,
+  "raw_model_verifier_or_credentials_exported": false,
+  "recipe_exit_code": 0,
+  "recipe_seconds": 947.4463585389894,
+  "retained_monitor_rows": 40,
+  "retry_authority": false,
+  "schema": "grok-worker-custody-trial-closure@1",
+  "settlement_authority": false,
+  "source_freeze_released_after_exports": true,
+  "source_pins_clean_and_unchanged": true,
+  "source_revisions": {
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "092a467a560d150e904fc6f680720c781bdb7698"
+  },
+  "task_state": {
+    "revision": 4,
+    "status": "blocked"
+  },
+  "trial_name": "grok-tune-mjcf-12"
+}

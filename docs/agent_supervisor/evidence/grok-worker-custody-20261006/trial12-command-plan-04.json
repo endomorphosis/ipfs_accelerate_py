@@ -1,0 +1,244 @@
+{
+  "MemAvailable": 113929003008,
+  "archive_must_be_rebuilt": true,
+  "arm": "full",
+  "artifact_safety": {
+    "fresh-live-inspector-safety-review-12-01.json": {
+      "checks": 131,
+      "sha256": "89e061283e01ca06a0bbd94c490c551b27117815ae7d6a8353ecba0ad0d92efb"
+    },
+    "fresh-live-inspector-safety-review-12-02.json": {
+      "checks": 131,
+      "sha256": "e3bcaddca51fbe31cd015221caec080e780521544bd03d81e644db93015d7b45",
+      "validator_source_revision": "1510686beaf2752713256d813e39567334a9eb45"
+    },
+    "trial12-monitor-safety-02.json": {
+      "checks": 83,
+      "sha256": "74720c5714969269e7c0b1874e3838261d21c916a5bc28b1eeaad3a3bcbb3a47"
+    }
+  },
+  "artifact_sha256": {
+    "grok-container/recipes/review_archive.py": "9afcdd014c395716ede9974e30db63db8d3ac45bd4a555523c05d9d6e68121cb",
+    "grok-container/recipes/review_custody_learned_preparation.py": "12d374dd6a6557b947cf50017570bcd74ff833a78f610b004e77532eb53446a1",
+    "grok-container/recipes/run_fresh_grok_learned_coding600.py": "77607d49d4225845f398289a85eae3db156774784c5bf9a7388c42d111dc8bc3",
+    "qualification/inspect_live_trials.py": "a87a0583a04ddf208fff98352cf391aaca25b028aba2176a4a6165fe1a6e63e1",
+    "timeout-recovery/closed_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa",
+    "timeout-recovery/coordinate_trial12_observers.py": "7dab8c182f6c7407b16d24284752f79ff271918c14fb81d79f6b4354b7ee6a36",
+    "timeout-recovery/monitor_owned_native_trial.py": "eaa10beb75fe5c6f585d8c80b23ed949f3fcb16aa12af55fe8b48c81bdee9446"
+  },
+  "cleanup_seconds": 60,
+  "coding_cap_seconds": 600,
+  "coding_reply_mode": "legacy",
+  "coding_tools": 6,
+  "coding_watchdog_cap_seconds": 660,
+  "command_cwd": "/home/barberb/lift_coding/.worktrees/grok-callback-custody-20261006",
+  "commands": [
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "bundle",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698",
+        "--bundle-attempt",
+        "12",
+        "--trial-attempt",
+        "12",
+        "--task",
+        "tune-mjcf"
+      ],
+      "stage": "bundle"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/review_archive.py",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698",
+        "--bundle-attempt",
+        "12"
+      ],
+      "stage": "archive_audit"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "profile",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698",
+        "--bundle-attempt",
+        "12",
+        "--trial-attempt",
+        "12",
+        "--task",
+        "tune-mjcf"
+      ],
+      "stage": "profile"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "prepare",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698",
+        "--bundle-attempt",
+        "12",
+        "--trial-attempt",
+        "12",
+        "--task",
+        "tune-mjcf"
+      ],
+      "stage": "prepare"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/review_custody_learned_preparation.py",
+        "--attempt",
+        "12",
+        "--bundle-attempt",
+        "12",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698"
+      ],
+      "stage": "preparation_review"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/timeout-recovery/coordinate_trial12_observers.py"
+      ],
+      "launch_as_owned_background_process_before_execute": true,
+      "stage": "observer_coordinator"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/grok-container/recipes/run_fresh_grok_learned_coding600.py",
+        "execute",
+        "--expected-source-head",
+        "092a467a560d150e904fc6f680720c781bdb7698",
+        "--bundle-attempt",
+        "12",
+        "--trial-attempt",
+        "12",
+        "--task",
+        "tune-mjcf"
+      ],
+      "requires_root_final_qualification_authorization": true,
+      "stage": "execute"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/qualification/inspect_live_trials.py",
+        "--trial-name",
+        "grok-tune-mjcf-12",
+        "--require-trial-name",
+        "grok-tune-mjcf-12",
+        "--output",
+        "live-trial-summary-12.json"
+      ],
+      "stage": "closed_summary"
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-callback-custody-20261006/qualification/export_indexed_path.py",
+        "--attempt",
+        "12"
+      ],
+      "stage": "indexed_summary"
+    }
+  ],
+  "cpu_limit": 5,
+  "driver_seconds": 900,
+  "expected_datasets_pin": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "expected_kit_pin": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+  "expected_runtime_source_count": 18,
+  "expected_runtime_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0",
+    "benchmarks/agent_supervisor/container_coding/learned_vector_preflight.py": "4c80083d0e91e1520207a4f0be7d43984a0219e943487ad9764717616086a0ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080",
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+    "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py": "c359dd201fc5ea36f0ef0cff22f7101138570ded450915e8fd596a339bd0e1dd",
+    "benchmarks/agent_supervisor/container_coding/terminal_shutdown_observation.py": "f55aa0f7149928d35e23ad11a4838cf9d26e192159dbfb1ab03588b54f83ae46",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "791e4272fc5e9fa599f3652a823144131d7f859735288f2b003272ea8b0324c1",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "2405e4d567c2c5c7fda4b83e41422e4cb6065cf262f1e6c47e5f7345fa4c19a9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "89a224bd632586fdb534f108abf14199da6898c71b6ca0586834f1ec13f1c246",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+  },
+  "expected_source_pin": "092a467a560d150e904fc6f680720c781bdb7698",
+  "fallback": false,
+  "final_qualified_source_pin": "092a467a560d150e904fc6f680720c781bdb7698",
+  "gte_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "harbor_setup_and_verifier_are_separate": true,
+  "host_free_bytes": 347902156800,
+  "intervening_changed_files": [
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py"
+  ],
+  "llm_router": true,
+  "matched_performance_advantage_claimed": false,
+  "memory_bytes": 21474836480,
+  "model": "grok-4.7",
+  "monitor_custody_vocabulary_matches_expected_source": true,
+  "monitor_validation_scope": "closed_selected_fields_only",
+  "no_index_arm_selected": false,
+  "other_environment_source": "existing source-bound recipe BASE env; no credential values exported",
+  "planning_seconds": 180,
+  "planning_tools": 0,
+  "previous_plan_sha256": "a662fd865f8f0d39ea989059e1f7dcdf31333373050cd62ce528b869b2e64e1e",
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "qualification_pending": false,
+  "qualification_scope": {
+    "historical_fixture_correction07_passed": 25,
+    "merged06_failed": 6,
+    "merged06_passed": 566,
+    "native05_passed": 220,
+    "overlapping_counts_summed": false,
+    "whole572_green_claimed": false
+  },
+  "readiness": "authorized_one_trial_pending_archive_and_preparation_gates",
+  "ready_to_execute": false,
+  "reasoning_effort": "high",
+  "remaining_work_reserve_seconds": 25,
+  "required_capability_schema": "terminal-router-worker-capability@2",
+  "required_worker_custody_schema": "terminal-worker-child-custody@1",
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "runtime_source_bytes_unchanged_from151": true,
+  "safe_explicit_environment": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/grok-callback-custody-20261006:/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+  },
+  "safety_test_counts_are_separate_overlapping_runs_not_summed": true,
+  "schema": "fresh-trial12-command-plan@1",
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source_mutations": 0,
+  "source_path": "/home/barberb/lift_coding/.worktrees/grok-callback-custody-20261006",
+  "source_snapshot_not_final": false,
+  "source_snapshot_when_prepared": "092a467a560d150e904fc6f680720c781bdb7698",
+  "strict_final_diagnostic_validation": "exact_source_bound_production_validators",
+  "trial_stages_executed": 0,
+  "unchanged_resource_provider_and_index_controls_from11": true,
+  "work_seconds": 840
+}

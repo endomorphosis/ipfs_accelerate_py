@@ -1,0 +1,146 @@
+{
+  "bound_closure": {
+    "bytes": 2540,
+    "path": "artifacts/grok-recovery-20261006/trial-closure-observation-11.json",
+    "sha256": "662b01a0c3fac74f4d112d34d65d990435c55565e265ff5c5bb1778f36a682b1"
+  },
+  "bound_live_summary": {
+    "bytes": 18585,
+    "path": "artifacts/grok-recovery-20261006/live-trial-summary-11.json",
+    "sha256": "a45253d931343323094ac9ed95b99d78008570ef7d85d2ed74f28e52072f25b3"
+  },
+  "candidate_reproduction": {
+    "cleanup": "separate_replay_process_subreaper_fences_only_its_owned_descendants",
+    "existing_signed_test_boundary": "single_sleeping_child_without_descendants",
+    "historical_cause_established": false,
+    "hypothesis": "inner_timeout_can_leave_detached_children_outside_original_worker_group",
+    "negative_control": "live_or_unobserved_descendant_must_not_release_claim_or_authorize_retry",
+    "no_full_benchmark_retry_needed": true,
+    "observations_needed": [
+      "provider_process_returned",
+      "returncode_equal_to_owned_Popen",
+      "custody_begin_succeeded",
+      "custody_quiesced",
+      "process_group_absent",
+      "lifecycle_finalized",
+      "finished_event_match",
+      "native_state_match",
+      "protected_rearm_ready",
+      "capability_issued",
+      "capability_consumed"
+    ],
+    "positive_control": "no_descendant_case_must_settle_only_after_original_signed_guards",
+    "provider_boundary": "authored_fake_CLI_only_no_remote_provider_or_real_credentials",
+    "real_path": "signed_START_owner_claim_Portal_actual_worker_process_router_subprocess_timeout_STOP",
+    "recommended_real_process_cases": [
+      "inner_timeout_with_no_descendants",
+      "inner_timeout_with_same_group_descendant",
+      "inner_timeout_with_setsid_detached_descendant",
+      "inner_timeout_with_double_fork_detached_descendant"
+    ]
+  },
+  "completion_authority": false,
+  "container_operations": 0,
+  "database_connections": 0,
+  "hidden_verifier_or_solution_bodies_read": false,
+  "known_facts": {
+    "callback_state": "started_outcome_unknown",
+    "coding_error_type": "TimeoutExpired",
+    "coding_limit_seconds": 600,
+    "coding_phase": "provider_invocation",
+    "coding_seconds": 600.2467448359821,
+    "coding_usage": null,
+    "native_exit_receipt_present": false,
+    "native_stop_succeeded": true,
+    "official_reward": 0.0,
+    "runtime_close_succeeded": true,
+    "task_status": "in_progress",
+    "tracked_remaining_processes": 0,
+    "worker_cleanup_returncode": 0
+  },
+  "provider_calls": 0,
+  "raw_model_task_or_credential_bodies_exported": false,
+  "retained_driver_report": {
+    "bytes": 85288,
+    "path": "artifacts/grok-recovery-20261006/grok-tune-mjcf-11/jobs/supervisor-full-tune-mjcf/tune-mjcf__SRGTQxt/agent/supervisor-result.json",
+    "sha256": "373cde3c689320528627e026e8a7538172c94ead47ea84888dc97d0450cb1f09"
+  },
+  "retention_limits": {
+    "driver_report_gate_field_counts": {
+      "implementation_finished": 0,
+      "lifecycle_cleanup": 0,
+      "lifecycle_finalize": 0,
+      "native_exit_gate": 0,
+      "native_provider_exit_gate": 0,
+      "provider_exit_denial": 0
+    },
+    "implementation_finished_payload_recovered": false,
+    "lifecycle_cleanup_payload_recovered": false,
+    "log_hash_is_not_log_body": true,
+    "native_exit_rejection_gate_recovered": false,
+    "native_log_evidence": [
+      {
+        "bytes": 243897,
+        "retained_exception_types": 0,
+        "retained_traceback_frames": 0
+      },
+      {
+        "bytes": 240711,
+        "retained_exception_types": 0,
+        "retained_traceback_frames": 0
+      }
+    ],
+    "native_state_directory_retained_at_driver_artifact_path": false
+  },
+  "retry_authority": false,
+  "schema": "retained-callback-custody-review@1",
+  "settlement_authority": false,
+  "source_changes": 0,
+  "source_files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 30790,
+      "sha256": "2556eefd8bb10640cab7a9ec34588c98b9b8a3026c3e9668b1c443481d8b69af"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": {
+      "bytes": 487991,
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3244982,
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": {
+      "bytes": 6089,
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": {
+      "bytes": 87767,
+      "sha256": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "bytes": 551545,
+      "sha256": "f3ac850506483990af0d8018057e3152c991dad341d63399aa801582cd8ce3da"
+    },
+    "test/integration/test_admitted_native_provider_failure_settlement.py": {
+      "bytes": 12533,
+      "sha256": "5588c2ec14cf57ebc4b177b72e25b630609e133b7e413215d9f687bf83791c28"
+    }
+  },
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "source_path_inference": {
+    "basis": "attached_child_diagnostic_has_one_assignment_after_stream_return",
+    "inference_is_current_process_absence_authority": false,
+    "original_worker_group_absence_check_passed_before_return": true,
+    "outer_stream_returned_nonzero": true,
+    "outer_watchdog_timeout_path_excluded_at_child_observation": true,
+    "subreaper_adopted_detached_children_absent_established": false,
+    "worker_exit_numeric_status_retained": false
+  },
+  "trial_name": "grok-tune-mjcf-11",
+  "unresolved_guard_groups": [
+    "daemon_issue_lifecycle_exception_validation_and_protected_scope",
+    "daemon_take_subreaper_children_and_result_identity_and_process_group",
+    "bridge_sealed_binding_event_state_lifecycle_and_rearm_joins",
+    "bridge_consume_exact_failure_object_and_unchanged_state_event_joins"
+  ]
+}

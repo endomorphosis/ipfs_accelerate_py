@@ -1,0 +1,131 @@
+{
+  "artifacts": {
+    "qualification/offline-worker-custody-01/receipt.json": {
+      "bytes": 1430,
+      "sha256": "93dd3daab2c67a9c2562c7adb0412b66a2c0df659c2fd7bd431c1ba49021e01e"
+    },
+    "qualification/offline-worker-custody-02/receipt.json": {
+      "bytes": 12553,
+      "sha256": "73505c9edc310e800f5aa9bf701cf2a7c5fd18ab33cb7e216e90b7cb483ae65b"
+    },
+    "qualification/offline-worker-custody-setup-correction-01.json": {
+      "bytes": 492,
+      "sha256": "1752992b0ae8caccae00113be2167de1fcbd9105f8bb6e8dbe7322bba72bdc16"
+    },
+    "qualification/offline_worker_custody.py": {
+      "bytes": 15433,
+      "sha256": "82ffeff7409de7236afcfbf2f8aa6f99eb4032940586c17a8a6813e6b14bf33d"
+    },
+    "qualification/offline_worker_custody_v2.py": {
+      "bytes": 15905,
+      "sha256": "bc8ebf507d8f8b96217cf7333df4616525df2daf49004d8c8aa1805b1cbaffd6"
+    },
+    "qualification/retained-trial11-custody-review-01.json": {
+      "bytes": 6013,
+      "sha256": "6a0837e6ee71a6fe99eda9bfc69363a213d4d0e71e8ecfd799b838743a8b4e13"
+    }
+  },
+  "cleanup_verified_in_receipt": true,
+  "completion_authority": false,
+  "core_review": {
+    "authority_checks_preserved": true,
+    "blocking_source_finding": false,
+    "callback_finally_reaps_owned_descendants": true,
+    "combined_source_tests_qualified_by_this_review": false,
+    "dedicated_worker_empty_child_precondition": true,
+    "diagnostics_closed_and_observation_only": true,
+    "one_use_capability_still_consumed": true,
+    "shared_daemon_not_wrapped": true,
+    "worker_custody_runs_after_verified_boundary": true
+  },
+  "docker_all_reviewed_daemon_and_bridge_changes_exercised": false,
+  "docker_archive_source": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "docker_cases": [
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "exit_code": 1,
+      "mode": "none",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "seconds": 3.46772733097896,
+      "stage": "baseline"
+    },
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 1,
+      "exit_code": 1,
+      "mode": "setsid",
+      "observer_reaped_owned_children": 1,
+      "observer_remaining_children": 0,
+      "seconds": 4.367166698968504,
+      "stage": "baseline"
+    },
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 3,
+      "exit_code": 1,
+      "mode": "double_fork",
+      "observer_reaped_owned_children": 3,
+      "observer_remaining_children": 0,
+      "seconds": 4.363218137994409,
+      "stage": "baseline"
+    },
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "exit_code": 1,
+      "mode": "none",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "seconds": 3.3306517070159316,
+      "stage": "patched"
+    },
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "exit_code": 1,
+      "mode": "setsid",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "seconds": 4.408160377002787,
+      "stage": "patched"
+    },
+    {
+      "adopted_live_before_observer_reap": 0,
+      "adopted_zombies_before_observer_reap": 0,
+      "exit_code": 1,
+      "mode": "double_fork",
+      "observer_reaped_owned_children": 0,
+      "observer_remaining_children": 0,
+      "seconds": 4.504573532030918,
+      "stage": "patched"
+    }
+  ],
+  "docker_helper_independent_container_hash_readback": false,
+  "docker_helper_installed_from_hash_bound_snapshot": true,
+  "docker_receipt_sha256": "73505c9edc310e800f5aa9bf701cf2a7c5fd18ab33cb7e216e90b7cb483ae65b",
+  "docker_scope": "authored_cli_timeout_through_real_uid1000_sudo_uid1001_worker_and_shared_grok_router",
+  "docker_worker_entry_hash_readback_per_case": true,
+  "final_merged_template_qualification_claimed": false,
+  "historical_trial11_exact_denied_gate_known": false,
+  "mechanism_reproduced_is_not_historical_causality": true,
+  "official_benchmark_or_native_grok_model_qualification": false,
+  "patched_worker_and_helper_match_reviewed_commit": true,
+  "review_container_calls": 0,
+  "review_provider_calls": 0,
+  "reviewed_commit": "53d0a9cde1c4126d9b2cec3666be611c7893c5c0",
+  "schema": "worker-custody-source-and-docker-evidence-review@1",
+  "settlement_authority": false,
+  "setup_cleanup_correction_preserved": true,
+  "setup_failure_attempt01_preserved": true,
+  "source_mutations": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "2e87ef8ed95cd72185f75814838352a5a61a31784289a9738074116fb7025407",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "89a224bd632586fdb534f108abf14199da6898c71b6ca0586834f1ec13f1c246",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+  }
+}

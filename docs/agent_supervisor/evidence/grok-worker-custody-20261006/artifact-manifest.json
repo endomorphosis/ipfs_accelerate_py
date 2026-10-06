@@ -1,0 +1,148 @@
+{
+  "artifacts": [
+    {
+      "bytes": 10442,
+      "path": "README.md",
+      "sha256": "b769368b5dfb848d0a9967f69746435be88f8a95f950d1ad9358c2b0e8882f81"
+    },
+    {
+      "bytes": 3122,
+      "path": "archive-review-12.json",
+      "sha256": "854cec2f5028b8e052cfc1bd3005223f5608e0553935631dbd5ba12610b02177"
+    },
+    {
+      "bytes": 8355,
+      "path": "custody-implementation-and-reproduction-review-01.json",
+      "sha256": "732aaddd9cd453ef0219149c818e3e1984694bca6e33371e3af4d12d317689fc"
+    },
+    {
+      "bytes": 7654,
+      "path": "fresh-live-inspector-safety-review-12-02.json",
+      "sha256": "e3bcaddca51fbe31cd015221caec080e780521544bd03d81e644db93015d7b45"
+    },
+    {
+      "bytes": 6934,
+      "path": "indexed-path-observation-12.json",
+      "sha256": "aa2079e0f150ab3c6bc16d34087816b1dc2b9dff6138399c0df324253d30363e"
+    },
+    {
+      "bytes": 19398,
+      "path": "live-trial-summary-12.json",
+      "sha256": "68a5286bc447c87093ec8a53cb9057124c2b38db31f902bcd9ea1c8ce696662c"
+    },
+    {
+      "bytes": 5540,
+      "path": "merged-native-custody-independent-review-05.json",
+      "sha256": "da2c8a9c656192ff3df5f5b86c81e3cff2b2e64f8586728f67a1cf35585ddeae"
+    },
+    {
+      "bytes": 5510,
+      "path": "native-custody-coverage-independent-review-01.json",
+      "sha256": "e53b47f35eb67532a7a4a4334a23288ffd52df54c24e755124e8a9fa7c70214e"
+    },
+    {
+      "bytes": 2785,
+      "path": "native-grok-custody-baseline-review-01.json",
+      "sha256": "eb7999fcb9f7e43b9008f2b092209461e075e7781d45f542edb75fb6f13b2fe2"
+    },
+    {
+      "bytes": 3874,
+      "path": "native-grok-custody-baseline-review-02.json",
+      "sha256": "783e5890e9d8327615e0eb4bef8422fae300e5a5f30d8cefdee2903a885dabc7"
+    },
+    {
+      "bytes": 26767,
+      "path": "native-tools-grok-tune-mjcf-12.json",
+      "sha256": "fe1a6379caa25857d314ae9c84d70bb7191551ea1f0483be8161687cb19f48fe"
+    },
+    {
+      "bytes": 1430,
+      "path": "offline-worker-custody-01.json",
+      "sha256": "93dd3daab2c67a9c2562c7adb0412b66a2c0df659c2fd7bd431c1ba49021e01e"
+    },
+    {
+      "bytes": 12553,
+      "path": "offline-worker-custody-02.json",
+      "sha256": "73505c9edc310e800f5aa9bf701cf2a7c5fd18ab33cb7e216e90b7cb483ae65b"
+    },
+    {
+      "bytes": 492,
+      "path": "offline-worker-custody-setup-correction-01.json",
+      "sha256": "1752992b0ae8caccae00113be2167de1fcbd9105f8bb6e8dbe7322bba72bdc16"
+    },
+    {
+      "bytes": 1571,
+      "path": "performance-observation-12.json",
+      "sha256": "2e3be6090baec9dd3d7511ee70872393511043f90fb1572208569251634eeec9"
+    },
+    {
+      "bytes": 5461,
+      "path": "preparation-review-12.json",
+      "sha256": "37a2341955a08e7d9926692601cc359091ad6d83ac16a261af0b05d200611983"
+    },
+    {
+      "bytes": 90350,
+      "path": "qualification-summary.json",
+      "sha256": "2b80a7260161edd097367d25a40a7e668c1ee13973bf01967eb81e2cea5ce78c"
+    },
+    {
+      "bytes": 1083,
+      "path": "resource-observation-12.json",
+      "sha256": "5f287d6dd4a395b4b7469789d69705a3d30e8bd2370e3cc75c412d7908c5ccb3"
+    },
+    {
+      "bytes": 6013,
+      "path": "retained-trial11-custody-review-01.json",
+      "sha256": "6a0837e6ee71a6fe99eda9bfc69363a213d4d0e71e8ecfd799b838743a8b4e13"
+    },
+    {
+      "bytes": 15476,
+      "path": "symbolic-coverage-next-operators-review-01.json",
+      "sha256": "ab32df76deb89f134d2fd8310e4ed063b7423661186e8c62aaf7168dd12bb227"
+    },
+    {
+      "bytes": 2963,
+      "path": "trial-closure-observation-12.json",
+      "sha256": "bd0c42b653773a93ea7caaf9809802e5e9afc871ca89123b6965c275de1d3591"
+    },
+    {
+      "bytes": 4327,
+      "path": "trial12-artifact-independent-review-01.json",
+      "sha256": "0731b5293367b4faba52d03f6ebd158738f8ddf258b0e41acccbecab2db59360"
+    },
+    {
+      "bytes": 11448,
+      "path": "trial12-command-plan-04.json",
+      "sha256": "2dafb3f255a84512c0526c57d6e71934fd0619302556161bb042719b423bd8c8"
+    },
+    {
+      "bytes": 4352,
+      "path": "trial12-monitor-safety-02.json",
+      "sha256": "74720c5714969269e7c0b1874e3838261d21c916a5bc28b1eeaad3a3bcbb3a47"
+    },
+    {
+      "bytes": 7017,
+      "path": "trial12-preexecution-independent-review-01.json",
+      "sha256": "a70abec163096ade0b75c62f5d2069524371a14086179504b3590bf4242473a0"
+    },
+    {
+      "bytes": 19030,
+      "path": "worker-custody-capability-development-review-01.json",
+      "sha256": "01c8c02f31822f7040a471bacbbcbf2c7b2242d2cd18a92e88312e2484e60185"
+    },
+    {
+      "bytes": 69598,
+      "path": "worker-custody-capability-final-review-01.json",
+      "sha256": "ccabad9181effd7b3db039e568d3812fa33ecb8ed4a04497df58d06356644f4f"
+    },
+    {
+      "bytes": 5499,
+      "path": "worker-custody-source-and-docker-review-01.json",
+      "sha256": "29a8bcdf826cfa0107ae0aaa4908808c3460eba5829e52c9560b83f2c3cd8c43"
+    }
+  ],
+  "raw_provider_verifier_bodies_included": false,
+  "runtime_archive_or_credentials_included": false,
+  "runtime_source_revision": "092a467a560d150e904fc6f680720c781bdb7698",
+  "schema": "grok-worker-custody-publication-manifest@1"
+}

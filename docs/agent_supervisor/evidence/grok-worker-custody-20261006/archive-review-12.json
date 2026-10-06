@@ -1,0 +1,63 @@
+{
+  "archive_bytes": 1472480793,
+  "archive_hash_recomputed_in_review": true,
+  "archive_member_bytes_verified": true,
+  "archive_member_verification": "All declared members have matching bytes, lengths, regular types and modes; none extracted.",
+  "archive_sha256_actual": "c125c44e9562feb8ad842919ae96213751ee6dcd725a9f8a1191f4b258dfbd83",
+  "archive_sha256_declared": "c125c44e9562feb8ad842919ae96213751ee6dcd725a9f8a1191f4b258dfbd83",
+  "archive_source_verified_files": {
+    "datasets": 8054,
+    "kit": 1289,
+    "source": 2817
+  },
+  "archive_verified_member_count": 27371,
+  "archive_verified_uncompressed_bytes": 4135838197,
+  "benchmark_result": false,
+  "codex_setup_cache_selected": false,
+  "credential_pathnames_present": false,
+  "credentials_in_archive": false,
+  "docker_calls": 0,
+  "grok_archive_member_independently_verified": {
+    "bytes": 142867512,
+    "path": "providers/grok/grok",
+    "platform": "linux-aarch64",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version": "1.0.46",
+    "version_output": "grok 1.0.46 (2765805b9442) [stable]"
+  },
+  "inventory_files": 27371,
+  "manifest_sha256": "fdda443f5d447306fda8f2d0325914eebb12f681d2a4902a082f16b7ed0c660b",
+  "provider_calls": 0,
+  "qualified": true,
+  "raw_file_bodies_exported": false,
+  "schema": "terminal-grok-archive-independent-review@1",
+  "seconds": 22.258226613979787,
+  "source_heads": {
+    "/home/barberb/lift_coding/.worktrees/grok-callback-custody-20261006": "092a467a560d150e904fc6f680720c781bdb7698",
+    "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  },
+  "source_inventory_comparison": "Every declared source/datasets/kit member matches its current clean pinned checkout.",
+  "source_inventory_verified_files": {
+    "datasets": 8054,
+    "kit": 1289,
+    "source": 2817
+  },
+  "source_status": {
+    "/home/barberb/lift_coding/.worktrees/grok-callback-custody-20261006": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+  },
+  "task_inputs_in_archive": false,
+  "worker_archive_capability": {
+    "max_timeout_seconds": 600,
+    "schema": "terminal-router-worker-capability@2",
+    "source_sha256": {
+      "source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37",
+      "source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e",
+      "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4"
+    },
+    "worker_child_custody_schema": "terminal-worker-child-custody@1",
+    "worker_entry_sha256": "bd2576eb44ef972c622f5b8c1a6bda1ecacd549b47377d1fcebf4adb1f4288af"
+  }
+}

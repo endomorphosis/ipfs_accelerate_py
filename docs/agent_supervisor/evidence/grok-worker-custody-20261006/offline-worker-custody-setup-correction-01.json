@@ -1,0 +1,13 @@
+{
+  "attempt": "01",
+  "cases_executed": 0,
+  "container_cleanup_returncode": 0,
+  "exact_container_absent": true,
+  "network_cleanup_returncode": 0,
+  "original_receipt_unchanged": true,
+  "original_script_sha256": "82ffeff7409de7236afcfbf2f8aa6f99eb4032940586c17a8a6813e6b14bf33d",
+  "real_credentials_used": false,
+  "reason": "configured_prebuilt_amd64_image_selected_instead_of_pinned_arm64_image",
+  "remote_provider_calls": 0,
+  "schema": "offline-worker-custody-setup-correction@1"
+}

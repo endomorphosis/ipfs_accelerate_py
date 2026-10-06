@@ -1,0 +1,46 @@
+{
+  "arm": "full",
+  "billing_total_verified": false,
+  "capsules": 11,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "coding_native_tokens": null,
+  "coding_seconds": 600.2303995920229,
+  "combined_native_tokens": null,
+  "driver_seconds": 734.9894704039907,
+  "harbor_phase_seconds": {
+    "agent_execution": 736.842277,
+    "agent_setup": 185.217311,
+    "environment_setup": 2.042706,
+    "verifier": 6.012714
+  },
+  "index_seconds": 17.195784226001706,
+  "indexed_symbols": 4,
+  "live_summary_sha256": "68a5286bc447c87093ec8a53cb9057124c2b38db31f902bcd9ea1c8ce696662c",
+  "matched_baseline_advantage_claimed": false,
+  "missing_usage_is_unknown": true,
+  "model": "grok-4.7",
+  "official_reward": 0.0,
+  "planning_native_tokens": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 1536,
+    "input_tokens": 13293,
+    "output_tokens": 7243,
+    "reasoning_output_tokens": 5398,
+    "total_tokens": 22072
+  },
+  "planning_seconds": 69.25406294403365,
+  "provider": "grok_cli",
+  "reasoning_tokens_are_subset_of_output": true,
+  "recipe_seconds": 947.4463585389894,
+  "schema": "grok-worker-custody-performance@1",
+  "source384_inference_seconds": 9.51313731999835,
+  "source384_nested_in_index_time": true,
+  "source_revisions": {
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "092a467a560d150e904fc6f680720c781bdb7698"
+  },
+  "training_steps": 0,
+  "trial_name": "grok-tune-mjcf-12",
+  "whole_suite_score_claimed": false
+}

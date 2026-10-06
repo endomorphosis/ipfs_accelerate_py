@@ -1,0 +1,82 @@
+{
+  "actual_index_hydration_observed": false,
+  "actual_neural_retrieval_observed": false,
+  "archive_bytes": 1472480793,
+  "archive_members": 27371,
+  "archive_sha256": "c125c44e9562feb8ad842919ae96213751ee6dcd725a9f8a1191f4b258dfbd83",
+  "attempt": "12",
+  "bundle_attempt": "12",
+  "changed_retrieval_from11": false,
+  "coding_reply_config_binding_verified": true,
+  "coding_reply_mode": "legacy",
+  "completion_authority": false,
+  "config_hash_and_profile_binding_verified": true,
+  "config_sha256": "246e3577ab139f59e7c1a381c1f16a90cd5b78ac2006a2092c6c5fbee3f4f6e5",
+  "containers_launched": 0,
+  "embedding_download_calls": 0,
+  "learned_revision_transported_to_agent": true,
+  "matched_index_performance_comparison_claimed": false,
+  "prepared": true,
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "retrieval_model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "retrieval_policy_selected": "local-safetensors-symbols@1",
+  "runtime_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0",
+    "benchmarks/agent_supervisor/container_coding/learned_vector_preflight.py": "4c80083d0e91e1520207a4f0be7d43984a0219e943487ad9764717616086a0ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080",
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+    "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py": "c359dd201fc5ea36f0ef0cff22f7101138570ded450915e8fd596a339bd0e1dd",
+    "benchmarks/agent_supervisor/container_coding/terminal_shutdown_observation.py": "f55aa0f7149928d35e23ad11a4838cf9d26e192159dbfb1ab03588b54f83ae46",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "791e4272fc5e9fa599f3652a823144131d7f859735288f2b003272ea8b0324c1",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "2405e4d567c2c5c7fda4b83e41422e4cb6065cf262f1e6c47e5f7345fa4c19a9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "89a224bd632586fdb534f108abf14199da6898c71b6ca0586834f1ec13f1c246",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+  },
+  "schema": "terminal-fresh-learned-trial-preparation-review@1",
+  "source384_checkpoint_bytes": 493355,
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source384_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "source_head": "092a467a560d150e904fc6f680720c781bdb7698",
+  "stages": {
+    "bundle": {
+      "exit_code": 0,
+      "seconds": 35.30902213201625,
+      "source_unchanged": true
+    },
+    "prepare": {
+      "exit_code": 0,
+      "seconds": 23.17565317096887,
+      "source_unchanged": true
+    },
+    "profile": {
+      "exit_code": 0,
+      "seconds": 0.18964550801320001,
+      "source_unchanged": true
+    }
+  },
+  "task_input_bindings_match11": true,
+  "task_profile_matches11": true,
+  "task_profile_sha256": "f0312fec5ecd7e9854bf9234e46ab09e9117158b27679b69592af8c1a73fb5e5",
+  "training_steps": 0,
+  "worker_archive_capability": {
+    "max_timeout_seconds": 600,
+    "schema": "terminal-router-worker-capability@2",
+    "source_sha256": {
+      "source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37",
+      "source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e",
+      "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4"
+    },
+    "worker_child_custody_schema": "terminal-worker-child-custody@1",
+    "worker_entry_sha256": "bd2576eb44ef972c622f5b8c1a6bda1ecacd549b47377d1fcebf4adb1f4288af"
+  }
+}

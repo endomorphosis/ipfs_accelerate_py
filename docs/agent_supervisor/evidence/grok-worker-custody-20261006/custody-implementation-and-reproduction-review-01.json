@@ -1,0 +1,152 @@
+{
+  "automatic_retry_admitted": false,
+  "completion_authority": false,
+  "independent_review_blocking_concerns": [],
+  "merge_review": {
+    "canonical_sidecar_routing_and_four_stage_observation_assertions_preserved": true,
+    "core_custody_source_bytes_unchanged_by_merge": true,
+    "new_worker_and_router_reply_contract_bytes_require_merged_qualification": true,
+    "signed_cases_preserved": [
+      "timeout",
+      "postdecode",
+      "grok_detached"
+    ],
+    "upstream_semantic_failure_usage_assertions_preserved": true,
+    "worker_custody_hook_and_upstream_reply_contract_forwarding_preserved": true
+  },
+  "merged_head_reviewed": "370dff42040eb067a7b8c8da63af673603aef946",
+  "merged_qualification_pending": true,
+  "offline_worker_exact_qualified_bytes_match_source_head": true,
+  "offline_worker_qualified": true,
+  "offline_worker_receipt_sha256": "73505c9edc310e800f5aa9bf701cf2a7c5fd18ab33cb7e216e90b7cb483ae65b",
+  "offline_worker_recorded_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "offline_worker_template_matches_merged_head": false,
+  "qualification_history": [
+    {
+      "command_sha256": "f47095afb6968efa652c21b82385fbb18ad0df0af39b7e07ca2590639a4a16fb",
+      "errors": 0,
+      "exit_code": 4,
+      "exit_sha256": "0a0a488235af7372ed3bdc4bdc7e8a9cef36784187dea0545d5d5abc2f25a194",
+      "failures": 0,
+      "head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+      "label": "custody-diagnostics-development-01",
+      "log_sha256": "3195986871812201e188d39814f22b38486c9e98f4600b3ed18546c07ac33d90",
+      "seconds": 1.585529466974549,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 0,
+      "xml_sha256": "4efd37811a19029ec351fc3c0c5c3d48db618b4b5bb8aec8f2795566330cfa12"
+    },
+    {
+      "command_sha256": "8cf5b7670b066262f4a53707584a5b0848d7f4d1e077e1ef946c3cca07e8fbd5",
+      "errors": 0,
+      "exit_code": 1,
+      "exit_sha256": "98e8b66e0c0215a3cdafaaf3103b7ab1c1fa055904bcf1cb2888c1cd2986e1b5",
+      "failures": 1,
+      "head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+      "label": "custody-diagnostics-development-02",
+      "log_sha256": "786ca792addd8409edccf32977394e23c156abc40639f71987f0cafc5da58488",
+      "seconds": 168.03526220005006,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 113,
+      "xml_sha256": "b30c050268feec025371f79681ff886850dde8a0dcf6298f0e9be60bdcfe4ad2"
+    },
+    {
+      "command_sha256": "e3c1531af4b021e465856debee0fef683220c2d5e7a084f0a7eccebd57c9b303",
+      "errors": 0,
+      "exit_code": 1,
+      "exit_sha256": "83dfde9ba1d6fe5aee7e9de2e1fe8976ac027da1505c7cc68dc11cfe9cf4d192",
+      "failures": 1,
+      "head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+      "label": "native-grok-custody-baseline-01",
+      "log_sha256": "169f2adee6e554d1a476450ad0b34aeb2c157b904b970393f54d3e71db59493e",
+      "seconds": 52.14243912301026,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 3,
+      "xml_sha256": "0149ee3bf07e63e969aa40233269740a7bba25834b6521474f99997479b0b171"
+    },
+    {
+      "command_sha256": "f1d01b0bb97abf12fed01ab390f462afdfbc9f7d373f625b5597a37d088870b6",
+      "errors": 0,
+      "exit_code": 1,
+      "exit_sha256": "35a23fb03027cdf108ec6eb154c7ea579a67969d51fc4b00337037c4358485c8",
+      "failures": 1,
+      "head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+      "label": "native-grok-custody-baseline-02",
+      "log_sha256": "3f20375501d40a18f36519c1be9e09747fcdd018d0c75ee5295797d43ce517ca",
+      "seconds": 34.52940135600511,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 1,
+      "xml_sha256": "3cce7434c64ce801d36f3a3376e71187e68cbe940d138a9bac9cea258f5b7958"
+    },
+    {
+      "command_sha256": "f6f3b79e96c0639732b54f8c2c1d6392577e22b10fde056bd0d56a7beab5f34b",
+      "errors": 0,
+      "exit_code": 1,
+      "exit_sha256": "27ee410f2b42980ad66fc67f25b9b9537d4d17e68a8a4532f13a4a2644d4426d",
+      "failures": 2,
+      "head": "53d0a9cde1c4126d9b2cec3666be611c7893c5c0",
+      "label": "worker-custody-development-03",
+      "log_sha256": "79e1dc372fe5ca33d8596944129d4a18ee18a791db5abbcec07edc61541ecf19",
+      "seconds": 344.6516052579973,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 170,
+      "xml_sha256": "526c32c8b00e160fe34a58019f0b01707f5c55a91f3c5cb86acb28523431e958"
+    },
+    {
+      "command_sha256": "ab62700719630fba788d3df2357369cfe8b30f488d51edbd2c77a17fd71195bb",
+      "errors": 0,
+      "exit_code": 0,
+      "exit_sha256": "148c4aae78243ce00f12da8c0dc50420e5baa75cb029aacaf116502f6827d1c5",
+      "failures": 0,
+      "head": "53d0a9cde1c4126d9b2cec3666be611c7893c5c0",
+      "label": "signed-custody-development-04",
+      "log_sha256": "ded539a8a3afb4b1155c78e777b8f70935ed83d932debb87a14b7de2d75a059c",
+      "seconds": 53.250322490988765,
+      "skipped": 0,
+      "source_unchanged": true,
+      "tests": 6,
+      "xml_sha256": "78f23599d7368b0723633cfa25d8d3b73ffa23e2a622170b978b5bbb51082b69"
+    }
+  ],
+  "retained_development_failures": {
+    "custody-diagnostics-development-01": "requested test target did not exist; collection did not execute tests",
+    "custody-diagnostics-development-02": "diagnostic test expected later projection gate; earlier protected-path gate correctly refused",
+    "native-grok-custody-baseline-01": "same-group fixture assumed dirty candidate retention despite earlier cleanup failure",
+    "native-grok-custody-baseline-02": "same-group adopted zombie prevented normal outer process return and callback settlement",
+    "worker-custody-development-03": "168 passed, two signed fixture assertions assumed control-adjacent execution DB; canonical runtime sidecar routing corrected and all six signed cases passed in development-04"
+  },
+  "schema": "native-provider-custody-independent-review@1",
+  "scope": {
+    "cleanup": "qualified dedicated worker identity, verified subreaper and empty stable baseline, finally reaps worker descendants",
+    "container_integration": "actual owner UID to sudo worker UID and real shared adapter; disconnected authored executable, no model",
+    "core_gate_observations": "finite, ordered, bounded, observation-only; no process/claim IDs or raw exception bodies",
+    "daemon_global_child_kill_or_reap_added": false,
+    "historical_trial11_exact_refused_gate": "unavailable; new reproductions establish mechanisms, not historical attribution",
+    "live_benchmark_or_model_qualification": false,
+    "settlement_authority_from_observations": false,
+    "signed_integration": "actual native owner/START/claim/pool/STOP; real shared Grok adapter with authored executable and planning purpose"
+  },
+  "settlement_authority": false,
+  "source_base": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "source_head": "b10f4a4c4a703424827f4fcee929d4141925d4fd",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "2e87ef8ed95cd72185f75814838352a5a61a31784289a9738074116fb7025407",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "89a224bd632586fdb534f108abf14199da6898c71b6ca0586834f1ec13f1c246",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa",
+    "test/integration/test_admitted_native_provider_failure_settlement.py": "bdef424bcdd92399008ca48653d4283956480d7172aa500bb1c70a4ec12c4943"
+  },
+  "unchanged_authority_and_cleanup_method_ast_sha256": {
+    "_kill_and_reap_orphans": "06bd8d41229e88ba06c5ce3fa620704f1ad6b4b723b1e6e7595188b1fca4eb96",
+    "_require_native_provider_failure": "36d52f93dd3b82af9921cf6fec095bc858f9564ad36fadc3426144e8c7eb7eb2",
+    "_require_provider_admission": "c77f0e710f020aa625b27e154f0e221db5bf292514c1688493cb5a3a75b6e6f9",
+    "_settle_native_provider_failure": "d621224ceef66a0e98b3afa1afc4569b01e04b6ee9034d90469d7df1c46578d5"
+  }
+}

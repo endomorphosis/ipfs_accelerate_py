@@ -1,0 +1,29 @@
+{
+  "archive_sha256": "52fecd888898ceef62dd4751a0e891c75ccf11cf315725ec4c6528bd45aacab9",
+  "baseline_source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "cases": [],
+  "cases_network_disconnected": false,
+  "completion_authority": false,
+  "container_removed": false,
+  "error_type": "RuntimeError",
+  "new_source_bytes_unchanged": true,
+  "new_source_head_at_snapshot": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "official_benchmark_or_native_Grok_model_qualification": false,
+  "qualified": false,
+  "real_credentials_used": false,
+  "remote_provider_calls": 0,
+  "schema": "disconnected-worker-child-custody-qualification@1",
+  "seconds": 1.0283372179837897,
+  "settlement_authority": false,
+  "setup_network_allowed": true,
+  "source_sha256": {
+    "authored_cli": "231199d6622dfc557a46ea859b3e6200f256c30ead88c5e1cdcd94da12a79def",
+    "new_helper": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4",
+    "new_worker_entry": "c8cd52b2051ab0d80ef5651d9e3be6e2c15c423d73225a20d107b47b2ad48aca",
+    "new_worker_module": "2e87ef8ed95cd72185f75814838352a5a61a31784289a9738074116fb7025407",
+    "old_helper": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037",
+    "old_worker_entry": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e",
+    "old_worker_module": "96be048ce5d00b70f2e0758cb0278f04729d6c58ea4f66731d68b70cee725e72"
+  },
+  "synthetic_authored_cli": true
+}
