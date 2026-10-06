@@ -1,0 +1,41 @@
+{
+  "schema": "supervisor-decoder-contract-baseline-preservation@1",
+  "published_source_base": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "preceding_qualification_base": "5ab1a2ce1ffa08748f6a48aa898dfa91f6105e47",
+  "preceding_owner_changes": [
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervised_task_context.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+    "ipfs_accelerate_py/llm_router.py"
+  ],
+  "explicit_owned_owner_change": "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py",
+  "all_other_owner_changes_present_in_published_upstream": true,
+  "thirteen_preceding_asset_pins_equal": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930": true,
+    "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json": true,
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json": true,
+    "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json": true,
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": true,
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": true,
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": true,
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": true
+  },
+  "datasets_commit_equal": true,
+  "current_retained_files": 16,
+  "upstream_source_changes_not_discarded": true,
+  "prior445_nodes_required_in_final": true,
+  "completion_authority": false
+}

@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 39 items
+
+test/api/test_task_ir_checkpoint.py .................................... [ 92%]
+...                                                                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/checkpoint-authentication-unit-02.xml -
+============================= slowest 10 durations =============================
+0.58s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[True]
+0.18s call     test/api/test_task_ir_checkpoint.py::test_exact_selection_upper_population_bound[16]
+0.15s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[False]
+0.01s call     test/api/test_task_ir_checkpoint.py::test_schema_decoder_task_and_geometry_role_remain_distinct_despite_shared_bytes
+0.01s call     test/api/test_task_ir_checkpoint.py::test_real_sparse_file_byte_budgets_refuse_before_opening_any_checkpoint[aggregate]
+0.01s call     test/api/test_task_ir_checkpoint.py::test_earlier_file_change_after_later_authentication_is_checked_at_final_endpoint
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 39 passed in 1.71s ==============================

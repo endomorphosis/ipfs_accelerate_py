@@ -1,0 +1,220 @@
+{
+  "completion_authority": false,
+  "database_mutated": false,
+  "download_calls": 0,
+  "exact_saved_registry_route_outcomes": [
+    {
+      "checkpoint_receipt": {
+        "bytes": 586049,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json",
+        "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+      },
+      "error_type": "DecoderProfileInventoryError",
+      "format_id": "ir-decoder-format/v1:df36cf0c6f41e8ca2cd0c05bdcd1d64ac1ad5096e2e288c7e8450cf41f18628c",
+      "format_request": {
+        "schema_version": "intent-rich-grammar/v1",
+        "target_format_id": "intent_ir/intent_rich_ast",
+        "task_id": "source_to_native_ir"
+      },
+      "ir_family_id": "intent_ir",
+      "profile_id": "ir-decoder-profile/v1:c4f5f430aa8adb9876e344c0a38722c3e411e495e1fea460cffe57c887433274",
+      "reason": "registry claims differ from complete authenticated rebuild",
+      "record_id": "ir-decoder-checkpoint-record/v1:621c037b4b8f04032afc4e7646f87faea94c83e9294fa7aaeda1289d4ad58907",
+      "request": {
+        "checkpoint_sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "intent_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-intent-ir-original-fit",
+      "status": "refused"
+    },
+    {
+      "checkpoint_receipt": {
+        "bytes": 597741,
+        "path": "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json",
+        "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+      },
+      "error_type": "DecoderProfileInventoryError",
+      "format_id": "ir-decoder-format/v1:b7437ce983e9dad2182d50017caa3f806628646389381f5498a18210eea500f4",
+      "format_request": {
+        "schema_version": "program-ir/v1",
+        "target_format_id": "security_ir/program_expression",
+        "task_id": "source_to_native_ir"
+      },
+      "ir_family_id": "security_ir",
+      "profile_id": "ir-decoder-profile/v1:01cc768632eed28f8170f84a0fed326398953066af599fd160066dd738f579c1",
+      "reason": "registry claims differ from complete authenticated rebuild",
+      "record_id": "ir-decoder-checkpoint-record/v1:e16e06219dce496201649a2389d9a5cc158edf789cc4c863a40a1f3ba2773f2c",
+      "request": {
+        "checkpoint_sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "ir_family_id": "security_ir",
+        "task_id": "source_to_native_ir"
+      },
+      "run_id": "recorded-security-ir-original-fit",
+      "status": "refused"
+    }
+  ],
+  "forbidden_import_attempts": [
+    "socket"
+  ],
+  "forbidden_import_roots": [
+    "aiohttp",
+    "duckdb",
+    "ftplib",
+    "http",
+    "httpx",
+    "huggingface_hub",
+    "numpy",
+    "requests",
+    "sentence_transformers",
+    "socket",
+    "torch",
+    "transformers",
+    "urllib"
+  ],
+  "forbidden_owner_modules_imported": [],
+  "format_identity_preserved": true,
+  "import_fence_scope": "Network-root import attempts are denied. Optional package bootstrap may catch an import refusal; attempted roots are retained above. Preexisting urllib comes from stdlib path bootstrap. No forbidden root was newly imported.",
+  "inference_executed": false,
+  "interpretation": "Native metadata rebuild preserves both existing format/profile/record identities. Saved snapshot resolution refuses because source-file locators and their concrete format-contract digests belong to a different checkout. Rebinding must be explicit; no mismatch was ignored.",
+  "leaf_difference_count": 8,
+  "leaf_differences": [
+    {
+      "after": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "before": "/home/barberb/lift_coding/.worktrees/ir-decoder-profile-inventory-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "path": "/checkpoints/0/codec_source_receipts/0/path"
+    },
+    {
+      "after": "ir-decoder-format-contract/v1:52f19a475562e7217618d6fc896f65c9da79fe3769630bb3f8229df01a2faefe",
+      "before": "ir-decoder-format-contract/v1:fc13a496890df09b1dfaa794259ee5fba39d49ff7d8332001bad43a62130d747",
+      "path": "/checkpoints/0/format_contract/contract_id"
+    },
+    {
+      "after": "52f19a475562e7217618d6fc896f65c9da79fe3769630bb3f8229df01a2faefe",
+      "before": "fc13a496890df09b1dfaa794259ee5fba39d49ff7d8332001bad43a62130d747",
+      "path": "/checkpoints/0/format_contract/contract_sha256"
+    },
+    {
+      "after": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+      "before": "/home/barberb/lift_coding/.worktrees/ir-decoder-profile-inventory-20261004/ipfs_datasets_py/logic/intent_ir/formalize/rich_grammar.py",
+      "path": "/checkpoints/0/format_contract/format_implementation_receipt/path"
+    },
+    {
+      "after": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "before": "/home/barberb/lift_coding/.worktrees/ir-decoder-profile-inventory-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/domain_384_autoencoder.py",
+      "path": "/checkpoints/1/codec_source_receipts/0/path"
+    },
+    {
+      "after": "ir-decoder-format-contract/v1:faae790f2fbeb1018eb89815cf576345636900204f2501d0f8bb2968e6637d92",
+      "before": "ir-decoder-format-contract/v1:4ae04edca0138bdc98106925ed8282b81db82cf8f7bbb5d91e227940da7fe41e",
+      "path": "/checkpoints/1/format_contract/contract_id"
+    },
+    {
+      "after": "faae790f2fbeb1018eb89815cf576345636900204f2501d0f8bb2968e6637d92",
+      "before": "4ae04edca0138bdc98106925ed8282b81db82cf8f7bbb5d91e227940da7fe41e",
+      "path": "/checkpoints/1/format_contract/contract_sha256"
+    },
+    {
+      "after": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/software_verification/program.py",
+      "before": "/home/barberb/lift_coding/.worktrees/ir-decoder-profile-inventory-20261004/ipfs_datasets_py/logic/software_verification/program.py",
+      "path": "/checkpoints/1/format_contract/format_implementation_receipt/path"
+    }
+  ],
+  "limitations": "This is one retained two-format inventory and one committed metadata owner. It authenticates neither decoder numerical operation, training execution, token/span capability, source fidelity, model quality, proof status nor remote availability.",
+  "model_loaded": false,
+  "model_manager_constructed": false,
+  "native_build_succeeded": true,
+  "native_rebuild_authority": {
+    "checkpoint_numerically_validated": false,
+    "database_operations_executed": false,
+    "embedding_producer_execution_authenticated": false,
+    "full_source_dependency_closure_qualified": false,
+    "huggingface_available": false,
+    "independent_evaluation_qualified": false,
+    "learned_source_text_reconstruction_qualified": false,
+    "model_task_qualified": false,
+    "native_grammar_verified": false,
+    "numerical_model_loaded": false,
+    "original_training_run_authenticated": false,
+    "output_semantics_verified": false,
+    "physical_cell_store_qualified": false,
+    "promotion_admitted": false,
+    "proof_authority": false,
+    "quality_qualified": false,
+    "registry_release_qualified": false,
+    "remote_operations_executed": false,
+    "runtime_admitted": false,
+    "runtime_release_qualified": false,
+    "source_free_reconstruction_qualified": false,
+    "source_semantics_verified": false,
+    "source_token_budget_qualified": false,
+    "store_available": false,
+    "teacher_qualified": false,
+    "tensor_shapes_verified": false,
+    "training_admitted": false,
+    "training_executed": false
+  },
+  "native_rebuild_cells": 12,
+  "native_rebuild_persisted": false,
+  "owner_head": "73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3",
+  "owner_introduced_commit": "323da19d1c5a43749e1677204760941b69f83e43",
+  "owner_source_pins": [
+    {
+      "bytes": 20396,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 22669,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 14468,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_original_corpus_runtime.py",
+      "sha256": "03b9dd075227982f67543bdd7352f52186ba33f1dd98158342bab2aa37735b4f"
+    },
+    {
+      "bytes": 15209,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_runtime.py",
+      "sha256": "673702cc415b37d9597bbe5ccf259717d77f8335a0c2269265cddc4dff49ffdd"
+    },
+    {
+      "bytes": 20422,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_routing.py",
+      "sha256": "e5ad1d9ca5187abf39d66f18be7c4ec5a891a2da6d2e571ad4132edae8b7528a"
+    },
+    {
+      "bytes": 18253,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/ir_cell_target_compatibility.py",
+      "sha256": "49251451146d94bf0ba784b4d9e439174efcb602d17daa16fc0bf9986fea33ab"
+    },
+    {
+      "bytes": 15759,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004/ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+      "sha256": "43dd4ef8efd673f0bf76ccc84a082e55e608a8d4ac1b4b4d9ff28709b14d9a95"
+    }
+  ],
+  "owner_tracked_clean_before_and_after": true,
+  "owner_worktree": "/home/barberb/lift_coding/.worktrees/ir-model-manager-hf-sync-20261004",
+  "preexisting_forbidden_roots": [
+    "urllib"
+  ],
+  "profile_identity_preserved": true,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "record_ids_preserved": true,
+  "registry_pin": {
+    "bytes": 125540,
+    "path": "/home/barberb/lift_coding/artifacts/ir-decoder-profile-inventory-20261004/controls/runs/actual-inventory-v3/profile-inventory.json",
+    "sha256": "7124e191e7f6decc204b449dd9d8db3720f123278ba2cf8b7d4f1517bf63d641"
+  },
+  "registry_unchanged": true,
+  "runtime_admitted": false,
+  "schema": "supervisor-native-decoder-profile-custody-survey@1",
+  "training_executed": false
+}

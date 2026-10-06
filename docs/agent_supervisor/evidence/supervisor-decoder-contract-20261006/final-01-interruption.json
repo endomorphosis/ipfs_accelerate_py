@@ -1,0 +1,8 @@
+{
+  "schema": "supervisor-checkpoint-final-interruption@1",
+  "pid": 2495697,
+  "signal": "SIGINT",
+  "scope": "Exact owned pytest command with this final-01 XML path only; no other agent or process signalled.",
+  "reason": "Independent review found Python bool/int equality accepted freshly rehashed inner observation type changes. Stop before source correction; retain raw interrupted run and require fresh complete frozen final-02.",
+  "completion_authority": false
+}

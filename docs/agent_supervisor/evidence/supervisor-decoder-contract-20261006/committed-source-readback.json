@@ -1,0 +1,7 @@
+{
+  "schema": "supervisor-decoder-contract-committed-source-readback@1",
+  "source_commit": "9764fbe0a3c042cc1a8ba2da1680f474108b9511",
+  "manual_source_and_test_bindings": 68,
+  "all_committed_objects_match_final_run": true,
+  "completion_authority": false
+}

@@ -1,0 +1,81 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/final-01.xml",
+    "--basetemp=/tmp/ordinary-supervisor-final-01-9f1cd6694e874dde9f382064b8f13dd2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py",
+    "test/api/test_task_ir_checkpoint.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py",
+    "test/api/test_task_ir_selection.py",
+    "test/api/semantic_state/test_supervised_task_context.py",
+    "test/api/semantic_state/test_published_empty_task_context.py",
+    "test/test_ir_persistent_catalog.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+    "test/api/semantic_state/test_intent_world_snapshot.py",
+    "test/api/semantic_state/test_semantic_context_runtime.py",
+    "test/api/semantic_state/test_code_retrieval_context.py",
+    "test/api/semantic_state/test_source384_task_context_bundle.py"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-final-01-f1e81ccdbde04c7895204981a8cb0378.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 2,
+  "elapsed_seconds": 246.97104935598327,
+  "pins_unchanged": true,
+  "ast_sealing": {
+    "records": 5,
+    "closure_files_min": 989,
+    "closure_files_max": 989,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 6,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_two_actual_roots_authenticate_parallel_family_dimension_assets_without_runtime": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_default_receipt_preserves_metadata_only_scope_and_missing_assets": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[bytes]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[missing]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[same_bytes_new_inode]": "passed",
+    "::": "passed"
+  },
+  "evidence_files": {
+    "final-01.xml": {
+      "bytes": 1281,
+      "sha256": "e1fa9af7090a399a4b11dc267e77cecc3973936b1ebdb948a34eebada843470d"
+    },
+    "final-01.log": {
+      "bytes": 2710,
+      "sha256": "804578689b547231b38addc19de1c00d4cc9ca5c7c9536fa798882eb1f7dba79"
+    }
+  }
+}

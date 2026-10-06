@@ -953,6 +953,128 @@ currentness and durable restart/completion. Keep generated formal candidates
 separate from checked proofs in the proof index. The reviewed profile's legacy
 context and native launch guards remain in place until those gates pass.
 
+## Retained checkpoint authentication and decoder recovery (2026-10-06)
+
+The [frozen qualification](evidence/supervisor-decoder-contract-20261006/qualification.json)
+passed **512 checks** with zero failures, errors or skips, including all 445
+preceding ready-root regression nodes, 41 new byte-authentication controls and 26
+new native context controls. All cases have fresh AST seals without completion
+authority. The 68 manual source/test pins, datasets checkout and16 retained files
+stayed unchanged. Focused/development runs overlap and are not added.
+
+`authenticate_task_ir_checkpoints` joins exact persisted ModelManager selections
+to the original registered checkpoint byte pins. It validates every selected
+path, regular single-link file and byte budget before opening any checkpoint,
+then streams SHA256 through read-only descriptors and checks file identities,
+a fresh complete catalog generation and all closing descriptor/path witnesses.
+The per-file ceiling is 512 MiB; the conservative selected population ceiling
+is 1 GiB. Checkpoint JSON, tensors and models are not deserialized. This closes
+a byte-authentication gap while leaving shape/ABI, encoder, token/span,
+inventory, reconstruction quality and decoder runtime admission separate.
+
+The ready-root producer has an explicit `authenticate_ir_checkpoints=True`
+option using exact per-task catalog nominations. Its version-2 receipt carries
+per-task checkpoint observations and marks only its own checkpoint-byte
+observation true. The embedded catalog resolutions retain their original false
+checkpoint/runtime authority fields. Source/admission/native-owner fences run
+again after checkpoint reads, and a batch fence rechecks earlier tasks' file
+identities after later task reads. Cold reopening repeats byte authentication;
+`require_checkpoint_authentication=True` refuses a downgrade to metadata-only
+receipts. Default version-1 receipt fields and behavior remain unchanged. Both
+versions keep decoder runtime, proof, execution and completion authority false.
+These endpoint observations are cooperative currentness checks, not an atomic
+filesystem/catalog/native-owner transaction or a lease.
+
+The [actual retained replay](evidence/supervisor-decoder-contract-20261006/retained-checkpoint-authentication.json)
+authenticated **eight existing checkpoint files**, 105,868,568 bytes, from the
+selected existing ModelManager store, with unchanged store/WAL stat witnesses.
+The original nine-selection batch refuses the borrowed Codebase384 checkpoint's
+`test_real_fit_registry_replay_current` ancestor alias. Its bytes still match
+the earlier filesystem witness, but an alias is not silently substituted with
+the current target. Recover a separately reviewed canonical asset binding with
+the original identity/provenance retained. None of these byte observations
+loads a model or authenticates a remote Hugging Face payload.
+
+The [retained contract survey](evidence/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json)
+found substantial differences within the nominal family/dimension matrix:
+
+| Retained selection | Actual contract | Decoder admission gap |
+| --- | --- | --- |
+| Core-family 8D latent checkpoints | Structural feature/projection reconstruction; source-text decoder untrained | Preserve feature codecs and geometry; author separate supported output-task contracts |
+| Codebase384 | SecurityIR payload inside a Codebase source-generation envelope; native Codebase decoder incomplete | Preserve owner/payload distinction and resolve the original locator alias explicitly |
+| Security384 | Source to serialized program-expression fragment, `program-ir/v1` | Existing exact profile is recoverable; full native document and source-text decoding unsupported |
+| Intent384 | Source to serialized rich-intent AST fragment, `intent-rich-grammar/v1` | Existing exact profile is recoverable; full native document and source-text decoding unsupported |
+| Legal384 pilot | One-rule deontic formula, `CanonicalRoundTripIR@1`, 64 source/target codec tokens | This head does not reconstruct the originating legal prose |
+| Legal768 interfaces | Frozen inherited 8D/384D bodies and trained connecting interfaces | Encoder 8192 profile differs from inherited output limits; source fidelity and distillation remain unqualified |
+
+The clean committed native profile owner is pinned separately at datasets
+`73db2c8f3edb9fbdfc5decb0e8f12bb4e86e10f3`; it is not mixed into the supervisor's
+`987cf856b2b902aa68c4587bb492b19b932b5d30` runtime checkout. Its original inventory
+supports exactly the two Intent/Security384 fragment profiles. Rebuilding the
+original saved inventory preserves both format/profile/checkpoint-record IDs
+and all twelve lanes, but native route selection initially refuses changed
+source-file locations and the corresponding concrete contract digests. The
+[explicit custody rebind](evidence/supervisor-decoder-contract-20261006/original-profile-custody-rebind-receipt.json)
+writes a new detached inventory and resolves both original exact routes through
+the actual public owner. It preserves the original inventory and all false
+runtime/quality authorities. The other seven nominated legacy assets still lack
+supported native format contracts; their null selectors cannot be filled from
+filenames, serialization schemas or family/dimension alone.
+
+The survey also recovered the stronger semantic reconstruction path:
+historical contextual384 and contextual768 replay each reports **48/48 exact
+canonical IRs, 180/180 rules and 720/720 actor/action/modality/object fields**.
+Their complete retained states remain present and byte-bound. The historical
+replay used paragraph vectors plus explicit cached source-clause vectors,
+clause masks and the original codec/preprocessing; this survey does not freshly
+witness those contextual cache files. This is historical replay
+on its specified panel, not a fresh holdout or original legal-text reconstruction.
+Both profiles use declared 512-token budgets; the result does not qualify an
+8192-token span or single-vector reconstruction. Neither selected-state SHA
+appears in the current 668-binding selected ModelManager store. Remote Hub
+publication of those exact complete states is unestablished in this evidence.
+
+A [fresh publication survey](evidence/supervisor-decoder-contract-20261006/native-profile-publication-survey.json)
+confirms that the native profile owner file exists in clean committed `73db2c8f`
+but is absent from the current datasets `origin/main` tree at `5171a632`.
+Commit ancestry alone does not establish that a runtime checkout contains the
+owner. Recover its complete metadata-owner closure against current main and
+qualify codec/profile identity and API compatibility before publishing that
+integration; do not import a partial old closure into the supervisor's pinned
+runtime.
+
+The next recovery plan prioritizes those existing contextual states before
+further fitting. Create reviewed append-only format/input-contract records for
+both complete wrappers, retaining their exact donors, paragraph/clause cached
+vectors, masks, ordered codecs, frozen held-out splits and original byte hashes.
+Recover the actual IR output schema independently of checkpoint serialization;
+keep semantic IR generation, originating legal-text reconstruction and each
+FOL/TDFOL output as separate decoder tasks. Then use the existing publisher and
+ModelManager importer with immutable public Hub receipts and actual persisted
+readback. Preserve earlier unknown-profile records and separate family/8D/
+384D/768D inventories, geometry and DuckDB/DuckLake databases.
+
+For each output task, report canonical semantic equality, field/rule coverage,
+syntax validity and verbatim/normalized source-text equality separately.
+Source reconstruction must evaluate `legal text -> legal_ir -> legal text`;
+deterministic decompilation of a canonical formula does not recover original
+wording. Define whether the text task requires verbatim bytes or equivalent
+legal meaning before choosing its objective. A semantic IR that collapses
+wording, punctuation, references or ordering must retain source-form anchors
+or an explicit residual when lossless wording is required. Count those inputs
+in the representation and report a separate ablation without them; cached
+clause vectors and raw-source sidecars cannot be treated as single-vector
+reconstruction. Any clause/raw-source inputs retained by the IR need an explicit
+input contract and an ablation against embedding-only decoding. Reuse the successful
+8D/384D teachers and heads to initialize 768D interfaces, then measure semantic
+and source fidelity on the same held-out corpus before increasing span budgets.
+An 8192-token encoder declaration cannot enlarge the 64/512-token decoder
+output budgets or change the inherited vocabularies.
+Missing family runtimes or format contracts refuse rather than substitute a
+borrowed payload. After those decoder/inventory gates pass, bind dependent
+contexts to verified predecessor source successors and qualify parallel leases,
+review, merge currentness and durable completion before lifting execution gates.
+
 ## Terminal-Bench finishing gates (2026-10-05)
 
 The [initial readiness assessment](evidence/terminal-bench-finish-readiness-20261005/assessment.json)

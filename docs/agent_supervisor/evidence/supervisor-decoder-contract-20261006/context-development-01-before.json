@@ -1,0 +1,269 @@
+{
+  "base_commit": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+  "source_files": {
+    "benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": {
+      "bytes": 16784,
+      "sha256": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": {
+      "bytes": 15377,
+      "sha256": "17f416a45d873ba77ca10e11eb13b3f61ecd061f6e5ec3b63beba8230e455868"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 11949,
+      "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 69552,
+      "sha256": "5c2cebfd4c0bcf04e6174aed3ce853bfdcd4efd8ee04b031b3f2d157f908e3d6"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "bytes": 46937,
+      "sha256": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py": {
+      "bytes": 42135,
+      "sha256": "ead125362886737e987e6f1ed2401a81deef4d07182f573e7e85dbfca727c416"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py": {
+      "bytes": 11652,
+      "sha256": "bd189ee79921a9afd81b86ad95d9149b7c65e536400f80816bb853d5556b8474"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": {
+      "bytes": 736,
+      "sha256": "e5f3210c63bc58a6217f5bf5506b4a43e7205124c01fd8be88c57c954886f034"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py": {
+      "bytes": 8707,
+      "sha256": "0b6e7f2397b2e3ebb54253d7cf35b7e65f162fbaf6976c4c84ebe50f0c5a9ac4"
+    },
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": {
+      "bytes": 71232,
+      "sha256": "f4aac8583dda864da329c79e5860863dd6c5c66767b9941eb7d8117a4e30dfae"
+    },
+    "ipfs_accelerate_py/agent_supervisor/control/plan_execution_store.py": {
+      "bytes": 285000,
+      "sha256": "022f94334442de45d93b8697098ccfc39e69d1a2802b735c3a0db7298b063285"
+    },
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "bytes": 97937,
+      "sha256": "c73281d19246016c6f345dd514ba1bb19c35754328c1a8b008631b63b58ea009"
+    },
+    "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": {
+      "bytes": 121743,
+      "sha256": "e9386ed646ec704d3326de990b7af569203cae451e69c8ea425099b3d5a06c0a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py": {
+      "bytes": 292546,
+      "sha256": "14715cfebe235215f994b6f01c2dd3fd15d1b3fef020bd277d2edd397ef6ab34"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": {
+      "bytes": 27522,
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": {
+      "bytes": 15697,
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": {
+      "bytes": 23035,
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py": {
+      "bytes": 211531,
+      "sha256": "8f73cd5841c4cf3eeb48fa07d3dabc222e23ab35e39e5873c57183b9c1af127b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/bounded_git_status.py": {
+      "bytes": 6148,
+      "sha256": "0893f3a178fb378c0ada64d85d78d4dc7b7ec6e4c4cbaceca59f005c46d0c927"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py": {
+      "bytes": 12109,
+      "sha256": "4625604d33c042b4fddcfbdce08b63c1ad5547d40fabe91ed8da66ba6ee90d39"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": {
+      "bytes": 34342,
+      "sha256": "1b2be0ccc92ff1fd11b06f46f431d26c68b681a7cb53dd3f301bf4248da8f650"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": {
+      "bytes": 36345,
+      "sha256": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "bytes": 94089,
+      "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+      "bytes": 592871,
+      "sha256": "520eede032ac8adc454e26c124e44d866b6b8508bc40d31b7a74cd5f01e5640f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/prior_seed_guidance.py": {
+      "bytes": 4164,
+      "sha256": "e0edd12a091fb997599400cc5dee5ad2d8c7b3d3127563310287e6b7fb4671e1"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py": {
+      "bytes": 70975,
+      "sha256": "5bf693ae0eb41bac1d30fcaf8c168bec5fd17b29accbdf7d527afa84e38d42e3"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": {
+      "bytes": 238831,
+      "sha256": "44b804497a280f437270d0a5c2ac4e555a9d6b42a013c61c868c4bd72d938bcd"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 20466,
+      "sha256": "83bb4334b076533b8e485df4d46d1c9147d41d3b66e485e01e47245a4853f1f0"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+      "bytes": 33314,
+      "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervised_task_context.py": {
+      "bytes": 12169,
+      "sha256": "d93d26a12f9f957828e0f5b3bcb4289c11ee4743d3c7a91d3aec196a3a9d3bcc"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": {
+      "bytes": 12909,
+      "sha256": "b027c9c948b6c8bcf765d61ccb7111589e3aed796a662a7da43837615d2b0ebe"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py": {
+      "bytes": 7527,
+      "sha256": "ad7e20cec98256c647acba1fb8c5bc8218a170fdd776f21ff35af447f04863e0"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py": {
+      "bytes": 2722,
+      "sha256": "c1f5c4860e3eca0fa8db0e1a584623b58b309f999f1290c331dfe3dba57fc002"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py": {
+      "bytes": 5797,
+      "sha256": "f0ba7182af2db700459b62b2752bfcfdd562c2fc6b1ab7f9ee3d5832c4cb9940"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "bytes": 22802,
+      "sha256": "537665896a3664c7b917650e49d2cad539dfe484bc1d82406030c1f39e81d6e3"
+    },
+    "ipfs_accelerate_py/agent_supervisor/semantic_state/intent_world_snapshot.py": {
+      "bytes": 23083,
+      "sha256": "7010d80da9422650d7320159074384134527b3b5426a5fa24059ccb4e2244f5c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": {
+      "bytes": 433395,
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": {
+      "bytes": 149923,
+      "sha256": "8454ba8930e327a0e63f8ead2f76c472f60df280427bceed4a868d856b5b0279"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/checkpoints.py": {
+      "bytes": 8403,
+      "sha256": "fa4207391115f54674732d7a4d257a5bb35be95ace8e699c6c1aa4a32cb03e71"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": {
+      "bytes": 55921,
+      "sha256": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": {
+      "bytes": 41441,
+      "sha256": "e46f54d8c3ba7a38e13daaf837a11a649194a1134a6086889967d6a8fcb7993b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3233162,
+      "sha256": "68beeeba41e543cbb90284f65c12bd07aeda2b896ab12aeb2863d6b4dee1213c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": {
+      "bytes": 1007144,
+      "sha256": "b342ea985c241767013406ce7b95b49f8eb349c73762703c5785f1f6dbea0aac"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py": {
+      "bytes": 261162,
+      "sha256": "e9ae5b327964490669f29c29e0dd26e492887c780ea260e29e26a4126616fd07"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py": {
+      "bytes": 43776,
+      "sha256": "6ae454e8de00b58e4707d4c6ca2c775885eff9de49f69ca54c91059db2e88573"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": {
+      "bytes": 38040,
+      "sha256": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": {
+      "bytes": 87767,
+      "sha256": "76a1874ff6000c217015253a34523086b5eab1bae4e2e00c6446efc79795a004"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": {
+      "bytes": 75914,
+      "sha256": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": {
+      "bytes": 161920,
+      "sha256": "c9b81d9d530c94472f0b03600a09d10c6d61a82dd33e5632d691f100937f5f32"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "bytes": 549621,
+      "sha256": "e0054cc15a489c5d8f226fed7d72fff8db4272af11b2ed487ef138e76e006d06"
+    },
+    "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py": {
+      "bytes": 19952,
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    },
+    "ipfs_accelerate_py/testing/pytest_ast_seal.py": {
+      "bytes": 18519,
+      "sha256": "42930334f4de159e71e6c345075a05b863fe427992bc1782f0cfbdf62b44ff9e"
+    }
+  },
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "datasets_tracked_status": "",
+  "retained_assets": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/codebase-source-training-qualification-20261002/parent-checkpoint.json": {
+      "bytes": 673933,
+      "sha256": "53318593b6aa77d5d352c9499c48d92d513215c8d2f945f7d6838205528ba17c"
+    },
+    "/home/barberb/lift_coding/artifacts/codebase-source384-20261002/qualified-02/test_real_fit_registry_replay_current/models/06/069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930": {
+      "bytes": 304490,
+      "sha256": "069458d8266e0ffce07415e49b8b2ae87dcca4374e5a9aec43844b6c69e85930"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-ridge-path-20261002/run-01/security_ir/candidate-1730/family_checkpoint.json": {
+      "bytes": 1786933,
+      "sha256": "694beba29867309c7d51776adbfe3fbf1d37e0305517c5a61cc98e99e5d3490a"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/security_ir/checkpoint.json": {
+      "bytes": 597741,
+      "sha256": "855b3d6d85bb59e165930785bd49711df0fcc8fbc8e11329e2f4b65125520441"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/legal_ir/ridge_path-1730/family_checkpoint.json": {
+      "bytes": 17392573,
+      "sha256": "82821eb7167c378e403801f14d5f9abd402893e9a8bc6f98d60a096d803a8086"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-pilot-20261002/run-02/seed-1730/trained.json": {
+      "bytes": 1646128,
+      "sha256": "01fd0540beefd5c3420bb48947fa1ec91f7c0698a1bed651280c0a1d3bb16cec"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-training-complete-20261002/run-02/intent_ir/ridge_path-1729/family_checkpoint.json": {
+      "bytes": 76824494,
+      "sha256": "10d0d306c46151332e0785dfe995c4e159f45ac5de8f0ff03acf3bd2eb5daa71"
+    },
+    "/home/barberb/lift_coding/artifacts/ir-384-hub-release-20261002/packages/intent_ir/checkpoint.json": {
+      "bytes": 586049,
+      "sha256": "f031dc5a3dfb9b4fd9e7a8bfbe0f188393edd3afdcc3f18c06c84f4749c6db55"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-decoder-native-conditioning-20261002/native768/aligned-interface-precise-01/trained-interfaces.json": {
+      "bytes": 6360717,
+      "sha256": "4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors": {
+      "bytes": 66746168,
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--Publicus--intent-ir-autoencoder/blobs/66cc213ddf4a4c5292718df33db0821642ac6176": {
+      "bytes": 384106,
+      "sha256": "4f3fd17ea2d908fe36c57a444517f3cc0a983cab26f0f67f2e32371e25def3cd"
+    },
+    "/home/barberb/.cache/huggingface/hub/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/1110a243fdf4706b3f48f1d95db1a4f5529b4d41/model.safetensors": {
+      "bytes": 90868376,
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+    },
+    "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    }
+  }
+}

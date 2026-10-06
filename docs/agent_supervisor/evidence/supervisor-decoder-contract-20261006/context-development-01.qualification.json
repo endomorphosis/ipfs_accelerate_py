@@ -1,0 +1,77 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/context-development-01.xml",
+    "--basetemp=/tmp/ordinary-supervisor-context-development-01-270412af1853430a806bd44a88595ec9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py"
+  ],
+  "environment_overrides": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/ordinary-supervisor-context-development-01-9e83e91a7e3d46b29e51b04b922978e0.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "returncode": 0,
+  "elapsed_seconds": 219.4560277449782,
+  "pins_unchanged": false,
+  "ast_sealing": {
+    "records": 18,
+    "closure_files_min": 989,
+    "closure_files_max": 989,
+    "any_completion_authority": false
+  },
+  "counts": {
+    "passed": 18,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "case_outcomes": {
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_two_actual_roots_authenticate_parallel_family_dimension_assets_without_runtime": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_default_receipt_preserves_metadata_only_scope_and_missing_assets": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[bytes]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[missing]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[same_bytes_new_inode]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_cold_authenticated_receipt_reobserves_actual_checkpoint_owner[catalog_path]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[checkpoint_flag]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[runtime_flag]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[witness]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[drop_observations]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[downgrade]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_freshly_rehashed_checkpoint_claim_cannot_replace_live_observations[task_binding]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_missing_actual_checkpoint_refuses_before_context_output": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_typed_authentication_selection_refuses_before_state_or_artifacts[None]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_typed_authentication_selection_refuses_before_state_or_artifacts[0]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_typed_authentication_selection_refuses_before_state_or_artifacts[1]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_typed_authentication_selection_refuses_before_state_or_artifacts[true]": "passed",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_checkpoint_context::test_authentication_requires_explicit_ir_selection_before_state_open": "passed"
+  },
+  "evidence_files": {
+    "context-development-01.xml": {
+      "bytes": 3875,
+      "sha256": "488e8d1e1e928614d446250dd59852a8d0aa0e920e826f4933625e937cf28a3f"
+    },
+    "context-development-01.log": {
+      "bytes": 2525,
+      "sha256": "3765edd0f353c002420971c2d082f3598a57d972f27c028541f7d534744ae0d0"
+    }
+  }
+}

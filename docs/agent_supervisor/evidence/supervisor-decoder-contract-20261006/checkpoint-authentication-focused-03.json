@@ -1,0 +1,88 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-u",
+    "-B",
+    "-m",
+    "pytest",
+    "-c",
+    "pytest.ini",
+    "--noconftest",
+    "--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--show-capture=no",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/checkpoint-authentication-focused-03.xml",
+    "--basetemp=/tmp/checkpoint-authentication-focused-03-83e8766b83f845b6b26a9bdc9cedef64",
+    "test/api/test_task_ir_checkpoint.py",
+    "test/api/test_task_ir_selection.py"
+  ],
+  "environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_DATASETS_PY_MINIMAL_IMPORTS": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/dev/shm/checkpoint-authentication-focused-03-70d378797b004cf3b21a2a31976b9cde.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "exit_code": 0,
+  "before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py": {
+      "bytes": 7534,
+      "sha256": "2108e9ff11ae93adf4d11af30f7a8ff8a5003193d126436fbb72a8d69b7e5cd8"
+    },
+    "test/api/test_task_ir_checkpoint.py": {
+      "bytes": 16399,
+      "sha256": "4ba1399c13c2913a809f2b907a5948a33add7715ed7e94e93a866cff26c2a444"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py": {
+      "bytes": 2722,
+      "sha256": "c1f5c4860e3eca0fa8db0e1a584623b58b309f999f1290c331dfe3dba57fc002"
+    },
+    "test/api/test_task_ir_selection.py": {
+      "bytes": 14554,
+      "sha256": "98b96a3c6ca84c69a0ecabdba52b6ed8b02966ed2a4777eca5f77be15288b0a5"
+    },
+    "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py": {
+      "bytes": 19952,
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    }
+  },
+  "after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py": {
+      "bytes": 7534,
+      "sha256": "2108e9ff11ae93adf4d11af30f7a8ff8a5003193d126436fbb72a8d69b7e5cd8"
+    },
+    "test/api/test_task_ir_checkpoint.py": {
+      "bytes": 16399,
+      "sha256": "4ba1399c13c2913a809f2b907a5948a33add7715ed7e94e93a866cff26c2a444"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py": {
+      "bytes": 2722,
+      "sha256": "c1f5c4860e3eca0fa8db0e1a584623b58b309f999f1290c331dfe3dba57fc002"
+    },
+    "test/api/test_task_ir_selection.py": {
+      "bytes": 14554,
+      "sha256": "98b96a3c6ca84c69a0ecabdba52b6ed8b02966ed2a4777eca5f77be15288b0a5"
+    },
+    "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py": {
+      "bytes": 19952,
+      "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+    }
+  },
+  "owners_unchanged": true,
+  "seal_database": "/dev/shm/checkpoint-authentication-focused-03-70d378797b004cf3b21a2a31976b9cde.duckdb",
+  "seal_summary": [
+    81,
+    20,
+    22,
+    false
+  ],
+  "model_training_inference_and_runtime_admission_performed": false,
+  "real_retained_asset_writes_performed": false
+}

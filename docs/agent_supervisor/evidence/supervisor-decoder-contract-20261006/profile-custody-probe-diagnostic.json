@@ -1,0 +1,15 @@
+{
+  "schema": "supervisor-profile-custody-import-fence-diagnostic@1",
+  "phase": "non-qualifying reproducibility probe",
+  "failed_repeat_native_probes": 4,
+  "failure": "Expanded network import guard incorrectly asserted global module absence and then zero denied attempts. Stdlib bootstrap already imports urllib; optional package bootstrap attempts socket but catches the denial.",
+  "error_type": "AssertionError",
+  "fix": "Record preexisting roots and denied attempts. Assert no numerical/database attempts and no new forbidden roots during native metadata phase. Continue denying network roots; do not bypass their import fence.",
+  "latest_denied_network_import_attempts": [
+    "socket"
+  ],
+  "latest_new_forbidden_roots": [],
+  "new_registry_preserved": true,
+  "runtime_admitted": false,
+  "completion_authority": false
+}

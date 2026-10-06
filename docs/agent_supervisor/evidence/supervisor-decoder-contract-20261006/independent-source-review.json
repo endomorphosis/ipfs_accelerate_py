@@ -1,0 +1,61 @@
+{
+  "completion_authority": false,
+  "limitations": [
+    "This review did not execute the final qualification tests; root owns the fresh frozen-source run.",
+    "All file/catalog/native checks are cooperative endpoint observations; they provide no atomic snapshot, continuous currentness guarantee or checkpoint lease.",
+    "No universal format decoder validator exists in pinned datasets 987. Separate native profile custody rebind authenticates only two retained Intent/Security 384D serialized fragments, preserving null identities for unsupported lanes."
+  ],
+  "model_loaded": false,
+  "proof_authority": false,
+  "resolved_findings": [
+    {
+      "finding": "An earlier task checkpoint could change while a later task authenticated; only metadata closed the aggregate batch.",
+      "resolution": "All earlier files now close against canonical path, regular single-link type and complete stat witnesses after later task authentication and metadata checks. Native boundary control mutates the actual earlier file."
+    },
+    {
+      "finding": "Long final checkpoint reads occurred after final signed-source and native-world observations.",
+      "resolution": "Producer closes signed source/admission/native owner and metadata after authentication, then closes all checkpoint witnesses. Cold loader authenticates before the closing source/native/catalog observations and then closes all checkpoint witnesses. Four actual boundary controls cover source/native changes in preparation and cold reopening."
+    },
+    {
+      "finding": "Python dictionary equality could equate boolean observation fields with integer JSON fields after receipt rehashing.",
+      "resolution": "Both cold-loader authentication comparisons now compare canonical serialized JSON bytes. Three actual receipt controls replace true with 1, false with 0, and nlink 1 with true."
+    }
+  ],
+  "review_result": "no_remaining_findings_in_bounded_change",
+  "review_scope": "Read-only source and test review of checkpoint byte authentication, versioned ready-root context integration and final closing fences. Native retained profile survey/rebinding is separate metadata evidence.",
+  "reviewer": "/root/decoder_contract_survey",
+  "runtime_admitted": false,
+  "schema": "supervisor-checkpoint-context-independent-review@1",
+  "source_test_pins": [
+    {
+      "bytes": 7534,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py",
+      "sha256": "2108e9ff11ae93adf4d11af30f7a8ff8a5003193d126436fbb72a8d69b7e5cd8"
+    },
+    {
+      "bytes": 16399,
+      "path": "test/api/test_task_ir_checkpoint.py",
+      "sha256": "4ba1399c13c2913a809f2b907a5948a33add7715ed7e94e93a866cff26c2a444"
+    },
+    {
+      "bytes": 44060,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_multitask_context.py",
+      "sha256": "049cc8fb8c5272af88ccdf27f71ffde9770c29aae018a4529412fc8cbf61cdc0"
+    },
+    {
+      "bytes": 12729,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py",
+      "sha256": "58cd4ac188bf0a53ce571fdacc4bfccc58ad0216c4942792ee96f63be0738d94"
+    }
+  ],
+  "tests_executed_by_reviewer": false,
+  "training_executed": false,
+  "verified_properties": [
+    "Default @1 retains its field set, metadata-only behavior and availability scope. Opt-in @2 requires exact per-task IR selections and explicit typed authentication. A consumer requiring authentication rejects downgrade.",
+    "Original checkpoint content is streamed with exact hash/size pins, 512 MiB per-file and conservative 1 GiB aggregate bounds. No JSON/tensor interpretation, ModelManager construction, training, inference or provider call occurs.",
+    "All native catalog resolution fields and false authority observations remain unchanged. Separate byte-witness true fields do not admit a decoder or claim ABI, token/span, inventory, reconstruction, quality or proof status.",
+    "Read descriptors are no-follow, read-only, nonblocking and close-on-exec; descriptor/path witnesses and all-file endpoints check inode, mode, nlink, size, mtime and ctime. ExitStack closes descriptors on refusal.",
+    "Runtime/launch guards and root-only readiness restrictions remain active; dependent source publication closure and model runtime admission remain separate pending gates."
+  ],
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006"
+}

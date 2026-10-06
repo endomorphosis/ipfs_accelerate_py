@@ -1,0 +1,65 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-decoder-contract-20261006
+configfile: pytest.ini
+collected 39 items
+
+test/api/test_task_ir_checkpoint.py FF.........................FF...F... [ 92%]
+...                                                                      [100%]
+
+=================================== FAILURES ===================================
+_ test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[False] _
+test/api/test_task_ir_checkpoint.py:81: in test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes
+    assert row["file_witness"] == {
+E   AssertionError: assert {'path': '/tm...': 66306, ...} == {'bytes': 33,...': 66306, ...}
+E     
+E     Omitting 6 identical items, use -vv to show
+E     Differing items:
+E     {'mtime_ns': 1791272731255493197} != {'mtime_ns': 1791272731255232346}
+E     {'inode': 832335} != {'inode': 832319}
+E     {'ctime_ns': 1791272731255493197} != {'ctime_ns': 1791272731255232346}
+E     Use -v to get more diff
+_ test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[True] _
+test/api/test_task_ir_checkpoint.py:81: in test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes
+    assert row["file_witness"] == {
+E   AssertionError: assert {'path': '/tm...': 66306, ...} == {'bytes': 33,...': 66306, ...}
+E     
+E     Omitting 6 identical items, use -vv to show
+E     Differing items:
+E     {'mtime_ns': 1791272731430618032} != {'mtime_ns': 1791272731430368333}
+E     {'inode': 832349} != {'inode': 832338}
+E     {'ctime_ns': 1791272731430618032} != {'ctime_ns': 1791272731430368333}
+E     Use -v to get more diff
+____ test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses[read] ____
+test/api/test_task_ir_checkpoint.py:224: in test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses
+    with pytest.raises(ValueError, match="identity changed"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'identity changed'
+E     Actual message: 'checkpoint requires an existing regular single-link file'
+_ test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses[closing_catalog] _
+test/api/test_task_ir_checkpoint.py:224: in test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses
+    with pytest.raises(ValueError, match="identity changed"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'identity changed'
+E     Actual message: 'checkpoint requires an existing regular single-link file'
+___________ test_genuine_file_changes_during_streaming_refuse[mode] ____________
+test/api/test_task_ir_checkpoint.py:247: in test_genuine_file_changes_during_streaming_refuse
+    with pytest.raises(ValueError):
+E   Failed: DID NOT RAISE ValueError
+- generated xml file: /home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/checkpoint-authentication-unit-01.xml -
+============================= slowest 10 durations =============================
+0.60s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[True]
+0.18s call     test/api/test_task_ir_checkpoint.py::test_exact_selection_upper_population_bound[16]
+0.15s call     test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[False]
+0.01s call     test/api/test_task_ir_checkpoint.py::test_schema_decoder_task_and_geometry_role_remain_distinct_despite_shared_bytes
+0.01s call     test/api/test_task_ir_checkpoint.py::test_earlier_file_change_after_later_authentication_is_checked_at_final_endpoint
+0.01s call     test/api/test_task_ir_checkpoint.py::test_real_sparse_file_byte_budgets_refuse_before_opening_any_checkpoint[aggregate]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+=========================== short test summary info ============================
+FAILED test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[False]
+FAILED test/api/test_task_ir_checkpoint.py::test_twelve_retained_family_lane_files_match_bytes_without_runtime_or_store_changes[True]
+FAILED test/api/test_task_ir_checkpoint.py::test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses[read]
+FAILED test/api/test_task_ir_checkpoint.py::test_same_bytes_inode_exchange_at_actual_read_boundaries_refuses[closing_catalog]
+FAILED test/api/test_task_ir_checkpoint.py::test_genuine_file_changes_during_streaming_refuse[mode]
+========================= 5 failed, 34 passed in 1.76s =========================
