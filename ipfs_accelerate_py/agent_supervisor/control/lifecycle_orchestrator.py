@@ -507,6 +507,12 @@ class LinuxProcessAdapter:
     def _identity(self, pid: int, profile: LifecycleProfile) -> ProcessIdentity:
         parent, group, session, started = self._stat(pid)
         environment = self._environ(pid)
+        # A child can exit after stat and expose an empty environment. Prove
+        # it is still the same live birth before interpreting its markers.
+        # Zombie/disappeared processes raise ProcessLookupError; persistent
+        # marker changes and PID reuse remain identity conflicts.
+        if self._stat(pid) != (parent, group, session, started):
+            raise ProcessIdentityMismatch(f"process {pid} changed during identity observation")
         markers = {
             RUN_ID_ENV: profile.run_id,
             PROFILE_ID_ENV: profile.profile_id,
@@ -529,6 +535,9 @@ class LinuxProcessAdapter:
             executable = os.readlink(f"/proc/{pid}/exe")
         except OSError as exc:
             raise ProcessLookupError(pid) from exc
+        argv = self._argv(pid)
+        if self._stat(pid) != (parent, group, session, started):
+            raise ProcessIdentityMismatch(f"process {pid} changed during identity observation")
         return ProcessIdentity(
             pid=pid,
             start_time_ticks=started,
@@ -536,7 +545,7 @@ class LinuxProcessAdapter:
             process_group_id=group,
             session_id=session,
             boot_id=_read_boot_id(),
-            argv=self._argv(pid),
+            argv=argv,
             cwd=str(Path(cwd).resolve(strict=False)),
             executable=str(Path(executable).resolve(strict=False)),
             run_id=profile.run_id,
@@ -1478,16 +1487,14 @@ class LifecycleOrchestrator:
                     ),
                     recovery="repair",
                 ) from exc
-            observed = self._process.snapshot(profile)
-            if not any(item.identity_id == launched.identity_id for item in observed.members):
-                # A child which only forked and exited is never startup.
-                observed = ProcessTreeSnapshot(
-                    profile_id=profile.profile_id,
-                    run_id=profile.run_id,
-                    members=(launched,) if self._process.identity_alive(launched) else (),
-                    captured_at_ms=self._clock_ms(),
-                )
-            self._assert_single_tree(observed, allow_empty=False)
+            # Persist the independently verified launch before another /proc
+            # scan can fail on a transient descendant. This is custody, not
+            # health; the loop below still verifies the exact root and a
+            # complete fresh health window before committing START.
+            observed = ProcessTreeSnapshot(
+                profile_id=profile.profile_id, run_id=profile.run_id,
+                members=(launched,), captured_at_ms=self._clock_ms(),
+            )
             state = self._advance(
                 state,
                 LifecycleSagaPhase.VERIFYING_HEALTH,
@@ -1656,6 +1663,76 @@ class LifecycleOrchestrator:
                 )
             state = self._start_new(state, profile, deadline)
         return self._commit(state)
+
+    def repair_start_cleanup(self, request, transaction, *, timeout_ms: int):
+        """Fence a journaled interrupted START; never relaunch or claim health.
+
+        Called only by a local backend through control.recover_mutation,
+        which revalidates the original permit, current lease and CAS revision.
+        Bind both durable journals again before touching any process.
+        """
+        from .control_plane import MutationTransactionPhase, MutationTransactionState
+
+        if request.operation is not Operation.START or request.dry_run:
+            raise TransactionConflictError("cleanup repair requires the original real START")
+        expected = MutationTransactionState.prepare(request, now_ms=self._clock_ms())
+        if (transaction.transaction_id != expected.transaction_id
+                or transaction.phase is not MutationTransactionPhase.REPAIR_REQUIRED):
+            raise TransactionConflictError("cleanup repair transaction differs from START")
+        profile = self._profile(request)
+        intent = self._intent(request, profile, LifecycleAction.START)
+        state = self.store.latest().get(profile.target_id)
+        if state is None:
+            raise TransactionConflictError("cleanup repair lacks its START checkpoint")
+        rebound = replace(intent, created_at_ms=state.intent.created_at_ms, transition_id="")
+        if rebound != state.intent:
+            raise TransactionConflictError("cleanup repair differs from the exact START intent")
+        repaired = (state.phase is LifecycleSagaPhase.FAILED
+                    and state.failure_code == "interrupted_start_cleanup_fenced")
+        if (state.new_tree is None or state.old_tree is not None or state.old_tree_fenced
+                or state.receipt is not None or (not repaired and state.phase not in {
+                    LifecycleSagaPhase.VERIFYING_HEALTH, LifecycleSagaPhase.PARTIAL_FAILURE})):
+            raise TransactionConflictError("cleanup repair lacks exact launched custody")
+        _positive_int(timeout_ms, "timeout_ms")
+        remaining = min(timeout_ms, intent.deadline_ms)
+        if request.authorization.expires_at_ms is not None:
+            remaining = min(remaining, request.authorization.expires_at_ms - self._clock_ms())
+        if remaining <= 0:
+            raise StaleLeaseError("cleanup repair authorization has expired")
+        deadline = self._monotonic() + remaining / 1000
+        current = self._process.snapshot(profile)
+        if current.members:
+            if repaired:
+                raise ProcessIdentityMismatch("process appeared after START cleanup proof")
+            self._assert_startup_root(state.new_tree, current)
+            if any(item.fencing_epoch != intent.fencing_epoch for item in current.members):
+                raise StaleLeaseError("cleanup repair observes a different process fence")
+        elif any(self._process.identity_alive(item) for item in state.new_tree.members):
+            raise ProcessIdentityMismatch("launched START identity is alive but not observable")
+        if current.members:
+            self._process.terminate(current,
+                grace_seconds=min(self._stop_grace_ms, self._remaining_ms(deadline)) / 1000,
+                deadline_ms=self._remaining_ms(deadline))
+        # Retain both the original launch and every process selected for
+        # fencing; a later empty discovery must not erase either witness.
+        witnesses = {item.identity_id: item for item in state.new_tree.members + current.members}
+        while self._remaining_ms(deadline) > 0:
+            observed = self._process.snapshot(profile)
+            if not observed.members and not any(
+                    self._process.identity_alive(item) for item in witnesses.values()):
+                if not repaired:
+                    state = self._advance(state, LifecycleSagaPhase.FAILED,
+                        failure_code="interrupted_start_cleanup_fenced",
+                        compensation=tuple(sorted(set(state.compensation) | {
+                            "exact_interrupted_start_tree_terminated"})))
+                return {"schema": "interrupted-start-cleanup-repair@1",
+                    "transition_id": state.intent.transition_id,
+                    "request_id": request.request_id, "transaction_id": transaction.transaction_id,
+                    "phase": state.phase.value, "process_tree_absent": True,
+                    "start_succeeded": False, "completion_authority": False}
+            self._sleep(min(self._poll_interval_ms, self._remaining_ms(deadline)) / 1000)
+        raise ProcessTreeNotFenced("interrupted START cleanup did not prove process absence",
+                                   applied_effect_ids=(), recovery="repair")
 
     def start(self, request: OperationRequest) -> LifecycleTransitionReceipt:
         if request.operation is not Operation.START:

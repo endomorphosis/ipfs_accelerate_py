@@ -58,6 +58,7 @@ from ..task_sources.typed_state_owner import (
 from .isolated_benchmark_runtime import (
     IsolatedBenchmarkRuntime,
     NativeSupervisorHealthAdapter,
+    _LocalLifecycleRecoveryBackend,
     _digest,
     _git,
 )
@@ -733,8 +734,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime._permits, runtime._requests = {}, {}
             runtime.service = SupervisorControlService(
                 repository_allowlist=(repository,), state_allowlist=(runtime.state,),
-                handlers={Operation.START: runtime._bounded_lifecycle_response,
-                          Operation.STOP: runtime._bounded_lifecycle_response},
+                backend=_LocalLifecycleRecoveryBackend(runtime),
                 authorization_validator=ControlMutationAuthorizer(runtime._policy),
                 identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
                 local_start_timeout_ms=start_timeout_ms,

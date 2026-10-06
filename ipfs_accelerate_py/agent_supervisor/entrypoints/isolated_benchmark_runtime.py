@@ -24,7 +24,10 @@ from ..control.control_contracts import (
     ExpectedEffect, IdempotencyKey, Operation, OperationAuthority, OperationRequest,
     get_operation_catalog,
 )
-from ..control.control_plane import SupervisorControlService
+from ..control.control_plane import (
+    MutationRecoveryAction, MutationTransactionPhase, RepositorySupervisorBackend,
+    SupervisorControlService, TransactionConflictError,
+)
 from ..control.lifecycle_orchestrator import (
     LifecycleOrchestrator, LifecycleProfile, LinuxProcessAdapter, ProcessTreeSnapshot,
 )
@@ -50,6 +53,24 @@ def _git(root: Path, *args: str) -> str:
         ["git", "-C", str(root), *args], check=True, capture_output=True,
         text=True, timeout=15,
     ).stdout.strip()
+
+
+class _LocalLifecycleRecoveryBackend(RepositorySupervisorBackend):
+    """Explicit local cleanup hook; generic repository handlers gain no repair."""
+
+    def __init__(self, runtime):
+        super().__init__({Operation.START: runtime._bounded_lifecycle_response,
+                          Operation.STOP: runtime._bounded_lifecycle_response})
+        self._runtime = runtime
+
+    def repair(self, request, transaction):
+        runtime = self._runtime
+        if runtime._requests.get(request.request_id) != request:
+            raise TransactionConflictError("cleanup repair requires the exact locally issued START")
+        receipt = runtime.orchestrator.repair_start_cleanup(request, transaction,
+            timeout_ms=runtime._operation_timeout_ms(Operation.STOP))
+        runtime._record("start-cleanup-process-proof", receipt)
+        return receipt
 
 
 class NativeSupervisorHealthAdapter(LinuxProcessAdapter):
@@ -278,7 +299,7 @@ class IsolatedBenchmarkRuntime:
             runtime._requests = {}
             runtime.service = SupervisorControlService(
                 repository_allowlist=(repository,), state_allowlist=(state,),
-                handlers={Operation.START: runtime.orchestrator, Operation.STOP: runtime.orchestrator},
+                backend=_LocalLifecycleRecoveryBackend(runtime),
                 authorization_validator=ControlMutationAuthorizer(runtime._policy),
                 identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
             )
@@ -424,6 +445,27 @@ class IsolatedBenchmarkRuntime:
         self._record("start", result.to_dict())
         return result
 
+    def _bounded_lifecycle_response(self, request):
+        return self.orchestrator(request)
+
+    def _repair_interrupted_start_before_stop(self):
+        latest = self.orchestrator.store.latest().get(self.profile.target_id)
+        if latest is None or latest.intent.action.value != Operation.START.value:
+            return
+        request = self._requests.get(latest.intent.request_id)
+        if request is None:
+            if not latest.phase.terminal:
+                raise TransactionConflictError("interrupted START has no locally issued repair request")
+            return
+        transaction = self.service.mutation_transaction(request)
+        if transaction is None or transaction.phase is not MutationTransactionPhase.REPAIR_REQUIRED:
+            return
+        # Reuse the original exact permit. Expiration, revocation, source or
+        # lease/fence changes must refuse repair before any process signal.
+        repaired = self.service.recover_mutation(request,
+            expected_revision=transaction.revision, action=MutationRecoveryAction.REPAIR)
+        self._record("start-cleanup-repair", repaired.to_dict())
+
     def _verify_observation(self):
         self._verify()
 
@@ -444,6 +486,7 @@ class IsolatedBenchmarkRuntime:
         return result
 
     def stop(self):
+        self._repair_interrupted_start_before_stop()
         result = self.service.execute(self.request(Operation.STOP))
         self._record("stop", result.to_dict())
         for child in self._children:
