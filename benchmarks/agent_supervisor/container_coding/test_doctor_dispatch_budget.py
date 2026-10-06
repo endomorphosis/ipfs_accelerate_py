@@ -72,9 +72,13 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
                 raise NativeBoundaryReached('controlled native boundary')
             def diagnostics():
                 raise RuntimeError('PRIVATE_STARTUP_DIAGNOSTIC_FAILURE')
+            def close():
+                native_cleanup.append('close')
+                if native_failure == 'close':
+                    raise RuntimeError('controlled live launched-child custody')
             return SimpleNamespace(start=start, startup_diagnostics=diagnostics,
                 stop=lambda:native_cleanup.append('stop') or SimpleNamespace(to_dict=lambda:{'status':'succeeded'}),
-                close=lambda:native_cleanup.append('close'), state=state, profile=object(),
+                close=close, state=state, profile=object(),
                 process=SimpleNamespace(snapshot=lambda profile:SimpleNamespace(members=[])))
         raise NativeBoundaryReached('controlled native boundary')
     for name,attrs in [
@@ -91,7 +95,8 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     extended = budget_kwargs.get('resource_profile') == EXTENDED_SOURCE384_PROFILE
     admitted=reached_native and not (extended and remaining_work_seconds == 1)
     assert bool(entered)==admitted
-    assert report['error']['type']==('NativeBoundaryReached' if admitted else 'TimeoutError')
+    assert report['error']['type']==('RuntimeError' if admitted and native_failure == 'close'
+        else 'NativeBoundaryReached' if admitted else 'TimeoutError')
     assert report['error_phase']==('native_execution' if reached_native else 'implementation_setup')
     assert report['work_cutoff_seconds']==cutoff and report['reserved_cleanup_seconds']==cleanup_seconds
     assert report['max_total_agent_seconds']==total
@@ -122,6 +127,9 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         assert native_cleanup == ['stop','close']
         assert report['native_startup_error'] == 'collection_unavailable'
         assert report['stop']['status'] == 'succeeded' and report['remaining_processes'] == 0
+        assert report['runtime_close'] == (
+            {'attempted':True,'succeeded':False,'error_type':'RuntimeError'}
+            if native_failure == 'close' else {'attempted':True,'succeeded':True})
         assert 'PRIVATE' not in json.dumps(report)
 
 
@@ -129,6 +137,12 @@ def test_startup_diagnostic_failure_does_not_mask_start_failure_or_skip_stop(tmp
     test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         tmp_path,monkeypatch,'doctor_contract_candidate',None,
         {'resource_profile':EXTENDED_SOURCE384_PROFILE},900,60,180,native_failure=True)
+
+
+def test_successful_stop_does_not_hide_failed_runtime_custody_close(tmp_path,monkeypatch):
+    test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+        tmp_path,monkeypatch,'doctor_contract_candidate',None,
+        {'resource_profile':EXTENDED_SOURCE384_PROFILE},900,60,180,native_failure='close')
 
 
 def _startup_observation():

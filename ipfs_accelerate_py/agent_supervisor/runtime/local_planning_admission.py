@@ -9,6 +9,7 @@ container boundary, not a claim made by this contract.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -64,9 +65,117 @@ LOCAL_POLICY = {
     "production_activation": False,
 }
 
+TASK_CONTRACT_MISMATCH_SCHEMA = "supervisor-local-task-contract-mismatch@1"
+_TASK_CONTRACT_REJECTION = "proposal changed signed scope, acceptance, dependency or command"
+_MISMATCH_COUNT_LIMIT = 65535
+_TASK_CONTRACT_FIELDS = {
+    "scope_paths": ("unordered_equal", ()),
+    "outputs": ("unordered_equal", ("path", "effect", "media_type")),
+    "validations": ("unordered_equal", ("validation_key", "argv", "cwd", "expected_exit_codes", "policy_cid")),
+    "acceptance": ("unordered_equal", ("criterion_key", "criterion", "evidence_cids", "validation_keys")),
+    "dependencies": ("unordered_equal", ()),
+    "assumptions": ("empty", ()),
+    "evidence_cids": ("allowed_subset", ()),
+    "policy_roots": ("ordered_equal", ()),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class TaskContractFieldMismatch:
+    """Closed descriptive metadata; never the signed or proposed field values."""
+
+    field: str
+    comparison: str
+    expected_count: int
+    observed_count: int
+    counts_capped: bool
+    changed_members: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TaskContractMismatch:
+    fields: tuple[TaskContractFieldMismatch, ...]
+
 
 class LocalPlanningError(ValueError):
     """Local manifest, planning or completion contract was not satisfied."""
+
+    task_contract_mismatch: TaskContractMismatch | None = None
+
+
+def project_task_contract_mismatch(error: BaseException) -> dict | None:
+    """Export only the bounded local diagnostic, not arbitrary exception attrs."""
+    if type(error) is not LocalPlanningError or error.args != (_TASK_CONTRACT_REJECTION,):
+        return None
+    diagnostic = error.task_contract_mismatch
+    if type(diagnostic) is not TaskContractMismatch or type(diagnostic.fields) is not tuple:
+        return None
+    if not 1 <= len(diagnostic.fields) <= len(_TASK_CONTRACT_FIELDS):
+        return None
+    rows, seen = [], set()
+    for row in diagnostic.fields:
+        if type(row) is not TaskContractFieldMismatch or type(row.field) is not str:
+            return None
+        definition = _TASK_CONTRACT_FIELDS.get(row.field)
+        if definition is None or row.field in seen:
+            return None
+        comparison, members = definition
+        if (type(row.comparison) is not str or row.comparison != comparison
+                or type(row.counts_capped) is not bool
+                or any(type(count) is not int or not 0 <= count <= _MISMATCH_COUNT_LIMIT
+                       for count in (row.expected_count, row.observed_count))
+                or (row.counts_capped and _MISMATCH_COUNT_LIMIT not in
+                    (row.expected_count, row.observed_count))
+                or type(row.changed_members) is not tuple
+                or len(row.changed_members) > len(members)
+                or any(type(member) is not str or member not in members for member in row.changed_members)
+                or len(set(row.changed_members)) != len(row.changed_members)):
+            return None
+        seen.add(row.field)
+        rows.append({"field": row.field, "comparison": comparison,
+            "expected_count": row.expected_count, "observed_count": row.observed_count,
+            "counts_capped": row.counts_capped, "changed_members": list(row.changed_members)})
+    return {"schema": TASK_CONTRACT_MISMATCH_SCHEMA, "fields": rows}
+
+
+def _task_contract_mismatch(*, task, expected, observed, policy_roots, allowed_evidence,
+                            strict: bool) -> TaskContractMismatch:
+    """Describe the already rejected first task using the same equality rules.
+
+    Member names identify differing column multisets; they do not claim row
+    alignment or semantic equivalence. A row association change can therefore
+    yield an empty member list while its enclosing field is still different.
+    """
+    def differs(left, right):
+        return _receipt_bytes(left) != _receipt_bytes(right) if strict else left != right
+
+    def ordered(values):
+        return sorted(values, key=lambda row: json.dumps(row, sort_keys=True))
+
+    evidence = {item.evidence_cid for item in allowed_evidence}
+    fields = []
+    for name, (comparison, members) in _TASK_CONTRACT_FIELDS.items():
+        if name == "assumptions":
+            left, right, changed = (), task.assumptions, bool(task.assumptions)
+        elif name == "evidence_cids":
+            left, right = evidence, task.evidence_cids
+            changed = not set(right) <= evidence
+        elif name == "policy_roots":
+            left, right = policy_roots, task.policy_roots
+            changed = right != left
+        else:
+            left, right = expected[name], observed[name]
+            changed = differs(left, right)
+        if changed:
+            changed_members = tuple(member for member in members if differs(
+                ordered([row[member] for row in left]), ordered([row[member] for row in right])))
+            fields.append(TaskContractFieldMismatch(
+                field=name, comparison=comparison,
+                expected_count=min(len(left), _MISMATCH_COUNT_LIMIT),
+                observed_count=min(len(right), _MISMATCH_COUNT_LIMIT),
+                counts_capped=max(len(left), len(right)) > _MISMATCH_COUNT_LIMIT,
+                changed_members=changed_members))
+    return TaskContractMismatch(fields=tuple(fields))
 
 
 def supports_created_outputs(manifest: Mapping) -> bool:
@@ -942,9 +1051,13 @@ def _graph_contract(graph: PromptGoalGraph, manifest: dict, tree_id: str) -> tup
             or not set(task.evidence_cids) <= {item.evidence_cid for item in allowed_evidence}
             or task.policy_roots != policy_roots
         ):
-            raise LocalPlanningError(
-                "proposal changed signed scope, acceptance, dependency or command"
+            error = LocalPlanningError(_TASK_CONTRACT_REJECTION)
+            error.task_contract_mismatch = _task_contract_mismatch(
+                task=task, expected=ordered(spec), observed=ordered(observed),
+                policy_roots=policy_roots, allowed_evidence=allowed_evidence,
+                strict=manifest["schema"] in INVENTORY_MANIFEST_SCHEMAS,
             )
+            raise error
         if not set(task.predicted_files) <= set(spec["scope_paths"]):
             raise LocalPlanningError("predicted change escaped permitted scope")
         all_acceptance.extend(task.acceptance)

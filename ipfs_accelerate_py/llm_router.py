@@ -7944,6 +7944,25 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
 
+            response_format = kwargs.pop("response_format", None)
+            response_validator = None
+            wire_validator = None
+            task_contract = kwargs.pop("grok_task_contract", None)
+            if task_contract is not None:
+                from .agent_supervisor.runtime.terminal_planner_contract import contract_from_prompt
+                if response_format is None or task_contract != contract_from_prompt(prompt):
+                    raise ValueError("Grok task contract differs from the typed canonical request")
+            if response_format is not None:
+                if not structured_cli:
+                    raise ValueError("response_format requires a structured Grok CLI command")
+                from .cli_runtime.grok_structured_output import validate_response_format, bind_schema_argument, native_schema_projection
+                _schema, _canonical_argument, response_validator = validate_response_format(response_format)
+                _wire_schema, schema_argument, _projection = native_schema_projection(_schema, task_contract=task_contract)
+                if task_contract is not None:
+                    wire_format = {**response_format, "json_schema": {**response_format["json_schema"], "schema": _wire_schema}}
+                    _wire, _wire_arg, wire_validator = validate_response_format(wire_format)
+                bind_schema_argument(base_parts, schema_argument)
+
             extra_env: Dict[str, Optional[str]] = {}
             if not os.getenv("XAI_API_KEY", "").strip():
                 alternate_key = _coalesce_env(
@@ -7980,7 +7999,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             cmd = list(base_parts)
             if model and "--model" not in cmd and "-m" not in cmd:
                 cmd.extend(["--model", model])
-            if "--output-format" not in cmd:
+            if not any(part == "--output-format" or part.startswith("--output-format=") for part in cmd):
                 cmd.extend(["--output-format", "json"])
             if "--no-plan" not in cmd:
                 cmd.append("--no-plan")
@@ -8207,6 +8226,13 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
                     except OSError:
                         pass
+
+            if response_validator is not None:
+                from .cli_runtime.grok_structured_output import decode_response
+                try:
+                    return decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator)
+                except (ValueError, TypeError, RecursionError) as exc:
+                    raise LLMRouterError("Grok CLI structured response failed validation") from exc
 
             if payload is not None:
                 text = payload.get("text")

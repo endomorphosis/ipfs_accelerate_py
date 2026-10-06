@@ -47,6 +47,9 @@ BASE_REQUIREMENTS = (
     "anyio==4.14.2",
     "cryptography==49.0.0",
     "pytest==9.1.1",
+    # Grok structured output is validated before planner admission.
+    "jsonschema==4.26.0",
+    "referencing==0.37.0",
 )
 LEARNED_REQUIREMENTS = (
     "sentence-transformers==5.4.1",
@@ -56,10 +59,15 @@ LEARNED_REQUIREMENTS = (
 )
 SECURITY_TRAINING_REQUIREMENTS = ("numpy==1.26.4",)
 NATIVE_IMPORT_PROBE = """import json,sys,duckdb,numpy,pandas
+from importlib.metadata import version
+from jsonschema import Draft202012Validator
+from referencing import Registry
 from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap import NativeOwnerHeartbeat
 print(json.dumps({'python':sys.version.split()[0],'duckdb':duckdb.__version__,
- 'numpy':numpy.__version__,'pandas':pandas.__version__,'native_imports':True}))
+ 'numpy':numpy.__version__,'pandas':pandas.__version__,
+ 'jsonschema':version('jsonschema'),'referencing':version('referencing'),
+ 'native_imports':True}))
 """
 SECURITY_INITIALIZER_PATH = "models/security-code-initializer"
 SECURITY_INITIALIZER_DESCRIPTOR = "models/security-code-initializer.descriptor.json"

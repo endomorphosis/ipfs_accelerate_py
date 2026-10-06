@@ -358,6 +358,50 @@ def _read_control_plane_source_snapshot(
 IMPORTED_CONTROL_PLANE_SOURCE = _read_control_plane_source_snapshot()
 
 
+def _control_plane_probe_root(repository_root: Path) -> Path:
+    """Select one source domain, preserving deletion detection after startup.
+
+    A coding target can be an unrelated Git repository. Its HEAD is not an
+    update to the installed supervisor. An operator checkout that contains
+    supervisor sources (including tracked but deleted files) remains the
+    source domain for ordinary self-maintenance.
+    """
+    target = _read_control_plane_source_snapshot(repository_root)
+    installed = Path(IMPORTED_CONTROL_PLANE_SOURCE["repository_root"]).resolve()
+    if (Path(repository_root).resolve() == installed
+            or target["control_plane_tree_id"]
+            or any(row["available"] for row in target["sources"])):
+        return Path(repository_root).resolve()
+    return installed
+
+
+def _captured_supervisor_reload_arguments(config) -> tuple[str, ...] | None:
+    """Capture recognized Python launches without losing flags or the wrapper.
+
+    The interpreter's own original argv is used only for a recognized native
+    supervisor module or the configured script, with an exact application
+    argument suffix. Importing this module from pytest or another application
+    must never authorize re-executing that unrelated application.
+    """
+    original = list(getattr(sys, "orig_argv", ()))
+    tail = list(sys.argv[1:])
+    if not original or (tail and original[-len(tail):] != tail):
+        return None
+    prefix = original[1:-len(tail)] if tail else original[1:]
+    if config.supervisor_script_path is None and len(prefix) >= 2 and prefix[-2] == "-m" and prefix[-1] in {
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner",
+    }:
+        return (sys.executable, *original[1:])
+    if config.supervisor_script_path is not None and prefix:
+        script = Path(config.supervisor_script_path)
+        if not script.is_absolute():
+            script = config.repo_root / script
+        if Path(prefix[-1]).resolve() == script.resolve():
+            return (sys.executable, *original[1:])
+    return None
+
+
 def _control_plane_update_is_pending(
     loaded: Mapping[str, Any],
     current: Mapping[str, Any],
@@ -388,9 +432,9 @@ def _control_plane_update_is_pending(
 
     loaded_files = file_map(loaded)
     current_files = file_map(current)
-    return bool(
-        loaded_files and current_files and loaded_files != current_files
-    )
+    # The caller has selected one control-plane source domain. Losing all
+    # previously loaded files is still drift, not evidence of no update.
+    return bool(loaded_files and loaded_files != current_files)
 
 
 # --- restored SCHEDULER_CONFIG_SCHEMA_PATTERN ---
@@ -7200,6 +7244,8 @@ class PortalImplementationSupervisor:
         self._loaded_control_plane_source = dict(
             IMPORTED_CONTROL_PLANE_SOURCE
         )
+        self._control_plane_probe_root = _control_plane_probe_root(config.repo_root)
+        self._control_plane_reload_arguments = _captured_supervisor_reload_arguments(config)
         self._current_control_plane_source = dict(
             self._loaded_control_plane_source
         )
@@ -7240,7 +7286,7 @@ class PortalImplementationSupervisor:
     def _control_plane_source_snapshot(self) -> dict[str, Any]:
         """Bind a long-lived supervisor to the source generation it loaded."""
 
-        return _read_control_plane_source_snapshot(self.config.repo_root)
+        return _read_control_plane_source_snapshot(self._control_plane_probe_root)
 
     def _control_plane_status_projection(self) -> dict[str, Any]:
         now_monotonic = time.monotonic()
@@ -7316,8 +7362,11 @@ class PortalImplementationSupervisor:
     def _reload_for_control_plane_update(self) -> None:
         """Replace this process image so parent and child import one generation."""
 
+        captured = self._control_plane_reload_arguments
         supervisor_script_path = self.config.supervisor_script_path
-        if supervisor_script_path is not None:
+        if captured is not None:
+            arguments = list(captured)
+        elif supervisor_script_path is not None:
             script_path = Path(supervisor_script_path)
             if not script_path.is_absolute():
                 script_path = self.config.repo_root / script_path
@@ -7722,10 +7771,16 @@ class PortalImplementationSupervisor:
         from .implementation_daemon import DatabaseImplementationDaemon
 
         store_id = str(getattr(program, "store_id", "") or "control.duckdb")
+        # This maintenance client shares the remote task owner, but its local
+        # bookkeeping belongs to the supervisor run. A logical store id must
+        # never derive sidecar databases from the coding target's cwd.
+        rearm_state = Path(self.config.state_dir).resolve() / "portal-frontier-rearm"
         daemon = None
         try:
             daemon = DatabaseImplementationDaemon(
                 database_path=store_id,
+                coordination_path=rearm_state / "coordination.duckdb",
+                execution_path=rearm_state / "execution.duckdb",
                 state_dir=self.config.state_dir,
                 state_prefix=f"{self.config.state_prefix}_portal_frontier_rearm",
                 owner_session_id=(

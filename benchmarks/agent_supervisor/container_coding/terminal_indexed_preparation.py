@@ -506,6 +506,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         from .terminal_planner_instruction import bind_public_instruction
         provider_request = bind_public_instruction(provider_request, prepared=prepared,
             maximum_bytes=config.max_provider_request_bytes)
+        from ipfs_accelerate_py.agent_supervisor.runtime.terminal_planner_contract import bind_terminal_task_contract
+        provider_request = bind_terminal_task_contract(provider_request, prepared=prepared,
+            maximum_bytes=config.max_provider_request_bytes)
         (state / "provider-request.json").write_text(provider_request + "\n")
     for index, artifact in enumerate(details.artifacts):
         _write(state / f"scan-artifact-{index}.json", local._plain(dict(artifact.payload)))
@@ -645,6 +648,9 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repos
             requirement_coverage=admission["receipt"]["payload"]["requirement_coverage"])
     except Exception as exc:
         result["failure"] = {"type": type(exc).__name__, "message": str(exc)}
+        diagnostic = local.project_task_contract_mismatch(exc)
+        if diagnostic is not None:
+            result["task_contract_mismatch"] = diagnostic
         if getattr(exc, "requirement_coverage", None) is not None:
             result["requirement_coverage"] = exc.requirement_coverage
         if getattr(exc, "symbolic_issues", None) is not None:
@@ -834,6 +840,9 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
         from .terminal_planner_instruction import bind_public_instruction
         prompt = bind_public_instruction(prompt, prepared=current_prepared,
             maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_provider_request_bytes)
+        from ipfs_accelerate_py.agent_supervisor.runtime.terminal_planner_contract import bind_terminal_task_contract
+        prompt = bind_terminal_task_contract(prompt, prepared=current_prepared,
+            maximum_bytes=_config(repository, provider_profile=provider_selection["id"]).max_provider_request_bytes)
         model_request_sha256 = hashlib.sha256(prompt.encode()).hexdigest()
         with (state / "planner-provider-request.json").open("x") as stream:
             stream.write(prompt)
@@ -901,6 +910,9 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
     except Exception as exc:
         result["failure"] = {"type": type(exc).__name__, "message": str(exc)}
         result.setdefault("provider_receipt", getattr(exc, "provider_receipt", None))
+        diagnostic = local.project_task_contract_mismatch(exc)
+        if diagnostic is not None:
+            result["task_contract_mismatch"] = diagnostic
         if getattr(exc, "requirement_coverage", None) is not None:
             result["requirement_coverage"] = exc.requirement_coverage
     result.update(provider_calls=calls, provider_observation=observation,
