@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
 from ipfs_accelerate_py.agent_supervisor.control import profile_authority
 from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     MutationRecoveryAction,
@@ -97,6 +98,20 @@ def _verify_repair_stop_and_close(runtime, owner, prepared, original_task,
         # The control journal is authoritative when its committed response
         # was lost before the convenience receipt could be written.
         assert not repair_path.exists()
+    observation = driver._start_cleanup_observation(runtime, failed.to_dict())
+    assert observation["status"] == ("available" if repair_receipt_expected else "partial")
+    assert observation["proof_observation"] == "observed"
+    assert observation["lifecycle_phase"] == "failed"
+    assert observation["marker_bound_process_tree_absent"] is True
+    assert observation["start_succeeded"] is False
+    assert observation["control_observation"] == ("observed" if repair_receipt_expected else "missing")
+    assert observation["control_phase"] == ("repaired" if repair_receipt_expected else None)
+    assert observation["absence_scope"] == "recorded_marker_bound_tree"
+    assert observation["completion_authority"] is False
+    assert observation["retry_authority"] is False
+    assert observation["execution_authority"] is False
+    assert all(key not in observation for key in (
+        "request_id", "transaction_id", "transition_id", "message", "body"))
     assert owner.source.get_task(prepared["task_cid"]) == original_task
     assert runtime.manifest["provider_dispatch_allowed"] is False
 

@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 import shlex
 import signal
+import stat
 import subprocess
 import time
 import uuid
@@ -37,6 +38,127 @@ WORKTREES = ROOT / "worktrees"
 
 def _write(path: Path, value):
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n")
+
+
+def _bounded_repair_bytes(path: Path, limit: int) -> bytes:
+    """Read one canonical regular local receipt without following links."""
+    if path.resolve() != path.absolute():
+        raise ValueError("canonical local repair evidence required")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limit:
+            raise ValueError("bounded regular repair evidence required")
+        raw = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+    identity = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+    current = path.lstat()
+    if (not stat.S_ISREG(current.st_mode) or len(raw) > limit
+            or identity(before) != identity(after) or identity(after) != identity(current)):
+        raise ValueError("repair evidence changed while reading")
+    return raw
+
+
+def _repair_json(raw):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError("duplicate repair evidence key")
+            value[key] = item
+        return value
+
+    def constant(_value):
+        raise ValueError("nonfinite repair evidence")
+
+    value = json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+    if type(value) is not dict:
+        raise ValueError("repair evidence object required")
+    return value
+
+
+def _empty_start_cleanup_observation(reason):
+    return dict(schema="terminal-start-cleanup-observation@1", status="unavailable", reason=reason,
+        proof_observation="unavailable", control_observation="unavailable", lifecycle_phase=None,
+        control_phase=None, marker_bound_process_tree_absent=None, start_succeeded=None,
+        absence_scope="recorded_marker_bound_tree", completion_authority=False,
+        retry_authority=False, execution_authority=False)
+
+
+def _start_cleanup_observation(runtime, start):
+    """Observe exact START repair receipts; never authorize cleanup or work."""
+    result = _empty_start_cleanup_observation("evidence_unavailable")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation, OperationRequest
+        from ipfs_accelerate_py.agent_supervisor.control.control_plane import MutationTransactionState, MutationTransactionPhase
+        from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import LifecycleAction, LifecycleSagaPhase, _SagaState
+        if type(start) is not dict or start.get("status") not in {"failed", "conflict", "denied"}:
+            return _empty_start_cleanup_observation("no_failed_start")
+        request = runtime._requests.get(start.get("request_id"))
+        if (type(request) is not OperationRequest or request.operation is not Operation.START
+                or request.dry_run or request.authorization is None):
+            return _empty_start_cleanup_observation("original_start_unavailable")
+        expected = MutationTransactionState.prepare(request, now_ms=0)
+        try:
+            proof = _repair_json(_bounded_repair_bytes(runtime.state / "start-cleanup-process-proof-receipt.json", 65536))
+            fields = {"schema", "transition_id", "request_id", "transaction_id", "phase",
+                      "process_tree_absent", "start_succeeded", "completion_authority"}
+            if (set(proof) != fields or proof["schema"] != "interrupted-start-cleanup-repair@1"
+                    or proof["request_id"] != request.request_id or proof["transaction_id"] != expected.transaction_id
+                    or proof["phase"] != "failed" or proof["process_tree_absent"] is not True
+                    or proof["start_succeeded"] is not False or proof["completion_authority"] is not False):
+                raise ValueError("repair proof differs from original failed START")
+            # Bind the proof to the native journal's exact START transition,
+            # including its original permit. Never use the latest STOP row.
+            lines = _bounded_repair_bytes(runtime.orchestrator.store.path, 4 * 1024 * 1024).splitlines()
+            if len(lines) > 512 or any(len(line) > 262144 for line in lines):
+                raise ValueError("bounded native lifecycle journal required")
+            states = [_SagaState.from_dict(_repair_json(line)) for line in lines]
+            matching = [row for row in states if row.intent.request_id == request.request_id]
+            if not matching:
+                raise ValueError("original START transition unavailable")
+            state = max(matching, key=lambda row: row.revision)
+            intent = state.intent
+            if (any(row != state for row in matching if row.revision == state.revision)
+                    or state.phase is not LifecycleSagaPhase.FAILED or state.receipt is not None
+                    or state.new_tree is None or state.old_tree is not None or state.old_tree_fenced
+                    or state.failure_code != "interrupted_start_cleanup_fenced"
+                    or intent.action is not LifecycleAction.START or intent.transition_id != proof["transition_id"]
+                    or intent.authorization_decision_id != request.authorization.decision_id
+                    or intent.idempotency_key != request.idempotency.key
+                    or intent.expected_effect_ids != tuple(effect.effect_id for effect in request.expected_effects)
+                    or any(getattr(intent, key) != getattr(request, key) for key in (
+                        "repository_root", "state_root", "repository_id", "tree_id", "objective_id",
+                        "objective_revision", "policy_id", "policy_revision", "caller", "lease_id", "fencing_epoch"))
+                    or any(getattr(intent, key) != getattr(runtime.profile, key) for key in (
+                        "target_id", "profile_id", "run_root", "run_id", "configuration_root"))):
+                raise ValueError("repair proof differs from native START transition")
+            result.update(proof_observation="observed", lifecycle_phase="failed",
+                          marker_bound_process_tree_absent=True, start_succeeded=False)
+        except FileNotFoundError:
+            result["proof_observation"] = "missing"
+        except Exception:
+            result["proof_observation"] = "invalid"
+        try:
+            raw = _repair_json(_bounded_repair_bytes(runtime.state / "start-cleanup-repair-receipt.json", 65536))
+            if set(raw) != set(expected.to_dict()) or type(raw.get("contract_version")) is not int:
+                raise ValueError("exact typed control repair receipt required")
+            control = MutationTransactionState.from_dict(raw)
+            if (control.phase is not MutationTransactionPhase.REPAIRED
+                    or control.transaction_id != expected.transaction_id or control.request_id != request.request_id
+                    or (control.result is not None and control.result.succeeded)):
+                raise ValueError("control repair differs from original failed START")
+            result.update(control_observation="observed", control_phase="repaired")
+        except FileNotFoundError:
+            result["control_observation"] = "missing"
+        except Exception:
+            result["control_observation"] = "invalid"
+        observed = sum(result[key] == "observed" for key in ("proof_observation", "control_observation"))
+        result.update(status="available" if observed == 2 else "partial" if observed else "unavailable",
+                      reason="bound_receipts" if observed == 2 else "partial_evidence" if observed else "evidence_unavailable")
+        return result
+    except Exception:
+        return _empty_start_cleanup_observation("collection_unavailable")
 
 
 def _published_retrieval_options(*, repository, bundle, task, model_snapshot):
@@ -521,6 +643,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     work_deadline = deadline - reserved_cleanup_seconds
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
+              "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
@@ -784,6 +907,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     _refresh_completed_context(runtime, report, deadline=deadline, work_deadline=work_deadline)
                 finally:
                     try:
+                        report["start_cleanup"] = _start_cleanup_observation(runtime, report.get("start"))
                         report["native_diagnostics"] = _native_diagnostics(runtime.state)
                     except Exception as error:
                         report["native_diagnostics_error"] = type(error).__name__
