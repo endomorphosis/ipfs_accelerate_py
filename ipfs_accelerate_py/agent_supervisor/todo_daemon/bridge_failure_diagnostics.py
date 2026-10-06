@@ -1,14 +1,20 @@
 """Closed observations of native bridge failures; never settlement authority."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import stat
+import tempfile
 from pathlib import Path
 
 SCHEMA = "database-bridge-failure-diagnostic@1"
 EVENT = "portal_bridge_failure_diagnostic"
 LOG_PREFIX = "Native bridge failure diagnostic: "
+OBSERVATION_SCHEMA = "database-bridge-failure-observation@1"
+OBSERVATION_FILENAME = "bridge-failure-observation.json"
+OBSERVATION_MAX_BYTES = 32_768
 _TYPES = frozenset({"DatabasePortalBridgeError", "DatabasePortalBridgeDeferred",
     "DatabaseImplementationAuthorityError", "OwnershipError", "FenceMismatchError",
     "WorktreeLifecycleError", "ValueError", "TypeError", "RuntimeError", "TimeoutError",
@@ -219,3 +225,54 @@ def validate_bridge_failure_diagnostic(value):
         return json.loads(json.dumps({**value, "child_reported_router_failure": child}, allow_nan=False))
     except (ValueError, TypeError, RecursionError):
         return None
+
+
+def validate_bridge_failure_observation(value):
+    """Validate the optional sidecar independently of database projections."""
+    if (type(value) is not dict or set(value) != {"schema", "task_cid_sha256",
+            "attempt_id_sha256", "diagnostic", "observation_only"}
+            or value["schema"] != OBSERVATION_SCHEMA or value["observation_only"] is not True):
+        return None
+    for key in ("task_cid_sha256", "attempt_id_sha256"):
+        if type(value[key]) is not str or re.fullmatch(r"[0-9a-f]{64}", value[key]) is None:
+            return None
+    diagnostic = validate_bridge_failure_diagnostic(value["diagnostic"])
+    if diagnostic is None:
+        return None
+    return {**value, "diagnostic": diagnostic}
+
+
+def write_bridge_failure_observation(state_dir, *, task_cid, attempt_id, diagnostic):
+    """Atomically retain a bounded observation, never a state/authority input.
+
+    Explicit native state directories remain usable with every optional JSON
+    queue/event projection disabled. No fallback may write into the task tree.
+    """
+    if state_dir is None:
+        return
+    if any(type(value) is not str or not value or len(value) > 4096
+           for value in (task_cid, attempt_id)):
+        raise ValueError("bounded exact attempt and task identities required")
+    value = validate_bridge_failure_observation({"schema": OBSERVATION_SCHEMA,
+        "task_cid_sha256": hashlib.sha256(task_cid.encode("utf-8")).hexdigest(),
+        "attempt_id_sha256": hashlib.sha256(attempt_id.encode("utf-8")).hexdigest(),
+        "diagnostic": diagnostic, "observation_only": True})
+    if value is None:
+        raise ValueError("closed bridge failure observation required")
+    payload = (json.dumps(value, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    if len(payload) > OBSERVATION_MAX_BYTES:
+        raise ValueError("bridge failure observation exceeds its byte bound")
+    directory = Path(state_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".bridge-failure-", dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, directory / OBSERVATION_FILENAME)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass

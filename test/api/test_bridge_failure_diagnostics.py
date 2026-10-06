@@ -1,4 +1,5 @@
 """Bounded native observations preserve failure decisions and exclude bodies."""
+import hashlib
 import json
 import linecache
 import os
@@ -134,6 +135,8 @@ def test_child_log_must_match_exact_open_writer_inode(tmp_path, change):
 def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, monkeypatch, pooled):
     from test.api.test_native_provider_failure_settlement import _native_chain
     daemon, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=pooled)
+    daemon.execution_state_dir = tmp_path / "native-state"
+    assert daemon.events_path is None
     root = Path(__file__).resolve().parents[2]
     (tmp_path / "router_timeout.py").write_text(
         "import sys\nsys.path.insert(0," + repr(str(root)) + ")\n"
@@ -158,27 +161,84 @@ def test_actual_native_pre_receipt_failure_retains_closed_diagnostics(tmp_path, 
         events = daemon._require_connection().execute(
             "SELECT body_json FROM daemon_execution_events WHERE event_type = ?", [diagnostics.EVENT]).fetchall()
         assert len(events) == 1 and json.loads(events[0][0]) == observed
+        sidecar = daemon.execution_state_dir / diagnostics.OBSERVATION_FILENAME
+        envelope = json.loads(sidecar.read_bytes())
+        assert diagnostics.validate_bridge_failure_observation(envelope) == envelope
+        assert envelope["diagnostic"] == observed
+        assert envelope["task_cid_sha256"] == hashlib.sha256(attempt.task_cid.encode()).hexdigest()
+        assert envelope["attempt_id_sha256"] == hashlib.sha256(attempt.attempt_id.encode()).hexdigest()
+        assert sidecar.stat().st_size <= diagnostics.OBSERVATION_MAX_BYTES
+        assert list(daemon.execution_state_dir.iterdir()) == [sidecar]
         logs = list(bridge._paths(attempt).root.rglob("*.log"))
         assert not any("router-implementation-invocation@1" in path.read_text() for path in logs)
     finally:
         daemon.close()
 
 
-def test_diagnostic_failure_never_changes_native_settlement(tmp_path, monkeypatch):
+@pytest.mark.parametrize("broken", ["observe_bridge_failure", "write_bridge_failure_observation"])
+def test_diagnostic_failure_never_changes_native_settlement(tmp_path, monkeypatch, broken):
     from test.api.test_native_provider_failure_settlement import _native_chain
     daemon, bridge, portals = _native_chain(tmp_path, monkeypatch)
     def unavailable(*_args, **_kwargs):
         raise RuntimeError("diagnostic unavailable")
-    monkeypatch.setattr(diagnostics, "observe_bridge_failure", unavailable)
+    monkeypatch.setattr(diagnostics, broken, unavailable)
     try:
         result = daemon.run_once()
-        assert result["implementation_result"]["bridge_failure_diagnostic"] is None
+        observed = result["implementation_result"]["bridge_failure_diagnostic"]
+        assert (observed is None) == (broken == "observe_bridge_failure")
         attempt = daemon.get_attempt(result["attempt_id"])
         assert attempt.status == "failed"
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
         assert daemon.coordinator.get_task_claim(attempt.claim_id).state.value == "released"
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize("mutation", ["extra", "raw_identity", "bool_hash", "authority", "diagnostic"])
+def test_sidecar_validator_rejects_injected_binding_or_authority(tmp_path, mutation):
+    diagnostics.write_bridge_failure_observation(tmp_path, task_cid="private:task",
+        attempt_id="private:attempt", diagnostic=_observe())
+    value = json.loads((tmp_path / diagnostics.OBSERVATION_FILENAME).read_bytes())
+    if mutation == "extra":
+        value["message"] = "private body"
+    elif mutation == "raw_identity":
+        value["task_cid_sha256"] = "private:task"
+    elif mutation == "bool_hash":
+        value["attempt_id_sha256"] = True
+    elif mutation == "authority":
+        value["observation_only"] = False
+    else:
+        value["diagnostic"]["settlement_authority"] = True
+    assert diagnostics.validate_bridge_failure_observation(value) is None
+
+
+def test_sidecar_replacement_is_atomic_and_never_follows_destination_symlink(tmp_path, monkeypatch):
+    target = tmp_path / "external"
+    target.write_text("unchanged")
+    state = tmp_path / "state"
+    state.mkdir()
+    sidecar = state / diagnostics.OBSERVATION_FILENAME
+    sidecar.symlink_to(target)
+    diagnostics.write_bridge_failure_observation(state, task_cid="task:first",
+        attempt_id="attempt:first", diagnostic=_observe())
+    assert not sidecar.is_symlink() and target.read_text() == "unchanged"
+    first = sidecar.read_bytes()
+    assert b"task:first" not in first and b"attempt:first" not in first
+    def interrupted(*_args):
+        raise OSError("authored atomic replacement interruption")
+    monkeypatch.setattr(diagnostics.os, "replace", interrupted)
+    with pytest.raises(OSError):
+        diagnostics.write_bridge_failure_observation(state, task_cid="task:second",
+            attempt_id="attempt:second", diagnostic=_observe())
+    assert sidecar.read_bytes() == first
+    assert list(state.iterdir()) == [sidecar]
+
+
+def test_sidecar_requires_explicit_state_directory_without_fallback(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    diagnostics.write_bridge_failure_observation(None, task_cid="task",
+        attempt_id="attempt", diagnostic=_observe())
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_unknown_callback_retains_custody_with_closed_diagnostic(tmp_path, monkeypatch):

@@ -76506,6 +76506,12 @@ class DatabaseImplementationDaemon:
         except Exception:
             pass
         try:
+            from .bridge_failure_diagnostics import write_bridge_failure_observation
+            write_bridge_failure_observation(self.execution_state_dir,
+                task_cid=attempt.task_cid, attempt_id=attempt.attempt_id, diagnostic=diagnostic)
+        except Exception:
+            pass
+        try:
             logger.error("%s%s", LOG_PREFIX, json.dumps(diagnostic, sort_keys=True))
         except Exception:
             pass
