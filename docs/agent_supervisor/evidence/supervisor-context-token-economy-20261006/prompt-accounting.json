@@ -1,0 +1,128 @@
+{
+  "historical_direct_baseline": {
+    "cached_input_already_in_input_total": true,
+    "complete_observed_usage": {
+      "cached_input_tokens": 244992,
+      "input_tokens": 285558,
+      "output_tokens": 5874,
+      "total_tokens": 291432,
+      "uncached_input_tokens": 40566
+    },
+    "observed_official_reward": {
+      "reward": 1.0
+    },
+    "phases": [
+      {
+        "complete_model_prompt_bytes": 23292,
+        "native_prompt_bytes": 23292,
+        "native_token_count_records": 1,
+        "phase": "planning",
+        "router_prompt_bytes": 23292,
+        "usage": {
+          "cached_input_tokens": 12288,
+          "input_tokens": 22075,
+          "output_tokens": 1691,
+          "total_tokens": 23766,
+          "uncached_input_tokens": 9787
+        },
+        "workspace_advisory_bytes": 0
+      },
+      {
+        "complete_model_prompt_bytes": 59301,
+        "doctor_advisory_bytes": 2109,
+        "identifier_aliases": 19,
+        "identifier_occurrences": 50,
+        "instruction_and_requirement_context_bytes": 1226,
+        "native_prompt_bytes": 62519,
+        "native_token_count_records": 7,
+        "net_complete_prompt_bytes_saved": 3218,
+        "phase": "coding",
+        "representation_bytes_saved": 7443,
+        "router_prompt_bytes": 58411,
+        "semantic_transport_bytes": 55076,
+        "usage": {
+          "cached_input_tokens": 232704,
+          "input_tokens": 263483,
+          "output_tokens": 4183,
+          "total_tokens": 267666,
+          "uncached_input_tokens": 30779
+        },
+        "workspace_advisory_bytes": 890
+      }
+    ],
+    "planning_strategy": "direct",
+    "prompt_byte_counts_are_provider_tokens": false,
+    "router_sessions": 2,
+    "trial": "largest-eigenval__iieLP5S"
+  },
+  "historical_symbolic_ablation_secondary_only": {
+    "cached_input_already_in_input_total": true,
+    "complete_observed_usage": {
+      "cached_input_tokens": 217472,
+      "input_tokens": 251752,
+      "output_tokens": 4199,
+      "total_tokens": 255951,
+      "uncached_input_tokens": 34280
+    },
+    "observed_official_reward": {
+      "reward": 1.0
+    },
+    "phases": [
+      {
+        "complete_model_prompt_bytes": 75724,
+        "doctor_advisory_bytes": 2109,
+        "identifier_aliases": 19,
+        "identifier_occurrences": 50,
+        "instruction_and_requirement_context_bytes": 20076,
+        "native_prompt_bytes": 60092,
+        "native_token_count_records": 6,
+        "net_complete_prompt_bytes_saved": -15632,
+        "phase": "coding",
+        "representation_bytes_saved": 7443,
+        "router_prompt_bytes": 74834,
+        "semantic_transport_bytes": 52649,
+        "usage": {
+          "cached_input_tokens": 217472,
+          "input_tokens": 251752,
+          "output_tokens": 4199,
+          "total_tokens": 255951,
+          "uncached_input_tokens": 34280
+        },
+        "workspace_advisory_bytes": 890
+      }
+    ],
+    "planning_strategy": "intent_symbolic",
+    "prompt_byte_counts_are_provider_tokens": false,
+    "router_sessions": 1,
+    "trial": "largest-eigenval__CkAh6qM"
+  },
+  "inputs": [
+    {
+      "bytes": 199232,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+      "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+    },
+    {
+      "bytes": 212168,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+      "sha256": "0cd4ad83a5ddf948286101e6ddc79dc8446b80ef0ee8e28d2b50bb6283d130c7"
+    }
+  ],
+  "limits": [
+    "These are retained receipt measurements, not a new context-compaction experiment.",
+    "The removed-planner ablation is not the requested primary optimization.",
+    "Representation saving combines JSON unpacking and typed aliases, not pure identifier minification.",
+    "Final initial prompt bytes exclude provider harness context and later internal history/tool outputs.",
+    "No exact tokenizer estimate or provider dollar cost is claimed here.",
+    "One router session can contain multiple internal model turns; token-count records are not API call counts."
+  ],
+  "new_benchmark_runs": 0,
+  "new_context_projection_implemented": false,
+  "new_provider_calls": 0,
+  "objective": "Reduce total tokens using metadata, capsules, formal results and minification while retaining LLM planning and coding.",
+  "planning_preserved_token_savings_measured": false,
+  "producer_sha256": "88c68519f9be3467e44da655147ec20a41ea75ac6ff2d917ed0461fa0b34091f",
+  "recorded_at_utc": "2026-10-06T07:52:52.823607+00:00",
+  "schema": "supervisor-planning-preserved-token-economy-accounting@1",
+  "training_updates": 0
+}

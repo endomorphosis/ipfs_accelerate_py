@@ -1,0 +1,224 @@
+{
+  "blocking_findings": [],
+  "checkout": {
+    "head": "c09113ff67c999d058c0df87dd01f5997dd792d1",
+    "path": "/home/barberb/lift_coding_worktrees/supervisor-context-token-economy-20261006"
+  },
+  "checks": [
+    {
+      "complete_observed_usage": {
+        "cached_input_tokens": 244992,
+        "input_tokens": 285558,
+        "output_tokens": 5874,
+        "total_tokens": 291432,
+        "uncached_input_tokens": 40566
+      },
+      "name": "historical_direct_receipt_identity_and_independent_arithmetic",
+      "passed": true,
+      "phase_names": [
+        "planning",
+        "coding"
+      ],
+      "router_sessions": 2
+    },
+    {
+      "complete_observed_usage": {
+        "cached_input_tokens": 217472,
+        "input_tokens": 251752,
+        "output_tokens": 4199,
+        "total_tokens": 255951,
+        "uncached_input_tokens": 34280
+      },
+      "name": "historical_symbolic_secondary_receipt_identity_and_independent_arithmetic",
+      "passed": true,
+      "phase_names": [
+        "coding"
+      ],
+      "router_sessions": 1
+    },
+    {
+      "finding": "README expressly requires one planning and one coding router session; removed-planner run is secondary historical ablation.",
+      "name": "goal_keeps_llm_planning_and_coding",
+      "passed": true
+    },
+    {
+      "finding": "README names native catalogs, capsule selection, semantic transport, decision/delta compilers and DeltaTaskPacket as existing components while explicitly treating terminal projection, controlled lookup and internal CLI delta support as missing integration.",
+      "name": "existing_building_blocks_and_missing_integration_distinguished",
+      "passed": true
+    },
+    {
+      "finding": "Model view retains original public instruction, edit/validation scope, relevant interfaces/effects and unresolved obligations; complete native records continue through strict parsing, critic, formal compiler and admission. Required response fields are not omitted.",
+      "name": "constraints_and_native_authority_preserved",
+      "passed": true
+    },
+    {
+      "finding": "README distinguishes exact reconstructable transport from completeness/closure-based evidence selection and requires stale/foreign/missing/corrupt-reference negative controls.",
+      "name": "lossless_representation_and_semantic_selection_separated",
+      "passed": true
+    },
+    {
+      "finding": "285,558 input tokens already include 244,992 cached tokens; uncached input is 40,566. Cache is not presented as eliminated tokens.",
+      "name": "cached_input_in_total",
+      "passed": true
+    },
+    {
+      "finding": "The 7,443-byte change includes nested JSON escaping/chunk overhead and typed aliases; net direct improvement of 3,218 bytes and symbolic net expansion of 15,632 bytes include the complete appended envelope.",
+      "name": "combined_representation_savings_labeled",
+      "passed": true
+    },
+    {
+      "finding": "README and metrics explicitly say planning-preserved token savings have not been measured; no bytes-to-token equivalence or dollar-cost claim.",
+      "name": "no_new_token_savings_claim",
+      "passed": true
+    },
+    {
+      "finding": "General nonsymmetric/complex/dominance/nonzero/residual/performance obligations remain visible; existing exact checks do not certify complete float/complex solver or speed.",
+      "name": "numerical_scope_not_overclaimed",
+      "passed": true
+    },
+    {
+      "finding": "Fresh session does not remember missing parent hash; current CLI internal history is outside initial transport control, and extra reads/summaries/retries count in total task usage.",
+      "name": "provider_session_boundary_limit_visible",
+      "passed": true
+    }
+  ],
+  "completion_authority": false,
+  "execution_authority": false,
+  "hidden_test_or_reference_bodies_read": false,
+  "model_raw_thoughts_read": false,
+  "new_benchmark_runs": 0,
+  "new_provider_calls": 0,
+  "nonblocking_findings": [
+    {
+      "finding": "Producer checks direct strategy and two sessions but not exact planning/coding phase names or duplicate phases. Retained current inputs have precisely planning then coding and independent arithmetic verified them.",
+      "id": "producer_phase_shape_hardening",
+      "severity": "low",
+      "suggestion": "If promoted to generic accounting, require exact phase population and matching purpose/router-call metadata."
+    },
+    {
+      "finding": "Producer does not project billing_total_verified flags into its output. README/metrics make no verified billing or dollar-cost claim, and retained native usage is handled as observations.",
+      "id": "producer_billing_provenance_hardening",
+      "severity": "low",
+      "suggestion": "If used beyond this bounded historical audit, preserve unknown billing/protocol completeness fields rather than imply reconciliation."
+    }
+  ],
+  "planning_preserved_savings_measured": false,
+  "production_source_edits": false,
+  "proof_authority": false,
+  "raw_prompt_or_source_exports": false,
+  "recorded_at_utc": "2026-10-06T07:54:31.716472+00:00",
+  "reviewed_artifact_bindings": [
+    {
+      "bytes": 16816,
+      "path": "/home/barberb/lift_coding_worktrees/supervisor-context-token-economy-20261006/docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/README.md",
+      "sha256": "4420b74608451d43a80956211cd76d240f9755a228f4118b12a3c78d370ba5ee"
+    },
+    {
+      "bytes": 7703,
+      "path": "/home/barberb/lift_coding_worktrees/supervisor-context-token-economy-20261006/docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/measure_retained_prompt_metadata.py",
+      "sha256": "88c68519f9be3467e44da655147ec20a41ea75ac6ff2d917ed0461fa0b34091f"
+    },
+    {
+      "bytes": 4700,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-context-token-economy-20261006/prompt-accounting.json",
+      "sha256": "c4f228869eb33db50b6282e89a1534dc04dce47d052d0ba1414b3ba705525996"
+    },
+    {
+      "bytes": 20317,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-context-token-economy-20261006/planning-audit.json",
+      "sha256": "0ce76d9feabc477d9250311b81234f45e76cb5c9c4e6833cf32dbbac32fa7022"
+    },
+    {
+      "bytes": 199232,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/receipt.json",
+      "sha256": "73b1fd7721092e9ddc228114a95e4d9dd7ee71c9e41904465797b80e9ebc2caf"
+    },
+    {
+      "bytes": 212168,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+      "sha256": "0cd4ad83a5ddf948286101e6ddc79dc8446b80ef0ee8e28d2b50bb6283d130c7"
+    }
+  ],
+  "reviewer": "planning_token_path_audit",
+  "schema": "supervisor-context-token-economy-independent-plan-review@1",
+  "scope": "Independent read-only documentation, producer, retained metadata arithmetic and unchanged runtime source-binding review. No runtime integration or provider efficacy is established.",
+  "status": "approved_with_nonblocking_hardening_notes",
+  "tests_run": 0,
+  "unchanged_runtime_source_bindings": [
+    {
+      "bytes": 69552,
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "5c2cebfd4c0bcf04e6174aed3ce853bfdcd4efd8ee04b031b3f2d157f908e3d6"
+    },
+    {
+      "bytes": 46937,
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d"
+    },
+    {
+      "bytes": 2174,
+      "repository_path": "benchmarks/agent_supervisor/container_coding/terminal_planner_instruction.py",
+      "sha256": "052ae6ac4db607755d424727743373d0774a55e2c52c257b59d4cc8e67b9687c"
+    },
+    {
+      "bytes": 115722,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "09168760a63d32b3305191e72501d9776f7c967212c9e9beb33791c499003811"
+    },
+    {
+      "bytes": 4212,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "9b3c359c8fbfa1f6f4ebfafaf038f7df9c441e478db16443796ad82191eb0e54"
+    },
+    {
+      "bytes": 42334,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "5bcf46d0c826faae00eefabf635fd0a68c445e5fd5b01b6ae26d6566930fef60"
+    },
+    {
+      "bytes": 33314,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "d041fca2cf6a6591a7f79591109325e3b97239f57a7cf1a7436173b66c99386a"
+    },
+    {
+      "bytes": 20466,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "83bb4334b076533b8e485df4d46d1c9147d41d3b66e485e01e47245a4853f1f0"
+    },
+    {
+      "bytes": 53490,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 75990,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/analysis/semantic_capsule.py",
+      "sha256": "6052d8f2e94c351bbb96811abd8bfd5b63808b6d90295a7c1020302e788009b5"
+    },
+    {
+      "bytes": 293498,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406"
+    },
+    {
+      "bytes": 99999,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+      "sha256": "ee8cf60218a2b9fe86ca1ec717da57a478996ddcde4a5705eab52397be126839"
+    },
+    {
+      "bytes": 31332,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_context.py",
+      "sha256": "a8b3a6e568a48f9d73af0a4ad52de867bbd1e645f478f75db8b3cd4cc6942897"
+    },
+    {
+      "bytes": 102188,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603"
+    },
+    {
+      "bytes": 14744,
+      "repository_path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    }
+  ]
+}
