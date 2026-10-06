@@ -1,0 +1,66 @@
+{
+  "benchmark_success_or_performance_advantage_claimed": false,
+  "coding_provider_actually_invoked": true,
+  "evidence": {
+    "closure": {
+      "bytes": 1191,
+      "sha256": "1514661fad19b2896d6e6bb7c37f672435e66c8be60aa5994f6e25b4b6968455"
+    },
+    "historical_source": {
+      "bridge": {
+        "bytes": 479688,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "sha256": "2496155e186306e20a127e1efd724be374b4d238add556dbcc25e9bad1bae872"
+      },
+      "daemon": {
+        "bytes": 3232572,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "6a2067f057a753bbdff98a44e64f80498840bb1486014ae57cc46bd254b48d32"
+      }
+    },
+    "live_summary": {
+      "bytes": 13508,
+      "sha256": "a2ff6166318d8c35d55d8e877696527464ec49bef227872c2950603ab3d9c699"
+    },
+    "retained_live_observation": {
+      "bytes": 4431,
+      "sha256": "f70d4294bb3e795724a4933d631391698f3257e823ec25fa48e02eafe1b56b24"
+    }
+  },
+  "final": {
+    "exact_owned_container_present": false,
+    "remaining_processes": 0,
+    "runtime_close_succeeded": true,
+    "task_status": "in_progress"
+  },
+  "official_reward": 0.0,
+  "previous_pre_coding_resource_gate_crossed": true,
+  "provider": {
+    "coding_usage": "unknown",
+    "error_type": "TimeoutExpired",
+    "failure_phase": "provider_invocation",
+    "model": "grok-4.7",
+    "native_final_envelope_observed": false,
+    "provider": "grok_cli",
+    "seconds": 300.22822987200925,
+    "timeout_seconds": 300
+  },
+  "provider_calls_by_diagnosis": 0,
+  "raw_source_model_task_verifier_or_credential_data_exported": false,
+  "resource_profile": "source384-5cpu-20gib-planner180@1",
+  "resource_retry_count_in_bounded_observation": 0,
+  "schema": "terminal-coding-timeout-settlement-diagnosis@1",
+  "settlement": {
+    "completed_passes_in_bounded_observation": 305,
+    "deferred_reason": "provider_callback_outcome_unknown",
+    "effect_reconciliation_or_retry_authority": false,
+    "exact_historical_source_branch_confirmed": true,
+    "fix_or_safe_terminal_settlement_verified_by_this_observation": false,
+    "native_exception_type": "DatabasePortalBridgeError",
+    "native_reason_code": "portal_provider_failed",
+    "native_reason_hash_matches": true,
+    "retained_callback_state": "started_outcome_unknown"
+  },
+  "source_revision": "6e3171c913b76b569b85600179199f2b57ec5b52",
+  "trial_name": "grok-tune-mjcf-05"
+}

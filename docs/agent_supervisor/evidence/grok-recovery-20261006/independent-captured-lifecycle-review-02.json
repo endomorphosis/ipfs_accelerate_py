@@ -1,0 +1,45 @@
+{
+  "schema": "captured-lifecycle-cas-independent-review@1",
+  "head": "d862fe847532a83e3dfb57d237ce581c3f44dc09",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": "d0ea3bfd59690f3758d6458774e7c94eca2d963112ee2aeba38b047530e2713d",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "84953f274f4cf02223d4e5568446c7aea0185fd2ff4049357f6157e2830ff3dd",
+    "test/api/test_captured_lifecycle_boundaries.py": "3796bcf3b3bebd22d0fc68253adea8245005bb7c8ce50c05cb011f9918336eb0",
+    "test/api/test_lifecycle_captured_settlement.py": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+  },
+  "review_only": true,
+  "production_changes_by_reviewer": false,
+  "blocking_findings": [],
+  "checked": [
+    "captured task-index then workspace lock order matches begin/adopt order",
+    "full exact strict record equality prevents reused token/fence from authorizing another owner",
+    "captured task index required before transition and delete",
+    "absent or already-deleted terminal capture does not imply successful finalization",
+    "pool-release captures active owner before release and exact finalization",
+    "active pointer clears only if entire captured record still matches",
+    "native failure settlement remains deferred on failed lifecycle finalization"
+  ],
+  "test_coverage_inspected": [
+    "full row drift with same record/lease/fence",
+    "replacement between terminal CAS and compare-delete",
+    "missing and terminal rows",
+    "captured pointer replacement",
+    "pooled and unpooled provider-failure refusal"
+  ],
+  "tests_executed_by_reviewer": false,
+  "final_qualification_pending": true,
+  "historical_live_trial06_cause_established": false,
+  "supplements": "independent-captured-lifecycle-review-01.json",
+  "additional_checks": [
+    "both native activation paths pass the original full captured record to mark_active",
+    "pooled rebind checks full capture and exact index under index then sorted physical workspace locks",
+    "same physical path takes one non-recursive workspace lock",
+    "daemon same-path fast return preserves its original capture; subsequent activation still revalidates full record",
+    "rebind never promotes a loaded replacement into the active capture"
+  ],
+  "additional_test_coverage_inspected": [
+    "legitimate pooled move then activation/finalization",
+    "replacement before pooled rebind preserves peer bytes",
+    "actual authored native provider not started after replacement before activation"
+  ]
+}

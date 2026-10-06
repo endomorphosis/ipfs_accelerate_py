@@ -1,0 +1,207 @@
+{
+  "deferral_receipts": [
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9378,
+          "cpu_stall_percent": 23.21,
+          "io_stall_percent": 0.15,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278152.7169378,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278154.7169378,
+        "observed_at": 1791278154.1986365,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 1,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278159385
+    },
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9374,
+          "cpu_stall_percent": 36.65,
+          "io_stall_percent": 0.0,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278247.9946048,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278249.9946048,
+        "observed_at": 1791278249.9719176,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 2,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278255164
+    },
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9382,
+          "cpu_stall_percent": 39.89,
+          "io_stall_percent": 0.0,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278343.9389706,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278345.9389706,
+        "observed_at": 1791278345.9132948,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 3,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278351112
+    },
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9227,
+          "cpu_stall_percent": 29.23,
+          "io_stall_percent": 0.0,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278439.6153393,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278441.6153393,
+        "observed_at": 1791278441.591283,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 4,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278446805
+    },
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9204,
+          "cpu_stall_percent": 37.51,
+          "io_stall_percent": 0.07,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278535.4233968,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278537.4233968,
+        "observed_at": 1791278537.398933,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 5,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278542604
+    },
+    {
+      "callback_state": "not_dispatched",
+      "execution_phase": "context",
+      "execution_revision": 2,
+      "last_sample": {
+        "additional_request_memory_mb": 6144,
+        "host": {
+          "available_memory_mb": 9227,
+          "cpu_stall_percent": 23.61,
+          "io_stall_percent": 0.0,
+          "memory_stall_percent": 0.0
+        },
+        "observed_at": 1791278631.347342,
+        "reason": "proof_memory_headroom",
+        "reserved_root_memory_mb": 0,
+        "thresholds": {
+          "cpu_stall_percent": 50.0,
+          "io_stall_percent": 10.0,
+          "memory_headroom_mb": 3277,
+          "memory_stall_percent": 10.0
+        }
+      },
+      "primary_gate": {
+        "backoff_until": 1791278633.347342,
+        "observed_at": 1791278633.3208125,
+        "reason": "proof_memory_headroom",
+        "status": "backoff"
+      },
+      "provider_effect_state": "not_started",
+      "retry_count": 6,
+      "retry_deadline_ms": 1791278890472,
+      "retry_not_before_ms": 1791278638530
+    }
+  ],
+  "distinct_deferral_receipts": 6,
+  "observed_at_ms": 1791278675748,
+  "parsed_passes": 75,
+  "private_task_ids_context_hashes_and_model_text_exported": false,
+  "schema": "closed-source384-resource-deferral-observation@1"
+}

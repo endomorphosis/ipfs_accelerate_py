@@ -1,0 +1,13 @@
+{
+  "schema": "start-cleanup-exporter-before@1",
+  "sha256": {
+    "qualification/inspect_live_trials.py": "3bfd6e449541cf73c67858eb9af40cd3aeb6f39a5b3ce2496387e5679189caba",
+    "qualification/check_fresh_live_inspector.py": "bf4c74bb63ae32543b86b5a6ebd2fbc764c86ed39b03785c655f17ebb462e4d7",
+    "live-trial-summary-01.json": "4485949158ac6879e5bf947ff210b5d123a5bae63d3e40ef52ba8ae4bf8dc7ac",
+    "live-trial-summary-02.json": "8078108ccee9228c359650010906a20d0b142aaa05ac53c6ea77412f4682b27d",
+    "live-trial-summary-03.json": "82edec9585d4bbd2101a4cc5105da819d87358ab7cbcdacbb2e7c34918f5ffaf",
+    "live-trial-summary-04.json": "8d8b249c8cad0759002f46cd18cb48f66c01c7161964131c05c6d8f56fe789c5",
+    "live-trial-summary-05.json": "a2ff6166318d8c35d55d8e877696527464ec49bef227872c2950603ab3d9c699",
+    "live-trial-summary-06.json": "c11efd10e40cfbb8daf2563db783cf3fe149fe3dbad9e358abb18c4e576c407d"
+  }
+}

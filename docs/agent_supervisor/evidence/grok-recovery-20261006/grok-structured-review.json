@@ -1,0 +1,46 @@
+{
+  "credential_data_exported": false,
+  "development_test_results": {
+    "cases_passed": 147,
+    "official_combined_qualification": "pending final03 at time of review; do not aggregate development run",
+    "seconds": 23.2
+  },
+  "missing_live_transport_blockers": [],
+  "probe_covers": [
+    "Pinned native CLI JSON-schema transport",
+    "Raw JSON-shaped prompt ingestion proved by nonce echo",
+    "Observed zero native tools and zero invocations",
+    "Nonprivileged worker identity",
+    "Cleanup"
+  ],
+  "probe_does_not_cover": [
+    "Full proposal schema native grammar support",
+    "Plan admission",
+    "Task execution or official reward",
+    "Full supervisor image",
+    "Provider-side independently retained model identity",
+    "Complete billed token totals"
+  ],
+  "raw_provider_data_exported": false,
+  "read_only": true,
+  "reviewed_contracts": [
+    "Exact canonical response_schema passed through shared llm_router response_format to native --json-schema",
+    "Literal argv conflicts and unsupported custom shell routes reject before native call",
+    "Duplicate/nonfinite JSON and bounded byte/tree/cycle limits reject",
+    "External schema references and unsupported dialects reject; resolver network access denied",
+    "Camel/snake structured fields must agree; native error/incomplete/conflicting stop outcomes reject",
+    "Canonical output independently revalidated by runner; strict plan scope/evidence/admission remains unchanged",
+    "No provider fallback, zero planning tool policy, no planning budget expansion",
+    "Pinned runtime jsonschema4.26.0 and referencing0.37.0 included in deployment import probe"
+  ],
+  "schema": "grok-structured-transport-review@1",
+  "source_commit": "e048ee22ec68f6adc3a468e1e612624d00661cce",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "cf2122e8499e633fb300a6e27487ebb3b67bcb744317c6217ceddf91783465e1",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "f14cd82073fa71a849046bfe438799445824e0927bc1ae291fc3c4504ed6815f",
+    "ipfs_accelerate_py/cli_runtime/grok_structured_output.py": "aaa04804ae780b8e0bc8d531e3be78ad40d7d28c8b164d0a9355bde3ae415c3f",
+    "ipfs_accelerate_py/llm_router.py": "2897c3ea942fc94cb4617064cf5519c26a0d718de5d591f53c6112279d32def2",
+    "test/api/test_grok_structured_output.py": "59b067f6a7c9fd097a7985e5884f2b0debd5aa02d54886d6fe4e632eb179c071",
+    "test/api/test_grok_structured_plan_roundtrip.py": "a9ee1d02317f38bcf77bd42ad8634ca6dea5e79fe97cd8ee3d3cd74a140bd4d7"
+  }
+}

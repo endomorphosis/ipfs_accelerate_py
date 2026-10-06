@@ -1,0 +1,66 @@
+{
+  "baseline_documentation_changes_only": true,
+  "failure_node_ids": [
+    "api.test_agent_supervisor_database_portal_failure::test_failure_never_overwrites_operator_change",
+    "api.test_agent_supervisor_database_portal_failure::test_failure_refreshes_revision_blocks_only_claimed_task_and_releases_lease[False]",
+    "api.test_agent_supervisor_database_portal_failure::test_failure_refreshes_revision_blocks_only_claimed_task_and_releases_lease[True]",
+    "api.test_agent_supervisor_database_portal_failure::test_restart_finishes_only_exact_failure_intent_without_provider_replay[False]",
+    "api.test_agent_supervisor_database_portal_failure::test_restart_finishes_only_exact_failure_intent_without_provider_replay[True]",
+    "api.test_agent_supervisor_database_portal_failure::test_setup_failure_accepts_forbidden_dispatch_evidence_without_inventing_observation",
+    "api.test_agent_supervisor_database_portal_failure::test_setup_failure_rejects_conflicting_durable_provider_phase",
+    "api.test_captured_lifecycle_boundaries::test_no_capture_does_not_adopt_path[finalize]",
+    "api.test_captured_lifecycle_boundaries::test_no_capture_does_not_adopt_path[settling]",
+    "api.test_captured_lifecycle_boundaries::test_replacement_inside_mutation_boundary_is_preserved[finalize]",
+    "api.test_captured_lifecycle_boundaries::test_replacement_inside_mutation_boundary_is_preserved[settling]",
+    "api.test_captured_lifecycle_boundaries::test_reused_token_cannot_adopt_replacement[finalize]",
+    "api.test_captured_lifecycle_boundaries::test_reused_token_cannot_adopt_replacement[settling]",
+    "api.test_lifecycle_terminal_callback_replay::test_normal_callback_observes_prior_and_terminal_before_delete",
+    "api.test_lifecycle_terminal_callback_replay::test_terminal_cleanup_without_required_callback_remains_compatible",
+    "api.test_lifecycle_terminal_callback_replay::test_terminal_retry_cannot_publish_queue_or_release_pool",
+    "api.test_lifecycle_terminal_callback_replay::test_terminal_retry_preserves_record_when_required_callback_failed"
+  ],
+  "full_repository_suite_pass": false,
+  "interpretation": {
+    "captured_lifecycle_action": "Substantive existing owner-adoption and stale-capture gap; correction is in a separate worktree pending qualification. One assertion also uses the absent terminal_callback argument.",
+    "captured_lifecycle_failures": 6,
+    "generic_failure_fixture_failures": 7,
+    "generic_failure_scope": "Existing embedded generic-exception tests expect older failure status/body/reconciliation behavior. Exact native exception capabilities and signed settlement have separate passing tests; no equivalence to these old expectations is claimed.",
+    "terminal_callback_and_terminal_reason_failures": 4,
+    "terminal_callback_scope": "Three use an absent terminal_callback API; one expects terminal deletion with a different receipt reason. The pending captured-record correction addresses exact terminal deletion without restoring callback authority."
+  },
+  "new_settlement_fully_qualified": false,
+  "provider_calls": 0,
+  "raw_model_task_or_verifier_bodies_exported": false,
+  "same_17_failure_node_ids": true,
+  "schema": "native-settlement-existing-boundaries-comparison@1",
+  "source_bound_runs": [
+    {
+      "errors": 0,
+      "failures": 17,
+      "label": "native-provider-settlement-final-02",
+      "log_sha256": "8196d751eb832cc560f61455570749a346975df2f06469037cebda8f13af9d2f",
+      "recorded_seconds": 550.5990529059782,
+      "skipped": 0,
+      "source_revision": "e4e0ded3296261cbaf5d3dd0304c57604fdf6c85",
+      "source_unchanged": true,
+      "tests": 457,
+      "working_tree_clean": true,
+      "working_tree_status": "",
+      "xml_sha256": "959a52169403c1ea20826440b795a88cb7751ac4fb6b47dcf902edfd4f1d029a"
+    },
+    {
+      "errors": 0,
+      "failures": 17,
+      "label": "native-settlement-existing-boundaries-base-01",
+      "log_sha256": "43caf5395aa42cce3b787a5d4785eaba0e4eeb17ab0e8f8465030c1d8d4b77c6",
+      "recorded_seconds": 53.745941029977985,
+      "skipped": 0,
+      "source_revision": "0a8309047c4e2d8f780c470a02a8453cfe01ceec",
+      "source_unchanged": true,
+      "tests": 19,
+      "working_tree_clean": false,
+      "working_tree_status": " M benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md\n M docs/agent_supervisor/terminal_symbolic_capabilities.md\n",
+      "xml_sha256": "cb1e37827d60af19ca4a2cddf099ab512a3a672df5a1ac8d6066dc1c6151d9c7"
+    }
+  ]
+}

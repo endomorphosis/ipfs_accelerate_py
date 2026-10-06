@@ -1,0 +1,24 @@
+{
+  "check_count": 13,
+  "checker_sha256": "eef1da266c4fdd48d9ba56f432604ee7f100046f9db28ea59ad467f0681f7482",
+  "checks": [
+    "unlimited high permits exact max",
+    "absent high permits exact max",
+    "equal finite high permits exact max",
+    "higher finite high permits exact max",
+    "smaller finite high rejects effective limit",
+    "malformed high rejects qualification",
+    "missing high observation rejects qualification",
+    "contradictory absent high rejects qualification",
+    "boolean finite high rejects qualification",
+    "lower max rejects qualification",
+    "different Docker memory rejects qualification",
+    "different effective CPU quota rejects qualification",
+    "Docker quota-period CPU representation supported"
+  ],
+  "containers_launched": 0,
+  "passed": true,
+  "provider_calls": 0,
+  "schema": "explicit20gib-observer-safety-review@1",
+  "script_sha256": "7e06cea6fe41084157ee0d41a32fb7392ef6d4b9897bfed10bb8310ef3db085e"
+}

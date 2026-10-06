@@ -1,0 +1,36 @@
+{
+  "canary_status": null,
+  "device": "cpu",
+  "dimensions": 384,
+  "ducklake_projected": true,
+  "hard_memory_bound_inferred": false,
+  "learned_embeddings": true,
+  "llm_provider_calls": 0,
+  "local_files_only": true,
+  "local_model_calls": 3,
+  "model_download_calls": 0,
+  "model_manifest_sha256": "3632fa3aa19f441e8668a0b203cdf3b740f57657cbf019895898dad354ca61f4",
+  "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "native_ast_rows_replayed": 2,
+  "parameter_bytes": 133440000,
+  "parameter_dtypes": [
+    "torch.float32"
+  ],
+  "peak_process_rss_kib": 1090304,
+  "persisted_index_reopened_and_equal": true,
+  "raw_corpus_or_model_outputs_exported": false,
+  "result_sha256": "15c5f21512f15f561b985696bd7ccf7db8f0203a3c7e337e24b831f066c53c39",
+  "schema": "local-gte-retrieval-probe@1",
+  "seconds": 3.43307500903029,
+  "source_sha256": "fe26eed664cc65e69128f46ed2d2d36cbd7c47327c378758d35239a90c207d45",
+  "status": "qualified",
+  "symbols": 2,
+  "torch_or_cuda_training_performed": false,
+  "training_steps": 0,
+  "trust_remote_code": false,
+  "versions": {
+    "sentence-transformers": "5.4.1",
+    "torch": "2.13.0",
+    "transformers": "4.52.1"
+  }
+}

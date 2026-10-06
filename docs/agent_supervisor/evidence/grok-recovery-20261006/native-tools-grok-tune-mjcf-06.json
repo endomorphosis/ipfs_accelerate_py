@@ -1,0 +1,156 @@
+{
+  "checks": 84,
+  "container_mutations": 0,
+  "error_type": null,
+  "finished_utc": "2026-10-06T10:29:20Z",
+  "last_observation": {
+    "advertised_tool_count_frequencies": {
+      "0": 1
+    },
+    "bounded_scan_truncated": false,
+    "credential_files_read": false,
+    "native_json_records": 156,
+    "native_log_files": 1,
+    "phase_markers": {
+      "admission.json": true,
+      "context-result.json": true,
+      "planning-result.json": true
+    },
+    "provider_calls": 0,
+    "raw_logs_exported": false,
+    "tool_outcome_counts": {}
+  },
+  "missing_native_logs_are_unknown": true,
+  "observation_completeness": "last_successful_bounded_snapshot_before_container_unavailable",
+  "observation_windows": [
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {},
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 0,
+        "native_log_files": 0,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 0.05168886296451092
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 150,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 131.95117150398437
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 152,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 135.0105024339864
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 156,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": false,
+          "context-result.json": false,
+          "planning-result.json": false
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 208.60346178797772
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 156,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": false,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 211.6714913059841
+    },
+    {
+      "observation": {
+        "advertised_tool_count_frequencies": {
+          "0": 1
+        },
+        "bounded_scan_truncated": false,
+        "credential_files_read": false,
+        "native_json_records": 156,
+        "native_log_files": 1,
+        "phase_markers": {
+          "admission.json": true,
+          "context-result.json": true,
+          "planning-result.json": true
+        },
+        "provider_calls": 0,
+        "raw_logs_exported": false,
+        "tool_outcome_counts": {}
+      },
+      "seconds": 217.81448501598788
+    }
+  ],
+  "phase_interpretation": "Marker existence and native advertised tool counts are observations; they confer no START or task completion claim.",
+  "provider_calls": 0,
+  "raw_logs_exported": false,
+  "raw_model_source_or_credential_data_exported": false,
+  "schema": "grok-native-tool-observation@1",
+  "seconds": 254.5811715539894,
+  "started_utc": "2026-10-06T10:25:06Z",
+  "status": "container_unavailable",
+  "task_completion_authority": false,
+  "trial_name": "grok-tune-mjcf-06",
+  "windows_omitted": 0
+}

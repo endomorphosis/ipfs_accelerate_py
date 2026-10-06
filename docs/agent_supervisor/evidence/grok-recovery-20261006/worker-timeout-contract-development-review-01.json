@@ -1,0 +1,38 @@
+{
+  "base_commit": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "benchmark_advantage_claimed": false,
+  "change": "Worker and router now import/use one absolute600-second ceiling. Parser default90, legacy signed300 calls and360 watchdogs, and enclosing work deadlines are unchanged.",
+  "commit": "426f489a2ce1f7d048a107428b385906943c2de8",
+  "committed_bytes_match_recorded_source": true,
+  "observed_source_contract_mismatch": "The deployed worker rejected timeouts above300 before importing router.main, while the explicit coding600 profile signed600 and router.run already accepted600.",
+  "provider_calls": 0,
+  "remaining_qualification": [
+    "Independent actual offline owner/sudo/worker old-versus-new Docker replay.",
+    "Archive capability consistency and merged frozen qualification before any live09."
+  ],
+  "run": {
+    "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "exit_code": 0,
+    "label": "worker-budget-dev-01",
+    "log_sha256": "6fe85d75285dca6a7611db0cde787467ce11d19782d081f298b1d06646b7d7b5",
+    "pytest": {
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "64",
+      "time": "39.534"
+    },
+    "seconds_recorded": 41.778389188984875,
+    "source_unchanged": true,
+    "tested_head": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+    "xml_sha256": "c800d335eec4b82cd43e1bf2bacc24bf507231bb1de21b39286f1e87ebd451ac"
+  },
+  "schema": "closed-worker-timeout-contract-review@1",
+  "scope_limit": "This is an absolute worker ceiling, not worker-level per-resource-profile enforcement.",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "069c544f7dd8829140236e46e745e92688cb73de975c16ba25c3264948698db9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "2556eefd8bb10640cab7a9ec34588c98b9b8a3026c3e9668b1c443481d8b69af",
+    "test/api/test_container_worker_timeout_contract.py": "bce7e1b02e98117e3e3b7602971ee1a188dd1a09c918571064cd58f251568dee"
+  },
+  "test_boundary": "Actual WORKER_ENTRY parser and dispatch AST after authored identity qualification; actual router preflight with provider discovery/allocation/creation/invocation forbidden. Namespace and UID qualification are not claimed by these tests."
+}

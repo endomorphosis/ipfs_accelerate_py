@@ -1,0 +1,33 @@
+{
+  "actual_native_fixture_provider_boundary": "authored local preflight failure, no live LLM call",
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 127,
+    "skipped": 0
+  },
+  "cumulative_summary_sha256": "50bc5310b7a1ba29b3c058eeffae6b3f89015ec2f32ed6c676ceb1135a6484ae",
+  "datasets_clean": true,
+  "datasets_commit": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "full_repository_suite_claim": false,
+  "independent_testcase_count_check": true,
+  "log_sha256": "efa1e769e9ccd9defa0c3014484e486a628812adabd2a925e8c6b0e370926cf6",
+  "prior43rows_preserved": true,
+  "prior_implementation_review_sha256": "32152ad807fe642fcaef70f63c429af1e8f3d99d1a90d0039a74245b1b314ed3",
+  "provider_calls": 0,
+  "publication_ready": false,
+  "qualification_label": "combined-terminal-failure-observation-final-01",
+  "raw_outputs_or_credentials_exported": false,
+  "recorded_seconds": 168.74041960801696,
+  "repeated_cases_summed": false,
+  "retrieval_in_active_controlled_trial": "lexical-tfidf-symbols@1",
+  "run_rows": 44,
+  "schema": "terminal-diagnostics-final-qualification-review@1",
+  "separate_retrieval_commit": "2bb615d917e41c65af2fbca802cb30ae4e3e8b08",
+  "source_clean": true,
+  "source_commit": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "source_unchanged": true,
+  "trial07_retrospective_cause_claim": false,
+  "trial08_pending": true,
+  "xml_sha256": "54fa197a909f6c57ddd9a35bcd89ce9d78aca4c11e81f19089f22f2202af3d56"
+}

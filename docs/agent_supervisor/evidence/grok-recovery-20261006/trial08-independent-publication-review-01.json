@@ -1,0 +1,57 @@
+{
+  "database_reopened_by_review": false,
+  "evidence_sha256": {
+    "grok-container/archive-review-08.json": "8404ef93881eb5c6387abdc90212bad6b79e55ae29546860d076f7cad92c56d7",
+    "grok-container/native-tools-grok-tune-mjcf-08.json": "bc4ec826441e5e60a9bfe7b5ec84b757d71c0f72121440be7f3a1a9c412eb371",
+    "grok-container/preparation-review-08.json": "431673b5c640795903cc7340da48528ee22e435e409835dfb19980d4421e4705",
+    "grok-container/resource-observation-08.json": "ec0e2c6f044aef5f886947c72f3c57be2a2e14b9771e62eaeeeccb8ae9b99d5c",
+    "grok-container/trial08-preparation-plan-02.json": "d84a0fae2fcb01d42e12fd783471586abc642ea7a92af347cf1fc0483845f15c",
+    "indexed-path-observation-08.json": "282264d72dfb10d623944afb71de177fd88ec4224a5e8dc497d4d091af463380",
+    "live-trial-summary-08.json": "4e7f4e615d5040241fb76624a1ba5dcd75da9b16d0a91d4bb173f9648ea8c0ee",
+    "qualification/observe_trial08_settlement_and_retrieval.py": "eadc2776810fb3ef2d9c811bef312e430a3dd8d2e3e151a74bfdc4fdda6835f3",
+    "retrieval-mode-observation-08.json": "83fd49608571f06c25069a05e56c61fa271a76a696e89f5d53f8d2db1bc34497",
+    "terminal-settlement-observation-08.json": "e922410bd9d1b9f6249627c36d7314cbe8d17d361aa4525eba14125d6800a549",
+    "trial-closure-observation-08.json": "c0d54e8bcd6800503bf4ef5cbe1316eec0a5edd5fe0f0bf37cec984743179f2b"
+  },
+  "frozen_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "da0e250dd7f3f9bbc4a7ab13b85ae4a18e5e7630dea9c5817feacd54f0a08a8d",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6b51c66af5c9620210c9966aec561b1440306a90fd7a77bb9fd235be1959c3b1",
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "21d9b203cdd7c81781ee17829846e75b38e5fb55d88e9c744ac7d131f46abb11",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619"
+  },
+  "offline_launcher_reproduction_pending": true,
+  "original_receipts_modified": false,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "raw_private_task_model_verifier_or_credential_bodies_exported": false,
+  "readme_sha256": "93841c394f6733fe86064c09014142a89548ce4b3495054c0643a9ff4e2d9c9a",
+  "recorded_outcomes": {
+    "aggregate_usage": null,
+    "bridge_reason": "portal_provider_failed",
+    "callback_state": "failed_outcome_settled",
+    "child_router_diagnostic": "missing",
+    "coding_dispatch_observed": null,
+    "coding_usage": null,
+    "native_returncode": 1,
+    "native_start": "succeeded",
+    "native_stop": "succeeded",
+    "official_reward": 0.0,
+    "planning_native_tokens": 21343,
+    "remaining_processes": 0,
+    "runtime_close_succeeded": true,
+    "task_revision": 4,
+    "task_status": "blocked"
+  },
+  "review_findings": [
+    "exact failed-child settlement observation retained; wrapper exit alone does not establish a model invocation",
+    "configured600 allowance differs from observed coding execution, which remains unknown",
+    "frozen worker rejects timeout above300 before router import; driver passes600; actual deployed offline reproduction remains separate from retained08 diagnostic",
+    "lexical retrieval and fresh Source384 neural inference remain separate",
+    "new neural retrieval selection changes future qualification scope, so no matched causal performance comparison with08",
+    "original receipt cannot retroactively recover unretained stderr or prove the unique earlier rejection"
+  ],
+  "schema": "trial08-independent-publication-review@1",
+  "source_edits": 0,
+  "source_head": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e"
+}

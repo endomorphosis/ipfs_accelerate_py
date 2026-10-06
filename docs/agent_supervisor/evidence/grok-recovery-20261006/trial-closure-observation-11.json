@@ -1,0 +1,66 @@
+{
+  "actual_resource_observation": {
+    "bytes": 1083,
+    "path": "grok-container/resource-observation-11.json",
+    "sha256": "6a9b571c3c2c189d6ed2cccb9733ede6cc59e85e4a86f7027420ec6ed883be1c"
+  },
+  "billing_total_verified": false,
+  "bound_execute_receipt": {
+    "bytes": 779,
+    "path": "grok-tune-mjcf-11-execute-exit.json",
+    "sha256": "52f2f0b195da3904d92f4ce0c225d4415c4a9613f99dc02619d91ec659ae02de"
+  },
+  "bound_live_summary": {
+    "bytes": 18585,
+    "path": "live-trial-summary-11.json",
+    "sha256": "a45253d931343323094ac9ed95b99d78008570ef7d85d2ed74f28e52072f25b3"
+  },
+  "bound_observer_coordinator": {
+    "bytes": 1040,
+    "path": "grok-container/observer-coordinator-11.json",
+    "sha256": "c2849e657729a5862c48b17e442254c9bfa055700211fff56a02c99bdc3297b3"
+  },
+  "completion_authority": false,
+  "completion_observed": false,
+  "container_presence_query_exit": 0,
+  "container_teardown_is_native_custody_close": false,
+  "exact_owned_container_present_after_cleanup": false,
+  "execution_exit_code": 0,
+  "execution_seconds": 1001.4858894019853,
+  "full_lifecycle_qualified": true,
+  "native_start_status": "succeeded",
+  "native_stop_status": "succeeded",
+  "native_task_completion_observed": false,
+  "observer_children_exited_zero": true,
+  "official_reward": 0.0,
+  "original_verifier_success": false,
+  "performance_advantage_claimed": false,
+  "post_stop_context_refresh": {
+    "completion_authority": false,
+    "status": "not_observed"
+  },
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "remaining_processes": 0,
+  "retained_driver_report": {
+    "bytes": 85288,
+    "path": "grok-tune-mjcf-11/jobs/supervisor-full-tune-mjcf/tune-mjcf__SRGTQxt/agent/supervisor-result.json",
+    "sha256": "373cde3c689320528627e026e8a7538172c94ead47ea84888dc97d0450cb1f09"
+  },
+  "runtime_close_attempted": true,
+  "runtime_close_error_type": null,
+  "runtime_close_succeeded": true,
+  "schema": "terminal-grok-trial-closure-observation@2",
+  "shutdown_failure_validation_source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "shutdown_failures": null,
+  "shutdown_failures_status": "not_reported",
+  "source_clean_after": true,
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "source_revisions": {
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "0e2d9a8c62eabdfbd42fcad505c370365474514a"
+  },
+  "source_unchanged": true,
+  "trial_name": "grok-tune-mjcf-11",
+  "worker_cleanup_returncode": 0
+}

@@ -1,0 +1,38 @@
+{
+  "accelerate_clean": true,
+  "combined_source": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 120,
+    "skipped": 0
+  },
+  "cumulative_rows": 57,
+  "cumulative_summary_sha256": "a853883723054f778a95218a696fa546739cf50fd8dbae52ac894b5c5109594d",
+  "datasets_clean": true,
+  "historical_trial10_native_custody_closed": false,
+  "historical_trial10_source": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "historical_trial10_verifier_reward": 1.0,
+  "implementation_review_sha256": "346160be51f3c996b9c2dd95ca4ea1990d202e6782f10775a6f429306f1d86c9",
+  "limits": [
+    "Clean120-test qualification is separate from the120 synthetic artifact-export checks.",
+    "The original trial10 STOP exception remains unknown; this is a later source-bound fix qualification, not a reinterpretation of historical custody.",
+    "Actual checkpoint inference is not claimed by the authored source-hash completion fixture; real learned inference remains independently observed in trial10."
+  ],
+  "log_sha256": "0088d3faf7fcfbf0ee4054ac4b3ae49dce51237f983664c709fa9130aecce2f9",
+  "metadata_exporter_checks_not_added_to_pytest_count": true,
+  "new_test_runs_by_this_review": 0,
+  "next_live_trial_pending": "11",
+  "overlapping_test_counts_not_summed": true,
+  "prior56_rows_preserved_exactly": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "qualified": true,
+  "schema": "terminal-shutdown-final-qualification-review@1",
+  "seconds": 304.5515050989925,
+  "source_edits": 0,
+  "source_unchanged": true,
+  "test_case_id_sha256": "8904cc4cbbf24e298fe24b0d0fc80f1f2430f564ad4289585a806b96e3fc0ceb",
+  "whole_repository_suite_claim": false,
+  "xml_sha256": "4123f7fc7e503e52129500b12ec831650bc5b8d13c2c25be24375ac6d2af7b39"
+}

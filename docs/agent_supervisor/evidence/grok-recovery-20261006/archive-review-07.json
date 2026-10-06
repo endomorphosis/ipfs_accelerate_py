@@ -1,0 +1,52 @@
+{
+  "archive_bytes": 1410182521,
+  "archive_hash_recomputed_in_review": true,
+  "archive_member_bytes_verified": true,
+  "archive_member_verification": "All declared members have matching bytes, lengths, regular types and modes; none extracted.",
+  "archive_sha256_actual": "2a402c8065d9e7429535a995fe1aa0ca0124ff637846d39c11e43ec2a8a6c6dd",
+  "archive_sha256_declared": "2a402c8065d9e7429535a995fe1aa0ca0124ff637846d39c11e43ec2a8a6c6dd",
+  "archive_source_verified_files": {
+    "datasets": 8054,
+    "kit": 1289,
+    "source": 2808
+  },
+  "archive_verified_member_count": 27353,
+  "archive_verified_uncompressed_bytes": 4068057540,
+  "benchmark_result": false,
+  "codex_setup_cache_selected": false,
+  "credential_pathnames_present": false,
+  "credentials_in_archive": false,
+  "docker_calls": 0,
+  "grok_archive_member_independently_verified": {
+    "bytes": 142867512,
+    "path": "providers/grok/grok",
+    "platform": "linux-aarch64",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version": "1.0.46",
+    "version_output": "grok 1.0.46 (2765805b9442) [stable]"
+  },
+  "inventory_files": 27353,
+  "manifest_sha256": "b5862f9972d922e6e962579cbe5910dad25c46a46852f9fa17146df0be1c263a",
+  "provider_calls": 0,
+  "qualified": true,
+  "raw_file_bodies_exported": false,
+  "schema": "terminal-grok-archive-independent-review@1",
+  "seconds": 21.49095720902551,
+  "source_heads": {
+    "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89",
+    "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+  },
+  "source_inventory_comparison": "Every declared source/datasets/kit member matches its current clean pinned checkout.",
+  "source_inventory_verified_files": {
+    "datasets": 8054,
+    "kit": 1289,
+    "source": 2808
+  },
+  "source_status": {
+    "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+    "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+  },
+  "task_inputs_in_archive": false
+}

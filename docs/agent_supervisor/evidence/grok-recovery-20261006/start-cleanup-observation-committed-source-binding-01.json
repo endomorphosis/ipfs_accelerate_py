@@ -1,0 +1,32 @@
+{
+  "case_counts_by_suite": {
+    "api.test_terminal_doctor_dispatch": 12,
+    "api.test_terminal_start_cleanup_observation": 35,
+    "integration.test_admitted_start_cleanup_repair": 6
+  },
+  "combined_clean_source_qualification_pending": true,
+  "committed_source_execution_claimed": false,
+  "development_checkout_relabelled_clean": false,
+  "development_counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 53,
+    "skipped": 0
+  },
+  "development_label": "native-start-cleanup-observation-dev-01",
+  "development_recorded_seconds": 61.103399557992816,
+  "development_source_unchanged": true,
+  "provider_calls": 0,
+  "raw_test_output_exported": false,
+  "schema": "start-cleanup-observation-committed-source-binding@1",
+  "source_commits": [
+    "912d0af3a2594b26f0b71731c4e85dea8f3a08f0",
+    "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89"
+  ],
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d344829bff440ef72aa4858dda520cf7480f2f5a790cd1a7f87296ae5e6f9824",
+    "test/api/test_terminal_start_cleanup_observation.py": "9eb7df13974064e712650843fcdb769fccdf6a5e9f5b9dff5a99509d60523384",
+    "test/integration/test_admitted_start_cleanup_repair.py": "dadfafe5481ab08e4d1f1ae4d0af210bbf0b300cb15c96a3396beb3740f1f40f"
+  },
+  "tested_files_match_committed_bytes": true
+}

@@ -1,0 +1,17 @@
+{
+  "actual_cgroup_resource_limits": null,
+  "actual_docker_resource_limits": null,
+  "actual_resource_limits_qualified": null,
+  "availability": "unavailable",
+  "completion_authority": false,
+  "observer_container_mutations": 0,
+  "performance_advantage_claimed": false,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "reason_code": "container_removed_before_observation",
+  "schema": "grok-container-resource-observation-unavailable@1",
+  "selected_cpus": 5,
+  "selected_memory_bytes": 21474836480,
+  "selected_resource_profile": "source384-5cpu-20gib-coding600@1",
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "trial_name": "grok-tune-mjcf-09"
+}

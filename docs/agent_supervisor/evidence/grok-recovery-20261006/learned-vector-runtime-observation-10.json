@@ -1,0 +1,40 @@
+{
+  "canary": {
+    "disposition": "passed",
+    "observed_dimensions": 384,
+    "sample_count": 3,
+    "semantic_authority": false,
+    "vector_lane": "enabled"
+  },
+  "complete_permitted_scope": true,
+  "configuration": {
+    "device": "cpu",
+    "local_files_only": true,
+    "max_seq_length": 512,
+    "trust_remote_code": false,
+    "use_safetensors": true
+  },
+  "dimensions": 384,
+  "ducklake_status": "projected",
+  "embedding_input": "qualified symbol names only",
+  "full_system_qualified": false,
+  "learned_embeddings": true,
+  "local_model_calls": 3,
+  "local_model_texts": 8,
+  "model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "native_fact_rows_replayed": 4,
+  "nomination_only": true,
+  "observed_utc": "2026-10-06T12:52:57Z",
+  "observer_database_connections": 0,
+  "observer_inference_calls": 0,
+  "producer_schema": "native-local-learned-vector-qualification@1",
+  "raw_symbol_query_source_or_credential_bodies_exported": false,
+  "remote_provider_calls": 0,
+  "retained_result_bytes": 86931,
+  "retained_result_sha256": "07aa80a01d6693593d44c3c0b823ec2574a53f14c416c7260728fd8349491374",
+  "schema": "closed-learned-vector-runtime-observation@1",
+  "semantic_authority": false,
+  "status": "qualified",
+  "symbols": 4,
+  "trial_name": "grok-tune-mjcf-10"
+}

@@ -1,0 +1,110 @@
+{
+  "archive_kit_commit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+  "benchmark_advantage_claimed": false,
+  "billing_total_verified": false,
+  "cleanup_complete": true,
+  "cleanup_returncode": 0,
+  "credential_data_exported": false,
+  "cross_provider_fallback": false,
+  "datasets_commit": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "effective_tool_policy": {
+    "advertised_tool_counts": [
+      0
+    ],
+    "credential_data_exported": false,
+    "effective_zero_tools_observed": true,
+    "native_json_records": 155,
+    "native_log_files": 1,
+    "observed_tool_invocations": 0,
+    "raw_debug_exported": false
+  },
+  "exact_trial_image": false,
+  "full_supervisor_qualified": false,
+  "image_id": "sha256:5024f48ba9441d4b13a95d3945abc6365538e3a31109833367a1923523c6efed",
+  "max_turns": 2,
+  "model": "grok-4.7",
+  "model_identity_scope": "explicit requested route; provider-side model identity not independently retained",
+  "native_provider_outcome": {
+    "classification_source": "stop_reason",
+    "completion_authority": false,
+    "envelope_observed": true,
+    "error_observed": false,
+    "error_subtype": "unknown",
+    "process_outcome": "returned",
+    "raw_provider_data_exported": false,
+    "reason_code": "end_turn",
+    "schema": "native-grok-outcome@1",
+    "stop_reason": "end_turn"
+  },
+  "native_tool_allowlist": [
+    "read_file"
+  ],
+  "native_tool_denylist": [
+    "read_file",
+    "search_tool",
+    "use_tool"
+  ],
+  "observed_cli_version": "grok 1.0.46 (2765805b9442)",
+  "observed_numeric_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 1536,
+    "completion_tokens": 203,
+    "exit_code": 0,
+    "native_grok_cache_write_input_tokens": 0,
+    "native_grok_cached_input_tokens": 1536,
+    "native_grok_input_tokens": 1372,
+    "native_grok_output_tokens": 203,
+    "native_grok_reasoning_output_tokens": 173,
+    "native_grok_total_tokens": 3111,
+    "num_turns": 1,
+    "prompt_tokens": 1372,
+    "reasoning_tokens": 173,
+    "total_tokens": 3111
+  },
+  "original_receipt": "grok-container/schema-ready-probe-01.json",
+  "original_receipt_schema": "grok-isolated-schema-readiness@1",
+  "original_receipt_sha256": "ad21f901ec0d8b5ee7f1ed1d184380de65c0bda33d824d9a25d0647e9ca227da",
+  "pinned_binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "plan_admitted": false,
+  "prompt_bytes": 360,
+  "prompt_nonce_echo_matches": true,
+  "prompt_nonce_only_in_instruction": true,
+  "prompt_sha256": "be5a744e84c995cd6f588da48715e09d4aa4136b93b200e26a54dd39da8285ff",
+  "provider": "grok_cli",
+  "provider_calls": 1,
+  "provider_side_model_identity_verified": false,
+  "qualified": true,
+  "raw_response_exported": false,
+  "reasoning_effort": "high",
+  "requested_tools_profile": "none",
+  "response_characters": 60,
+  "response_json_valid": true,
+  "response_matches_schema": true,
+  "response_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "echo": {
+        "type": "string"
+      },
+      "status": {
+        "const": "READY"
+      }
+    },
+    "required": [
+      "status",
+      "echo"
+    ],
+    "type": "object"
+  },
+  "schema": "grok-schema-readiness-publication@1",
+  "seconds": 4.6904541599797085,
+  "source_commit": "e048ee22ec68f6adc3a468e1e612624d00661cce",
+  "source_unchanged": true,
+  "success": true,
+  "task_inputs_used": false,
+  "task_qualification_claim": false,
+  "timeout_seconds": 30,
+  "usage_completeness": "unknown",
+  "worker_gid": 1000,
+  "worker_uid": 1001
+}

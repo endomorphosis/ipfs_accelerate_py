@@ -1,0 +1,208 @@
+{
+  "archive_audit_argv_template": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/review_archive.py",
+    "--expected-source-head",
+    "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+    "--bundle-attempt",
+    "08"
+  ],
+  "archive_audit_environment": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006:/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "attempt": "08",
+  "closed_start_cleanup_export_supported": true,
+  "containers_launched": 0,
+  "cross_provider_fallback": false,
+  "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "gates": [
+    "root supplies exact qualified clean combined source revision",
+    "final XML and source-unchanged receipt verified",
+    "fresh archive full SHA and all regular members match clean P/D/K",
+    "public task profile matches unchanged07 profile",
+    "exact owned container matches prepared profile and actual20GiB/max/high/5CPU",
+    "one authorized trial only",
+    "official original verifier score reported without inferred task completion",
+    "native STOP and custody closure observed separately from container teardown"
+  ],
+  "indexed_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/qualification/export_indexed_path.py",
+    "--attempt",
+    "08"
+  ],
+  "infrastructure_preflight": {
+    "docker_version": "29.2.1",
+    "filesystem_available_bytes": 438112280576,
+    "filesystem_use_percent": 89,
+    "mem_available_KiB": 111993708
+  },
+  "inspector_safety_review": "qualification/fresh-live-inspector-safety-review-11.json",
+  "kit_head": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+  "native_failure_observation_export_supported": true,
+  "previous_plan_sha256": "1b651496d38366902da1dee97f1344e32b19b25420011e85d3a018464ecbc1cb",
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "qualification_gate": "qualification/combined-terminal-failure-observation-final-01-exit.json and matching all-pass XML",
+  "readiness_review_only": true,
+  "resource_observer_argv_template": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/observe_coding600_resources.py",
+    "--container-id",
+    "EXACT_OWNED_CONTAINER_ID_REQUIRED",
+    "--attempt",
+    "08",
+    "--resource-profile",
+    "source384-5cpu-20gib-coding600@1"
+  ],
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "resources": {
+    "cleanup_seconds": 60,
+    "coding_timeout_cap_seconds": 600,
+    "coding_tools": 6,
+    "coding_watchdog_cap_seconds": 660,
+    "cpus": 5,
+    "driver_seconds": 900,
+    "memory_bytes": 21474836480,
+    "planning_seconds": 180,
+    "planning_tools": 0,
+    "remaining_work_reserve_seconds": 25,
+    "work_seconds": 840
+  },
+  "retrieval_mode": "lexical-tfidf-symbols@1",
+  "reused_reviewed_artifacts": {
+    "export_indexed_path": {
+      "bytes": 10936,
+      "path": "qualification/export_indexed_path.py",
+      "sha256": "f964c3549a6f79c68014a784709481c5349a33c7e5c3188fe03b2fda6ee19973"
+    },
+    "inspect_live_trials": {
+      "bytes": 36868,
+      "path": "qualification/inspect_live_trials.py",
+      "sha256": "42b8cab4eacc53957e066b411732319540ed0ebac36af285f3d1c87e923c25df"
+    },
+    "monitor_closed_tools": {
+      "bytes": 4615,
+      "path": "grok-container/monitor_closed_tools.py",
+      "sha256": "590e68cccd96505b06e3203ebcdd5f42292715c7783bedb57b2272120ea2489f"
+    },
+    "observe_coding600_resources": {
+      "bytes": 5923,
+      "path": "grok-container/observe_coding600_resources.py",
+      "sha256": "b7ddd2f07b9bf33745a31b2cb68ca6e0ff8ce18d2831b4d4c90a49575e8f9463"
+    },
+    "review_archive": {
+      "bytes": 8716,
+      "path": "grok-container/recipes/review_archive.py",
+      "sha256": "1391da75fc3de497d811e37f0499bfa9df1aaaceafb8de18e62586836d902633"
+    },
+    "run_fresh_grok_coding600": {
+      "bytes": 9871,
+      "path": "grok-container/recipes/run_fresh_grok_coding600.py",
+      "sha256": "f403bd07e65aab4402c4d08515961ecc6398e863c5b084f4111eeaee5f9831b0"
+    }
+  },
+  "same_budget_performance_advantage_claimed": false,
+  "schema": "terminal-fresh-trial-preparation-plan@1",
+  "settings_same_as_trial07": true,
+  "source384_checkpoint_inference_separate_from_retrieval": true,
+  "source_changes": 0,
+  "source_checkout": "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006",
+  "source_head": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "source_head_status": "clean_frozen_await_root_combined_qualification_pass",
+  "stage_commands": [
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_coding600.py",
+        "bundle",
+        "--expected-source-head",
+        "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+        "--bundle-attempt",
+        "08",
+        "--trial-attempt",
+        "08",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": true,
+      "provider_calls": 0,
+      "stage": "bundle"
+    },
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_coding600.py",
+        "profile",
+        "--expected-source-head",
+        "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+        "--bundle-attempt",
+        "08",
+        "--trial-attempt",
+        "08",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": true,
+      "provider_calls": 0,
+      "stage": "profile"
+    },
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_coding600.py",
+        "prepare",
+        "--expected-source-head",
+        "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+        "--bundle-attempt",
+        "08",
+        "--trial-attempt",
+        "08",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": true,
+      "provider_calls": 0,
+      "stage": "prepare"
+    },
+    {
+      "argv_template": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/grok-container/recipes/run_fresh_grok_coding600.py",
+        "execute",
+        "--expected-source-head",
+        "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+        "--bundle-attempt",
+        "08",
+        "--trial-attempt",
+        "08",
+        "--task",
+        "tune-mjcf"
+      ],
+      "authorization_pending": true,
+      "provider_calls": null,
+      "stage": "execute"
+    }
+  ],
+  "stages_executed": [],
+  "summary_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/grok-recovery-20261006/qualification/inspect_live_trials.py",
+    "--trial-name",
+    "grok-tune-mjcf-08",
+    "--require-trial-name",
+    "grok-tune-mjcf-08",
+    "--output",
+    "live-trial-summary-08.json"
+  ],
+  "task": "tune-mjcf"
+}

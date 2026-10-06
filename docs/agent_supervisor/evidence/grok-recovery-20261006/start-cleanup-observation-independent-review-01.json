@@ -1,0 +1,34 @@
+{
+  "artifact_reviewed_sha256": {
+    "qualification/check_fresh_live_inspector.py": "fb7c642efcd6afa2a29037ed5e2993e90fd0fa8a53d3c2df5ab2c7fa49e583a7",
+    "qualification/fresh-live-inspector-safety-review-08.json": "a8bd849ff371604cfc6b5981e3c6c313b9ceafe161cff0c95d04454f83e958e1",
+    "qualification/inspect_live_trials.py": "0d99fa3764308a5c0cb32a89f42268097ee977b517b626e0f34859dec9e78b77"
+  },
+  "artifact_synthetic_checks": 71,
+  "artifact_synthetic_checks_passed": true,
+  "blocking_concerns": [],
+  "limits": [
+    "observation of recorded marker-bound process-tree proof, not global or continuously current process absence",
+    "does not authorize cleanup, retry, completion or execution",
+    "production test run is pending at review time; synthetic exporter checks are separate",
+    "original trials01 through06 unchanged; no new provider call"
+  ],
+  "provider_calls": 0,
+  "raw_private_output_exported": false,
+  "review_scope": [
+    "bounded canonical regular receipt reads, no symlink following and stable file identity",
+    "exact failed START request, transaction and native transition bindings including source/profile/authorization context",
+    "latest STOP cannot replace the matched original START transition",
+    "process proof and control receipt separately observed, missing response remains partial",
+    "closed fields and enums exclude identities, source/model bodies and error text",
+    "nested driver finally retains runtime.close when observation fails",
+    "signed native integration asserts failed START, scoped absence and lost-response partial observation"
+  ],
+  "schema": "start-cleanup-observation-independent-review@1",
+  "source_edits": 0,
+  "source_reviewed_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d344829bff440ef72aa4858dda520cf7480f2f5a790cd1a7f87296ae5e6f9824",
+    "test/api/test_terminal_start_cleanup_observation.py": "9eb7df13974064e712650843fcdb769fccdf6a5e9f5b9dff5a99509d60523384",
+    "test/integration/test_admitted_start_cleanup_repair.py": "dadfafe5481ab08e4d1f1ae4d0af210bbf0b300cb15c96a3396beb3740f1f40f"
+  }
+}

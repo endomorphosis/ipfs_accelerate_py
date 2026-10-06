@@ -1,0 +1,94 @@
+{
+  "all_three_files_identical_at_all_three_revisions": true,
+  "auth_exported": false,
+  "classification": "preexisting_legacy_test_collection_contract_gap",
+  "conclusions": [
+    "The missing export and import/test references predate this turn and the lifecycle patch.",
+    "The currently selected admitted benchmark path does not reference this gateway module or its builders.",
+    "The restored source-only gateway cannot be claimed qualified while this import contract remains broken."
+  ],
+  "current_gateway_scaffolding_runtime_enabled": false,
+  "current_production_python_reference_paths_outside_gateway": [],
+  "immutable_revision_file_identities": [
+    {
+      "files": {
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+          "bytes": 592871,
+          "sha256": "520eede032ac8adc454e26c124e44d866b6b8508bc40d31b7a74cd5f01e5640f"
+        },
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/eaaef_host_admitted_daemon_gateway.py": {
+          "bytes": 74727,
+          "sha256": "b1c704dfc7637cc56fc818a45dfd3acb2cc11db022665d650573257c50b592ae"
+        },
+        "test/api/test_agent_supervisor_database_daemon_cli_binding.py": {
+          "bytes": 3784,
+          "sha256": "2841dbdcee7facad77ddd56ab11d54ed58e365e8a1d5d62cb866cb006f855817"
+        }
+      },
+      "revision": "9ffefe04669c52ff4f51c5ee31962380ed204418"
+    },
+    {
+      "files": {
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+          "bytes": 592871,
+          "sha256": "520eede032ac8adc454e26c124e44d866b6b8508bc40d31b7a74cd5f01e5640f"
+        },
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/eaaef_host_admitted_daemon_gateway.py": {
+          "bytes": 74727,
+          "sha256": "b1c704dfc7637cc56fc818a45dfd3acb2cc11db022665d650573257c50b592ae"
+        },
+        "test/api/test_agent_supervisor_database_daemon_cli_binding.py": {
+          "bytes": 3784,
+          "sha256": "2841dbdcee7facad77ddd56ab11d54ed58e365e8a1d5d62cb866cb006f855817"
+        }
+      },
+      "revision": "c09113ff67c999d058c0df87dd01f5997dd792d1"
+    },
+    {
+      "files": {
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+          "bytes": 592871,
+          "sha256": "520eede032ac8adc454e26c124e44d866b6b8508bc40d31b7a74cd5f01e5640f"
+        },
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/eaaef_host_admitted_daemon_gateway.py": {
+          "bytes": 74727,
+          "sha256": "b1c704dfc7637cc56fc818a45dfd3acb2cc11db022665d650573257c50b592ae"
+        },
+        "test/api/test_agent_supervisor_database_daemon_cli_binding.py": {
+          "bytes": 3784,
+          "sha256": "2841dbdcee7facad77ddd56ab11d54ed58e365e8a1d5d62cb866cb006f855817"
+        }
+      },
+      "revision": "e048ee22ec68f6adc3a468e1e612624d00661cce"
+    }
+  ],
+  "importer": "ipfs_accelerate_py/agent_supervisor/todo_daemon/eaaef_host_admitted_daemon_gateway.py",
+  "limitations": [
+    "Static reference absence does not qualify every possible dynamic import or external embedding.",
+    "Full final regression and live Grok qualification are separately pending; this review does not change their outcomes."
+  ],
+  "missing_export": "_eaaef_source_addressed_host_receipts",
+  "missing_export_absent_at_all_three_revisions": true,
+  "observed_qualification": {
+    "exit_code": 2,
+    "failure_phase": "test_collection",
+    "failure_type": "ImportError",
+    "junit_sha256": "6c88859fec50248c621970e89c690bd0ffd9e84d21f220ab82e568b84ef746cd",
+    "label": "recovery-and-schema-final-03",
+    "log_sha256": "bfbe253b7d0d347c8df0c6c071b22b79cc794742dae80add782997e8772eed88",
+    "seconds": 76.9879168610205,
+    "source_unchanged": true,
+    "test_bodies_executed": 0
+  },
+  "provider": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+  "provider_calls": 0,
+  "raw_logs_exported": false,
+  "recommended_followup": "Audit and restore the actual source-addressed host receipt contract in a separate gateway qualification change; do not introduce a permissive stub or weaken the disabled-runtime gate merely to collect tests.",
+  "schema": "preexisting-gateway-import-gap-review@1",
+  "searched_production_roots": [
+    "ipfs_accelerate_py/agent_supervisor",
+    "benchmarks/agent_supervisor/container_coding"
+  ],
+  "source_mutations": 0,
+  "test": "test/api/test_agent_supervisor_database_daemon_cli_binding.py"
+}

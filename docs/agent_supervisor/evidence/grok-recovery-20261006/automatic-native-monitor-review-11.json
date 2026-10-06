@@ -1,0 +1,105 @@
+{
+  "authority": false,
+  "automatic_retry_admitted": false,
+  "completion_authority": false,
+  "container_id_sha256": "f641313c111c2d19653a6908718732be869d6085f4c1a480db38671ab5f336ef",
+  "coordinator_sha256": "c2849e657729a5862c48b17e442254c9bfa055700211fff56a02c99bdc3297b3",
+  "coverage": {
+    "all_observers_exit_zero": true,
+    "captured_poll_count": 197,
+    "closure": {
+      "absence_is_not_success": true,
+      "authority": false,
+      "container_inspect_returncode": 0,
+      "container_running": false,
+      "docker_exec_returncode": 1,
+      "elapsed_seconds": 994.388,
+      "retained": 38,
+      "samples": 197,
+      "schema": "owned-native-live-monitor-closure@1",
+      "trial": "11"
+    },
+    "coordinator_binding_seconds": 5.032,
+    "poll_seconds": 5,
+    "retained_phase_count": 38
+  },
+  "final_driver_result_pending_at_review": true,
+  "limits": [
+    "No code or container changes, extra observers, tests or provider calls by this reviewer.",
+    "Fresh owner heartbeat does not establish provider progress.",
+    "The restart_count changed to1 while both observed native processes were absent at STOP; no new daemon birth was observed, so this is not evidence of an actual replacement.",
+    "The original trial10 successful coding plus failed closure remains separate from trial11.",
+    "STOP success is observed independently; runtime.close result and official task/reward require the driver and original verifier reports.",
+    "Missing receipt before timeout was not treated as success or failure; the later observed sidecar is explicitly observation-only.",
+    "No OOM/max/high events were observed; this does not diagnose the provider timeout."
+  ],
+  "monitor_log": "timeout-recovery/native-live-monitor-11.jsonl",
+  "monitor_log_sha256": "b2718766adc41fb336b41eaff6d7409015af94de95e5d11f05efe49076f9321f",
+  "monitor_source_sha256": "9706f39752f6ce7926a9bdb035f116b1c1050edbc270bdd0f08cd5348b990a62",
+  "observations": {
+    "START_succeeded_seconds": 258.845,
+    "STOP_snapshot": {
+      "cgroup_pids_current": 10,
+      "daemon_alive": false,
+      "restart_count": 1,
+      "supervisor_alive": false
+    },
+    "STOP_succeeded_seconds": 974.13,
+    "bridge_failure": {
+      "authority": false,
+      "callback_state": "started_outcome_unknown",
+      "child_error_type": "TimeoutExpired",
+      "child_phase": "provider_invocation",
+      "child_report_status": "observed",
+      "lifecycle_finalized": null,
+      "native_exit_present": false,
+      "phase": "unknown_callback",
+      "process_group_absent": null,
+      "reaped": null,
+      "reason_code": "portal_provider_failed",
+      "returncode": null,
+      "scope": "fixed_native_diagnostic_sidecar",
+      "subreaper_children_absent": null
+    },
+    "first_bridge_failure_seconds": 872.645,
+    "memory_events_maxima": {
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0
+    },
+    "memory_limit_bytes": 21474836480,
+    "memory_peak_bytes": 6776143872,
+    "observed_daemon_births": [
+      31168036
+    ],
+    "oom_kill_deltas": [
+      0
+    ]
+  },
+  "schema": "automatic-native-monitor-review@1",
+  "source_commit": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "source_review": {
+    "conclusion": "Unknown callback follows existing fail-closed behavior. Evidence cannot yet distinguish remaining descendants, conservative collection denial, lifecycle/result/state mismatch or a regression. No settlement/retry relaxation is justified.",
+    "diagnostic_limit": "The sidecar retains final native receipt absence, not a reason for the native capability being unavailable. Child-reported TimeoutExpired cannot substitute for native custody evidence.",
+    "exact_refused_gate_observed": false,
+    "missing_native_exit_is_a_deliberate_settlement_barrier": true,
+    "required_native_join": [
+      "normal waited nonzero Popen return",
+      "no native outer timeout/exception or protected violation",
+      "no validation attempted",
+      "captured finalized lifecycle",
+      "subreaper enabled and no children before/after callback",
+      "unchanged exact attempt authority and result",
+      "runner process group absent",
+      "finished event and persisted state match",
+      "sealed attempt/projection/current fence",
+      "protected markers cleared"
+    ],
+    "source_bindings": {
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    }
+  },
+  "trial": "11"
+}

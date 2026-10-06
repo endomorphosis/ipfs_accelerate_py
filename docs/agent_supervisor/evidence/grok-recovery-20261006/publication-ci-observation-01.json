@@ -1,0 +1,27 @@
+{
+  "checks": [
+    {
+      "id": 112194188573,
+      "name": "documentation-gates"
+    },
+    {
+      "id": 112194188053,
+      "name": "qualification"
+    },
+    {
+      "id": 112194187823,
+      "name": "serving-contract-gates"
+    }
+  ],
+  "ci_pass_claim": false,
+  "local_documentation_gates_exit_code": 0,
+  "local_qualification_cases_passed": 748,
+  "local_qualification_source_unchanged": true,
+  "push_to_origin_main_confirmed": true,
+  "raw_credentials_or_provider_data_exported": false,
+  "remote_blocker": "account_locked_due_to_billing_issue",
+  "remote_jobs_started": false,
+  "remote_required_check_expected_at_push": true,
+  "schema": "grok-recovery-publication-ci-observation@1",
+  "source_revision": "47281b5b94feed197b27c8ea4fd0504225337a54"
+}

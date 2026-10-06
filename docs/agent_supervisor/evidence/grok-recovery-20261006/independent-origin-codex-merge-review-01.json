@@ -1,0 +1,54 @@
+{
+  "blocking_concerns": [],
+  "command_record_sha256": "285fd39966a2ae17ea38dea965044e1cb9b90049583d88cd9ea41eaeed01fef1",
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 213,
+    "skipped": 0
+  },
+  "exit_record_sha256": "e69597bed320372aaf9a6f436a07d4edbbecd66c5048f83b78c7165a6bacadd8",
+  "historical_rows_preserved_exactly": 57,
+  "invariants": [
+    "Grok signed task-contract projection and independent validation retained.",
+    "Closed @2 exception metadata and phase boundaries retained.",
+    "Shared worker/router600 ceiling, legacy300 fallback and source-bound archive capability retained.",
+    "Codex canonical planning schema transport validates original returned JSON and exact invocation schema digest/size; it grants no plan admission or semantic proof.",
+    "Temporary Codex schema/output files are cleaned on return and exception; nonzero structured response is not accepted.",
+    "Incoming bcd466018 changes documentation only."
+  ],
+  "limits": [
+    "No live provider, service or container calls.",
+    "This gate covers overlapping router/schema/worker paths, not the whole repository.",
+    "Native shutdown120-case gate remains separately bound to0e; no redundant native tests were rerun.",
+    "Trial11 at0e returned original reward0 and unknown callback after timeout while native process cleanup succeeded; merged0a8 was not live benchmarked.",
+    "Prior collection errors and development failures remain unchanged in the cumulative summary."
+  ],
+  "log_sha256": "7441ea0069c18eef75883772b03ce8ae9d72293a1213484f0273fe1125ea2e5f",
+  "merge_base": "a98308e4c162bd4cd2977a3ac37394f55d3a06c0",
+  "merged_incoming": [
+    "82671e6c8",
+    "bcd466018"
+  ],
+  "review_type": "read_only_source_invariant_review_and_recorded_provider_free_qualification",
+  "schema": "independent-merged-router-qualification-review@1",
+  "seconds_recorded": 89.16488706902601,
+  "source_bindings_match_recorded_final_bytes": true,
+  "source_clean": true,
+  "source_commit": "0a8a1b3e8448a6604899bedcbc5175dc08bf6825",
+  "source_unchanged": true,
+  "summary_path": "publication-stage/qualification-summary-origin-codex-merge-final.json",
+  "summary_sha256": "26de3bac5f2cf21e16df3ee9efac6c64a2645a2369fa3bd009948d43455b8f75",
+  "targets": [
+    "test/api/test_codex_cli_output_schema.py",
+    "test/api/test_codex_planning_schema.py",
+    "test/api/test_codex_structured_plan_roundtrip.py",
+    "test/api/test_grok_structured_output.py",
+    "test/api/test_grok_structured_plan_roundtrip.py",
+    "test/api/test_router_failure_diagnostics.py",
+    "test/api/test_router_provider_failure_diagnostics.py",
+    "test/api/test_container_worker_timeout_contract.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py"
+  ],
+  "xml_sha256": "17a24123d27b165a51191277464ac800ab8ef25ce93d9f40ad14b051c45ea704"
+}

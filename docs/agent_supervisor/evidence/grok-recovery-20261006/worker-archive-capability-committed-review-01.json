@@ -1,0 +1,52 @@
+{
+  "capability_semantics": [
+    "extended coding cap requires exact current worker template hash, shared router ceiling and matching installer/router inventory rows",
+    "partial or other source-version archives do not advertise current installer capability",
+    "legacy at-most300 selections remain compatible with manifests lacking new capability",
+    "prepare and execute reject incompatible extension before Harbor; setup and run reject before deployment/upload/planning",
+    "full and no-index profiles retain their selected coding budget without fallback or downgrade"
+  ],
+  "changed_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "186a5488359644fa608a4a4c39e7b67fe96e59b03021e8004d4bfb4d4bec9fb5",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "4c0d486a956587f6a41aeee68706ea7be75a2edc087c66f6d35182fb3d68722d",
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "1707be47142ec38097ad366c3353402236e2959998dbbdd1e1b961cf29f26933",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "61b0784b248a794e0fa4d5c117e7f1509b6c66effb7cdd08489be635bb8bf2ae",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "11462a1cb952229817d31d7938e5470cff80d0749bf85d1b090c111bfccc7220"
+  },
+  "commit": "d39afb6df3cedbb15b46cb4a2777c340bd499376",
+  "committed_bytes_match_development": true,
+  "completion_authority": false,
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 95,
+    "skipped": 0
+  },
+  "development_label": "worker-capability-dev-03",
+  "development_not_relabelled_as_clean_run": true,
+  "development_was_dirty": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "raw_outputs_or_credentials_exported": false,
+  "recorded_source_unchanged": true,
+  "retry_authority": false,
+  "review_limitations": [
+    "capability is trusted archive compatibility metadata, not execution authority",
+    "exact current-source matching is intentionally conservative",
+    "packaging fixtures are not neural inference; pinned local GTE probe is separate",
+    "final clean combined qualification remains pending"
+  ],
+  "schema": "worker-archive-capability-committed-review@1",
+  "seconds": 53.002773293992504,
+  "source_clean_after_commit": true,
+  "source_includes_legacy_router300_fallback": true,
+  "source_includes_retrieval_revision_fix": true,
+  "test_scope": [
+    "real archive builder with authored packaging fixture",
+    "simultaneous GTE revision and coding600 prepare/setup/driver flags",
+    "stale, missing, malformed, duplicate or mismatched capability rejected before external calls",
+    "legacy300 preparation remains admitted",
+    "actual parser path including loaded legacy router module and601 refusal; native Docker is separately recorded"
+  ],
+  "training_steps": 0
+}

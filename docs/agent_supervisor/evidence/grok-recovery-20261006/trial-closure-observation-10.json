@@ -1,0 +1,44 @@
+{
+  "billing_total_verified": false,
+  "bound_execute_receipt": {
+    "bytes": 778,
+    "path": "grok-tune-mjcf-10-execute-exit.json",
+    "sha256": "669bb85b0b8e5f4199b449f374200761e5a274df483415cfebd6f8c6394bdc7e"
+  },
+  "bound_live_summary": {
+    "bytes": 15788,
+    "path": "live-trial-summary-10.json",
+    "sha256": "8deebd7008489c4dae29a88ce439d9199f2e1819728ae8ce5fa889496be02089"
+  },
+  "completion_authority": false,
+  "completion_observed": false,
+  "container_presence_query_exit": 0,
+  "container_teardown_is_native_custody_close": false,
+  "exact_owned_container_present_after_cleanup": false,
+  "execution_exit_code": 0,
+  "execution_seconds": 830.2107058800175,
+  "full_lifecycle_qualified": false,
+  "native_start_status": "succeeded",
+  "native_stop_status": null,
+  "native_task_completion_observed": true,
+  "native_usage_envelopes_observed": 2,
+  "official_reward": 1.0,
+  "original_verifier_success": true,
+  "performance_advantage_claimed": false,
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "remaining_processes": null,
+  "runtime_close_attempted": true,
+  "runtime_close_succeeded": false,
+  "schema": "terminal-grok-trial-closure-observation@1",
+  "source_clean_after": true,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "source_revisions": {
+    "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "b966623d3de7457b4139e7d9235a5976f275dd46"
+  },
+  "source_unchanged": true,
+  "trial_name": "grok-tune-mjcf-10",
+  "usage_complete_claimed": false,
+  "worker_cleanup_returncode": 0
+}

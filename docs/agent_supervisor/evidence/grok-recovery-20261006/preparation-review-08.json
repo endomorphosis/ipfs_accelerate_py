@@ -1,0 +1,54 @@
+{
+  "archive_bytes": 1410222658,
+  "archive_members": 27355,
+  "archive_sha256": "1389cb335eafd58a3da446507e5bb3bdd2718dfc53e7814b54beefe443f6a380",
+  "attempt": "08",
+  "completion_authority": false,
+  "containers_launched": 0,
+  "download_calls": 0,
+  "index_hydration_observed": false,
+  "live_execution_authorized_after_qualified_preparation": true,
+  "neural_inference_observed": false,
+  "prepared": true,
+  "provider_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "resource_profile": "source384-5cpu-20gib-coding600@1",
+  "retrieval_model_revision": null,
+  "retrieval_selection_same_as07": true,
+  "runtime_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6b51c66af5c9620210c9966aec561b1440306a90fd7a77bb9fd235be1959c3b1",
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "21d9b203cdd7c81781ee17829846e75b38e5fb55d88e9c744ac7d131f46abb11",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+  },
+  "schema": "terminal-fresh-trial-preparation-review@1",
+  "source384_checkpoint_bytes": 493355,
+  "source384_checkpoint_member_verified": true,
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source384_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "source384_enabled": true,
+  "source_head": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "stages": {
+    "bundle": {
+      "exit_code": 0,
+      "seconds": 33.65481037303107,
+      "source_unchanged": true
+    },
+    "prepare": {
+      "exit_code": 0,
+      "seconds": 22.224836288020015,
+      "source_unchanged": true
+    },
+    "profile": {
+      "exit_code": 0,
+      "seconds": 0.09968448395375162,
+      "source_unchanged": true
+    }
+  },
+  "task_input_bindings_match07": true,
+  "task_profile_matches07": true,
+  "task_profile_sha256": "f0312fec5ecd7e9854bf9234e46ab09e9117158b27679b69592af8c1a73fb5e5",
+  "training_steps": 0
+}

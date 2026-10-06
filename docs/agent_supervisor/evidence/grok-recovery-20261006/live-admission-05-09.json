@@ -1,0 +1,157 @@
+{
+  "admitted_database_daemon_pass_heartbeat.json": {
+    "active_task_id_present": true,
+    "age_seconds": 0.089,
+    "available": true,
+    "claimed_task_cid_present": false,
+    "selection_idle_reason": "unrecognized",
+    "sequence": 305,
+    "unchanged": false,
+    "write_count": 1
+  },
+  "admitted_native_owner_heartbeat.json": {
+    "age_seconds": 0.134,
+    "available": true,
+    "owner_read_succeeded": true,
+    "sequence": 1631
+  },
+  "bridge_unknown_diagnostics": [
+    {
+      "exceptions": [
+        {
+          "exception_type": "DatabasePortalBridgeError",
+          "frames": [
+            {
+              "file": "implementation_daemon.py",
+              "function": "_resume_attempt_without_process_crash",
+              "line": 76338
+            },
+            {
+              "file": "implementation_daemon.py",
+              "function": "resume_attempt",
+              "line": 75048
+            },
+            {
+              "file": "implementation_daemon.py",
+              "function": "run_provider",
+              "line": 73836
+            },
+            {
+              "file": "implementation_daemon.py",
+              "function": "_run_provider_impl",
+              "line": 74062
+            },
+            {
+              "file": "implementation_daemon.py",
+              "function": "_run_with_attempt_heartbeat",
+              "line": 71769
+            },
+            {
+              "file": "implementation_daemon.py",
+              "function": "_run_with_attempt_heartbeat",
+              "line": 71758
+            },
+            {
+              "file": "database_portal_bridge.py",
+              "function": "run_provider",
+              "line": 11283
+            }
+          ],
+          "message_sha256": "940a68cf9a67a8a971ebb314505a641f3e450bee5a54946e99df5e29259d7907"
+        }
+      ],
+      "schema": "database-bridge-unknown-diagnostic@1",
+      "settlement_authority": false
+    }
+  ],
+  "cgroup_memory": {
+    "memory.current": 7595442176,
+    "memory.high": "max",
+    "memory.max": 21474836480,
+    "memory.peak": 7665467392,
+    "memory.stat": {
+      "active_file": 0,
+      "anon": 846786560,
+      "file": 6327898112,
+      "inactive_file": 6352162816,
+      "kernel": 418381824,
+      "shmem": 0,
+      "slab_reclaimable": 406686936
+    },
+    "memory.swap.current": 0,
+    "pids.current": 153
+  },
+  "completed_passes_in_bounded_tail": 305,
+  "invocation_logs_scanned": 4,
+  "latest_pass": {
+    "active_task_present": true,
+    "attempt_consumed": null,
+    "claimed_task_present": false,
+    "deferred": true,
+    "implementation_status": "running",
+    "provider_dispatched": null,
+    "selection_idle_reason": "provider_callback_outcome_unknown"
+  },
+  "observed_at_ms": 1791280459317,
+  "pass_reasons": {
+    "provider_callback_outcome_unknown": 305
+  },
+  "resource_retry_receipts": [],
+  "schema": "supervisor-owned-trial-admission-observation@1",
+  "supervisor_status": {
+    "age_seconds": 0.199,
+    "available": true,
+    "control_plane_reload_deferred": false,
+    "control_plane_update_pending": false,
+    "daemon_pid": 3873,
+    "daemon_pid_observation": {
+      "alive": true,
+      "ppid": 3811,
+      "rss_kb": 307036,
+      "threads": 6
+    },
+    "provider_invocation_consumed": false,
+    "restart_count": 0,
+    "status": "running",
+    "supervisor_pid": 3811,
+    "supervisor_pid_observation": {
+      "alive": true,
+      "ppid": 1886,
+      "rss_kb": 199436,
+      "threads": 5
+    }
+  },
+  "trial": "05",
+  "typed_provider_invocations": [
+    {
+      "error_type": "TimeoutExpired",
+      "failure_phase": "provider_invocation",
+      "native_provider_outcome": {
+        "classification_source": "process",
+        "envelope_observed": false,
+        "error_observed": false,
+        "error_subtype": "unknown",
+        "process_outcome": "timeout",
+        "reason_code": "timeout",
+        "stop_reason": "unknown"
+      },
+      "provider": "grok_cli",
+      "provider_failure_reason": "timeout",
+      "purpose": "coding",
+      "router_calls": 1,
+      "schema": "router-implementation-invocation@1",
+      "seconds": 300.22822987200925,
+      "status": "failed",
+      "timeout_seconds": 300,
+      "usage": {
+        "cached_tokens": null,
+        "completion_tokens": null,
+        "exit_code": null,
+        "num_turns": null,
+        "prompt_tokens": null,
+        "reasoning_tokens": null,
+        "timed_out": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "P_modified": false,
+  "base_commit": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "diagnosis": {
+    "baseline_exception_type": "StaleTreeError",
+    "baseline_fixture_cleanup": "after original refusal only; exact committed control checked, independent full native STOP used, no source production changes",
+    "baseline_reason": "authored_source384_current_source_changed",
+    "live_trial10_attribution": "consistent mechanism; original live STOP exception was masked and was not retained, so exact historical cause remains unproven",
+    "original_start_control_phase": "committed",
+    "stack": [
+      "IsolatedBenchmarkRuntime.stop",
+      "_repair_interrupted_start_before_stop",
+      "SupervisorControlService.mutation_transaction",
+      "SupervisorControlService._check_target",
+      "AdmittedBenchmarkRuntime._verify_operation_START",
+      "AdmittedBenchmarkRuntime._verify_context"
+    ]
+  },
+  "final_combined_qualification_pending": true,
+  "fix": {
+    "current_authority": [
+      "exact locally issued START request",
+      "fresh independently issued STOP request",
+      "matching immutable request coordinates",
+      "existing service then store transaction lock",
+      "STOP target, bounds, authorization and live lease checks",
+      "exact full transaction identity"
+    ],
+    "scope": "local runtime read of its original START transaction",
+    "unchanged": [
+      "original START repair permit, currentness and CAS validation",
+      "normal STOP service path",
+      "process birth/custody checks",
+      "runtime.close live child refusal",
+      "no retry or completion authority"
+    ]
+  },
+  "new_provider_calls": 0,
+  "runs": [
+    {
+      "counts": {
+        "errors": 0,
+        "failures": 1,
+        "passed": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "exit_code": 1,
+      "label": "stop-completed-source384-baseline-01",
+      "log_sha256": "47fa223f47d0e31ab9ce41b883c99b30ae34445c814046e123b694f2f46297c6",
+      "seconds": 57.401560793980025,
+      "source_commit": "b966623d3de7457b4139e7d9235a5976f275dd46",
+      "source_unchanged": true,
+      "xml_sha256": "fa7cd6129a464afd34fdfb7766f4f5d682424b05bce1c3688035cd9e0d2e548d"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failures": 1,
+        "passed": 13,
+        "skipped": 0,
+        "tests": 14
+      },
+      "exit_code": 1,
+      "label": "stop-custody-dev-01",
+      "log_sha256": "2362fa76f7f82d3ea5a4a1a33099666411b19e27357530fdbeb10298f65509c8",
+      "seconds": 113.20008398103528,
+      "source_commit": "b966623d3de7457b4139e7d9235a5976f275dd46",
+      "source_unchanged": true,
+      "xml_sha256": "345a3ce43667fc385fdeb9d151f4ac80ec91b4b33344a9b4f879faded33f0597"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "passed": 7,
+        "skipped": 0,
+        "tests": 7
+      },
+      "exit_code": 0,
+      "label": "stop-custody-dev-02",
+      "log_sha256": "d54463319ecbd88c7264ec6eb9c27c0732c84af845e77c816bfdc21b94fa4a25",
+      "seconds": 44.382079905015416,
+      "source_commit": "b966623d3de7457b4139e7d9235a5976f275dd46",
+      "source_unchanged": true,
+      "xml_sha256": "d30346c2609465e02355d50f11efab5b8baf89a7521451c0d7ace06a64b12bd7"
+    }
+  ],
+  "schema": "stop-custody-development-review@1",
+  "source_bindings": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "2405e4d567c2c5c7fda4b83e41422e4cb6065cf262f1e6c47e5f7345fa4c19a9",
+    "test/integration/test_admitted_shutdown_transaction.py": "6f0b8f85118eeaef6cfa4712a484731455664e704542c80fdb486986f42410a2"
+  },
+  "source_state": "uncommitted reviewed development bytes",
+  "test_limits": [
+    "Source384 completion fixture uses real signed owner, publication, completion and native lifecycle with explicitly authored source-hash validator; no model inference claim.",
+    "Expired replay scope is an actual captured budget applied to the admitted runtime after real START.",
+    "Terminal lifecycle/control REPAIR_REQUIRED negative authors an uncertain control read against actual committed lifecycle; it checks existing repair remains fail-closed, not complete recovery of this separate ambiguity.",
+    "Lease refusal negative uses an authored callback at the actual service validation boundary.",
+    "Dev01 sole failure was an invalid test fixture dataclass constructor; production/context/repair tests passed and source bytes were unchanged in dev02."
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "actual_index": {
+    "canonical_tasks_created": false,
+    "descriptor_sha256": "e36e3085fe5440a64edb2d6c4deae02be337b107a70df48476a0025c59399891",
+    "full_capsules": 11,
+    "indexed_symbols": 4,
+    "learned_embeddings": false,
+    "phases": {
+      "empty_native_world_capture": 0.42967952898470685,
+      "final_evidence_verification": 1.6891966130351648,
+      "persisted_snapshot_reopen": 0.010027932992670685,
+      "retrieval_persistence": 0.011629551998339593,
+      "semantic_build_reconstruction_and_hydration": 1.7461628479650244,
+      "source384_capture_and_inference": 9.30632064800011,
+      "vector_qualification": 0.4525691190501675
+    },
+    "reference_hashes": {
+      "index_id": {
+        "bytes": 96,
+        "value_sha256": "22632c319f9fc93ddb1d14ce8a323202f17a133aca22730c2f53ae5295d8f304"
+      },
+      "semantic_root_cid": {
+        "bytes": 61,
+        "value_sha256": "be164ca6f0da44c9ab7d7c82e4ec2195c1a2bcdfdf218e03dd22d2173c11a4cc"
+      },
+      "world_snapshot_cid": {
+        "bytes": 71,
+        "value_sha256": "df48fe6fe84e2ec0fdc9c84b7bdfe34248914322c80e6096aa73c1d81bbe0a5b"
+      }
+    },
+    "seconds": 13.653570233029313,
+    "world_task_count": 0
+  },
+  "admitted_context": {
+    "full_capsules": 11,
+    "indexed_symbols": 4,
+    "initial_indexes_reused": true,
+    "learned_embeddings": false,
+    "native_fact_rows_replayed": null,
+    "new_embedding_calls": 0,
+    "nomination_only": true,
+    "provider_calls": 0,
+    "reference_hashes": {
+      "index_id": {
+        "bytes": 96,
+        "value_sha256": "22632c319f9fc93ddb1d14ce8a323202f17a133aca22730c2f53ae5295d8f304"
+      },
+      "semantic_root_cid": {
+        "bytes": 61,
+        "value_sha256": "be164ca6f0da44c9ab7d7c82e4ec2195c1a2bcdfdf218e03dd22d2173c11a4cc"
+      },
+      "world_snapshot_cid": {
+        "bytes": 71,
+        "value_sha256": "7402096c529b80f35fc7b1be47cc80dd52b525cc170d8a1d231e777106c332df"
+      }
+    },
+    "same_initial_index_reference": true,
+    "seconds": 3.572261747031007,
+    "semantic_equivalence_claimed": false,
+    "worker_capsules": 3,
+    "worker_semantic_bytes": 29875
+  },
+  "doctor": {
+    "analysis_reference": null,
+    "analysis_status": "available",
+    "completion_authority": false,
+    "known_reason_codes": [
+      "doctor_task_data_contract_unavailable",
+      "no_supported_keyword_mismatch",
+      "unsupported_or_incomplete_source_inventory",
+      "unsupported_output_effect_or_language"
+    ],
+    "provider_calls": 0,
+    "publication_authority": false,
+    "residual_context": {
+      "completion_authority": false,
+      "derived_runtime_admitted": false,
+      "provider_calls": 0,
+      "reference_hashes": {
+        "context_cid": {
+          "bytes": 61,
+          "value_sha256": "313aff08f072a7dc859078c1d296edc292c3b488dc2c0549a7516dccd9eaaed1"
+        },
+        "native_capsule_id": {
+          "bytes": 61,
+          "value_sha256": "19113dbbb5d446d061562f97db12b4c743f7b83602f755337f6e8251408ae3db"
+        }
+      },
+      "sha256": "0d85c8fbb7ad719e924deee2be538db1c71b8bef4ca1fc00942aa48b0a4941fb"
+    },
+    "residual_successors": 1,
+    "residual_work_proposals": 0,
+    "route": "model_router",
+    "status": "residual",
+    "symbolic_capabilities": {
+      "authority": {
+        "assessment_provider_calls": 0,
+        "benchmark_solvability": "not_established",
+        "completion_authority": false,
+        "execution_authority": false,
+        "proof_authority": false,
+        "publication_authority": false
+      },
+      "contracts": {
+        "checks_executed_by_assessment": false,
+        "named_structural_check": true,
+        "task_behavior_contract": "not_selected",
+        "validation_count": 1,
+        "validation_scope": "named_structural_check_not_verified",
+        "validation_semantics_verified": false,
+        "whole_task_behavior_verified": false
+      },
+      "gap_codes": [
+        "generic_operator_output_coverage_missing",
+        "local_contract_proof_not_reported",
+        "semantic_source_coverage_incomplete",
+        "single_declared_task_no_parallel_decomposition",
+        "task_behavior_contract_not_selected",
+        "task_data_semantic_contract_unavailable"
+      ],
+      "inventory": {
+        "analysis_status": "available",
+        "doctor_hash_binding": "complete_hash_match",
+        "partition": {
+          "harness_support_count": 3,
+          "program_input_count": 1,
+          "task_data_input_count": 1
+        },
+        "semantic_coverage": "incomplete",
+        "signed_input_count": 5
+      },
+      "operators": {
+        "candidate_ready_reported": false,
+        "non_python_output_count": 1,
+        "other_reason_count": 0,
+        "selected_workflow": "closed_local_keyword_rename"
+      },
+      "planning": {
+        "declared_task_count": 1,
+        "decomposition": "single_declared_task",
+        "intent_requirement_artifact_declared": false,
+        "parallel_execution": "not_observed_here",
+        "symbolic_selection_execution": "not_observed_here"
+      },
+      "proof": {
+        "independently_reverified_by_assessment": false,
+        "local_contract_proof_reported": false,
+        "native_stage_reported": false,
+        "receipt_reported": false,
+        "scope": "reviewed_local_operator_only",
+        "whole_program_verified": false
+      },
+      "provers": {
+        "executed_by_assessment": false,
+        "presence": {
+          "lean": "executable_present",
+          "z3": "executable_present"
+        },
+        "presence_establishes_proof": false
+      },
+      "unexported_gap_count": 0
+    },
+    "unexported_reason_count": 0
+  },
+  "proof_or_completion_inferred_from_index": false,
+  "raw_source_model_formula_verifier_or_credential_data_exported": false,
+  "retained_driver_report": {
+    "bytes": 56170,
+    "path": "grok-tune-mjcf-06/jobs/supervisor-full-tune-mjcf/tune-mjcf__yfkqhhy/agent/supervisor-result.json",
+    "sha256": "62cda437876246440a9705f8b626f1dd7f6e8ea46ced210294d5df3b25bcf2fc"
+  },
+  "schema": "grok-recovery-indexed-path-observation@2",
+  "source384": {
+    "authority": {
+      "completion_authority": false,
+      "execution_authority": false,
+      "formalization_authority": false,
+      "model_promotion_performed": false,
+      "nomination_only": true,
+      "proof_authority": false
+    },
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "counts": {
+      "excluded_source_files": 0,
+      "harness_support_files": 3,
+      "inference_python_files": 1,
+      "omitted_candidates": 2,
+      "program_source_files": 1,
+      "provider_calls": 0,
+      "source_files": 5,
+      "task_data_files": 1,
+      "training_steps": 0
+    },
+    "inference_sha256": "5089e05f0cce5c788b038c53fb73a69d376bc54f24ca97d150cfe2802f579f32",
+    "neural_inference_replayed": false,
+    "seconds": 9.190147874993272,
+    "training_steps": 0
+  },
+  "trial_name": "grok-tune-mjcf-06"
+}

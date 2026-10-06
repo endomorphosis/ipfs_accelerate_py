@@ -1,0 +1,43 @@
+{
+  "actual_08_diagnostic_modified": false,
+  "actual_08_stderr_retrospectively_recovered": false,
+  "all_owned_probe_containers_and_networks_absent_at_final_audit": true,
+  "baseline02_cleanup_needed_correction": true,
+  "baseline_source": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "benchmark_result": false,
+  "blocking_findings": [],
+  "evidence_sha256": {
+    "compare_offline_worker_budget.py": "84f22a62955b886305e2e62047c21c60cb212c189741ab0dff22540f2ddddad3",
+    "offline-worker-budget-attempt-history-01.json": "9833c20834c942e94bdafc8f20f8484d63c6ba81f735b5cb2d73b5b1602435b4",
+    "offline-worker-budget-comparison-01.json": "d2527af23fb19690acc2c42e8e189d31a48a2c870c6dd838798d9f27070dadeb",
+    "offline_worker_budget_probe_recorded.py": "73908faea002851144ddb2138f75d5a4f3e13b57ff6611ed299b24d1b23dbebd"
+  },
+  "failed_attempts_preserved": 2,
+  "failed_case_counts": [
+    0,
+    0
+  ],
+  "first_failure_reason": "incompatible_registry_image_architecture",
+  "inference_scope": "source-bound reproduction of a deterministic configuration blocker consistent with08; no retrospectively observed08 wrapper message",
+  "native_owner_sudo_worker_path_reviewed": true,
+  "network_disconnected": true,
+  "new_worker_new_router600_reaches_preflight": true,
+  "new_worker_new_router601_refused": true,
+  "new_worker_old_router300_preserved": true,
+  "new_worker_old_router600_refused": true,
+  "official_verifier_executed": false,
+  "old300_reaches_router_preflight": true,
+  "old600_refused_before_router": true,
+  "patched_source": "ca54aa67ec913f5b90bf6c3b0539a76a6e687ef8",
+  "provider_calls": 0,
+  "publication_ready": false,
+  "qualified_comparison_cases": 6,
+  "raw_outputs_or_credentials_exported": false,
+  "real_credentials_used": false,
+  "same_exact_image_as08": false,
+  "same_public_task_dockerfile_and_settings": true,
+  "schema": "offline-worker-budget-independent-review@1",
+  "second_failure_cause_known": false,
+  "second_failure_reason": "case_assertion_failed_with_incomplete_case_retention",
+  "source_bound_old_and_new_worker_and_router_hashes_verified": true
+}

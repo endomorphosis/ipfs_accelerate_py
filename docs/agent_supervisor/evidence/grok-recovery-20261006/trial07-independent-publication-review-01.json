@@ -1,0 +1,53 @@
+{
+  "additional_frozen_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "d344829bff440ef72aa4858dda520cf7480f2f5a790cd1a7f87296ae5e6f9824",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d",
+    "benchmarks/agent_supervisor/container_coding/terminal_program_population.py": "80bb37870cfd2600fd1436b87c26a2c50c0fc281a1ce354b5b90b380c02ae679",
+    "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py": "79f81c36fb77e28a56fc248ee1fc345699a443329861040ac2c7398cfc07e4f8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "84953f274f4cf02223d4e5568446c7aea0185fd2ff4049357f6157e2830ff3dd"
+  },
+  "database_reopened_by_review": false,
+  "diagnosis_pending": true,
+  "evidence_sha256": {
+    "grok-container/archive-review-07.json": "e7f6bfeef9852eeba3c543374c79c483d58ce86314222ae83010a3e6f4bedee4",
+    "grok-container/native-tools-grok-tune-mjcf-07.json": "7473fac14b0bf8b2879c5b114a2ba5023d419d1d2e668d9aa4716d23d2ca6b28",
+    "grok-container/preparation-review-07.json": "b4994a7c69d8dba69b13710f039d47544f3047daa8053e324b8a563f456610eb",
+    "grok-container/resource-observation-07.json": "31ea15bdf22eb33060cb8421bc21f5afc3152582ca615f7f730517367373b620",
+    "grok-container/trial07-preparation-plan-02.json": "292f3ed88d2b611954d3b26d2e93c5aeb687f8a4fe8d4abbed7883d83634e161",
+    "indexed-path-observation-07.json": "4d0d044b73e8c2f80a772e7de67bb82dcde9ebeaffc736f05d13e02424ced6af",
+    "live-trial-summary-07.json": "226ad978ab8c618a8f929686ca76fc8e83aba93167d9ef017d23a53619f3cfac",
+    "qualification/observe_trial07_settlement_and_retrieval.py": "4011bf3d694162c79b11f756f8d9a4047a993c974dcda36fe97467e10f9a9d3e",
+    "retrieval-mode-observation-07.json": "a93ac2a3f403d674504044d4307bb6e5a973c21473a605199bc6b6fc939abaa0",
+    "terminal-settlement-observation-07.json": "ccc8fc257ec155d33b74c841d914c56c775a05d5e58eef7f8400451f296eb884",
+    "trial-closure-observation-07.json": "222b7a647d48ea7368d870285d2e4496973007389c2d9dc8cb310ba647063a1d"
+  },
+  "original_receipts_modified": false,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "raw_private_task_model_verifier_or_credential_bodies_exported": false,
+  "readme_sha256": "0c7aecc37d709c7516a52251786722a32c296b914da730ec9417f0a0280e61d1",
+  "recorded_outcomes": {
+    "aggregate_usage": null,
+    "coding_dispatch_observed": null,
+    "coding_usage": null,
+    "native_start": "succeeded",
+    "native_stop": "succeeded",
+    "official_reward": 0.0,
+    "planning_native_tokens": 21316,
+    "remaining_processes": 0,
+    "runtime_close_succeeded": true,
+    "task_revision": 4,
+    "task_status": "blocked"
+  },
+  "review_findings": [
+    "blocked failure receipt and exact bridge cause are separate; no claim new waited-child capability was exercised",
+    "600 seconds is configured coding allowance, not observed provider execution",
+    "actual retrieval selection is lexical TF-IDF under frozen program-population branch; completed construction requires persistence and reopen",
+    "Source384 pinned GTE/checkpoint fresh inference is separate from retrieval vectors",
+    "no whole-task semantic proof, training, successful-task token score or matched baseline advantage established"
+  ],
+  "schema": "trial07-independent-publication-review@1",
+  "source_edits": 0,
+  "source_head": "020e6adccc9ad56b1df0ee2b5984ce0adcb39d89"
+}

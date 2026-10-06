@@ -1,0 +1,71 @@
+{
+  "blocking_concerns": [],
+  "budget_seconds": {
+    "cleanup": 60,
+    "coding": 300,
+    "driver": 900,
+    "planning": 180,
+    "work": 840
+  },
+  "child_memory_mib": 4096,
+  "coding_tools": 6,
+  "containers_launched": 0,
+  "fallback": false,
+  "headroom_policy_unchanged": true,
+  "independent_source_currentness_and_admission_unchanged": true,
+  "observer": {
+    "actual_limits_observed_by_this_review": false,
+    "cgroup_max_and_cpu_checked": true,
+    "docker_memory_and_cpu_checked": true,
+    "exact_owned_container_name_required": true,
+    "high_absent_or_unlimited_or_at_least_selected_max_required": true,
+    "malformed_or_tighter_high_rejected": true,
+    "synthetic_checks_reported": 13
+  },
+  "parent_memory_mib": 6144,
+  "planning_tools": 0,
+  "previous_profile_source_head": "47281b5b94feed197b27c8ea4fd0504225337a54",
+  "previous_profiles_unchanged": true,
+  "production_changes_only_explicit_resource_profile": true,
+  "production_edits": 0,
+  "profile_sha256": "5a342313c1cde787cdd23b4bc872c460f1acd081401b92f676313b9e980d5d60",
+  "provider": "grok_cli",
+  "provider_calls": 0,
+  "raw_bodies_or_credentials_exported": false,
+  "requested_model": "grok-4.7",
+  "resource_change": {
+    "cpu_limit": 5,
+    "new_container_memory_mib": 20480,
+    "old_container_memory_mib": 16384,
+    "same_resource_comparison_claim": false
+  },
+  "reviewed_artifact_sha256": {
+    "grok-container/explicit20gib-recipe-review-02.json": "90ad557cc92f0fd8c9c36c37e6ec74a2330ddf2b584397736843cec63bb704b4",
+    "grok-container/observe_20gib_resources.py": "7e06cea6fe41084157ee0d41a32fb7392ef6d4b9897bfed10bb8310ef3db085e",
+    "grok-container/recipes/run_fresh_grok.py": "d0319243f1de93d457b42561baaa6d2f890ea2b40bf7ab32804b4e1a91283861",
+    "grok-container/recipes/run_fresh_grok_20gib.py": "a1a31fafe3c5153d108e5105c2f1b55a9a56d9587edf4ef42ce6b3c8f57cf142",
+    "qualification/check_20gib_resource_observer.py": "eef1da266c4fdd48d9ba56f432604ee7f100046f9db28ea59ad467f0681f7482",
+    "qualification/explicit20gib-observer-safety-review-01.json": "e54320c0bcf96628a23a4dadae73f2fe96780343d476be6f81355bfb81746b4f"
+  },
+  "schema": "explicit20gib-independent-implementation-review@1",
+  "source_changes": [
+    "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_memory20_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_planner_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py"
+  ],
+  "source_head": "6e3171c913b76b569b85600179199f2b57ec5b52",
+  "static_review_passed": true,
+  "tests_reviewed": {
+    "native_checkpoint_replay": "Separate actual checkpoint measurement in source384-memory-01/memory-observation.json",
+    "new_tests_executed_by_this_review": false,
+    "source_context_ingress": "Actual nomination/metadata snapshot, root and child scheduler admission; immutable replay is an authored seam"
+  },
+  "unchanged_guards_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "d185892a39e4b7fccbdd1402f5b80dd6fd01081b8990edcce1fd85b79af535ca",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "04befa88d1cd89ad1aa65fae7e5cbb7a70a3e6f06b09d73828e472146a2da95c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "b027c9c948b6c8bcf765d61ccb7111589e3aed796a662a7da43837615d2b0ebe",
+    "ipfs_accelerate_py/llm_router.py": "f3ac850506483990af0d8018057e3152c991dad341d63399aa801582cd8ce3da"
+  }
+}

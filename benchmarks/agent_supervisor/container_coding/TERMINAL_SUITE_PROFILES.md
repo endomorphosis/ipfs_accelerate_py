@@ -52,17 +52,58 @@ CLI `0.158.0` and its original binary hashes. Use the separately pinned
 `source384-native-aarch64-dontneed@2` policy with CLI `0.160.0`; select it
 identically during archive bundling and preparation. Cache advice remains
 optional and grants no resource-admission authority. Planning and coding usage both
-count. The worker permits at most 300 seconds per coding provider call; this is
-separate from the 840-second supervisor work budget and 60-second cleanup reserve.
+count. Existing profiles permit at most 300 seconds per coding provider call;
+the explicit coding600 profile below permits up to 600 seconds. Both are
+bounded by remaining supervisor work time and preserve the cleanup reserve.
 Missing token usage stays unknown, and no hard dollar/token ceiling is enforced.
 
 The explicit `source384-5cpu-16gib-planner180@1` profile gives planning 180
-seconds, retaining the extended profile's 900-second total, 840-second work,
-60-second cleanup and 300-second coding-call limits. Existing profiles retain
-90-second planning. The selected cap is signed and replayed; this fresh-run
-profile is not eligible for the older setup-cache policies. The
+seconds, retaining the extended profile's 900-second driver allowance,
+840-second work deadline, 60-second cleanup allocation and 300-second
+coding-call limit. Harbor setup and verification are reported separately.
+Existing profiles retain 90-second planning. The selected cap is signed and
+replayed; this fresh-run profile is not eligible for the older setup-cache policies. The
 [expansion evidence](../../../docs/agent_supervisor/evidence/terminal-expansion-20261005/README.md)
 records its separate Grok experiments and current qualification limits.
+
+Two additional profiles separate memory and coding-time experiments:
+
+| Resource profile | CPUs | Memory | Planning cap | Coding cap | Coding watchdog cap |
+| --- | --- | --- | --- | --- | --- |
+| `source384-5cpu-20gib-planner180@1` | 5 | 20 GiB | 180 s | 300 s | 360 s |
+| `source384-5cpu-20gib-coding600@1` | 5 | 20 GiB | 180 s | 600 s | 660 s |
+
+Both retain the 900-second driver allowance, 840-second work deadline and
+60-second cleanup allocation; Harbor setup and verification are reported
+separately. The coding and watchdog timeouts are each
+clamped to remaining work time minus 25 seconds. The report distinguishes
+`provider_coding_timeout_cap_seconds` from the actual clamped
+`provider_coding_timeout_seconds`; a selected profile alone does not establish
+that a provider invocation occurred. The provider-free Doctor path retains
+its existing work allowance. Source384 reservation estimates and the 20%
+memory-headroom rule remain enforced.
+
+These profiles require fresh runs and are ineligible for the older setup-cache
+policies. Changing memory or coding time creates a different experiment.
+Common outer `benchmark_controls@1` equality does not imply equal coding
+budgets, and does not impose the supervisor's per-call cap on the native Codex
+baseline. Compare profile identities and actual invocation budgets as well as
+common controls before drawing performance conclusions.
+
+Coding caps above 300 seconds also require the archive's versioned worker
+capability, matching its worker entrypoint and installer/router source hashes.
+Preparation, execution and the Harbor adapter reject missing or mismatched
+capabilities before planning. The worker shares the router's maximum ceiling;
+legacy routers without the shared constant retain the 300-second worker limit.
+The signed profile and remaining work time still set the invocation budget.
+
+The full arm supports both lexical and learned retrieval. Selecting the
+archive builder's `--model-snapshot` enables the separate learned retrieval
+index; selecting a Source384 embedding checkpoint alone does not. Preparation
+copies the retrieval revision from the archive manifest into the agent
+configuration, and deployment/dispatch reject a differing active pin. No-index
+keeps retrieval disabled. Record the actual retrieval backend as an experiment
+setting: a lexical full-arm trial does not qualify neural retrieval.
 
 The setup adapter records exact public `/app` inputs and initializes Git only in
 the disposable task container when needed. It installs UV in an isolated harness

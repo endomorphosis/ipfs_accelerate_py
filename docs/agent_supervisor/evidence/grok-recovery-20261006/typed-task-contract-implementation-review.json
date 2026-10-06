@@ -1,0 +1,177 @@
+{
+  "contract": {
+    "completion_authority": false,
+    "contract_max_bytes": 32768,
+    "digest_binding": "contract_sha256 covers canonical typed declaration excluding its own digest",
+    "execution_authority": false,
+    "owner_provenance": "Generated from independently signed task declarations after local._manifest(initial=True) verifies signature, active profile, source inventory and baseline",
+    "request_bindings": [
+      "request_cid",
+      "scan_cid",
+      "program_root",
+      "policy_root",
+      "manifest_sha256",
+      "evidence_cids",
+      "declared scope paths",
+      "validation commands"
+    ],
+    "schema": "terminal-planner-task-contract@1",
+    "signature_replaced_by_hint": false,
+    "typed_request_field": "terminal_planner_task_contract"
+  },
+  "coverage": {
+    "authored_test_cases_in_new_file": 32,
+    "development_run": {
+      "not_additive_to_recorded_qualification": true,
+      "passed": 229,
+      "scope": "typed contract plus existing structured/roundtrip/router suites before four malformed-map cases were added",
+      "seconds": 46.21
+    },
+    "mutation_negatives": [
+      "generic-schema-valid task field drift",
+      "generic-schema-valid goal acceptance/scope/evidence drift",
+      "mismatched request roots",
+      "changed scope or command hints",
+      "changed evidence population",
+      "bad digest",
+      "authority claim",
+      "forged owner preparation",
+      "rehashed hint still rejected by independent signed admission",
+      "null/list request_core and constraints",
+      "unsupported task/goal budgets"
+    ],
+    "real_process_roundtrip": "Authored subprocess fixture through llm_router, implementation runner, strict graph parser, signature/source checks and real admission; no live model",
+    "recorded_combined_qualification": "Root run in progress at this review; no pass claim for final merged snapshot yet",
+    "test_function_case_counts": {
+      "test_actual_cli_router_parser_and_signed_admission": 2,
+      "test_forged_preparation_cannot_author_a_decoding_hint": 1,
+      "test_malformed_binding_maps_fail_with_closed_contract_error": 4,
+      "test_mutated_typed_hint_rejected_before_provider_call": 6,
+      "test_non_direct_or_multitask_routes_are_unchanged": 3,
+      "test_rehashed_decoding_hint_still_cannot_authorize_a_different_task": 1,
+      "test_schema_valid_contract_drift_is_rejected_by_native_intersection": 12,
+      "test_unsupported_task_budget_fails_before_native_dispatch": 2,
+      "test_verified_preparation_projects_every_signed_task_field": 1
+    },
+    "unchanged_routes": [
+      "generic requests without typed contract",
+      "IntentIR wrapped coverage planning",
+      "multi-task administrative symbolic planning"
+    ]
+  },
+  "limitations": [
+    "Native allOf/const/anyOf grammar compatibility for this typed intersection requires the separate live synthetic probe.",
+    "Only the existing direct singleton Terminal Bench profile is projected; larger budgets reject before native dispatch.",
+    "A self-consistent rehashed hint is not proof of signed owner authority; independent admission must reject any mismatch.",
+    "Two distinct goal rows with the same key are still rejected by the original parser, rather than a native contains-count constraint.",
+    "Prior task02 proposal was not retained; the exact changed field is unknown and this change must not be reported as its reconstructed cause.",
+    "No benchmark success, source-level formal correctness or token savings are established by this review."
+  ],
+  "native_projection": {
+    "additional_restrictions": [
+      "exact one task and two goals",
+      "task owns child goal",
+      "empty task assumptions and risks",
+      "cpu-medium resource",
+      "fail_closed fallback",
+      "allowed evidence CID membership",
+      "scope and predicted-file membership",
+      "empty unresolved questions and uncertainty debt"
+    ],
+    "canonical_shape_recognition": "Exact trusted planner grammar reconstructed from four budget fields",
+    "changes": "Intersection constraints added to native decoding schema only; provider output is not rewritten",
+    "exact_goal_fields": [
+      "root and child key/parent alternatives",
+      "acceptance from signed task tests",
+      "empty assumptions",
+      "empty risks",
+      "empty dependencies"
+    ],
+    "exact_task_fields": [
+      "task_key",
+      "scope_paths",
+      "outputs",
+      "validations without policy_cid",
+      "acceptance",
+      "dependency_task_keys"
+    ],
+    "model_authored_fields_remain": [
+      "goal title",
+      "goal objective",
+      "goal rationale",
+      "task objective",
+      "task rationale",
+      "other canonical descriptive metadata allowed by admission"
+    ],
+    "projection_id": "canonical-prompt-goal-task-contract@1",
+    "receipt_hashes": [
+      "canonical_schema_sha256",
+      "native_wire_schema_sha256",
+      "task_contract_sha256"
+    ],
+    "receipt_sizes": [
+      "canonical_schema_bytes",
+      "native_wire_schema_bytes",
+      "task_contract_bytes"
+    ],
+    "receipt_task_contract_authority": false,
+    "top_level_id_omitted": true
+  },
+  "preserved_checks": {
+    "cross_provider_fallback_enabled": false,
+    "future_post_execution_acceptance_required": true,
+    "goal_key_uniqueness_and_root_existence_checked_by_original_parser": true,
+    "hint_alone_can_authorize_dispatch_or_completion": false,
+    "independent_signed_manifest_admission": true,
+    "narrowed_native_schema_validator": true,
+    "native_model_tools_or_budget_expanded": false,
+    "original_canonical_schema_validator": true,
+    "runner_revalidates_both_schemas": true,
+    "strict_original_graph_parser": true
+  },
+  "production_source_mutations": 0,
+  "provider_calls": 0,
+  "raw_provider_source_or_credential_data_exported": false,
+  "review_kind": "closed implementation and source binding review; not an independent proof or benchmark result",
+  "schema": "terminal-typed-task-contract-implementation-review@1",
+  "source_clean_at_review": true,
+  "source_commit": "987e0ad1f1c22ef70531449a6cbf49c786afe152",
+  "source_identities": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 70450,
+      "sha256": "e37919c582621eadd59b4fe5b8dd9016a712c8cd8ba93e323148a7dbbce7e674"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "bytes": 99549,
+      "sha256": "d185892a39e4b7fccbdd1402f5b80dd6fd01081b8990edcce1fd85b79af535ca"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 23089,
+      "sha256": "7f15cb0455d7e8f32526115e53f2009d5774666d9450d51b224ef148062a994a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py": {
+      "bytes": 10417,
+      "sha256": "3d6bf9ba8b0f5009aa7084b2bbb84c1717b122b835b951bccb54fe6764089cfa"
+    },
+    "ipfs_accelerate_py/cli_runtime/grok_structured_output.py": {
+      "bytes": 13799,
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "bytes": 551545,
+      "sha256": "f3ac850506483990af0d8018057e3152c991dad341d63399aa801582cd8ce3da"
+    },
+    "test/api/test_grok_structured_output.py": {
+      "bytes": 17755,
+      "sha256": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94"
+    },
+    "test/api/test_grok_structured_plan_roundtrip.py": {
+      "bytes": 5350,
+      "sha256": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325"
+    },
+    "test/api/test_terminal_planner_task_contract.py": {
+      "bytes": 12912,
+      "sha256": "8a2e705ecb7208950f0420ecc7296c53a1fc5caffe5b031d12bd6e515767cae0"
+    }
+  }
+}

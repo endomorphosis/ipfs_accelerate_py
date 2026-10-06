@@ -1,0 +1,63 @@
+{
+  "container_mutations": 0,
+  "cumulative_qualification_rows": 58,
+  "files_copied_to_repository_by_this_review": 0,
+  "independent_merge_review": {
+    "bytes": 2860,
+    "sha256": "7df80e8986711ccf1be1ef7c8e66b1e58144d2f0c4e682578f04a9f7ffe63614"
+  },
+  "independent_trial_review": {
+    "bytes": 6232,
+    "sha256": "3cbb2b0a8d10a8f1056b6020b6560a280aafb000753bfe7c97cfa9d763fbf61b"
+  },
+  "known_engineering_limits": [
+    "No live task pass followed by clean native shutdown; trial10 and11 outcomes remain separate.",
+    "Trial11 callback is unsettled and the exact missing native custody join is not retained.",
+    "Symbol-name learned retrieval and Source384 nomination do not establish full-program formal semantics or whole-task proof.",
+    "Generic numerical/data repair and three broader collection/API contract gaps remain unresolved.",
+    "No matched baseline, efficiency advantage, billing completeness or whole-suite claim."
+  ],
+  "latest_coding_usage_unknown": true,
+  "latest_live_trial": "11",
+  "latest_live_trial_source": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "latest_merged_source": "0a8a1b3e8448a6604899bedcbc5175dc08bf6825",
+  "latest_merged_source_live_benchmarked": false,
+  "latest_official_reward": 0.0,
+  "latest_process_cleanup_qualified": true,
+  "latest_task_callback_completion_qualified": false,
+  "live_STOP_after_success_qualified": false,
+  "new_test_runs": 0,
+  "overlapping_pass_counts_not_summed": true,
+  "pending_publication_requirements": [],
+  "previous_trial10_native_close_succeeded": false,
+  "previous_trial10_reward": 1.0,
+  "prior_221_files_preserved_byte_for_byte": true,
+  "privacy_review": {
+    "closed_producer_contracts_and_new_trial_fields_manually_reviewed": true,
+    "credential_pattern_matches": 0,
+    "historical_raw_artifacts_remain_local": true,
+    "pattern_scans_alone_are_not_safety_proof": true,
+    "raw_json_body_keys": 0,
+    "raw_logs_model_task_hidden_verifier_database_or_auth_files_included": false
+  },
+  "provider_calls": 0,
+  "publication_readiness_does_not_mean_engineering_goal_complete": true,
+  "publication_ready": true,
+  "readme": {
+    "bytes": 71592,
+    "path": "publication-stage/README.pending.md",
+    "sha256": "0c34a109232865699159ac72371f8e76a3c855d8e69c75878309f4097861ebb6"
+  },
+  "readme_link_count": 148,
+  "readme_links_resolve": true,
+  "reviewed_inventory_count_excluding_this_review": 244,
+  "reviewed_inventory_sha256": "d372e8a0fa8b928c988214134db717531b227d408731fe02f551a142f802e623",
+  "schema": "grok-final-publication-review@1",
+  "scope": "closed_trials01_to11_and_separate_source_bound_qualifications",
+  "scripts_are_relocatable_bundle": false,
+  "scripts_require_retained_local_inputs": true,
+  "separate_merged_router_gate_passes": 213,
+  "separate_native_shutdown_gate_passes": 120,
+  "source_edits": 0,
+  "trial09_reward_unknown": true
+}

@@ -1,0 +1,38 @@
+{
+  "bound_files": {
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "aefad2724dcd10d174132a988777f94cdd85ebd420d2fba71e7c020e35abb70a",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "89891bf774f3894a156ea65d4658aefd27a587ff6f6839cbc505fc599d3461de",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3b560f687fb26dd58cc403e7f237346501811f9c373b287abc8d0061184c2c35",
+    "test/integration/test_admitted_start_cleanup_repair.py": "b820bc2c29eed3859b8f39b9e13be85cb49e80fc74dff35f7d2f19b9ac689acf"
+  },
+  "clean_final_qualification_pending": true,
+  "committed_source_with_matching_tested_files": "d1223249f986502e3c86e4644ec2222c3e3313c8",
+  "development_dirty_source": true,
+  "errors": 0,
+  "failed": 0,
+  "limits": [
+    "injected post-launch snapshot error; not retrospective proof of historical PID3979 cause",
+    "cleanup-only repair; no successful START, task completion or retry authority",
+    "source revocation or drift are not bypassed",
+    "lost response after committed CAS can leave convenience receipt absent while control journal remains REPAIRED"
+  ],
+  "native_processes_real": true,
+  "passed": 6,
+  "provider_calls": 0,
+  "qualified_development_run_claimed": false,
+  "raw_logs_or_credentials_exported": false,
+  "recorded_run": "native-start-cleanup-integration-dev-01",
+  "scenarios": [
+    "signed failed START retains durable launch root and failed receipt",
+    "authorized cleanup yields saga FAILED and control REPAIRED before STOP",
+    "revoked profile refuses repair before signals",
+    "signed profile drift refuses repair before signals",
+    "stale control revision refuses repair before signals",
+    "repair replays after lost response before or after committed control CAS"
+  ],
+  "schema": "native-start-cleanup-development-evidence@1",
+  "seconds": 34.348297043994535,
+  "skipped": 0,
+  "source_unchanged": true,
+  "summary_sha256": "d1880397ed700875d3f352200b648ee0cd8f1f862b3b7fac251bd8b244e66c1d"
+}

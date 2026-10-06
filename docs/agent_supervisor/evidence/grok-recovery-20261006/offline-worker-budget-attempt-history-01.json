@@ -1,0 +1,52 @@
+{
+  "all_owned_probe_containers_absent": true,
+  "all_owned_probe_networks_absent": true,
+  "attempts": [
+    {
+      "attempt": "baseline01",
+      "case_count": 0,
+      "error_type": "RuntimeError",
+      "provider_calls": 0,
+      "qualified": false,
+      "real_credentials_used": false,
+      "receipt_sha256": "d5309dbd3e8dc57757675f0e53bb8947e6d569a0d7e8fdc33acce1a6dcf26c3e",
+      "seconds": 8.944337980996352
+    },
+    {
+      "attempt": "baseline02",
+      "case_count": 0,
+      "error_type": "AssertionError",
+      "provider_calls": 0,
+      "qualified": false,
+      "real_credentials_used": false,
+      "receipt_sha256": "2a4113731658ee6e5df48f8e84b65069d12471bdce51b0b9fc98821e7ed3b6fd",
+      "seconds": 138.13586690102238
+    },
+    {
+      "attempt": "baseline03",
+      "case_count": 2,
+      "error_type": null,
+      "provider_calls": 0,
+      "qualified": true,
+      "real_credentials_used": false,
+      "receipt_sha256": "939d0de067ee30327e1f18a0b1d2d620527e31a1c097d878c14adf43245a8ad2",
+      "seconds": 126.09493514400674
+    }
+  ],
+  "baseline01_reason": "container_start_incompatible_registry_image_architecture",
+  "baseline02_cleanup_correction": "Harbor stop retained stopped container; exact container and network explicitly removed during final audit",
+  "baseline02_exact_cause_established": false,
+  "baseline02_reason": "unqualified_case_assertion_with_incomplete_case_retention",
+  "baseline03_reason": "exact_old_guard_reproduced_from_frozen_source",
+  "comparison_case_count": 6,
+  "comparison_qualified": true,
+  "comparison_reference": {
+    "path": "grok-container/offline-worker-budget-comparison-01.json",
+    "sha256": "d2527af23fb19690acc2c42e8e189d31a48a2c870c6dd838798d9f27070dadeb"
+  },
+  "original08_receipts_unchanged": true,
+  "paid_benchmark_retries": 0,
+  "provider_calls": 0,
+  "raw_outputs_exported": false,
+  "schema": "grok-worker-budget-offline-attempt-history@1"
+}

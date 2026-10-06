@@ -1,0 +1,63 @@
+{
+  "STOP_after_success_path_exercised": false,
+  "bounded_tool_observation": {
+    "bytes": 27646,
+    "path": "grok-container/native-tools-grok-tune-mjcf-11.json",
+    "sha256": "fe597ec298401ee5859b5879907da5ae4bae2256ab229d79c764c6d1504e25a9"
+  },
+  "callback_settlement_observed": false,
+  "callback_state": "started_outcome_unknown",
+  "closure_flag_full_lifecycle_qualified_scope": "START_STOP_tracked_tree_absence_and_runtime_close_only",
+  "closure_observation": {
+    "bytes": 2540,
+    "path": "trial-closure-observation-11.json",
+    "sha256": "662b01a0c3fac74f4d112d34d65d990435c55565e265ff5c5bb1778f36a682b1"
+  },
+  "coding_error_type": "TimeoutExpired",
+  "coding_native_usage": null,
+  "coding_phase": "provider_invocation",
+  "coding_seconds": 600.2467448359821,
+  "coding_timeout_seconds": 600,
+  "completion_authority": false,
+  "driver_error_type": "TimeoutError",
+  "driver_reason_code": "total_agent_work_budget_exhausted",
+  "driver_task_completed": false,
+  "exact_native_exit_capability_denial_reason_retained": false,
+  "full_system_qualified": false,
+  "live_summary": {
+    "bytes": 18585,
+    "path": "live-trial-summary-11.json",
+    "sha256": "a45253d931343323094ac9ed95b99d78008570ef7d85d2ed74f28e52072f25b3"
+  },
+  "missing_usage_is_unknown": true,
+  "native_exit_receipt_present": false,
+  "native_task_revision": 3,
+  "native_task_status": "in_progress",
+  "observed_failed_tool_outcomes": 1,
+  "observed_successful_tool_outcomes": 32,
+  "official_reward": 0.0,
+  "performance_advantage_claimed": false,
+  "planning_native_total_tokens": 22806,
+  "post_stop_context_refresh_eligible": false,
+  "post_stop_context_refresh_not_eligible_basis": "native_task_not_completed",
+  "process_cleanup_qualified": true,
+  "provider_effect_state": "unknown_may_have_started",
+  "raw_task_model_verifier_or_credential_data_exported": false,
+  "retry_authority": false,
+  "schema": "terminal-provider-timeout-and-closure-observation@1",
+  "settlement_authority": false,
+  "shutdown_failures_reported": false,
+  "source_binding": {
+    "matching_literal_lines": [
+      669,
+      678
+    ],
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "sha256": "ec4f8d7373f1b6a3a54c92e4e43cdb11706368bc749088ae95d08443e8420d5b"
+  },
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "task_and_callback_completion_qualified": false,
+  "tool_observation_scope": "last_successful_bounded_snapshot_before_container_unavailable",
+  "total_native_usage": null,
+  "trial_name": "grok-tune-mjcf-11"
+}

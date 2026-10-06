@@ -1,0 +1,162 @@
+{
+  "baseline_router_sha256": "21d9b203cdd7c81781ee17829846e75b38e5fb55d88e9c744ac7d131f46abb11",
+  "baseline_source": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "baseline_worker_sha256": "216e4cc4b3d9c46144206b149d82bea36fe202a132e97ff82042b5f0658b3fd4",
+  "benchmark_result": false,
+  "cases": [
+    {
+      "bounded_timeout_rejection": true,
+      "exit_code": 1,
+      "expected": "bounded_timeout_rejection",
+      "router_diagnostic": null,
+      "stage": "old_worker_old_router",
+      "stdout_empty": true,
+      "timeout_seconds": 600
+    },
+    {
+      "bounded_timeout_rejection": false,
+      "exit_code": 1,
+      "expected": "router_argument_validation",
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "ValueError",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 195
+                }
+              ]
+            }
+          ],
+          "phase": "argument_validation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "ValueError",
+        "schema": "router-implementation-error@2"
+      },
+      "stage": "old_worker_old_router",
+      "stdout_empty": true,
+      "timeout_seconds": 300
+    },
+    {
+      "bounded_timeout_rejection": true,
+      "exit_code": 1,
+      "expected": "bounded_timeout_rejection",
+      "router_diagnostic": null,
+      "stage": "new_worker_old_router",
+      "stdout_empty": true,
+      "timeout_seconds": 600
+    },
+    {
+      "bounded_timeout_rejection": false,
+      "exit_code": 1,
+      "expected": "router_argument_validation",
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "ValueError",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 195
+                }
+              ]
+            }
+          ],
+          "phase": "argument_validation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "ValueError",
+        "schema": "router-implementation-error@2"
+      },
+      "stage": "new_worker_old_router",
+      "stdout_empty": true,
+      "timeout_seconds": 300
+    },
+    {
+      "bounded_timeout_rejection": false,
+      "exit_code": 1,
+      "expected": "router_argument_validation",
+      "router_diagnostic": {
+        "diagnostic": {
+          "automatic_retry_admitted": false,
+          "chain_truncated": false,
+          "completion_authority": false,
+          "exceptions": [
+            {
+              "exception_type": "ValueError",
+              "frames": [
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 483
+                },
+                {
+                  "file": "router_implementation_runner.py",
+                  "line": 195
+                }
+              ]
+            }
+          ],
+          "phase": "argument_validation",
+          "provider_dispatch_observed": null,
+          "schema": "router-implementation-failure-diagnostic@1",
+          "settlement_authority": false
+        },
+        "error_type": "ValueError",
+        "schema": "router-implementation-error@2"
+      },
+      "stage": "new_worker_new_router",
+      "stdout_empty": true,
+      "timeout_seconds": 600
+    },
+    {
+      "bounded_timeout_rejection": true,
+      "exit_code": 1,
+      "expected": "bounded_timeout_rejection",
+      "router_diagnostic": null,
+      "stage": "new_worker_new_router",
+      "stdout_empty": true,
+      "timeout_seconds": 601
+    }
+  ],
+  "container_cleanup_complete": true,
+  "host_sources_unchanged": true,
+  "network_cleanup_complete": true,
+  "network_disconnected": true,
+  "official_verifier_executed": false,
+  "original08_task_image_id": "sha256:3bb24e688291b54151e1c6ca1f83563189f222085a5d65d87f1c714b502c1903",
+  "patched_router_sha256": "2556eefd8bb10640cab7a9ec34588c98b9b8a3026c3e9668b1c443481d8b69af",
+  "patched_source": "ca54aa67ec913f5b90bf6c3b0539a76a6e687ef8",
+  "patched_worker_sha256": "c1090bc6d224b505e2f8d58bb066973754e867599f383919ce5c5d2d9d613d9e",
+  "provider_calls": 0,
+  "qualified": true,
+  "raw_case_outputs_retained_privately": true,
+  "raw_outputs_exported": false,
+  "real_credentials_used": false,
+  "same_exact_image_as08": false,
+  "same_public_task_dockerfile_and_settings": true,
+  "schema": "grok-worker-budget-offline-comparison@1",
+  "seconds": 8.611038524017204,
+  "task_image_id": "sha256:13343f030503c0d54218087d550238b91f3c7a9851fd17664704bbafb7c65f80"
+}

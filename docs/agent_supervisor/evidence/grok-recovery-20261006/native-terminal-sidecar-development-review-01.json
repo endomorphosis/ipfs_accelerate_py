@@ -1,0 +1,45 @@
+{
+  "automatic_retry_admitted": false,
+  "behavior": "Dedicated atomic bounded sidecar is written only into the explicitly configured native state directory. Its closed diagnostic and task/attempt hashes are observation-only. All database events and settlement guards remain unchanged.",
+  "changed_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b",
+    "test/api/test_bridge_failure_diagnostics.py": "4ed8288bdde3e80b9d794ed84b628ace4c1589002d81f1862670f245e0640d01"
+  },
+  "commit": "4297dc5610395addd4d5f4497a67e05e79befef4",
+  "committed_bytes_match_recorded_source": true,
+  "completion_authority": false,
+  "coverage": [
+    "Real native pooled and nonpooled pre-receipt failure with events_path=None.",
+    "Invalid hash/authority/extra fields refused; raw identities omitted.",
+    "Atomic replacement failure preserves previous file and cleans temporary file.",
+    "Destination symlink replaced without following target.",
+    "No explicit directory means no fallback file.",
+    "Diagnostic write failure leaves native settlement unchanged."
+  ],
+  "independent_review": "Grok agent reviewed production state-directory wiring, atomic writer and task/attempt binding with no blocker.",
+  "pending": [
+    "Actual signed native collector regression in reporting worktree.",
+    "Root combined qualification and authorized live trial08."
+  ],
+  "reason": "Signed native collector integration showed optional event projections are disabled; the prior event-only collection reported missing despite a diagnostic in the managed log.",
+  "run": {
+    "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+    "exit_code": 0,
+    "label": "native-terminal-sidecar-dev-01",
+    "log_sha256": "7549327c0d52faa336850f19f9585fd7daef3cdf1186bfcc08bf7c1970f73e86",
+    "pytest": {
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "31",
+      "time": "37.631"
+    },
+    "seconds_recorded": 39.723521821026225,
+    "source_unchanged": true,
+    "tested_head": "403e8045bd8755bc188d8d91d80241e935667c2a",
+    "xml_sha256": "1773eb155b6723bb0861cb20463d25fd2d2b22f854808f8e6c38565bf179a397"
+  },
+  "schema": "closed-native-diagnostic-sidecar-review@1",
+  "settlement_authority": false
+}

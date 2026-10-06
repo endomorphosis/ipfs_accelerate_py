@@ -1,0 +1,33 @@
+{
+  "schema": "supervisor-reload-independent-review@1",
+  "source_revision_before_changes": "9ffefe04669c52ff4f51c5ee31962380ed204418",
+  "reviewed_source_sha256": "5a8b0ee85082b54dce337d6f283db2ef5743b13744a450d89fd7c3fd54c4fcb1",
+  "review_scope": [
+    "control-plane source-domain binding",
+    "native interpreter argv preservation",
+    "configured wrapper precedence",
+    "tracked deletion detection",
+    "native witnessed-root visibility across real exec"
+  ],
+  "findings_resolved": [
+    "empty current source map previously hid complete tracked deletion",
+    "recognized module capture previously overrode configured wrapper"
+  ],
+  "no_blocking_findings": true,
+  "authority_checks_relaxed": false,
+  "checks": {
+    "source_domain_selected_once": true,
+    "unrelated_target_commits_do_not_nominate_reload": true,
+    "same_source_updates_remain_detected": true,
+    "configured_wrapper_precedence_preserved": true,
+    "unrecognized_ambient_application_not_captured": true,
+    "peer_birth_lease_checks_unchanged": true,
+    "retry_and_completion_authority_unchanged": true,
+    "stop_custody_checks_unchanged": true
+  },
+  "real_exec_evidence_sha256": "b5bb0e3617e6cbca39e0b67c0b192d77b27c29deef5b621966726f7ccefe2fda",
+  "limitations": [
+    "No claim that missing historical Grok bootstrap rejection has been recovered",
+    "Long native watchdog qualification is owned by root and not counted in this review"
+  ]
+}

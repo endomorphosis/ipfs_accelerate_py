@@ -1,0 +1,127 @@
+{
+  "aggregate_token_usage": null,
+  "automatic_retry_performed": false,
+  "child_router_diagnostic_status": "missing",
+  "coding_provider_dispatch_observed": null,
+  "coding_router_receipts": 0,
+  "coding_token_usage": null,
+  "completion_authority": false,
+  "exact_bridge_failure_reason": "portal_provider_failed",
+  "exact_pre_router_failure_cause_established_by_trial_receipt": false,
+  "failure_receipt_does_not_establish_task_success": true,
+  "invocation_counter_is_native_router_dispatch_proof": false,
+  "native_bridge_observation": {
+    "completion_authority": false,
+    "diagnostic": {
+      "callback": {
+        "native_exit": {
+          "lifecycle_finalized": true,
+          "present": true,
+          "process_group_absent": true,
+          "reaped": true,
+          "returncode": 1,
+          "subreaper_children_absent": true
+        },
+        "provider_effect_state": "failed_provider_exited",
+        "schema": "database-native-provider-failure@1",
+        "state": "failed_outcome_settled"
+      },
+      "chain_truncated": false,
+      "child_reported_router_failure": {
+        "diagnostic": null,
+        "observation_only": true,
+        "scope": "bounded_native_log_tail",
+        "status": "missing"
+      },
+      "completion_authority": false,
+      "exceptions": [
+        {
+          "exception_type": "DatabasePortalBridgeError",
+          "frames": [
+            {
+              "file": "implementation_daemon.py",
+              "line": 76533
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 75219
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 73943
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 74228
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 71876
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 71865
+            },
+            {
+              "file": "implementation_daemon.py",
+              "line": 74228
+            },
+            {
+              "file": "database_portal_bridge.py",
+              "line": 11414
+            }
+          ]
+        }
+      ],
+      "phase": "terminal_failure",
+      "reason_code": "portal_provider_failed",
+      "retry_authority": false,
+      "schema": "database-bridge-failure-diagnostic@1",
+      "settlement_authority": false
+    },
+    "matched_record_count": 1,
+    "observation_only": true,
+    "provider_dispatch_observed": null,
+    "retry_authority": false,
+    "scope": "exact_admitted_task_and_attempt",
+    "settlement_authority": false,
+    "status": "observed"
+  },
+  "native_exception_types_observed": 1,
+  "native_start_status": "succeeded",
+  "native_stop_reason": "native_task_blocked",
+  "native_stop_status": "succeeded",
+  "native_traceback_frames_observed": 8,
+  "original_verifier_reward": 0.0,
+  "planning_router_receipts": 1,
+  "raw_model_task_verifier_or_credential_data_exported": false,
+  "retained_report": {
+    "bytes": 76582,
+    "sha256": "04df4e90886345ca9b521d6870c80832ae060c592ea3c2981f371db76c4d7536"
+  },
+  "runtime_close_succeeded": true,
+  "schema": "grok-native-terminal-settlement-observation@1",
+  "settlement": {
+    "attempt_number": 1,
+    "automatic_retry_admitted": false,
+    "control_expected_revision": 3,
+    "effect_claim_count": 0,
+    "failure_kind": "terminal_portal_bridge_error",
+    "operation": "database_task_claim_failure",
+    "provider_invocation_count": 1
+  },
+  "source_head": "585cf2adccdbaff8a838a5f5438ca80ea75c8b0e",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6b51c66af5c9620210c9966aec561b1440306a90fd7a77bb9fd235be1959c3b1",
+    "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d",
+    "benchmarks/agent_supervisor/container_coding/terminal_program_population.py": "80bb37870cfd2600fd1436b87c26a2c50c0fc281a1ce354b5b90b380c02ae679",
+    "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py": "79f81c36fb77e28a56fc248ee1fc345699a443329861040ac2c7398cfc07e4f8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+  },
+  "task_revision": 4,
+  "task_status": "blocked",
+  "trial_name": "grok-tune-mjcf-08"
+}

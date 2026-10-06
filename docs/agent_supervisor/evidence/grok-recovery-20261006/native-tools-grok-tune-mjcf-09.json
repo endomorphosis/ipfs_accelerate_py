@@ -1,0 +1,21 @@
+{
+  "checks": 1,
+  "container_mutations": 0,
+  "error_type": null,
+  "finished_utc": "2026-10-06T12:33:49Z",
+  "last_observation": null,
+  "missing_native_logs_are_unknown": true,
+  "observation_completeness": "last_successful_bounded_snapshot_before_container_unavailable",
+  "observation_windows": [],
+  "phase_interpretation": "Marker existence and native advertised tool counts are observations; they confer no START or task completion claim.",
+  "provider_calls": 0,
+  "raw_logs_exported": false,
+  "raw_model_source_or_credential_data_exported": false,
+  "schema": "grok-native-tool-observation@1",
+  "seconds": 0.009108659985940903,
+  "started_utc": "2026-10-06T12:33:49Z",
+  "status": "container_unavailable",
+  "task_completion_authority": false,
+  "trial_name": "grok-tune-mjcf-09",
+  "windows_omitted": 0
+}

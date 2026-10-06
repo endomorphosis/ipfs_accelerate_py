@@ -1,0 +1,166 @@
+{
+  "authored_fixture_preflight_validated": true,
+  "authored_graph_tasks": 1,
+  "authored_local_admission_validated": true,
+  "authored_proposal_exact_match": true,
+  "canonical_schema_validated": true,
+  "cleanup_complete": true,
+  "cleanup_returncode": 0,
+  "credential_data_exported": false,
+  "cross_provider_fallback": false,
+  "effective_tool_policy": {
+    "advertised_tool_counts": [
+      0
+    ],
+    "credential_data_exported": false,
+    "effective_zero_tools_observed": true,
+    "native_json_records": 156,
+    "native_log_files": 1,
+    "observed_tool_invocations": 0,
+    "raw_debug_exported": false
+  },
+  "exact_trial_image": false,
+  "image_id": "sha256:5024f48ba9441d4b13a95d3945abc6365538e3a31109833367a1923523c6efed",
+  "max_turns": 2,
+  "model": "grok-4.7",
+  "native_provider_outcome": {
+    "classification_source": "stop_reason",
+    "completion_authority": false,
+    "envelope_observed": true,
+    "error_observed": false,
+    "error_subtype": "unknown",
+    "process_outcome": "returned",
+    "raw_provider_data_exported": false,
+    "reason_code": "end_turn",
+    "schema": "native-grok-outcome@1",
+    "stop_reason": "end_turn"
+  },
+  "native_schema_projection": {
+    "canonical_schema_bytes": 4436,
+    "canonical_schema_sha256": "8a545d301b212789435cf03134fc4f3aa9c0b8b3807b3f04d8e89aa9bc62b235",
+    "canonical_validation_preserved": true,
+    "native_wire_schema_bytes": 7566,
+    "native_wire_schema_sha256": "19a60fe4eaacebb5c82872ff3e572c5e1a2e9f4ac51f2a85d4f2973a9a133b75",
+    "projection_id": "canonical-prompt-goal-task-contract@1",
+    "task_contract_authority": false,
+    "task_contract_bytes": 1902,
+    "task_contract_sha256": "10450d4d171c9ce61921b3ea85b268a4bb20c8706a8013980538d2976a6b6ccf",
+    "task_count": 1,
+    "top_level_id_omitted": true
+  },
+  "native_tool_allowlist": [
+    "read_file"
+  ],
+  "native_tool_denylist": [
+    "read_file",
+    "search_tool",
+    "use_tool"
+  ],
+  "observed_numeric_usage": {
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 1536,
+    "completion_tokens": 3296,
+    "exit_code": 0,
+    "native_grok_cache_write_input_tokens": 0,
+    "native_grok_cached_input_tokens": 1536,
+    "native_grok_input_tokens": 10024,
+    "native_grok_output_tokens": 3296,
+    "native_grok_reasoning_output_tokens": 2419,
+    "native_grok_total_tokens": 14856,
+    "num_turns": 1,
+    "prompt_tokens": 10024,
+    "reasoning_tokens": 2419,
+    "total_tokens": 14856
+  },
+  "pinned_binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "prompt_bytes": 18037,
+  "prompt_sha256": "483052ca211b8e1efc3b43e4aa85567d17fe7247a64ced076199f2b703e0778f",
+  "provider": "grok_cli",
+  "provider_calls": 1,
+  "qualified": true,
+  "raw_error_metadata_private": true,
+  "raw_response_exported": false,
+  "reasoning_effort": "high",
+  "requested_tools_profile": "none",
+  "response_characters": 2771,
+  "response_json_valid": true,
+  "response_matches_schema": true,
+  "response_schema_sha256": "8a545d301b212789435cf03134fc4f3aa9c0b8b3807b3f04d8e89aa9bc62b235",
+  "schema": "grok-isolated-signed-task-schema-probe@1",
+  "seconds": 26.34565275599016,
+  "source_after": {
+    "source_heads": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "987e0ad1f1c22ef70531449a6cbf49c786afe152",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+    },
+    "source_status": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+    }
+  },
+  "source_before": {
+    "source_heads": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "987e0ad1f1c22ef70531449a6cbf49c786afe152",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+    },
+    "source_status": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+    }
+  },
+  "source_unchanged": true,
+  "success": true,
+  "task_inputs_used": false,
+  "task_qualification_claim": false,
+  "timeout_seconds": 30,
+  "usage_completeness": "unknown",
+  "worker_diagnostics": {
+    "auth_mode": "0o600",
+    "auth_owner": 1001,
+    "auth_readable": true,
+    "ca_bundle_exists": true,
+    "env_names": [
+      "GIT_CONFIG_COUNT",
+      "GIT_CONFIG_KEY_0",
+      "GIT_CONFIG_KEY_1",
+      "GIT_CONFIG_KEY_2",
+      "GIT_CONFIG_VALUE_0",
+      "GIT_CONFIG_VALUE_1",
+      "GIT_CONFIG_VALUE_2",
+      "GROK_CODEX_AGENTS_ENABLED",
+      "GROK_CODEX_HOOKS_ENABLED",
+      "GROK_CODEX_MCPS_ENABLED",
+      "GROK_CODEX_RULES_ENABLED",
+      "GROK_CODEX_SESSIONS_ENABLED",
+      "GROK_CODEX_SKILLS_ENABLED",
+      "GROK_HOME",
+      "HF_HUB_OFFLINE",
+      "HOME",
+      "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE",
+      "MKL_NUM_THREADS",
+      "OMP_NUM_THREADS",
+      "PATH",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+      "PYTHON",
+      "PYTHONDONTWRITEBYTECODE",
+      "PYTHONHASHSEED",
+      "PYTHONPATH",
+      "PYTHON_BIN",
+      "TOKENIZERS_PARALLELISM",
+      "TRANSFORMERS_OFFLINE",
+      "ipfs_accelerate_py_GROK_CLI_CMD"
+    ],
+    "gid": 1000,
+    "grok_home": "/opt/ipfs-supervisor/worker-home/.grok",
+    "groups": [
+      1000
+    ],
+    "home": "/opt/ipfs-supervisor/worker-home",
+    "uid": 1001,
+    "version": "grok 1.0.46 (2765805b9442)"
+  }
+}

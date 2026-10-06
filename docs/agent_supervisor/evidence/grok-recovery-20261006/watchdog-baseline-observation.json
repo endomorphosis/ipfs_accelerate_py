@@ -1,0 +1,35 @@
+{
+  "schema": "authored-timeout-root-observation@1",
+  "raw_process_arguments_exported": false,
+  "provider_calls": 0,
+  "observations": [
+    {
+      "seconds": 0.0,
+      "root_alive": true,
+      "root_pid_unchanged": true,
+      "root_argv_unchanged": true,
+      "safe_path_flag_present": true,
+      "status": "running",
+      "control_plane_update_pending": true,
+      "control_plane_reload_deferred": false,
+      "event_counts": {}
+    },
+    {
+      "seconds": 202.399,
+      "root_alive": true,
+      "root_pid_unchanged": true,
+      "root_argv_unchanged": true,
+      "safe_path_flag_present": true,
+      "status": "running",
+      "control_plane_update_pending": true,
+      "control_plane_reload_deferred": false,
+      "event_counts": {
+        "supervisor_control_plane_update_detected": 1
+      }
+    },
+    {
+      "seconds": 202.801,
+      "root_alive": false
+    }
+  ]
+}

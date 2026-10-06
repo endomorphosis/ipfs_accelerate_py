@@ -1,0 +1,81 @@
+{
+  "actual600_second_provider_execution_established": false,
+  "benchmark_success_or_performance_advantage_claimed": false,
+  "coding_provider_invocation_receipted": false,
+  "container_teardown_does_not_override_custody_failure": true,
+  "driver_computed_coding_timeout_seconds": 600,
+  "evidence": {
+    "closure": {
+      "bytes": 1191,
+      "sha256": "8f22f3394106e843501bc6e5a721ab65017ce4b69e4aa140f028930ecd1e41f7"
+    },
+    "historical_source": {
+      "custody": {
+        "bytes": 37191,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+        "sha256": "8fa69a87e4d99fc7f942506e5ab7840b73ed7ca5d41dd0f58716e07489fc16b9"
+      },
+      "lifecycle": {
+        "bytes": 71232,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+        "sha256": "f4aac8583dda864da329c79e5860863dd6c5c66767b9941eb7d8117a4e30dfae"
+      }
+    },
+    "live_summary": {
+      "bytes": 11764,
+      "sha256": "c11efd10e40cfbb8daf2563db783cf3fe149fe3dbad9e358abb18c4e576c407d"
+    },
+    "report": {
+      "bytes": 56170,
+      "sha256": "62cda437876246440a9705f8b626f1dd7f6e8ea46ced210294d5df3b25bcf2fc"
+    }
+  },
+  "official_reward": 0.0,
+  "owned_container_present_after_teardown": false,
+  "pending_settlement_fix_in_source": false,
+  "provider_calls_by_diagnosis": 0,
+  "raw_source_model_task_verifier_or_credential_data_exported": false,
+  "remaining_processes_before_container_teardown": 2,
+  "runtime_close_failure": {
+    "exception_type": "RuntimeError",
+    "reason_code": "live_launched_child_custody_retained",
+    "source_function": "_require_no_live_launched_children",
+    "source_line": 526
+  },
+  "runtime_close_succeeded": false,
+  "schema": "terminal-native-lifecycle-conflict-diagnosis@1",
+  "selected_coding_timeout_seconds": 600,
+  "selected_resource_profile": "source384-5cpu-20gib-coding600@1",
+  "source_revision": "0a8309047c4e2d8f780c470a02a8453cfe01ceec",
+  "start_failure": {
+    "exact_mismatched_marker": "unknown",
+    "exception_type": "ProcessIdentityMismatch",
+    "pid_reuse_or_exec_race_established": false,
+    "reason_code": "process_run_profile_marker_mismatch",
+    "source_function": "LinuxProcessAdapter._identity",
+    "source_line": 520
+  },
+  "stop_failure": {
+    "exception_type": "TransactionConflictError",
+    "reason_code": "lifecycle_transition_already_active",
+    "source_line": 1257
+  },
+  "transactions": {
+    "start": {
+      "applied_effect_count": 0,
+      "effect_count": 1,
+      "recovery_action": "repair",
+      "status": "conflict",
+      "transaction_phase": "repair_required"
+    },
+    "stop": {
+      "applied_effect_count": 0,
+      "effect_count": 1,
+      "recovery_action": "repair",
+      "status": "conflict",
+      "transaction_phase": "repair_required"
+    }
+  },
+  "trial_name": "grok-tune-mjcf-06",
+  "worker_cleanup_returncode": 0
+}

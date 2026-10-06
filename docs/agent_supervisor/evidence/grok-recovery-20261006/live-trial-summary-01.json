@@ -1,0 +1,264 @@
+{
+  "native_usage_completeness_inferred": false,
+  "raw_provider_verifier_or_credential_bodies_exported": false,
+  "schema": "terminal-grok-recovery-live-summary@1",
+  "trials": [
+    {
+      "admission_failure": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "reason": "no_native_admission_error",
+        "status": "unavailable"
+      },
+      "admitted_context": {
+        "full_capsules": null,
+        "indexed_symbols": null,
+        "initial_indexes_reused": null,
+        "worker_capsules": null,
+        "worker_semantic_bytes": null
+      },
+      "attempt": "01",
+      "benchmark_advantage_claimed": false,
+      "billing_total_verified": false,
+      "custody": {
+        "closure_inferred_from_stop": false,
+        "driver_error_type": "RuntimeError",
+        "remaining_processes": null,
+        "runtime_close_attempted": null,
+        "runtime_close_error_type": null,
+        "runtime_close_succeeded": null,
+        "worker_cleanup_returncode": 0
+      },
+      "doctor": {
+        "analysis_status": null,
+        "provider_calls": null,
+        "route": null,
+        "status": null,
+        "unexported_reason_code_count": null
+      },
+      "harbor_usage": {
+        "cost_usd": null,
+        "n_cache_tokens": null,
+        "n_input_tokens": null,
+        "n_output_tokens": null
+      },
+      "initial_context": {
+        "full_capsules": 11,
+        "indexed_symbols": 4,
+        "provider_calls": 0,
+        "seconds": 14.30564337701071
+      },
+      "lifecycle": {
+        "start_status": null,
+        "stop_status": null
+      },
+      "missing_usage_is_unknown": true,
+      "native_progress": {
+        "completion_authority": false,
+        "elapsed_seconds": null,
+        "latest_task": {
+          "revision": null,
+          "status": null
+        },
+        "retry_authority": false,
+        "settlement_authority": false,
+        "stop_reason": "unknown"
+      },
+      "native_startup": null,
+      "native_usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": null,
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "dollar_cost": null,
+        "input_tokens": null,
+        "observed_complete_sessions": false,
+        "output_tokens": null,
+        "provider_calls": 1,
+        "reasoning_output_tokens": null,
+        "source": "observed_native_final_totals",
+        "total_tokens": null,
+        "usage_complete_observed": null
+      },
+      "planning": {
+        "admission_basis": "terminal_indexed_preparation_qualified_after_local_admission_and_materialization",
+        "failure_exception_type": "PromptGoalPlannerError",
+        "goals": null,
+        "independently_admitted_plan": false,
+        "model": "grok-4.7",
+        "planning_strategy": "direct",
+        "provider": "grok_cli",
+        "provider_calls": 1,
+        "provider_receipt": {
+          "attempted": true,
+          "latency_ms": 6345,
+          "reason_code": "failed",
+          "request_bytes": 22711,
+          "response_bytes": 0,
+          "status": "failed",
+          "timeout_ms": 180000
+        },
+        "provider_receipt_shape": "flat_provider_receipt",
+        "qualified": false,
+        "subgoals": null,
+        "tasks": null
+      },
+      "receipt": {
+        "bytes": 41882,
+        "path": "grok-tune-mjcf-01/receipt.json",
+        "sha256": "a6256b284058d22b77534bd57c6757c2fdde6ab7eaf05bba0d369495af8c0c32"
+      },
+      "router_invocations": [
+        {
+          "error_type": "LLMRouterError",
+          "model": "grok-4.7",
+          "native_provider_outcome": {
+            "classification_source": "native_type",
+            "completion_authority": false,
+            "envelope_observed": true,
+            "error_observed": true,
+            "error_subtype": "unknown",
+            "process_outcome": "failed",
+            "raw_provider_data_exported": false,
+            "reason_code": "execution_error",
+            "schema": "native-grok-outcome@1",
+            "stop_reason": "unknown"
+          },
+          "native_usage": null,
+          "phase": "planning",
+          "provider": "grok_cli",
+          "provider_failure": {
+            "http_status": null,
+            "phase": "provider_invocation",
+            "reason_code": "unknown"
+          },
+          "provider_invocation_policy": {
+            "disallowed_tools": [
+              "read_file",
+              "search_tool",
+              "use_tool"
+            ],
+            "effective_toolset_verified": false,
+            "max_turns": 2,
+            "native_tool_allowlist": [
+              "read_file"
+            ],
+            "native_tool_denylist": [
+              "read_file",
+              "search_tool",
+              "use_tool"
+            ],
+            "permission_mode": "dontAsk",
+            "structured_output": {
+              "native_schema_requested": true,
+              "plan_admitted": false,
+              "response_schema_bytes": 4436,
+              "response_schema_sha256": "8a545d301b212789435cf03134fc4f3aa9c0b8b3807b3f04d8e89aa9bc62b235",
+              "response_schema_validated": false,
+              "schema": "grok-native-json-schema@1"
+            },
+            "tools_profile": "none"
+          },
+          "purpose": "planning",
+          "requested_policy_is_actual_tool_observation": false,
+          "seconds": 2.329654354020022,
+          "status": "failed",
+          "timeout_seconds": 180
+        }
+      ],
+      "selection": {
+        "arm": "full",
+        "cli_version": "1.0.46",
+        "model": "grok-4.7",
+        "provider_profile": "grok-4.7-cli-1.0.46@1",
+        "reasoning_effort": "high",
+        "resource_profile": "source384-5cpu-16gib-planner180@1",
+        "task": "tune-mjcf"
+      },
+      "selection_binding": {
+        "archive_content_hash_recomputed_by_this_export": false,
+        "archive_sha256": "da3e1c4bb243fa858ff6c992d120d893908739c8b0015bd0e81b214c02425d81",
+        "grok_binary": {
+          "bytes": 142867512,
+          "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+          "version": "1.0.46"
+        },
+        "preparation": {
+          "bytes": 58386,
+          "path": "grok-tune-mjcf-01/preparation.json",
+          "sha256": "600434b6f526858d03359f6bc3075af450152a349c2c0c7e67ce39b2f4f80d91"
+        },
+        "runtime_manifest": {
+          "bytes": 6173578,
+          "path": "grok-bundle-01/manifest.json",
+          "sha256": "dcfa5b0a07db34dbc1767766f3b8a5ad81208320ed5394609a3c6153764116f6"
+        },
+        "selection_origins": {
+          "arm": "receipt+preparation",
+          "cli_version": "receipt+preparation",
+          "model": "receipt+preparation",
+          "provider_profile": "receipt+preparation",
+          "reasoning_effort": "receipt+preparation",
+          "resource_profile": "receipt+preparation",
+          "task": "receipt+preparation"
+        },
+        "source_revision_basis": "qualified_review_matching_prepared_archive_digests",
+        "source_revision_evidence": {
+          "bytes": 2313,
+          "path": "grok-container/archive-review-01.json",
+          "sha256": "bbb4866c55cab3f55c8dd87198d1439adfb514142a3336a3901e80dbae883ba9"
+        },
+        "source_revisions": {
+          "datasets": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+          "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+          "source": "e048ee22ec68f6adc3a468e1e612624d00661cce"
+        }
+      },
+      "source384": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "inference_sha256": "98cdd61d8f15d5d026d2d0a634c19508176760381b7c3ccb4e08d793ce0b8637",
+        "neural_inference_replayed": false,
+        "seconds": 9.740732950973324,
+        "summary": {
+          "completion_authority": false,
+          "harness_support_files": 3,
+          "inference_python_files": 1,
+          "program_source_files": 1,
+          "proof_authority": false,
+          "provider_calls": 0,
+          "source_files": 5
+        },
+        "training_steps": 0
+      },
+      "supervisor": {
+        "coding_dispatch_possible": null,
+        "error_phase": "planning",
+        "implementation_route": null,
+        "remaining_processes": null,
+        "seconds": 23.020864153048024,
+        "task_completed": false,
+        "worker_cleanup_returncode": 0
+      },
+      "task": "tune-mjcf",
+      "task_state": {
+        "revision": null,
+        "status": null
+      },
+      "trial": {
+        "durations_seconds": {
+          "agent_execution": 24.051794,
+          "agent_setup": 121.307183,
+          "environment_setup": 3.719905,
+          "verifier": 6.184719
+        },
+        "exact_trial_task_matches": true,
+        "exception_type": null,
+        "native_result_sha256": "8ccf6576b6c824a06bfbfeb07828d8737fa3055e911c6651ed3489d1db40f077",
+        "reward": 0.0,
+        "reward_basis": "official_original_verifier_receipt"
+      },
+      "trial_name": "grok-tune-mjcf-01"
+    }
+  ]
+}

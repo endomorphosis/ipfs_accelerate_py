@@ -1,0 +1,65 @@
+{
+  "authored_fixture_private": true,
+  "authored_process_adapter_runs": 1,
+  "canonical_schema_validated": true,
+  "completion_authority": false,
+  "fixture_helper_sha256": "52843f9574a36c0a8cb53e69e4152b3086127d32b0dc6c3d293ff387b9c1e3b0",
+  "goals": 2,
+  "hidden_verifier_or_solution_bodies_read": false,
+  "independent_signed_admission_passed": true,
+  "live_provider_invocations": 0,
+  "native_schema_projection": {
+    "canonical_schema_bytes": 4493,
+    "canonical_schema_sha256": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+    "canonical_validation_preserved": true,
+    "native_wire_schema_bytes": 7618,
+    "native_wire_schema_sha256": "bef19e0ea13c576a3d19c79ccd3819c7151d7377f60d0257d959bfbcf3f549b9",
+    "projection_id": "canonical-prompt-goal-task-contract@1",
+    "task_contract_authority": false,
+    "task_contract_bytes": 1845,
+    "task_contract_sha256": "19f0d1cdb61afc81ad3c71b426e672ef93b85baf94612c0c8d5968c35f4bbdae",
+    "task_count": 1,
+    "top_level_id_omitted": true
+  },
+  "native_schema_validated": true,
+  "pending_post_execution_requirements": 3,
+  "provider_calls": 0,
+  "public_output_media_types": [
+    "application/xml"
+  ],
+  "qualified": true,
+  "raw_model_or_credentials_exported": false,
+  "returned_proposal_unchanged": true,
+  "schema": "terminal-public-tune-profile-preflight@1",
+  "seconds": 2.1916603979771025,
+  "signed_declaration_unchanged": true,
+  "source_after": {
+    "source_heads": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "47281b5b94feed197b27c8ea4fd0504225337a54",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+    },
+    "source_status": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+    }
+  },
+  "source_before": {
+    "source_heads": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "47281b5b94feed197b27c8ea4fd0504225337a54",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": "a9b98beac1ef14278b4adf4f2289cd509530fb86"
+    },
+    "source_status": {
+      "/home/barberb/lift_coding/.worktrees/grok-recovery-20261006": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-bounded-header-datasets-20261005": "",
+      "/home/barberb/lift_coding/.worktrees/terminal-supervisor-kit-20261005": ""
+    }
+  },
+  "source_unchanged": true,
+  "strict_graph_parser_passed": true,
+  "task_inputs_used": false,
+  "task_qualification_claim": false,
+  "tasks": 1
+}

@@ -1,0 +1,61 @@
+{
+  "admitted_context_new_embedding_calls": 0,
+  "archive_manifest": {
+    "bytes": 6177877,
+    "path": "grok-bundle-11/manifest.json",
+    "sha256": "006ce8f3044ee4453ee6ef32f3fc438cb0df32ef2e3bfe0ab90f657d6259aba2"
+  },
+  "completion_authority": false,
+  "database_contents_independently_reopened_by_this_observer": false,
+  "ducklake_status": "projected",
+  "embedding_canary_passed": true,
+  "embedding_input": "qualified symbol names only",
+  "full_capsules": 11,
+  "full_system_qualified": false,
+  "indexed_observation": {
+    "bytes": 6933,
+    "path": "indexed-path-observation-11.json",
+    "sha256": "9dc0fc288d399195593af35a2527c69e010ebd634d2859915e51ec701e35d12e"
+  },
+  "indexed_symbols": 4,
+  "initial_and_admitted_learned_embeddings": true,
+  "learned_runtime_observation": {
+    "bytes": 1291,
+    "path": "grok-container/learned-vector-runtime-observation-11.json",
+    "sha256": "2fce1e2ff5b5a9f5b0867cf2bc8876e6c898ad7889f688bbe3ea81e659d4f7a7"
+  },
+  "local_model_calls": 3,
+  "local_model_texts": 8,
+  "native_fact_rows_replayed": 4,
+  "nomination_only": true,
+  "persistence_basis": "source_bound_runtime_qualification_and_reopen_path_completed",
+  "proof_authority": false,
+  "raw_bodies_or_credentials_exported": false,
+  "remote_embedding_calls": 0,
+  "retrieval_backend": "local-safetensors-symbols@1",
+  "retrieval_device": "cpu",
+  "retrieval_dimensions": 384,
+  "retrieval_model": "thenlper/gte-small",
+  "retrieval_model_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "same_initial_index_reused": true,
+  "schema": "grok-retrieval-source384-distinction@2",
+  "semantic_equivalence_claimed": false,
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source384_embedding_model": "thenlper/gte-small",
+  "source384_embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "source384_fresh_inference": true,
+  "source384_inference_python_files": 1,
+  "source384_is_separate_from_retrieval_index": true,
+  "source384_training_steps": 0,
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/learned_vector_preflight.py": "4c80083d0e91e1520207a4f0be7d43984a0219e943487ad9764717616086a0ac",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d",
+    "benchmarks/agent_supervisor/container_coding/terminal_program_population.py": "80bb37870cfd2600fd1436b87c26a2c50c0fc281a1ce354b5b90b380c02ae679",
+    "benchmarks/agent_supervisor/container_coding/terminal_retrieval_selection.py": "c359dd201fc5ea36f0ef0cff22f7101138570ded450915e8fd596a339bd0e1dd",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_learned_embedding.py": "08811048c3f365e200ed60db10857ff9ab43caad297230e71b1ed3662b96fc24",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa"
+  },
+  "trial_name": "grok-tune-mjcf-11",
+  "vector_and_metadata_persistence": "DuckDB_with_DuckLake_metadata_projection"
+}

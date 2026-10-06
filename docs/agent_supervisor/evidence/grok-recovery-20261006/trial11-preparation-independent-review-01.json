@@ -1,0 +1,65 @@
+{
+  "actual_resource_observation_qualified": true,
+  "archive_attempt": "11",
+  "archive_sha256": "52fecd888898ceef62dd4751a0e891c75ccf11cf315725ec4c6528bd45aacab9",
+  "attempt": "11",
+  "benchmark_result": null,
+  "closed_learned_runtime_record_reviewed": true,
+  "completion_authority": false,
+  "config_sha256": "3bb013cf69425806edf8601dd2102b1425b40eb56aa9e0b6e1d401e0b4e3e89c",
+  "container_mutations": 0,
+  "coordinator_difference_from10": "fresh11 labels and paths only; exact-name/CID and bounded observer behavior preserved",
+  "cpus": 5,
+  "evidence": {
+    "grok-container/archive-review-11.json": {
+      "bytes": 2314,
+      "sha256": "3d0d519d81edfeaf5dbb15d7029b26c1046b850766f0a8530d239a60f6e1dcf8"
+    },
+    "grok-container/learned-vector-runtime-observation-11.json": {
+      "bytes": 1291,
+      "sha256": "2fce1e2ff5b5a9f5b0867cf2bc8876e6c898ad7889f688bbe3ea81e659d4f7a7"
+    },
+    "grok-container/observe_learned_vector_runtime.py": {
+      "bytes": 4054,
+      "sha256": "eb529d9cd33d2fe60fc915dbdad20e1e7bff43320095d2789940db96af266007"
+    },
+    "grok-container/preparation-review-11.json": {
+      "bytes": 4549,
+      "sha256": "53974ae38c7c538f96408a25938fe138c33a25265ff297babb8518491b1d26ad"
+    },
+    "grok-container/recipes/review_shutdown_learned_preparation.py": {
+      "bytes": 6732,
+      "sha256": "84a804bae79bbba364b9b530dfb9f79504104970272b341113ea16a7afd862ae"
+    },
+    "grok-container/resource-observation-11.json": {
+      "bytes": 1083,
+      "sha256": "6a9b571c3c2c189d6ed2cccb9733ede6cc59e85e4a86f7027420ec6ed883be1c"
+    },
+    "timeout-recovery/coordinate_trial11_observers.py": {
+      "bytes": 8724,
+      "sha256": "97e837108383e7dbb354f3beed1b8ecd5b9e5c7c5b3836d32f48d9aa11444b1c"
+    }
+  },
+  "final_coordinator_receipt_pending": true,
+  "learned_producer_uses_whole_file_same_identity_read": true,
+  "learned_result_independently_reopened_by_this_review": false,
+  "learned_result_sha256": "af339734e30def1dfba673e9f00cee0dc71d77d43e6049688e99112e757665da",
+  "limitations": [
+    "The full archive audit is source-bound to11 and supplied separate all-member verification; this review checked14 critical committed source hashes and config joins.",
+    "The reviewed fixed-field runtime observer confirms actual learned qualification; this reviewer made no additional inference, database connection or container read.",
+    "Final task, usage and native custody claims require completed11 receipts."
+  ],
+  "memory_high_kind": "unlimited",
+  "memory_limit_bytes": 21474836480,
+  "new_archive_not_reused10": true,
+  "new_inference_calls": 0,
+  "preparation_bindings_qualified": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "runtime_source_hashes_checked": 14,
+  "schema": "terminal-preparation-and-observer-independent-review@1",
+  "shutdown_runtime_and_diagnostic_module_bound": true,
+  "source_edits": 0,
+  "source_head": "0e2d9a8c62eabdfbd42fcad505c370365474514a",
+  "task_inputs_match10": true
+}

@@ -1,0 +1,59 @@
+{
+  "actual_index": {
+    "canonical_tasks_created": false,
+    "descriptor_sha256": "dd432253b102d1a92d7d5fa0e92267c0073b0d4b3d7a3f5535249d2214590285",
+    "full_capsules": 11,
+    "index_id": null,
+    "indexed_symbols": 4,
+    "learned_embeddings": false,
+    "phases": {
+      "empty_native_world_capture": 0.46110555704217404,
+      "final_evidence_verification": 1.690408498980105,
+      "persisted_snapshot_reopen": 0.010787531035020947,
+      "retrieval_persistence": 0.011955588997807354,
+      "semantic_build_reconstruction_and_hydration": 1.7808098070090637,
+      "source384_capture_and_inference": 9.86073455796577,
+      "vector_qualification": 0.4815170140354894
+    },
+    "seconds": 14.30564337701071,
+    "semantic_root_cid": "baguqeera7cm5nddueqiebxxcuy4qdom6gqz3cekz37mhsiqzsbq3vg52ejga",
+    "world_snapshot_cid": null,
+    "world_task_count": 0
+  },
+  "admitted_worker_context_reached": false,
+  "doctor": {
+    "basis": "driver_failed_in_planning_before_admission_and_doctor",
+    "reached": false,
+    "residual_counts": null
+  },
+  "native_start_reached": false,
+  "raw_source_model_formula_verifier_or_credential_data_exported": false,
+  "receipt_sha256": "a6256b284058d22b77534bd57c6757c2fdde6ab7eaf05bba0d369495af8c0c32",
+  "schema": "grok-recovery-indexed-path-observation@1",
+  "source384": {
+    "authority": {
+      "completion_authority": false,
+      "execution_authority": false,
+      "formalization_authority": false,
+      "model_promotion_performed": false,
+      "nomination_only": true,
+      "proof_authority": false
+    },
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "counts": {
+      "excluded_source_files": 0,
+      "harness_support_files": 3,
+      "inference_python_files": 1,
+      "omitted_candidates": 2,
+      "program_source_files": 1,
+      "provider_calls": 0,
+      "source_files": 5,
+      "task_data_files": 1,
+      "training_steps": 0
+    },
+    "inference_sha256": "98cdd61d8f15d5d026d2d0a634c19508176760381b7c3ccb4e08d793ce0b8637",
+    "neural_inference_replayed": false,
+    "seconds": 9.740732950973324
+  },
+  "trial_name": "grok-tune-mjcf-01"
+}

@@ -1,0 +1,114 @@
+{
+  "accelerate_head": "47281b5b94feed197b27c8ea4fd0504225337a54",
+  "completion_authority": false,
+  "datasets_head": "5171a632c6b9f0ecb2939d29d2ad74992cbfeb11",
+  "decision": {
+    "candidate_container_memory_mib": 20480,
+    "prefer_explicit_larger_benchmark_container_profile": true,
+    "preserve_fresh_root_and_child_admission": true,
+    "preserve_source_checkpoint_and_receipt_currentness": true,
+    "preserve_twenty_percent_headroom": true,
+    "profile_implementation_owned_by": "timeout_recovery",
+    "profile_qualification_not_claimed_by_this_measurement": true,
+    "reduce_generic_reservation": false
+  },
+  "measurement_scope": {
+    "authored_fixture": true,
+    "benchmark_container": false,
+    "inference_artifact_bytes": 48336,
+    "observed_host_scheduler_headroom_mb": 24922,
+    "observed_host_scheduler_memory_mb": 99688,
+    "os_page_cache_reset": false,
+    "process_tree_shared_pages_may_be_double_counted": true,
+    "sample_interval_seconds": 0.02,
+    "source_files": 5,
+    "transient_peaks_may_be_missed": true,
+    "trial04_pressure_reproduced": false,
+    "universal_memory_bound": false
+  },
+  "measurements": {
+    "prepare": {
+      "api_seconds": 9.497003575030249,
+      "children_ru_maxrss_kib": 1045328,
+      "sampled_process_tree_peak_rss_mib": 1292.4296875,
+      "self_ru_maxrss_kib": 290404,
+      "wall_seconds": 10.508542047988158
+    },
+    "replay": {
+      "api_seconds": 2.112380802980624,
+      "children_ru_maxrss_kib": 255528,
+      "sampled_process_tree_peak_rss_mib": 251.25390625,
+      "self_ru_maxrss_kib": 256840,
+      "wall_seconds": 3.048815842019394
+    }
+  },
+  "observation": {
+    "path": "timeout-recovery/source384-memory-01/memory-observation.json",
+    "sha256": "06be1646b9aa38d62d26d260eb8623ee9f64745fbc8cc2b535b022452b86e7ee"
+  },
+  "preserved_generic_limits": {
+    "duckdb_connection_limit_strings": [
+      "512MB",
+      "256MB"
+    ],
+    "duckdb_limits_are_process_rss_guarantee": false,
+    "inference_artifact_max_bytes": 33554432,
+    "initial_parent_memory_mib": 6144,
+    "max_scan_accounting_mib": 4096,
+    "max_signed_source_count": 256,
+    "max_signed_source_file_bytes": 1048576,
+    "replay_parent_memory_mib": 6144,
+    "scan_admission_amplification_factor": 16,
+    "scanner_child_memory_mib": 4096
+  },
+  "production_edits_for_this_review": false,
+  "qualification": {
+    "active_leases_after": 0,
+    "benchmark_task_completion": false,
+    "fresh_process_replay": true,
+    "new_neural_forward_calls": 0,
+    "new_numerical_worker_calls": 0,
+    "provider_calls": 0,
+    "real_pinned_checkpoint": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "same_input_receipt_validated": true,
+    "source_currentness_verified": true,
+    "waiting_requests_after": 0
+  },
+  "raw_logs_or_model_bodies_exported": false,
+  "reasons": [
+    "The authored fixture is five sources with a 48336-byte inference artifact; allowed populations and artifacts are much larger.",
+    "Maximum signed source accounting already requires the complete 4096 MiB scanner child reservation.",
+    "Replay performs checkpoint JSON validation, deepcopy, decoder Runtime array construction and immutable report reconstruction despite no new neural forward.",
+    "Configured DuckDB pools and simultaneously retained Python/JSON/checkpoint objects are additional allocations; pool limits do not bound total process RSS.",
+    "A valid shared-parent replay has one generation, but lineage validation can allocate multiple generations before rejecting unsupported ancestry.",
+    "The child admission gate samples availability again and conservatively charges the full reserved parent; a lower parent barely passing a root sample does not prove child admission.",
+    "This host sample did not reproduce the benchmark cgroup pressure, did not reset the OS cache, and is not a safe generic memory upper bound."
+  ],
+  "reviewed_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "5d0e892e4b2ed496288c3ee47fdea73d784a1e259ec992b926f26b4353daacaa",
+    "ipfs_datasets_py/duckdb_control/autoencoder_registry.py": "f6e782db575b3b645439082bb244449152c55cd82bdf1f8787fce9a1381fab7f",
+    "ipfs_datasets_py/duckdb_control/connections.py": "8d3cc05a89f2b337e584708e7c6dbc8d7d4deccef442265ccbd5ca848821a872",
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4",
+    "ipfs_datasets_py/logic/software_contracts/codebase_source_384.py": "f00ff90983770e0e9ac32d8a16c9654059630cfb2880e00bf891902fafe4bb03",
+    "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2ea92ca7e2fe9732fce515e562b51d7824fc25069772205092439839632c9cc2"
+  },
+  "schema": "source384-replay-budget-review@1",
+  "trial04_gate_evidence": {
+    "complete_admission_decision_claimed": false,
+    "headroom_mib": 3277,
+    "observed_available_mib": [
+      9378,
+      9374,
+      9382,
+      9227,
+      9204,
+      9227
+    ],
+    "parent_request_mib": 6144,
+    "path": "timeout-recovery/live-dispatch-wait-04-04.json",
+    "primary_reason": "proof_memory_headroom",
+    "required_mib": 9421,
+    "sha256": "167f4642e506aab8534471ecb7acbf64b3660f70541d1707286d2931bd1db774"
+  }
+}

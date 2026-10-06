@@ -1,0 +1,71 @@
+{
+  "actual_learned_inference_reviewed_by_this_record": false,
+  "actual_resource_observation_qualified": true,
+  "archive_reused_from_attempt": "09",
+  "archive_sha256": "89413ed90097904e4283feb9461bd6253c672956d18b1aa02403db75abd2cb9a",
+  "attempt": "10",
+  "benchmark_result": false,
+  "completion_authority": false,
+  "config_sha256": "ef241cbcda935601b6c0ebe3f1c4beee1024cca5ce675328d4798e38de851162",
+  "coordinator_review": {
+    "broad_container_search": false,
+    "container_mutations": 0,
+    "exact_canonical_fresh_job_case_required": true,
+    "exact_container_name_and_full_cid_required": true,
+    "final_coordinator_receipt_pending": true,
+    "missing_observation_implies_success": false,
+    "private_observer_logs_excluded_from_publication": true,
+    "provider_calls": 0,
+    "signals_only_own_popen_children": true,
+    "three_bounded_observers_only": true
+  },
+  "cpus": 5,
+  "evidence": {
+    "grok-container/archive-review-09.json": {
+      "bytes": 2313,
+      "sha256": "7b240c1b0b56ff7934dbbb8f131ab4fd6366ae7a45947a86ce634a793d3f0dca"
+    },
+    "grok-container/preparation-review-10.json": {
+      "bytes": 4243,
+      "sha256": "f82ce02d0a3e54eadfb87213fcd55e693ce6fed0d23c942d915fe3c6b166258c"
+    },
+    "grok-container/recipes/review_reused_learned_preparation.py": {
+      "bytes": 6571,
+      "sha256": "f5e04da911ffc5b33759bbda6c928fe29fecaffbfc221f30f3b482c3d4b3c412"
+    },
+    "grok-container/resource-observation-10.json": {
+      "bytes": 1083,
+      "sha256": "0da66961520e1523c18b236a04884a561ac80f5e0f90d77b31e741763d1ef25e"
+    },
+    "grok-container/runtime-python-availability-09-01.json": {
+      "bytes": 596,
+      "sha256": "5931593d760d7066e6d52ac617314ab9c15990b53529cba0ab773c6381fc759a"
+    },
+    "grok-container/trial10-preparation-plan-01.json": {
+      "bytes": 8137,
+      "sha256": "12f25b355c47f2296ca75d12f34aa5a2e52da0820a14c925bd6e3d5c27c2565b"
+    },
+    "timeout-recovery/coordinate_trial10_observers.py": {
+      "bytes": 8724,
+      "sha256": "5d239af3e894302bfa91202be87a671c8b9fd5601a7e12e20fa650eea921cb08"
+    }
+  },
+  "limitations": [
+    "Configuration and actual resource observation are separate from runtime model inference, task success and billing.",
+    "Archive reuse is explicit; the full streaming archive audit was performed for09 and is not claimed as a new10 audit.",
+    "The coordinator was still running at this review; its final receipt and exit codes require closure review."
+  ],
+  "memory_high_kind": "unlimited",
+  "memory_limit_bytes": 21474836480,
+  "preparation_bindings_qualified": true,
+  "provider_calls": 0,
+  "publication_ready": false,
+  "retrieval_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+  "runtime_asset_recovery_scope": "host_only_HEAD_availability; no bytes downloaded and no container-network equivalence claim",
+  "runtime_source_hashes_checked": 12,
+  "same_provider_and_resource_profile": true,
+  "schema": "terminal-preparation-and-observer-independent-review@1",
+  "source_edits": 0,
+  "source_head": "b966623d3de7457b4139e7d9235a5976f275dd46",
+  "task_inputs_match09": true
+}

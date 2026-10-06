@@ -1,0 +1,82 @@
+{
+  "findings": [
+    {
+      "affected_test": "test/api/test_implementation_supervisor_control_plane_pool_lease.py",
+      "classification": "test_to_current_identity_contract_migration_required",
+      "constraint": "Projection-local identity must be derived from verified projection with embedded canonical task key/cid removed; the generic helper alone is not a drop-in replacement. Existing assertions require local and database identities to differ.",
+      "coverage_reference": "test/api/test_supervisor_typed_recovery_join.py:test_portal_guidance_joins_current_projection_and_retains_immutable_bytes",
+      "current_contracts": [
+        "task_sources/task_identity.py:canonical_task_identity",
+        "todo_daemon/implementation_daemon.py:TodoImplementationDaemon._identity_for_task",
+        "todo_daemon/database_portal_bridge.py:DatabasePortalExecutionBridge._projection_task_identity"
+      ],
+      "missing_symbol": "portal_task_identity",
+      "status": "unresolved; not requalified"
+    },
+    {
+      "additional_absent_api": "DatabasePortalExecutionBridge.recover_protected_path_retry",
+      "affected_test": "test/api/test_agent_supervisor_database_portal_protected_path_recovery.py",
+      "classification": "unresolved_legacy_same_attempt_recovery_api_contract",
+      "constraint": "Current cross-attempt preparation, retirement and adoption receipts are not equivalent to old same-attempt recover-and-retry behavior. Rearm predicate only observes absence after independent clearance and grants no clearance or retry authority.",
+      "coverage_reference": "test/api/test_agent_supervisor_database_portal_bridge.py current cross-attempt retirement/adoption and protected-fence rearm cases",
+      "current_contracts": [
+        "CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA",
+        "CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA",
+        "CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA",
+        "DatabasePortalExecutionBridge.protected_path_failure_rearm_ready"
+      ],
+      "missing_symbol": "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA",
+      "status": "unresolved; cannot classify entire legacy suite obsolete from this audit"
+    },
+    {
+      "affected_test": "test/api/test_candidate_rejection_closure.py",
+      "classification": "unresolved_runtime_and_test_contract_divergence",
+      "constraint": "Restoring only the test helper would hide absent runtime custody/fence and typed observation joins. Reuse independently owned native cleanup evidence; never fabricate a fence from model output or a bare dictionary.",
+      "coverage_reference": "test/api/test_agent_supervisor_grok_cleanup_integration.py also expects currently absent native prepared binding APIs; no execution claim is made",
+      "current_runtime_contract": "runtime/grok_cli_runner.py:_DockerContainerLease uses write_fd and pipe watchdog; _remove_exact_docker_container accepts exact-name removal without termination_fence argument",
+      "missing_expected_runtime_apis": [
+        "_docker_cleanup_binding_path",
+        "_docker_removal_dispatch_value",
+        "_create_bound_provider_container",
+        "agent_implementation_route.observe_agent_implementation_terminal_cleanup",
+        "agent_implementation_route.AgentImplementationTerminalCleanupEvidence"
+      ],
+      "missing_symbol": "_created_docker_termination_fence",
+      "missing_test_helper_owner": "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+      "present_partial_integration": [
+        "todo_daemon/candidate_rejection_closure.py:observe_provider_cleanup consumes the missing route observer/evidence type",
+        "control/provider_attempt_store.py:commit_terminal_cleanup_intent",
+        "control/provider_attempt_store.py:commit_terminal_cleanup_completion"
+      ],
+      "status": "unresolved; not a fixture-only failure"
+    }
+  ],
+  "limits": [
+    "No failing tests were rerun or relabeled passing.",
+    "Static source audit identifies missing contracts, not complete behavioral coverage.",
+    "The three original missing definitions are also absent at immutable source 9ffefe046, established by bounded git grep; absence alone does not establish intended migration or deletion history.",
+    "No model calls, container changes, service changes, source edits or authority changes."
+  ],
+  "new_test_runs": 0,
+  "read_only": true,
+  "retained_failure_logs": {
+    "qualification/lifecycle-captured-cas-dev-02.log": "f670dea90a51bbee0214535502bfd3aaee5ee96bc84add81feac4d1a8a51a806",
+    "qualification/native-provider-settlement-final-01.log": "c1e181bcdd4d9f7d9725b9d0cc65b9f5ac6683fb415d4059bdebd7bbaabaeb1f"
+  },
+  "schema": "preexisting-collection-contract-audit@1",
+  "source_bindings": {
+    "ipfs_accelerate_py/agent_implementation_route.py": "e16ece857516f5f04dedeb44b15b665ea18b77e9eba960d12de3dd7bddce8e25",
+    "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py": "b58aafdbfaae5d1acc1551db3aa9fe911cf92779856973cf18b8d0d3c6bb7c27",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "4246cf78a003a913bb458fec610868e23e4601a17c2ab71da0f6fd0f3002018b",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/candidate_rejection_closure.py": "76d33c9d29303c2fc6c89b0b336cede8b0d50195d55f69c8fd19bd46b2969317",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b",
+    "test/api/test_agent_supervisor_database_portal_protected_path_recovery.py": "c909638733d87eea8277e32cdad2e1d716f64cf94e4b70c981c93f0a055f8888",
+    "test/api/test_agent_supervisor_grok_cleanup_integration.py": "83a25da696ddb5db05cc5ded061d34f1c247d53c57921c36245a285f5c94b7c3",
+    "test/api/test_candidate_rejection_closure.py": "2b1cbb6285d1462478002a5a858644edb89fad705012d031f6404860f3056847",
+    "test/api/test_implementation_supervisor_control_plane_pool_lease.py": "d3d43cf050b65100b15bb02f6332703c0b95e6f2668ae4b2e2a1ee22dfa86e4c"
+  },
+  "source_clean": true,
+  "source_commit": "b966623d3de7457b4139e7d9235a5976f275dd46"
+}
