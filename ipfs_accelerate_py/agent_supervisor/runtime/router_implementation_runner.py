@@ -102,6 +102,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation prompt exceeds its byte bound")
     response_format = None
     task_contract = None
+    codex_planning_schema = None
+    codex_schema_projection = None
+    codex_planning_validator = None
+    if provider == "codex_cli" and purpose == "planning":
+        from .codex_planning_schema import planning_schema
+        selection = planning_schema(prompt)
+        if selection is not None:
+            codex_planning_schema, codex_schema_projection, codex_planning_validator = selection
     if provider == "grok_cli" and purpose == "planning":
         from ipfs_accelerate_py.cli_runtime.grok_structured_output import planning_response_format
         response_format = planning_response_format(prompt)
@@ -221,6 +229,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     failure_phase = "provider_invocation"
     provider_options = {}
+    if codex_planning_schema is not None:
+        provider_options["codex_output_schema"] = codex_planning_schema
+        receipt["provider_invocation_policy"] = {"structured_output": {
+            "schema": "codex-native-planning-json-schema@1",
+            "native_schema_projection": codex_schema_projection,
+            "native_schema_requested": True,
+            "response_schema_validated": False,
+            "plan_admitted": False,
+        }}
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
         # singleton followed by its explicit denial requests zero planning
@@ -277,6 +294,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
             raise RuntimeError("coding router returned an empty response")
+        if codex_planning_validator is not None:
+            if (observation.get("codex_output_schema_sha256") != codex_schema_projection["native_wire_schema_sha256"]
+                    or observation.get("codex_output_schema_bytes") != codex_schema_projection["native_wire_schema_bytes"]):
+                raise RuntimeError("Codex planning schema invocation metadata is missing or differs")
+            from .codex_planning_schema import validate_planning_response
+            output = validate_planning_response(output, codex_planning_validator)
+            receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if response_format is not None:
             # The shared adapter enforces this too. Keep the runner boundary
             # explicit in case an injected provider returns unchecked text.
@@ -317,6 +341,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["usage"] = {key: observation[key] for key in (
             "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens",
             "total_cost_usd", "model_id", "session_id", "thread_id", "num_turns", "exit_code", "timed_out",
+            "codex_output_schema_sha256", "codex_output_schema_bytes",
         ) if key in observation}
         if provider == "codex_cli":
             from .codex_usage_receipt import recover_codex_usage

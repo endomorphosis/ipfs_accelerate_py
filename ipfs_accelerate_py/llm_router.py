@@ -6242,6 +6242,7 @@ def build_codex_cli_command(
     bypass_approvals_and_sandbox: bool = False,
     skip_git_repo_check: bool = False,
     output_last_message: Optional[str | Path] = None,
+    output_schema: Optional[str | Path] = None,
     json_mode: bool = False,
     resume_session_id: Optional[str] = None,
 ) -> list[str]:
@@ -6302,6 +6303,10 @@ def build_codex_cli_command(
         command.extend(["-c", f"agents.max_depth={depth}"])
     if output_last_message is not None:
         command.extend(["--output-last-message", str(output_last_message)])
+    if output_schema is not None:
+        if not isinstance(output_schema, (str, Path)) or not str(output_schema).strip() or "\x00" in str(output_schema):
+            raise ValueError("Codex output_schema must be a nonempty file path")
+        command.extend(["--output-schema", str(output_schema)])
     if json_mode:
         command.append("--json")
     command.append("-")
@@ -6329,6 +6334,34 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             }:
                 raise ValueError("unsupported Codex reasoning_effort")
 
+            schema_requested = "codex_output_schema" in kwargs
+            schema_bytes = None
+            schema_observation = {}
+            if schema_requested:
+                schema = kwargs.pop("codex_output_schema")
+                if not isinstance(schema, Mapping) or len(schema) > 32_768:
+                    raise ValueError("codex_output_schema requires a bounded schema mapping")
+                from .cli_runtime.grok_structured_output import MAX_SCHEMA_BYTES, _bounded_json
+                from jsonschema.validators import validator_for
+
+                encoded = _bounded_json(dict(schema), MAX_SCHEMA_BYTES, schema=True)
+                snapshot = json.loads(encoded)
+                if snapshot.get("type") != "object":
+                    raise ValueError("codex_output_schema requires an object schema")
+                validator_class = (validator_for(snapshot, default=None) if "$schema" in snapshot
+                                   else validator_for(snapshot))
+                if validator_class is None:
+                    raise ValueError("codex_output_schema uses an unsupported dialect")
+                try:
+                    validator_class.check_schema(snapshot)
+                except Exception:
+                    raise ValueError("codex_output_schema is invalid") from None
+                schema_bytes = encoded.encode("utf-8")
+                schema_observation = {
+                    "codex_output_schema_sha256": hashlib.sha256(schema_bytes).hexdigest(),
+                    "codex_output_schema_bytes": len(schema_bytes),
+                }
+
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
             trace_dir = kwargs.pop("trace_dir", None)
             trace_enabled = bool(kwargs.pop("trace", False) or trace_jsonl_path or trace_dir)
@@ -6336,69 +6369,62 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             json_mode = bool(trace_enabled or kwargs.pop("json", True))
             resume_session_id = str(kwargs.pop("resume_session_id", "") or "").strip()
 
-            with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
-                last_msg_path = last_msg.name
-
+            last_msg_path = None
+            schema_path = None
             try:
-                cmd = build_codex_cli_command(
-                    model_name=model, reasoning_effort=reasoning_effort,
-                    sandbox=sandbox, skip_git_repo_check=skip_git_repo_check,
-                    output_last_message=last_msg_path, json_mode=json_mode,
-                    resume_session_id=resume_session_id,
-                )
-                proc = subprocess.run(
-                    cmd,
-                    input=str(prompt),
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                    timeout=timeout,
-                )
-            except FileNotFoundError as exc:
+                with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
+                    last_msg_path = last_msg.name
+                if schema_bytes is not None:
+                    with tempfile.NamedTemporaryFile(mode="wb", suffix=".schema.json", delete=False) as schema_file:
+                        schema_path = schema_file.name
+                        os.fchmod(schema_file.fileno(), 0o600)
+                        schema_file.write(schema_bytes)
                 try:
-                    os.unlink(last_msg_path)
-                except OSError:
-                    pass
-                raise LLMRouterError("codex CLI not found on PATH") from exc
-            except subprocess.TimeoutExpired as exc:
-                # A timed-out CLI may already have incurred usage. Preserve
-                # its native thread identity/partial accounting for the
-                # caller; do not turn a timeout into an observed exit code.
-                from .cli_runtime.cli_metadata import remember_cli_run
+                    cmd = build_codex_cli_command(
+                        model_name=model, reasoning_effort=reasoning_effort,
+                        sandbox=sandbox, skip_git_repo_check=skip_git_repo_check,
+                        output_last_message=last_msg_path, json_mode=json_mode,
+                        resume_session_id=resume_session_id,
+                        **({"output_schema": schema_path} if schema_requested else {}),
+                    )
+                    proc = subprocess.run(
+                        cmd,
+                        input=str(prompt),
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        timeout=timeout,
+                    )
+                except FileNotFoundError as exc:
+                    raise LLMRouterError("codex CLI not found on PATH") from exc
+                except subprocess.TimeoutExpired as exc:
+                    # Preserve partial native accounting without inventing an
+                    # exit code or downgrading a requested structured result.
+                    from .cli_runtime.cli_metadata import remember_cli_run
 
-                def partial_text(value):
-                    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
+                    def partial_text(value):
+                        return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
 
-                try:
                     remember_cli_run(
                         "codex_cli", partial_text(exc.stdout), partial_text(exc.stderr),
                         extra={"model_id": model, "timed_out": True,
                                "session_id": resume_session_id,
-                               "reasoning_effort": reasoning_effort},
+                               "reasoning_effort": reasoning_effort,
+                               **schema_observation},
                     )
-                finally:
-                    try:
-                        os.unlink(last_msg_path)
-                    except OSError:
-                        pass
-                raise
-            except BaseException:
+                    raise
                 try:
-                    os.unlink(last_msg_path)
-                except OSError:
-                    pass
-                raise
-
-            try:
-                with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
-                    text_out = handle.read().strip()
-            except Exception:
-                text_out = ""
-            finally:
-                try:
-                    os.unlink(last_msg_path)
+                    with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
+                        text_out = handle.read().strip()
                 except Exception:
-                    pass
+                    text_out = ""
+            finally:
+                for temporary in (last_msg_path, schema_path):
+                    if temporary is not None:
+                        try:
+                            os.unlink(temporary)
+                        except OSError:
+                            pass
 
             try:
                 from .cli_runtime.cli_metadata import remember_cli_run
@@ -6412,12 +6438,13 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         "exit_code": proc.returncode,
                         "session_id": resume_session_id,
                         "reasoning_effort": reasoning_effort,
+                        **schema_observation,
                     },
                 )
             except Exception:
                 pass
 
-            if proc.returncode == 0 or text_out:
+            if proc.returncode == 0 or (text_out and not schema_requested):
                 if json_mode and proc.stdout:
                     extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
                     if extracted:
