@@ -32,6 +32,10 @@ from .terminal_semantic_transport_policy import (
     DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema,
     semantic_transport_selection, require_semantic_transport_archive,
 )
+from .terminal_coding_reply_policy import (
+    DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode, require_coding_reply_archive,
+    coding_reply_selection,
+)
 
 
 def measured_usage(report: dict) -> dict:
@@ -263,12 +267,15 @@ class FullSupervisorAgent(BaseAgent):
                  intent_requirement_contract: dict | None = None, resource_profile=None,
                  setup_cache_selection: dict | None = None, task_profile: dict | None = None,
                  provider_profile: str | None = None,
-                 semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, **kwargs):
+                 semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+                 coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+        self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
+            arm=arm, provider=selected_provider["provider"])
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
@@ -319,6 +326,9 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_transport_archive(manifest,
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
+        reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
+            arm=self.arm, provider=selected_provider["provider"])
+        require_coding_reply_archive(manifest, reply_mode)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -353,6 +363,9 @@ class FullSupervisorAgent(BaseAgent):
         transport = validate_semantic_transport_schema(
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=self.arm)
         require_semantic_transport_archive(manifest, transport)
+        reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
+            arm=self.arm, provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_coding_reply_archive(manifest, reply_mode)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -375,6 +388,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--provider-profile", provider_profile]
         if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
             argv += ["--semantic-transport-schema", transport]
+        if reply_mode != DEFAULT_CODING_REPLY_MODE:
+            argv += ["--coding-reply-mode", reply_mode]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -406,6 +421,7 @@ class FullSupervisorAgent(BaseAgent):
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
+                            **coding_reply_selection(reply_mode),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,

@@ -61,11 +61,15 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "semantic_transport_schema" in kwargs:
             from .terminal_semantic_transport_policy import validate_semantic_transport_schema
             validate_semantic_transport_schema(kwargs["semantic_transport_schema"], arm=kwargs.get("arm"))
+        if "coding_reply_mode" in kwargs:
+            from .terminal_coding_reply_policy import validate_coding_reply_mode
+            validate_coding_reply_mode(kwargs["coding_reply_mode"], arm=kwargs.get("arm"),
+                                      provider=selected["provider"])
         if "task_profile" in kwargs:
             from .terminal_task_profile import validate_task_profile
             validate_task_profile(kwargs["task_profile"])

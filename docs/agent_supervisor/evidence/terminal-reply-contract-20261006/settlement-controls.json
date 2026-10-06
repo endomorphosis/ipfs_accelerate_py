@@ -1,0 +1,587 @@
+{
+  "artifacts": [
+    {
+      "bytes": 11116,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.xml",
+      "sha256": "47c540540a0bfb9e75b100a34f78d6eeb65181c1b6cac2f998a50581445d7e28"
+    },
+    {
+      "bytes": 3027,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.stdout",
+      "sha256": "9a40ece8dd298a95e80e052160bbb8e711db43a6215ec7cdf5a11a60a22af9b5"
+    },
+    {
+      "bytes": 0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "cases": [
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_actual_router_timeout_settles_native_failure_without_retry[False-False]",
+      "passed": true,
+      "seconds": "5.827"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_actual_router_timeout_settles_native_failure_without_retry[False-True]",
+      "passed": true,
+      "seconds": "5.130"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_actual_router_timeout_settles_native_failure_without_retry[True-False]",
+      "passed": true,
+      "seconds": "5.160"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_actual_router_timeout_settles_native_failure_without_retry[True-True]",
+      "passed": true,
+      "seconds": "5.179"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[False]",
+      "passed": true,
+      "seconds": "7.625"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[True]",
+      "passed": true,
+      "seconds": "6.928"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_detached_new_session_child_outside_checkout_prevents_settlement",
+      "passed": true,
+      "seconds": "0.068"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_preexisting_child_is_preserved_and_disables_custody",
+      "passed": true,
+      "seconds": "0.003"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[foreign_authority]",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[changed_result]",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[fake_process]",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[group_alive]",
+      "passed": true,
+      "seconds": "0.066"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[group_denied]",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[owner_birth]",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_rejects_uncertain_custody[children_unknown]",
+      "passed": true,
+      "seconds": "0.033"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_native_exit_capability_is_one_use",
+      "passed": true,
+      "seconds": "0.034"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_settled_callback_replays_after_response_loss_without_provider_dispatch",
+      "passed": true,
+      "seconds": "5.314"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[foreign_exception]",
+      "passed": true,
+      "seconds": "2.063"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[claim]",
+      "passed": true,
+      "seconds": "2.085"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[fence]",
+      "passed": true,
+      "seconds": "2.113"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[state]",
+      "passed": true,
+      "seconds": "2.222"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[events]",
+      "passed": true,
+      "seconds": "2.053"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[projection]",
+      "passed": true,
+      "seconds": "2.212"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[cas_intent]",
+      "passed": true,
+      "seconds": "2.126"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[stale_source]",
+      "passed": true,
+      "seconds": "2.080"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[later_effect]",
+      "passed": true,
+      "seconds": "2.063"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_bridge_capability_cannot_cross_changed_authority[altered_native]",
+      "passed": true,
+      "seconds": "2.048"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_forged_native_result_without_process_capability_stays_unknown",
+      "passed": true,
+      "seconds": "2.232"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_child_census_thread_churn_never_proves_absence",
+      "passed": true,
+      "seconds": "0.001"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_disabled_subreaper_never_proves_absence",
+      "passed": true,
+      "seconds": "0.002"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_pooled_release_failure_cannot_reload_or_settle_another_owner",
+      "passed": true,
+      "seconds": "4.540"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_signed_native_router_failure_settles_failed_attempt_and_releases_claim[timeout]",
+      "passed": true,
+      "seconds": "12.226"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_signed_native_router_failure_settles_failed_attempt_and_releases_claim[postdecode]",
+      "passed": true,
+      "seconds": "12.558"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_settlement_rechecks_live_typed_admission_before_persisting_failure[phase]",
+      "passed": true,
+      "seconds": "2.045"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_settlement_rechecks_live_typed_admission_before_persisting_failure[attestation]",
+      "passed": true,
+      "seconds": "1.765"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_settlement_rechecks_live_typed_admission_before_persisting_failure[source_revision]",
+      "passed": true,
+      "seconds": "1.969"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_settlement_rechecks_live_typed_admission_before_persisting_failure[released_lease]",
+      "passed": true,
+      "seconds": "2.026"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_missing_captured_record_never_reports_finalization[False]",
+      "passed": true,
+      "seconds": "0.013"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_missing_captured_record_never_reports_finalization[True]",
+      "passed": true,
+      "seconds": "0.019"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_exact_present_terminal_capture_requires_actual_compare_delete",
+      "passed": true,
+      "seconds": "0.021"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[transition-lane_id]",
+      "passed": true,
+      "seconds": "0.011"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[transition-branch]",
+      "passed": true,
+      "seconds": "0.011"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[transition-owner]",
+      "passed": true,
+      "seconds": "0.011"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[transition-created_at]",
+      "passed": true,
+      "seconds": "0.012"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[delete-lane_id]",
+      "passed": true,
+      "seconds": "0.019"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[delete-branch]",
+      "passed": true,
+      "seconds": "0.021"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[delete-owner]",
+      "passed": true,
+      "seconds": "0.022"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[delete-created_at]",
+      "passed": true,
+      "seconds": "0.022"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[active-lane_id]",
+      "passed": true,
+      "seconds": "0.015"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[active-branch]",
+      "passed": true,
+      "seconds": "0.014"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[active-owner]",
+      "passed": true,
+      "seconds": "0.013"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[active-created_at]",
+      "passed": true,
+      "seconds": "0.015"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[rebind-lane_id]",
+      "passed": true,
+      "seconds": "0.017"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[rebind-branch]",
+      "passed": true,
+      "seconds": "0.017"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[rebind-owner]",
+      "passed": true,
+      "seconds": "0.018"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[rebind-created_at]",
+      "passed": true,
+      "seconds": "0.017"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[same_path_rebind-lane_id]",
+      "passed": true,
+      "seconds": "0.016"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[same_path_rebind-branch]",
+      "passed": true,
+      "seconds": "0.017"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[same_path_rebind-owner]",
+      "passed": true,
+      "seconds": "0.016"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_full_record_cas_rejects_same_record_id_lease_and_fence[same_path_rebind-created_at]",
+      "passed": true,
+      "seconds": "0.016"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_replacement_between_terminal_cas_and_delete_is_retained",
+      "passed": true,
+      "seconds": "0.049"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_clearing_active_capture_never_clears_reused_tokens_from_another_owner",
+      "passed": true,
+      "seconds": "0.024"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_native_failure_cannot_settle_after_peer_replaces_captured_workspace[False]",
+      "passed": true,
+      "seconds": "4.606"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_native_failure_cannot_settle_after_peer_replaces_captured_workspace[True]",
+      "passed": true,
+      "seconds": "4.542"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_exact_capture_can_move_to_pool_activate_and_finalize",
+      "passed": true,
+      "seconds": "0.036"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_daemon_pool_rebind_does_not_adopt_reused_owner_tokens",
+      "passed": true,
+      "seconds": "0.031"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_native_provider_is_not_started_after_replacement_before_activation[False]",
+      "passed": true,
+      "seconds": "3.350"
+    },
+    {
+      "classname": "api.test_lifecycle_captured_settlement",
+      "name": "test_native_provider_is_not_started_after_replacement_before_activation[True]",
+      "passed": true,
+      "seconds": "3.478"
+    }
+  ],
+  "claims": {
+    "automatic_retries": false,
+    "benchmark_task_state_overrides": false,
+    "cached_input_already_in_input": true,
+    "native_fences_state_events_lifecycle_unchanged": true,
+    "partial_candidate_not_accepted": true,
+    "pooled_and_detached_postdecode_custody": true,
+    "postdecode_cli_exit_zero": true,
+    "postdecode_native_usage_completed": true,
+    "postdecode_router_exit_nonzero": true,
+    "postdecode_usage_tokens_per_fixture": 19,
+    "signed_native_start_owner_stop_postdecode": true
+  },
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "test/api/test_native_provider_failure_settlement.py",
+    "test/integration/test_admitted_native_provider_failure_settlement.py",
+    "test/api/test_lifecycle_captured_settlement.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.duckdb",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "exit_code": 0,
+  "finished_at_utc": "2026-10-06T14:38:10.011253+00:00",
+  "hidden_evaluation_reads": 0,
+  "junit_suites": [
+    {
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "68",
+      "time": "153.010"
+    }
+  ],
+  "limitations": [
+    "Offline authored fixtures qualify source behavior, not a fresh Terminal Bench outcome.",
+    "Raw authored pytest logs remain local; publication should use this closed receipt."
+  ],
+  "new_real_provider_calls": 0,
+  "passed": true,
+  "private_database_reads": 0,
+  "provider_boundary": "authored executable and timeout fixtures; real router/Portal/native owner",
+  "schema": "terminal-postdecode-native-settlement-qualification@1",
+  "seconds": 156.09405046200845,
+  "source_bindings_after": [
+    {
+      "bytes": 32400,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "2bca146e56701408c6ee34662cd40e70d4beb2d50d652086fc9f8a6eaa0b9579"
+    },
+    {
+      "bytes": 15059,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "3c9e8a119862f60f56fcc6253f0ca56da199b7739714534395d8900677c65f74"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    {
+      "bytes": 6089,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    }
+  ],
+  "source_bindings_before": [
+    {
+      "bytes": 32400,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "2bca146e56701408c6ee34662cd40e70d4beb2d50d652086fc9f8a6eaa0b9579"
+    },
+    {
+      "bytes": 15059,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "3c9e8a119862f60f56fcc6253f0ca56da199b7739714534395d8900677c65f74"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    {
+      "bytes": 6089,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    }
+  ],
+  "source_bindings_stable": true,
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "started_at_utc": "2026-10-06T14:35:33.913708+00:00"
+}

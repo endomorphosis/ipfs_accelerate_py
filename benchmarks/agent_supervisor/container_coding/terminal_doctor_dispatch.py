@@ -177,10 +177,16 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
 
 def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: int,
                         semantic_repository: Path | None, doctor: dict | None,
-                        semantic_transport_schema: str = "supervisor-semantic-router-input@1") -> list[str]:
+                        semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+                        coding_reply_mode: str = "legacy") -> list[str]:
     """Closed choice that the admitted launch signs before any worker starts."""
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
+    from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
+    validate_coding_reply_mode(coding_reply_mode)
+    if coding_reply_mode != DEFAULT_CODING_REPLY_MODE and (semantic_repository is None
+            or doctor is not None and doctor.get("route") != "model_router"):
+        raise ValueError("ordinary completion requires a semantic model-router coding route")
     if (semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
             and (semantic_repository is None or doctor is not None and doctor.get("route") != "model_router")):
         raise ValueError("controller dictionary transport requires a semantic model-router coding route")
@@ -201,6 +207,8 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             *(["--semantic-repository", str(semantic_repository)] if semantic_repository is not None else []),
             *(["--semantic-transport-schema", semantic_transport_schema]
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),
+            *(["--coding-reply-mode", coding_reply_mode]
+              if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--doctor-residual-artifact", doctor["residual_context"]["artifact"],
                "--doctor-residual-sha256", doctor["residual_context"]["sha256"],
                "--doctor-residual-task-cid", doctor["residual_context"]["task_cid"]]

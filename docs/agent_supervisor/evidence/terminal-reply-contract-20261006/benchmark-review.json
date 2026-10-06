@@ -1,0 +1,262 @@
+{
+  "schema": "terminal-coding-reply-plumbing-independent-review@1",
+  "reviewer": "/root/coding_reply_contract",
+  "created_at_utc": "2026-10-06T14:49:09.957823+00:00",
+  "reviewed_worktree": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006",
+  "reviewed_worktree_base_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "review_mode": "read_only_source_and_authored_offline_test_artifacts",
+  "passed": true,
+  "failure_count": 0,
+  "source_bindings": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "bytes": 3057,
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "bytes": 30585,
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "bytes": 32372,
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "bytes": 65871,
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "bytes": 13283,
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "bytes": 27534,
+      "sha256": "874931cf177fbd0ad4f45d91909e74375a7053beb97796165d650e8336138a48",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "bytes": 33368,
+      "sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "bytes": 12019,
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489",
+      "role": "reviewed_root_benchmark_source"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "bytes": 5423,
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0",
+      "role": "bound_dependency"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "bytes": 34785,
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e",
+      "role": "bound_dependency"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "bytes": 37780,
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd",
+      "role": "bound_dependency"
+    },
+    {
+      "path": "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "bytes": 7870,
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec",
+      "role": "bound_dependency"
+    },
+    {
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "bytes": 553806,
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659",
+      "role": "bound_dependency"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+      "bytes": 9631,
+      "sha256": "d8273343bda10dce364f80475836fc020893e7a6c4027b84ffb808979b2fd641",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "bytes": 3871,
+      "sha256": "ca4ff3754926d1c0a2150ec747faca4ca088407187d82663bb17de39ce6cef24",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+      "bytes": 11619,
+      "sha256": "1b5658f426acde040cdb2cc71f80dd67cc1cb54e1663b79dcef58bb31b788189",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py",
+      "bytes": 3196,
+      "sha256": "16ebb80bec0d06724356da4e45289f17982067c51a106de9dfa18fedb50eaadc",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "bytes": 14018,
+      "sha256": "494e0f439ae7eb6e5289c5cf1d1fdd606681c050e8c65241e66d83ea224d58c1",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "test/api/test_container_worker_timeout_contract.py",
+      "bytes": 7027,
+      "sha256": "78b1757dc642ba05ec3c0eb2601b4bb3da5101c4a5ed6acf120d0f3b98c35999",
+      "role": "reviewed_focused_test"
+    },
+    {
+      "path": "pytest.ini",
+      "bytes": 3556,
+      "sha256": "a4b1418743a539807d0c2d90fb1fa986d0811cd3d1c3ea287885f8dbf028c10a",
+      "role": "bound_dependency"
+    }
+  ],
+  "artifact_bindings": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-01-command.json",
+      "bytes": 1417,
+      "sha256": "05b81a757f59df74575d473fee213cfad009d439083362a499c2c35207b0325e"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-01-exit.json",
+      "bytes": 76,
+      "sha256": "9c55d8c7ac7250f5db4799cb5dadfd409031ee04a97b7b48af0a852436093cee"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-01.log",
+      "bytes": 42463,
+      "sha256": "d02a2558f831517943b3117584fe3b4e8ae2a32c009bb9749c4762344bc43311"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-01.xml",
+      "bytes": 27749,
+      "sha256": "8aed72897be20757a79d403efd4c0dd1969066311a99a26e20b80d38951fdf3e"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02-command.json",
+      "bytes": 1417,
+      "sha256": "8f7b773c8932e6c079e621b30246626f030e74e8f6d4ee0663916eb52e6eb480"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02-exit.json",
+      "bytes": 76,
+      "sha256": "768fb3ebcd53b19e26ad260f7f5290c369da3aa9a28c407c74765eea498ee036"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02.log",
+      "bytes": 20472,
+      "sha256": "41e1c830d6149feb8c57dbd59dd19f0ad5e6c1f893a5b98ff43173d9a14568eb"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02.xml",
+      "bytes": 17459,
+      "sha256": "d31930acd3e24d6140f4bb9b00efcd30f268227befa78546c60b4d84b28bad75"
+    }
+  ],
+  "root_offline_qualification": {
+    "run": "benchmark-reply-tests-02",
+    "exit_code": 0,
+    "tests_passed": 93,
+    "test_counts_by_module": {
+      "benchmarks.agent_supervisor.container_coding.test_terminal_coding_reply_policy": 17,
+      "benchmarks.agent_supervisor.container_coding.test_terminal_coding_reply_audit": 10,
+      "benchmarks.agent_supervisor.container_coding.test_terminal_semantic_transport_policy": 20,
+      "benchmarks.agent_supervisor.container_coding.test_terminal_translation_audit": 2,
+      "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit": 19,
+      "test.api.test_container_worker_timeout_contract": 25
+    },
+    "native_or_remote_provider_calls": 0
+  },
+  "independence": {
+    "root_benchmark_sources_authored_by_reviewer": false,
+    "root_focused_tests_authored_by_reviewer": false,
+    "runtime_coding_reply_contract_and_runner_authored_by_reviewer": true,
+    "runtime_authoring_excluded_from_independent_review_claim": true,
+    "source_or_test_edits_during_review": 0
+  },
+  "resolved_findings": [
+    {
+      "id": "decoder_and_metadata_archive_custody",
+      "status": "resolved",
+      "evidence": "Opt-in archive guard now binds strict semantic decoder and CLI metadata sanitizer alongside complete coding provider path for @1 and @2."
+    },
+    {
+      "id": "contract_audit_static_types",
+      "status": "resolved",
+      "evidence": "All static contract fields require exact Python types and literal values; bool-to-int and static int-to-float replacements are rejected in focused fixtures."
+    },
+    {
+      "id": "declared_controls_mode_allowlist",
+      "status": "resolved",
+      "evidence": "First focused run exposed two config/control failures. Explicit owner-selected mode is now validated by benchmark_controls before sealed config controls; both @1/@2 cases pass run02."
+    }
+  ],
+  "checks": [
+    {
+      "area": "default_compatibility",
+      "passed": true,
+      "evidence": "Legacy selection yields empty dictionary; no coding reply config/metadata/driver/worker/provider options are added by default. Existing @1 and @2 byte projections remain unchanged."
+    },
+    {
+      "area": "prepared_selection_and_execute",
+      "passed": true,
+      "evidence": "Preparation selects and archive-qualifies mode, seals full config and records selection. Execute rechecks configuration, archive and manifest identities, mode equality and current source capability before Harbor invocation; collect reports equality and preserves default omissions."
+    },
+    {
+      "area": "adapter_preupload_and_metadata",
+      "passed": true,
+      "evidence": "Both adapter setup and run recheck source-qualified mode before task bootstrap/runtime or instruction uploads. Run forwards explicit flag only when selected and stores selection in AgentContext.metadata."
+    },
+    {
+      "area": "driver_worker_and_signed_route",
+      "passed": true,
+      "evidence": "Driver validates full/Codex selection, records mode and places it into signed implementation argv. Worker argparse is closed and refuses ordinary mode for Grok, planning, preflight, absent semantic repository and local candidate routes; router flag forwarding is explicit."
+    },
+    {
+      "area": "final_input_replay",
+      "passed": true,
+      "evidence": "Audit reconstructs semantic context, residual/public instruction blocks and workspace advisory, then applies fixed final suffix. It checks before/after hashes and byte counts, suffix and schema digest/count and complete model input identity. Historical source changes and removed allocated workspace do not turn replay into an operational freshness claim."
+    },
+    {
+      "area": "failure_and_authority",
+      "passed": true,
+      "evidence": "Mode and audit metadata grant no execution, completion, replay or settlement authority. A missing contract is rejected when it leaves unexplained suffix bytes; unknown modes and invalid routes refuse before provider dispatch. Reserved semantic decoder and native validators remain independent."
+    }
+  ],
+  "required_future_live_qualification": [
+    "Apply the same ordinary completion mode to both representation arms from one newly pinned runtime.",
+    "Require actual coding router receipt mode to equal prepared/config/AgentContext selection, contract response_validated and native policy response_schema_validated to be true, and observed native CLI schema sha/bytes to equal requested contract values.",
+    "Require original task reward, native candidate/effect/admission checks, cleanup and complete native usage before any savings qualification.",
+    "Count fixed 506-byte final instruction plus provider schema overhead and all native subsequent turns, outputs and cached input once within input."
+  ],
+  "limitations": [
+    "This is an independent review of root benchmark plumbing and focused offline tests; the reviewer authored the runtime contract and runner integration, which are bound dependencies and require a separate reviewer.",
+    "No fresh Terminal Bench model execution or successful live contract generation is established.",
+    "The final input replay excludes provider system/harness context and is observation only.",
+    "collect.complete_single_trial_receipt denotes completeness and selected config equality; it does not establish actual dispatch/output schema custody or task correctness."
+  ],
+  "provider_calls": 0,
+  "new_benchmark_runs": 0,
+  "private_database_reads": 0,
+  "raw_provider_response_reads": 0,
+  "raw_transcript_reads": 0,
+  "hidden_evaluation_reads": 0
+}

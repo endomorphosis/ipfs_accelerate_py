@@ -1,0 +1,119 @@
+{
+  "checks": {
+    "final_entrypoint_3_passed": true,
+    "fresh_seal_databases_differ": true,
+    "full_control_suite_68_passed": true,
+    "no_real_provider_calls": true,
+    "runtime_and_unchanged_control_source_equal_between_runs": true,
+    "same_source_head": true,
+    "source_bindings_stable_during_both_runs": true
+  },
+  "created_at_utc": "2026-10-06T14:40:43.878865+00:00",
+  "final_cases": [
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[False]",
+      "passed": true,
+      "seconds": "7.588"
+    },
+    {
+      "classname": "api.test_native_provider_failure_settlement",
+      "name": "test_completed_cli_postdecode_failure_settles_without_accepting_partial_edit[True]",
+      "passed": true,
+      "seconds": "6.620"
+    },
+    {
+      "classname": "integration.test_admitted_native_provider_failure_settlement",
+      "name": "test_signed_native_router_failure_settles_failed_attempt_and_releases_claim[postdecode]",
+      "passed": true,
+      "seconds": "13.765"
+    }
+  ],
+  "final_source_bindings": [
+    {
+      "bytes": 33170,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "4d625478411db081f537f6e040dea87c21965c29a3431a7f1622a26c70a436ad"
+    },
+    {
+      "bytes": 15486,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "cbbe4b35cd00c44d4e06064609d3d7f166f2bd04937f34d56bdcaee0c0088e78"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 553806,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b"
+    },
+    {
+      "bytes": 6089,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "4e7bf8aacd705637413902c72c95f06d24a6acd8b7865648d49302b2e8c01037"
+    }
+  ],
+  "hidden_evaluation_reads": 0,
+  "limitations": [
+    "The 68-case full qualification preceded a test-only improvement to invoke runner.main and bind the actual authored task alias. Three final postdecode cases then ran freshly against the final test source.",
+    "Usage quantities are authored fixture values (19 tokens including 5 cached input tokens), not billed LLM usage.",
+    "Offline qualification establishes current source behavior, not a new Terminal Bench reward or token saving.",
+    "No native runtime implementation or benchmark-side task status override was added."
+  ],
+  "new_real_provider_calls": 0,
+  "passed": true,
+  "private_database_reads": 0,
+  "qualified_behavior": [
+    "Authored Codex executable writes a partial candidate, completes one native cumulative usage record, and exits zero.",
+    "The production router main entrypoint rejects its reserved reply with SemanticTranslationError, semantic_response_decode, response_envelope_binding_mismatch and exits nonzero.",
+    "Router failure retains exact authored input/output/cache totals and a closed diagnostic without the foreign response value.",
+    "Pooled and detached native Portal paths require waited child, empty process group/subreaper children, captured finalized lifecycle, sealed state/events and exact one-use capabilities.",
+    "The native database owner persists failed_outcome_settled, fails the attempt, blocks the task, releases its claim and rejects the partial edit without automatic provider retry.",
+    "Signed native START/Quack owner/STOP preserves typed admission and native fences; the postdecode task reaches terminal failure within the fixture 15-second budget after observing CLI dispatch; clean STOP removes process members.",
+    "Existing foreign authority, altered result, missing/fake child custody, descendant escape, stale state/event/projection, replaced lifecycle and typed admission controls remain restrictive."
+  ],
+  "receipt_bindings": [
+    {
+      "bytes": 21810,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-02.json",
+      "sha256": "e47cf39b908d6d5d707fb416ebc65f3374c8c442fb6aadcf7c5f95e7ab005767"
+    },
+    {
+      "bytes": 7874,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/postdecode-settlement-qualification-03.json",
+      "sha256": "a02d1f6b378bd155f4e3b5749a99577cec6e9309c2c4f821eaaf4fd7bbad2091"
+    }
+  ],
+  "schema": "terminal-postdecode-native-settlement-summary@1",
+  "source_edits": {
+    "owned_tests": [
+      "test/api/test_native_provider_failure_settlement.py",
+      "test/integration/test_admitted_native_provider_failure_settlement.py"
+    ],
+    "runtime": 0
+  },
+  "source_head": "d5c59e961d1a0ca8d09296b520cbd414a2078235"
+}

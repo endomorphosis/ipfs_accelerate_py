@@ -579,6 +579,7 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
 def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+        coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -598,6 +599,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     provider_selection = resolve_provider_profile(provider_profile)
+    from .terminal_coding_reply_policy import validate_coding_reply_mode, coding_reply_selection
+    validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=provider_selection["provider"])
     budget = execution_budget(resource_profile)
     if timeout_seconds is None:
         timeout_seconds = budget["driver_seconds"]
@@ -647,6 +650,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
+              **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -818,7 +822,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             reasoning=provider_selection["reasoning_effort"],
             timeout=implementation_budget,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
-            semantic_transport_schema=semantic_transport_schema)
+            semantic_transport_schema=semantic_transport_schema,
+            coding_reply_mode=coding_reply_mode)
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
         if report["implementation_route"] == "model_router":
@@ -1028,6 +1033,9 @@ def main():
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
+    from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
+    parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
+        default=DEFAULT_CODING_REPLY_MODE)
     parser.add_argument("--resource-profile", choices=PROFILES)
     parser.add_argument("--model-snapshot", type=Path)
     parser.add_argument("--model-revision", default="")

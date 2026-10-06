@@ -1,0 +1,308 @@
+{
+  "audit_truth_flags_are_authored_metadata_fixtures": true,
+  "authored_fixture_root": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/authored-accounting-fixtures-02",
+  "checks": [
+    {
+      "name": "authored_valid_selected_contract_and_full_arm_metadata",
+      "passed": true
+    },
+    {
+      "name": "authored_both_transports_same_mode_generation_and_full_input_suffix",
+      "passed": true
+    },
+    {
+      "name": "authored_negative_missing_schema_metadata",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_trusted_cli_schema_digest_and_size"
+      ]
+    },
+    {
+      "name": "authored_negative_foreign_schema_metadata",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_trusted_cli_schema_digest_and_size"
+      ]
+    },
+    {
+      "name": "authored_negative_foreign_contract_schema",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape",
+        "coding_reply_trusted_cli_schema_digest_and_size"
+      ]
+    },
+    {
+      "name": "authored_negative_owner_selected_int",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape"
+      ]
+    },
+    {
+      "name": "authored_negative_authority_int",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape"
+      ]
+    },
+    {
+      "name": "authored_negative_response_validated_int",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_successful_response"
+      ]
+    },
+    {
+      "name": "authored_negative_instruction_bytes_float",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape",
+        "complete_appended_prompt_byte_accounting"
+      ]
+    },
+    {
+      "name": "authored_negative_schema_bytes_float",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_trusted_cli_schema_digest_and_size"
+      ]
+    },
+    {
+      "name": "authored_negative_before_bytes_bool",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_complete_final_prompt_identity_and_overhead"
+      ]
+    },
+    {
+      "name": "authored_negative_extra_authority_field",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape"
+      ]
+    },
+    {
+      "name": "authored_negative_policy_extra_authority",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_native_generation_policy_closed"
+      ]
+    },
+    {
+      "name": "authored_negative_policy_wrapper_extra_authority",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_native_generation_policy_closed"
+      ]
+    },
+    {
+      "name": "authored_negative_policy_boolean_int",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_native_generation_policy_closed"
+      ]
+    },
+    {
+      "name": "authored_negative_missing_contract",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_contract_exact_closed_static_shape",
+        "coding_reply_contract_successful_response",
+        "coding_reply_trusted_cli_schema_digest_and_size",
+        "coding_reply_complete_final_prompt_identity_and_overhead",
+        "complete_appended_prompt_byte_accounting"
+      ]
+    },
+    {
+      "name": "authored_negative_selected_mode_drift",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_mode_consistent_in_owner_and_native_metadata",
+        "coding_reply_mode_explicitly_selected_in_both_owner_and_native_metadata"
+      ]
+    },
+    {
+      "name": "authored_negative_missing_mode",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_mode_consistent_in_owner_and_native_metadata",
+        "coding_reply_mode_explicitly_selected_in_both_owner_and_native_metadata"
+      ]
+    },
+    {
+      "name": "authored_negative_missing_audited_before_digest",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_full_input_audit_includes_contract_before_after"
+      ]
+    },
+    {
+      "name": "authored_negative_suffix_arithmetic_drift",
+      "passed": true,
+      "rejected_by": [
+        "coding_reply_complete_final_prompt_identity_and_overhead"
+      ]
+    },
+    {
+      "name": "authored_unsuccessful_coder_retains_complete_failed_cost",
+      "passed": true
+    },
+    {
+      "name": "authored_interrupted_coder_preserves_unknown_total_and_known_subtotal",
+      "passed": true
+    }
+  ],
+  "control_producer_sha256": "a3db8918e30111cb2a7856080969d246de57871ce594e94d4eb54f2930166471",
+  "fixtures_are_not_benchmark_results": true,
+  "fresh_token_savings_measured": false,
+  "input_bindings": [
+    {
+      "bytes": 203394,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+      "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+    },
+    {
+      "bytes": 63346,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/preparation.json",
+      "sha256": "b5599a07b9d37749bc7564483101fccd30072a1109e7cd5272d0d3c2b3eef7b3"
+    },
+    {
+      "bytes": 3439,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/config.json",
+      "sha256": "ce57b1167f8fa062e8eed0369dcfe505380c48fb2c5e73182a5fb22e8c7e288c"
+    },
+    {
+      "bytes": 91105,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/jobs/supervisor-full-largest-eigenval/largest-eigenval__4LQEkbK/result.json",
+      "sha256": "18e4366abdfd7fa51c82cf7e627cd3d4b693b66b449f4e1ae1803b8b87ef4f73"
+    },
+    {
+      "bytes": 1142,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/jobs/supervisor-full-largest-eigenval/result.json",
+      "sha256": "38e40907b35461f2d5280e0f53dfe67816ecea183271749d0e9755848d34309e"
+    },
+    {
+      "bytes": 6235827,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/bundle-02/manifest.json",
+      "sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74"
+    }
+  ],
+  "old_comparator_and_history_modified": false,
+  "passed": true,
+  "producer_sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6",
+  "real_benchmark_runs": 0,
+  "real_provider_calls": 0,
+  "recorded_at_utc": "2026-10-06T14:53:19.797346+00:00",
+  "reused_comparison_sources": [
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 38444,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "0494f2c7bdf7f223dd7748582d517dc6725d093fdaad24d15fb36c06721c62c8"
+    }
+  ],
+  "schema": "coding-reply-contract-accounting-authored-controls@1",
+  "source_bindings": [
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 27534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "874931cf177fbd0ad4f45d91909e74375a7053beb97796165d650e8336138a48"
+    },
+    {
+      "bytes": 30585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 3057,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 65871,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 33368,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a"
+    },
+    {
+      "bytes": 13283,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    {
+      "bytes": 115963,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    },
+    {
+      "bytes": 6186,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 5423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 7870,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    {
+      "bytes": 13799,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-20261006/ipfs_accelerate_py/llm_router.py",
+      "relative_path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    }
+  ]
+}

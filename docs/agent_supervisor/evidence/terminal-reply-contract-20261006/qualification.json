@@ -1,0 +1,190 @@
+{
+  "accounting_controls": {
+    "passed": 22,
+    "prior_comparison_and_receipts_preserved": true,
+    "receipt": "accounting-controls.json"
+  },
+  "coding_reply_mode": "ordinary-completion@1",
+  "contract_instruction_bytes": 506,
+  "contract_tests": {
+    "passed": 92,
+    "receipt": "contract-tests.json"
+  },
+  "default_reply_mode": "legacy",
+  "documentation_checks": {
+    "diff_check_passed": true,
+    "maintained_surface_gate_exit": 0,
+    "new_readme_relative_links_passed": true,
+    "public_json_parse_passed": true,
+    "public_python_ast_passed": true
+  },
+  "focused_regressions": [
+    {
+      "bindings": [
+        {
+          "bytes": 17459,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02.xml",
+          "sha256": "d31930acd3e24d6140f4bb9b00efcd30f268227befa78546c60b4d84b28bad75"
+        },
+        {
+          "bytes": 20472,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02.log",
+          "sha256": "41e1c830d6149feb8c57dbd59dd19f0ad5e6c1f893a5b98ff43173d9a14568eb"
+        },
+        {
+          "bytes": 1417,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02-command.json",
+          "sha256": "8f7b773c8932e6c079e621b30246626f030e74e8f6d4ee0663916eb52e6eb480"
+        },
+        {
+          "bytes": 76,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/benchmark-reply-tests-02-exit.json",
+          "sha256": "768fb3ebcd53b19e26ad260f7f5290c369da3aa9a28c407c74765eea498ee036"
+        }
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 93
+      },
+      "exit": {
+        "exit_code": 0,
+        "provider_calls": 0,
+        "seconds": 73.15218041196931
+      },
+      "label": "benchmark-reply-tests-02"
+    },
+    {
+      "bindings": [
+        {
+          "bytes": 6679,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/controls-regression-tests.xml",
+          "sha256": "1c3f6c346ae4ae2265170401176e63434e91bb261dc6c82f4565db2c533511b2"
+        },
+        {
+          "bytes": 7487,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/controls-regression-tests.log",
+          "sha256": "eed1ab0658bb05b50d0afb238181d5cebe6dd24749867b08f5db19fa6dc4923d"
+        },
+        {
+          "bytes": 998,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/controls-regression-tests-command.json",
+          "sha256": "e60a4eefba217881fcbf990a272865d3c6d93241de50d18f564e5e3b81fe2e0b"
+        },
+        {
+          "bytes": 77,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/controls-regression-tests-exit.json",
+          "sha256": "57e6534adb45493996e34b73a1e5fe929bea6f885c8d66eea414bf19fa57a3d8"
+        }
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 34
+      },
+      "exit": {
+        "exit_code": 0,
+        "provider_calls": 0,
+        "seconds": 14.825782871979754
+      },
+      "label": "controls-regression-tests"
+    }
+  ],
+  "fresh_benchmark_executed": false,
+  "independent_reviews": [
+    "runtime-review.json",
+    "benchmark-review.json"
+  ],
+  "native_generation_schema_bytes": 215,
+  "native_settlement": {
+    "controls_passed": 68,
+    "final_entrypoint_cases_passed": 3,
+    "receipt": "settlement-summary.json"
+  },
+  "new_real_provider_calls": 0,
+  "passed": true,
+  "planning_retained": true,
+  "schema": "terminal-coding-reply-offline-qualification@1",
+  "settlement_runtime_changes": 0,
+  "source_base_commit": "d5c59e961d1a0ca8d09296b520cbd414a2078235",
+  "source_bindings": [
+    {
+      "bytes": 12019,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 27534,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "874931cf177fbd0ad4f45d91909e74375a7053beb97796165d650e8336138a48"
+    },
+    {
+      "bytes": 30585,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 3057,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 65871,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 33368,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a"
+    },
+    {
+      "bytes": 13283,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    {
+      "bytes": 3871,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "sha256": "ca4ff3754926d1c0a2150ec747faca4ca088407187d82663bb17de39ce6cef24"
+    },
+    {
+      "bytes": 9631,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+      "sha256": "d8273343bda10dce364f80475836fc020893e7a6c4027b84ffb808979b2fd641"
+    },
+    {
+      "bytes": 5423,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 18100,
+      "path": "test/api/test_coding_reply_contract.py",
+      "sha256": "2e5f8b0cf1ef4d2c1925ccd5242f945c08be4d9bfc94ef21e5007de51939a147"
+    },
+    {
+      "bytes": 33170,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "4d625478411db081f537f6e040dea87c21965c29a3431a7f1622a26c70a436ad"
+    },
+    {
+      "bytes": 15486,
+      "path": "test/integration/test_admitted_native_provider_failure_settlement.py",
+      "sha256": "cbbe4b35cd00c44d4e06064609d3d7f166f2bd04937f34d56bdcaee0c0088e78"
+    }
+  ],
+  "total_task_token_savings_measured": false
+}
