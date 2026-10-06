@@ -28,6 +28,7 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
     coding_timeout_seconds, implementation_watchdog_seconds,
 )
 from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
+from benchmarks.agent_supervisor.container_coding.terminal_shutdown_observation import record as _record_shutdown_failure
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
 
 ROOT = Path("/opt/ipfs-supervisor")
@@ -903,10 +904,18 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     report["native_startup"] = _project_native_startup(runtime.startup_diagnostics())
                 except Exception:
                     report["native_startup_error"] = "collection_unavailable"
+                shutdown_phase = "stop_request"
                 try:
-                    report["stop"] = runtime.stop().to_dict()
+                    stop_response = runtime.stop()
+                    shutdown_phase = "stop_response_serialization"
+                    report["stop"] = stop_response.to_dict()
+                    shutdown_phase = "post_stop_process_observation"
                     report["remaining_processes"] = len(runtime.process.snapshot(runtime.profile).members)
+                    shutdown_phase = "post_stop_context_refresh"
                     _refresh_completed_context(runtime, report, deadline=deadline, work_deadline=work_deadline)
+                except BaseException as error:
+                    _record_shutdown_failure(report, error, phase=shutdown_phase)
+                    raise
                 finally:
                     try:
                         report["start_cleanup"] = _start_cleanup_observation(runtime, report.get("start"))
@@ -921,6 +930,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                         try:
                             runtime.close()
                         except BaseException as error:
+                            _record_shutdown_failure(report, error, phase="runtime_close")
                             kind = type(error).__name__
                             report["runtime_close"]["error_type"] = kind if kind in {
                                 "RuntimeError", "TimeoutError", "ValueError", "OSError",
