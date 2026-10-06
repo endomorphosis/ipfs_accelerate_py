@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from benchmarks.agent_supervisor.container_coding.benchmark_controls import (
-    compare_controls, observe_controls, validate_controls,
+    _control_record, compare_controls, observe_controls, validate_controls,
 )
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import SOURCE384_PROFILE
 from benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark import config_for as supervisor_config
@@ -32,6 +32,36 @@ def test_normalized_full_selection_is_declared_without_archive_or_auth_reads(mon
     assert observation(config)["status"]=="observed"
 
 
+def _historical_configuration(arm, profile):
+    """Fixed declaration from 6968b0ae6, never a current executable profile.
+
+    The retained hashes include this authored path string; no auth file is read.
+    Keep the old model, CLI and inert retrieval revision explicit so changes to
+    current defaults do not silently redefine the historical hash contract.
+    """
+    agent = dict(model_name="gpt-5.6-sol", override_timeout_sec=300.0,
+                 max_timeout_sec=300.0, override_setup_timeout_sec=1800.0)
+    if arm == "native":
+        agent.update(name="codex", kwargs={"version": "0.158.0", "reasoning_effort": "high"},
+                     env={"CODEX_AUTH_JSON_PATH": "/home/barberb/.codex/auth.json"})
+    else:
+        agent.update(import_path="benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent",
+                     kwargs={"runtime_archive": "/archive", "arm": arm,
+                             "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"})
+        if profile is not None:
+            agent["kwargs"]["resource_profile"] = profile
+    config = dict(job_name=("native-codex" if arm == "native" else "supervisor-" + arm) + "-fix-code-vulnerability",
+                  jobs_dir="/out/" + ("base" if arm == "native" else arm) + "/jobs",
+                  n_attempts=1, n_concurrent_trials=1, timeout_multiplier=1.0,
+                  retry={"max_retries": 0}, environment={"type": "docker", "force_build": True, "delete": True},
+                  verifier={"disable": False}, agents=[agent], tasks=[{"path": "/dataset/fix-code-vulnerability"}])
+    if profile is not None:
+        assert profile == SOURCE384_PROFILE
+        config["environment"].update(override_cpus=5, override_memory_mb=12288,
+                                     cpu_enforcement_policy="limit", memory_enforcement_policy="limit")
+    return config
+
+
 @pytest.mark.parametrize("arm,profile,expected",[
     ("native",None,"66af6d6afb639666d6bc61014ce289fe25f55816a7ce4747db90f34ee63e43a1"),
     ("full",None,"5e1a5d434d0287a8ea6d2fe2a5a7fff6a2de4c6d97c51583f3562f68d718cc8c"),
@@ -40,11 +70,28 @@ def test_normalized_full_selection_is_declared_without_archive_or_auth_reads(mon
     ("full",SOURCE384_PROFILE,"9c27af01c108ae793ce725bdc71f726ba24d5f58cd50969cd50a57da392e7e39"),
     ("no-index",SOURCE384_PROFILE,"700ccd9dcdea021fecd4cada6af606fb48a74d35dcd218963b36999ef198cdc8"),
 ])
-def test_absent_selection_legacy_hash_is_unchanged(arm,profile,expected):
+def test_absent_selection_historical_hash_replays_and_current_profile_delta_is_explicit(arm,profile,expected,monkeypatch):
+    historical = _historical_configuration(arm, profile)
+    frozen = _control_record(historical, task_input_sha256=HASHES, task="fix-code-vulnerability",
+                             model="gpt-5.6-sol", reasoning_effort="high", cli_version="0.158.0")
+    assert frozen["sha256"] == expected
+    observed = observe_controls({"comparison_controls": frozen}, historical, current_task_hashes=HASHES)
+    assert observed["status"] == "observed" and observed["configuration_unchanged"] is True
+    # Pin the path only for this pure configuration comparison, not credential
+    # discovery. Current provider/retrieval defaults intentionally differ.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: Path("/home/barberb")))
     config=(native_config(Path("/dataset"),Path("/out/base"),resource_profile=profile) if arm=="native"
         else supervisor_config(Path("/dataset"),Path("/out")/arm,Path("/archive"),arm,resource_profile=profile))
     assert "setup_cache_selection" not in config["agents"][0]["kwargs"]
-    assert declaration(config)["sha256"]==expected
+    expected_current = deepcopy(historical)
+    expected_current["agents"][0]["model_name"] = "gpt-6.1-sol"
+    expected_current["agents"][0]["kwargs"].update(
+        {"version": "0.160.0"} if arm == "native" else {"model_revision": ""})
+    assert config == expected_current
+    current = declaration(config)
+    assert current["identity"] == {**frozen["identity"], "model": "gpt-6.1-sol", "cli_version": "0.160.0"}
+    assert current["sha256"] != expected
+    assert not compare_controls(observed, observation(config))["matches"]
 
 
 @pytest.mark.parametrize("change",["none","policy","hash","uppercase_hash","schema","missing","extra","wrong_type"])
