@@ -93,9 +93,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
     response_format = None
+    task_contract = None
     if provider == "grok_cli" and purpose == "planning":
         from ipfs_accelerate_py.cli_runtime.grok_structured_output import planning_response_format
         response_format = planning_response_format(prompt)
+        from .terminal_planner_contract import contract_from_prompt
+        task_contract = contract_from_prompt(prompt)
+        if task_contract is not None and response_format is None:
+            raise ValueError("terminal task constraints require canonical structured planning")
     root = Path.cwd().resolve()
     boundary = None
     if container_boundary is not None or container_boundary_sha256:
@@ -230,7 +235,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if response_format is not None:
             provider_options["response_format"] = response_format
             from ipfs_accelerate_py.cli_runtime.grok_structured_output import native_schema_projection
-            _wire_schema, _wire_argument, projection = native_schema_projection(response_format["json_schema"]["schema"])
+            _wire_schema, _wire_argument, projection = native_schema_projection(
+                response_format["json_schema"]["schema"], task_contract=task_contract)
+            if task_contract is not None:
+                provider_options["grok_task_contract"] = task_contract
             schema_json = json.dumps(response_format["json_schema"]["schema"],
                 ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
             receipt["provider_invocation_policy"]["structured_output"] = {
@@ -265,7 +273,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             # explicit in case an injected provider returns unchecked text.
             from ipfs_accelerate_py.cli_runtime.grok_structured_output import validate_response_format, decode_response
             _schema, _argument, validator = validate_response_format(response_format)
-            output = decode_response(json.dumps({"text": output}), validator)
+            wire_validator = None
+            if task_contract is not None:
+                wire_format = {**response_format, "json_schema": {**response_format["json_schema"], "schema": _wire_schema}}
+                _wire, _argument, wire_validator = validate_response_format(wire_format)
+            output = decode_response(json.dumps({"text": output}), validator, additional_validator=wire_validator)
             receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if encoded is not None:
             failure_phase = "semantic_response_decode"

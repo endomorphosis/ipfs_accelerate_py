@@ -7946,12 +7946,21 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
 
             response_format = kwargs.pop("response_format", None)
             response_validator = None
+            wire_validator = None
+            task_contract = kwargs.pop("grok_task_contract", None)
+            if task_contract is not None:
+                from .agent_supervisor.runtime.terminal_planner_contract import contract_from_prompt
+                if response_format is None or task_contract != contract_from_prompt(prompt):
+                    raise ValueError("Grok task contract differs from the typed canonical request")
             if response_format is not None:
                 if not structured_cli:
                     raise ValueError("response_format requires a structured Grok CLI command")
                 from .cli_runtime.grok_structured_output import validate_response_format, bind_schema_argument, native_schema_projection
                 _schema, _canonical_argument, response_validator = validate_response_format(response_format)
-                _wire_schema, schema_argument, _projection = native_schema_projection(_schema)
+                _wire_schema, schema_argument, _projection = native_schema_projection(_schema, task_contract=task_contract)
+                if task_contract is not None:
+                    wire_format = {**response_format, "json_schema": {**response_format["json_schema"], "schema": _wire_schema}}
+                    _wire, _wire_arg, wire_validator = validate_response_format(wire_format)
                 bind_schema_argument(base_parts, schema_argument)
 
             extra_env: Dict[str, Optional[str]] = {}
@@ -8221,7 +8230,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if response_validator is not None:
                 from .cli_runtime.grok_structured_output import decode_response
                 try:
-                    return decode_response(proc.stdout or "", response_validator)
+                    return decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator)
                 except (ValueError, TypeError, RecursionError) as exc:
                     raise LLMRouterError("Grok CLI structured response failed validation") from exc
 

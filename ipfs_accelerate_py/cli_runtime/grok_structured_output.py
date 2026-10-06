@@ -15,12 +15,14 @@ MAX_RESPONSE_BYTES = 262_144
 MAX_ENVELOPE_BYTES = 4_194_304
 
 
-def native_schema_projection(schema):
+def native_schema_projection(schema, *, task_contract=None):
     """Omit only the canonical planner's native-rejected top-level ID annotation.
 
-    All validation assertions and local references remain byte-equivalent under
-    canonical serialization. The caller retains the original schema validator.
-    Other schemas, including a modified planner lookalike, remain unchanged.
+    The annotation-only branch preserves canonical assertions and references.
+    An explicit typed task contract adds intersection constraints while retaining
+    those originals and their independent validator. Provider output is never
+    rewritten. Other schemas and modified planner lookalikes remain unchanged
+    without a task contract, and reject an incompatible task-contract request.
     """
     from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
         PROMPT_GOAL_PROPOSAL_SCHEMA, _proposal_schema,
@@ -38,6 +40,12 @@ def native_schema_projection(schema):
         matches = schema == _proposal_schema(SimpleNamespace(budget=budget))
     if matches:
         del wire["$id"]
+    if task_contract is not None:
+        if not matches or bounds["max_tasks"] != 1 or bounds["max_goals"] != 2:
+            raise ValueError("terminal task decoding requires exact canonical singleton planner grammar")
+        from ipfs_accelerate_py.agent_supervisor.runtime.terminal_planner_contract import constrain_native_schema, validate_task_contract
+        task_contract = validate_task_contract(task_contract)
+        wire = constrain_native_schema(wire, task_contract)
     encoded = _bounded_json(wire, MAX_SCHEMA_BYTES, schema=True)
     receipt = {
         "projection_id": "canonical-prompt-goal-native-id-omission@1" if matches else "identity@1",
@@ -48,6 +56,11 @@ def native_schema_projection(schema):
         "native_wire_schema_bytes": len(encoded.encode()),
         "canonical_validation_preserved": True,
     }
+    if task_contract is not None:
+        receipt.update(projection_id="canonical-prompt-goal-task-contract@1",
+            task_contract_sha256=task_contract["contract_sha256"],
+            task_contract_bytes=len(_bounded_json(task_contract, 32_768).encode()),
+            task_count=len(task_contract["tasks"]), task_contract_authority=False)
     return wire, encoded, receipt
 
 
@@ -171,7 +184,7 @@ def bind_schema_argument(command, encoded):
         command.extend(["--json-schema", encoded])
 
 
-def decode_response(stdout, validator):
+def decode_response(stdout, validator, *, additional_validator=None):
     """Read native structured fields; never repair prose or drop trailing text."""
     if not isinstance(stdout, str) or len(stdout.encode("utf-8")) > MAX_ENVELOPE_BYTES:
         raise ValueError("Grok structured envelope exceeds its byte bound")
@@ -214,6 +227,8 @@ def decode_response(stdout, validator):
         raise ValueError("Grok native structured response must be an object")
     try:
         validator.validate(result)
+        if additional_validator is not None:
+            additional_validator.validate(result)
     except Exception:
         # Validation exception messages include provider content. Keep only a
         # bounded static diagnostic; raw model text is not a receipt.
