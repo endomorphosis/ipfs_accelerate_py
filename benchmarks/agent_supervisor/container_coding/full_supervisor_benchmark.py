@@ -236,6 +236,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
     model_revision = selected_retrieval_revision(manifest, arm)
+    from .terminal_worker_capability import require_worker_capability
+    require_worker_capability(manifest, resource_profile)
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     if selected_provider["provider"] == "grok_cli":
@@ -388,6 +390,9 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
+    from .terminal_worker_capability import require_worker_capability
+    require_worker_capability(current_manifest,
+        config["agents"][0].get("kwargs", {}).get("resource_profile"))
     require_runtime_provider_profile(current_manifest, prepared.get("provider_profile"))
     require_semantic_transport_archive(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), transport)
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):

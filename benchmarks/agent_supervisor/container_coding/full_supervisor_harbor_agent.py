@@ -314,6 +314,8 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        from .terminal_worker_capability import require_worker_capability
+        require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_semantic_transport_archive(manifest,
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
@@ -353,6 +355,8 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_transport_archive(manifest, transport)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
+        from .terminal_worker_capability import require_worker_capability
+        require_worker_capability(manifest, getattr(self, "resource_profile", None))
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
