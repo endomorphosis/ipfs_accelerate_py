@@ -18,6 +18,9 @@ from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
 )
 from benchmarks.agent_supervisor.container_coding import benchmark_controls
 from .benchmark_resource_profile import PROFILES, validate_resource_profile
+from .terminal_retrieval_selection import (
+    selected_retrieval_revision, require_retrieval_revision, validate_model_revision,
+)
 from .benchmark_provider_profile import (prepared_provider_identity, require_runtime_provider_profile,
     resolve_provider_profile, PROVIDER_PROFILES)
 from .terminal_semantic_transport_policy import (
@@ -157,7 +160,9 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                *, intent_requirement_contract: dict | None = None, resource_profile=None,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
                task_profile: dict | None = None, provider_profile: str | None = None,
-               semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA) -> dict:
+               semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+               model_revision: str = "") -> dict:
+    model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
@@ -171,7 +176,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "override_timeout_sec": float(budget["harbor_seconds"]), "max_timeout_sec": float(budget["harbor_seconds"]),
         "override_setup_timeout_sec": 1800.0,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
-                   "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+                   "model_revision": model_revision if arm == "full" else "",
                    **semantic_transport_selection(semantic_transport_schema)},
     }]
     if provider_profile is not None:
@@ -230,6 +235,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
+    model_revision = selected_retrieval_revision(manifest, arm)
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     if selected_provider["provider"] == "grok_cli":
@@ -263,6 +269,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_header_planning_selection(selected_source384, requirements, arm)
     task_hashes = _task_hashes(task)
     declared_config = config_for(dataset, output, archive, arm,
+        model_revision=model_revision,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
@@ -378,7 +385,10 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime archive changed")
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
-    require_runtime_provider_profile(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), prepared.get("provider_profile"))
+    current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
+    require_retrieval_revision(current_manifest, prepared["arm"],
+        config["agents"][0].get("kwargs", {}).get("model_revision", ""))
+    require_runtime_provider_profile(current_manifest, prepared.get("provider_profile"))
     require_semantic_transport_archive(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), transport)
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
