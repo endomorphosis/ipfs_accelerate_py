@@ -10,8 +10,9 @@ SOURCE384_PROFILE = "source384-5cpu-12gib@1"
 EXTENDED_SOURCE384_PROFILE = "source384-5cpu-16gib-extended@1"
 PLANNER180_SOURCE384_PROFILE = "source384-5cpu-16gib-planner180@1"
 PLANNER180_20GIB_SOURCE384_PROFILE = "source384-5cpu-20gib-planner180@1"
+CODING600_SOURCE384_PROFILE = "source384-5cpu-20gib-coding600@1"
 EXTENDED_PROFILES = (EXTENDED_SOURCE384_PROFILE, PLANNER180_SOURCE384_PROFILE,
-                     PLANNER180_20GIB_SOURCE384_PROFILE)
+                     PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE)
 PROFILES = (SOURCE384_PROFILE, *EXTENDED_PROFILES)
 SOURCE384_ENVIRONMENT = dict(override_cpus=5, override_memory_mb=12288,
     cpu_enforcement_policy="limit", memory_enforcement_policy="limit")
@@ -21,7 +22,7 @@ def resource_environment(profile):
     if profile not in PROFILES:
         raise ValueError("unknown benchmark resource profile")
     result = dict(SOURCE384_ENVIRONMENT)
-    if profile == PLANNER180_20GIB_SOURCE384_PROFILE:
+    if profile in (PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE):
         result["override_memory_mb"] = 20480
     elif profile in EXTENDED_PROFILES:
         result["override_memory_mb"] = 16384
@@ -43,7 +44,19 @@ def execution_budget(profile=None):
 def planner_timeout_seconds(profile=None):
     """An explicit planner allowance within the unchanged enclosing work budget."""
     execution_budget(profile)
-    return 180 if profile in (PLANNER180_SOURCE384_PROFILE, PLANNER180_20GIB_SOURCE384_PROFILE) else 90
+    return 180 if profile in (PLANNER180_SOURCE384_PROFILE, PLANNER180_20GIB_SOURCE384_PROFILE,
+                             CODING600_SOURCE384_PROFILE) else 90
+
+
+def coding_timeout_seconds(profile=None):
+    """A provider cap; the driver still clamps it to the original work deadline."""
+    execution_budget(profile)
+    return 600 if profile == CODING600_SOURCE384_PROFILE else 300
+
+
+def implementation_watchdog_seconds(profile=None):
+    """Allow bounded provider settlement without extending the enclosing run."""
+    return coding_timeout_seconds(profile) + 60
 
 
 def native_start_timeout_ms(profile=None, *, remaining_work_seconds):

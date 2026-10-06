@@ -24,6 +24,7 @@ import uuid
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
     PROFILES, admission_environment, execution_budget, native_start_timeout_ms, planner_timeout_seconds,
+    coding_timeout_seconds, implementation_watchdog_seconds,
 )
 from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
@@ -683,9 +684,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
+        implementation_budget = (remaining() if provider_free_candidate else
+                                 min(coding_timeout_seconds(resource_profile), remaining(25)))
+        report["provider_coding_timeout_cap_seconds"] = (
+            None if provider_free_candidate else coding_timeout_seconds(resource_profile))
+        report["provider_coding_timeout_seconds"] = None if provider_free_candidate else implementation_budget
         implementation = implementation_argv(router=ROUTER, model=provider_selection["model"],
             reasoning=provider_selection["reasoning_effort"],
-            timeout=remaining() if provider_free_candidate else min(300, remaining(25)),
+            timeout=implementation_budget,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema)
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
@@ -711,7 +717,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # 1800s default otherwise outlives this benchmark's work window. The
         # outer work alarm remains the absolute deadline even during START.
         implementation_timeout = (remaining() if provider_free_candidate
-                                  else min(360, remaining(25)))
+                                  else min(implementation_watchdog_seconds(resource_profile), remaining(25)))
         report["implementation_timeout_seconds"] = implementation_timeout
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",

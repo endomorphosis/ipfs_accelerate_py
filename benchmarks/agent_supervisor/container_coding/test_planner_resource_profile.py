@@ -13,6 +13,7 @@ from benchmarks.agent_supervisor.container_coding.test_terminal_initial_context 
 
 NEW = profile.PLANNER180_SOURCE384_PROFILE
 MEMORY20 = profile.PLANNER180_20GIB_SOURCE384_PROFILE
+CODING600 = profile.CODING600_SOURCE384_PROFILE
 
 
 def test_explicit_planner_profile_preserves_existing_resource_and_execution_dictionaries():
@@ -41,6 +42,7 @@ def test_explicit_planner_profile_preserves_existing_resource_and_execution_dict
     (None, None, 90), (profile.SOURCE384_PROFILE, None, 90),
     (profile.EXTENDED_SOURCE384_PROFILE, None, 90), (NEW, None, 180), (NEW, 37, 37),
     (MEMORY20, None, 180), (MEMORY20, 37, 37),
+    (CODING600, None, 180), (CODING600, 37, 37),
 ])
 def test_signed_request_and_real_planner_config_deliver_only_selected_timeout(
         original, monkeypatch, selected, caller_timeout, expected):
@@ -73,6 +75,7 @@ def test_signed_request_and_real_planner_config_deliver_only_selected_timeout(
     (None, 91), (profile.SOURCE384_PROFILE, 180), (profile.EXTENDED_SOURCE384_PROFILE, 180),
     (NEW, 181), (NEW, True), (NEW, 180.0), (NEW, 0),
     (MEMORY20, 181), (MEMORY20, True),
+    (CODING600, 181), (CODING600, True),
 ])
 def test_caller_cannot_extend_signed_planner_cap(original, selected, timeout):
     root, instruction, state = original
@@ -105,6 +108,7 @@ def test_unsigned_preparation_changes_cannot_increase_planning_allowance(origina
     (None, 200, 90), (profile.EXTENDED_SOURCE384_PROFILE, 400, 90),
     (NEW, 400, 180), (NEW, 100, 70), (NEW, 31, 1),
     (MEMORY20, 400, 180), (MEMORY20, 100, 70),
+    (CODING600, 400, 180), (CODING600, 100, 70),
 ])
 def test_driver_planner_uses_remaining_work_and_keeps_original_cleanup(
         tmp_path, monkeypatch, selected, left, expected):
