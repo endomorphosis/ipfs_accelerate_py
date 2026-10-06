@@ -1,0 +1,70 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 8226,
+      "sha256": "94a6d30bc10945f1698571fbf4aaf1e7effd4186c318ed12bdc16b92880cca03"
+    },
+    "comparison.json": {
+      "bytes": 27327,
+      "sha256": "58e2966692dd726850ad5b8e07ccf11fd39199c1231bf07e23f8c819e4413cfd"
+    },
+    "completed-metadata-review.json": {
+      "bytes": 5102,
+      "sha256": "fda8c3497b268c32638a9d794c5daa96ffa5ced0d2c4969cabcd3ee0784c8840"
+    },
+    "container-cleanup.json": {
+      "bytes": 460,
+      "sha256": "e7892ff336305bf254ecaca66d5dc69eccdb798d04c13e118eaf77bcd0c7e571"
+    },
+    "controls-preflight-before-retry-normalization.json": {
+      "bytes": 728,
+      "sha256": "25d2a85733e9e83fabe72bac12bb7ad6a48c3760c722fac4e08cb3ad95482ad8"
+    },
+    "controls-preflight.json": {
+      "bytes": 873,
+      "sha256": "6683f73e03282e365b581d1de511f8b136a10c66c1fe62b59c2c62f692367b99"
+    },
+    "documentation-gates.json": {
+      "bytes": 2635,
+      "sha256": "3b9b5bfb6f62cdb5f3a0d423baae9c22b1dba621455436abd7022608f5a5d7d4"
+    },
+    "frozen-source-qualification.json": {
+      "bytes": 8175,
+      "sha256": "0bb56c3345f05b1f08bd9465a5dc18dcbc1e28ad5ad6e6b57438ed31e70215fe"
+    },
+    "harbor-token-readback.json": {
+      "bytes": 1165,
+      "sha256": "1677a585a96f4ce107d37f70e34d0e5de9b574e210b38f8fda07b9e9b4560b22"
+    },
+    "independent-archive-preflight.json": {
+      "bytes": 19877,
+      "sha256": "ff44afa779752744d40ec3b66451f91235aaf14e17c4a47edd072f2680b9d475"
+    },
+    "independent-frozen-qualification-review.json": {
+      "bytes": 6233,
+      "sha256": "47382637b2d10683a69f215de1f1d5d00045cd7e9aaf00a774ee4e109f22f1f8"
+    },
+    "inflight-runtime-observation.json": {
+      "bytes": 711,
+      "sha256": "509e7a2c5f1117871788f97d9f75cd3c92bfa52afb56e5f10f5028253860f249"
+    },
+    "inspect_symbolic_trial.py": {
+      "bytes": 39519,
+      "sha256": "a7e05b5941eb39938ff40cdef305cad6e58fea891c718cfdabe849813ef25e5d"
+    },
+    "invocation-provenance.json": {
+      "bytes": 7537,
+      "sha256": "31d04161eddd16022d1bf3c47936af911cbe993185cfaa170b86a50c662c8737"
+    },
+    "run_matched_symbolic.py": {
+      "bytes": 7672,
+      "sha256": "e621098fbec0fc07ac6c39c237c4b0e9fbe237a852abb2856a8b87221f62295f"
+    },
+    "workspace-preservation.json": {
+      "bytes": 757,
+      "sha256": "25ed117ad5492272da09212df1f5adfa639028b2713a4586382a99d57d723ca6"
+    }
+  },
+  "schema": "largest-eigenval-symbolic-trial-bounded-evidence-manifest@1",
+  "scope": "Official-trial bounded counters, planning/admission metadata, source bindings, preflight, lifecycle, documentation and producers; no weights, benchmark source-bearing contract, full solution or raw model transcript."
+}

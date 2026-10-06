@@ -1,0 +1,23 @@
+{
+  "archive_reused_without_rebuild": true,
+  "both_retry_policies_disabled": true,
+  "equal_after_inactive_retry_set_order_normalization": true,
+  "equal_after_output_identity_and_intent_treatment": false,
+  "historical_config": {
+    "bytes": 3445,
+    "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e"
+  },
+  "limits": [
+    "Historical comparator is not randomized or repeated.",
+    "Time, host load, provider state and session caches may differ.",
+    "Router sessions are not internal model turns or API request counts."
+  ],
+  "new_config": {
+    "bytes": 46986,
+    "sha256": "8c84c93fcdc25c3dd4d201ea8191f93e761149da54e9f4e085c83b270be0f431"
+  },
+  "only_contract_is_intended_treatment": true,
+  "provider_calls_in_preparation": 0,
+  "schema": "largest-eigenval-symbolic-matched-controls@1",
+  "serialization_mismatch_retained": true
+}

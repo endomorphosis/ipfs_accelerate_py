@@ -1,0 +1,11 @@
+{
+  "frozen_runner": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006",
+  "frozen_runner_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+  "isolated_artifacts": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006",
+  "original_root_head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+  "original_root_index_sha256": "80b0426031778d38c8b762a273739e08edbf2ce2b18690efb4f541fa6de120a4",
+  "original_root_source_and_index_modified_by_this_trial": false,
+  "reporting_checkout": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006",
+  "schema": "largest-eigenval-symbolic-trial-workspace-preservation@1",
+  "source_implementation_changed_by_this_trial": false
+}

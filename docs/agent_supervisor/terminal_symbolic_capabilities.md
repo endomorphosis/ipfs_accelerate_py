@@ -1090,3 +1090,25 @@ processes. Official reward was zero and token totals were unavailable. This
 qualifies additional route boundaries, not successful Grok task completion or
 an efficiency advantage. The raw model/verifier bodies are excluded from the
 published metadata.
+
+## Completed Codex trial with symbolic planning (2026-10-06)
+
+The [fresh matched-archive trial](evidence/terminal-eigenvalue-symbolic-trial-20261006/README.md)
+received official reward **1.0**, covered eight authored requirement atoms with
+**zero planning-provider calls**, and completed through one canonical
+`llm_router` coding session. Complete observed usage was **255,951 tokens**,
+including cached input, versus **291,432** in the historical successful direct
+supervisor. Agent execution was **182.40 seconds**, versus **336.36**. Native
+STOP, cleanup exit zero and zero remaining processes were recorded, and the
+exact owned container was removed.
+
+The demonstrated call reduction is two router sessions to one. The observed
+35,481-token reduction (12.17%) comprises the removed 23,766-token planning
+session plus an 11,715-token coding difference. Extra coding and time changes
+remain single-trial observations: historical task/container fingerprints,
+package resolution, host load, provider state and cache history differ. The
+same runtime archive, checkpoint, model, public task and limits were retained;
+strict retry-list serialization equality remains false although both policies
+disable retries. The source-bound symbolic plan remains administrative coverage,
+with no source-semantic or universal float/complex proof authority. Source384
+advice has unsupported source-contract nominations and is not a numeric proof.

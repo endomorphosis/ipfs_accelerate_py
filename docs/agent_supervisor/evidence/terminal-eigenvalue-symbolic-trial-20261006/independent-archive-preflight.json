@@ -1,0 +1,428 @@
+{
+  "archive": {
+    "bytes": 1341032030,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03/runtime.tar.gz",
+    "sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc"
+  },
+  "archive_extracted": false,
+  "archive_matches_manifest": true,
+  "archive_regular_source_bodies_checked": 11,
+  "archive_source_bodies": [
+    {
+      "bytes": 29936,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 29936,
+        "path": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+        "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+      },
+      "manifest_match": true,
+      "path": "datasets/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914"
+    },
+    {
+      "bytes": 27163,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 27163,
+        "path": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/ipfs_datasets_py/logic/intent_ir/schema.py",
+        "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+      },
+      "manifest_match": true,
+      "path": "datasets/ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+    },
+    {
+      "bytes": 2327,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 2327,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+        "sha256": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "sha256": "5d46d705671795f662eaaee8376ab2793ce52035918acd2f7e6a468d93228610"
+    },
+    {
+      "bytes": 4185,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 4185,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+        "sha256": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a"
+    },
+    {
+      "bytes": 23323,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 23323,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+        "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "d97f4dc621a6ac3d5c274bacb8a68e2541e42522c8436a02b7b3bd8a0c50555d"
+    },
+    {
+      "bytes": 26647,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 26647,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+        "sha256": "7ee508f424433581c10cc285f01745dca81d46f51335ece2f691673025f47985"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "7ee508f424433581c10cc285f01745dca81d46f51335ece2f691673025f47985",
+      "support_lines": [
+        {
+          "line": 229,
+          "text": "intent_requirement_contract: dict | None = None, resource_profile=None,"
+        },
+        {
+          "line": 249,
+          "text": "if intent_requirement_contract is not None:"
+        },
+        {
+          "line": 250,
+          "text": "if type(intent_requirement_contract) is not dict:"
+        },
+        {
+          "line": 252,
+          "text": "encoded = json.dumps(intent_requirement_contract, allow_nan=False)"
+        },
+        {
+          "line": 255,
+          "text": "intent_requirement_contract = json.loads(encoded)"
+        },
+        {
+          "line": 256,
+          "text": "self.intent_requirement_contract = intent_requirement_contract"
+        },
+        {
+          "line": 276,
+          "text": "getattr(self, \"intent_requirement_contract\", None), self.arm)"
+        },
+        {
+          "line": 301,
+          "text": "getattr(self, \"intent_requirement_contract\", None), self.arm)"
+        },
+        {
+          "line": 325,
+          "text": "requirement_contract = getattr(self, \"intent_requirement_contract\", None)"
+        },
+        {
+          "line": 332,
+          "text": "argv += [\"--intent-requirement-contract\", requirement_path]"
+        }
+      ]
+    },
+    {
+      "bytes": 50560,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 50560,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+        "sha256": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "bc0fe95d4a2631f9f67918af7cce31c03f348f420309ead108b29c260ba3e385"
+    },
+    {
+      "bytes": 61291,
+      "current_diagnosis_checkout_match": false,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 61291,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "sha256": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c"
+      },
+      "manifest_match": true,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "a5112b5967749246215ecd1ead7a2227a3658fcaddf886d1b8a13988fa00057c",
+      "support_lines": [
+        {
+          "line": 102,
+          "text": "def _planning_strategy(contract):"
+        },
+        {
+          "line": 105,
+          "text": "if contract.get(\"schema\") in {\"intent-plan-requirement-contract@2\", \"intent-plan-requirement-contract@3\"}:"
+        },
+        {
+          "line": 354,
+          "text": "if strategy == \"intent_symbolic\" else \"terminal-codex-planner\"),"
+        },
+        {
+          "line": 355,
+          "text": "provider_preferences=(PROVIDER,), model_preferences=(MODEL,), allow_model=strategy != \"intent_symbolic\","
+        },
+        {
+          "line": 455,
+          "text": "def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_preview=None):"
+        },
+        {
+          "line": 467,
+          "text": "def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds, repository_preview=None):"
+        },
+        {
+          "line": 611,
+          "text": "if strategy == \"intent_symbolic\":"
+        }
+      ]
+    },
+    {
+      "bytes": 15697,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 15697,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+        "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+      },
+      "manifest_match": true,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2",
+      "support_lines": [
+        {
+          "line": 153,
+          "text": "def build_intent_symbolic_plan(contract, *, manifest, applicability_timeout_seconds=None,"
+        },
+        {
+          "line": 174,
+          "text": "candidate_count=1, max_model_candidates=0, max_tasks_per_candidate=16,"
+        },
+        {
+          "line": 175,
+          "text": ")).plan(obligation, materials.frozen_goal, materials.candidate_context, allow_model=False)"
+        },
+        {
+          "line": 181,
+          "text": "critique = PlanCritic().critique("
+        },
+        {
+          "line": 197,
+          "text": "compiled = FormalPlanCompiler().compile_prompt_graph("
+        },
+        {
+          "line": 250,
+          "text": "\"coverage_cid\": cid_for_dag_json(coverage), \"provider_calls\": 0,"
+        }
+      ]
+    },
+    {
+      "bytes": 23035,
+      "current_diagnosis_checkout_match": true,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 23035,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+        "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6"
+      },
+      "manifest_match": true,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6",
+      "support_lines": [
+        {
+          "line": 19,
+          "text": "INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA = \"intent-plan-requirement-contract@2\""
+        }
+      ]
+    },
+    {
+      "bytes": 89042,
+      "current_diagnosis_checkout_match": false,
+      "frozen_host_match": true,
+      "host_source": {
+        "bytes": 89042,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+      },
+      "manifest_match": true,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb"
+    }
+  ],
+  "benchmark_executed": false,
+  "benchmark_success": null,
+  "completion_authority": false,
+  "credential_contents_read": false,
+  "evidence_bindings": [
+    {
+      "bytes": 2755,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-command.json",
+      "sha256": "bd0a053425ba7c19da7ea04eeeb3063425bd7b135dc9c2233db7c1b80a30b076"
+    },
+    {
+      "bytes": 3559,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-audit.json",
+      "sha256": "882594c61274df1728f160f58d2951345f906e1240a64382bab88543fcfe0cb0"
+    },
+    {
+      "bytes": 1788,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/prepare-03-command.json",
+      "sha256": "24fc7e120737511c976f34474626bd8b16481ef96564c1d3397a8445b6d563d3"
+    },
+    {
+      "bytes": 1686,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/execute-03-command.json",
+      "sha256": "de6f51a90f4e65b45e914a204d2f9ddd80244028777ba1fa62a6c720a0a8e11c"
+    },
+    {
+      "bytes": 58970,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/preparation.json",
+      "sha256": "7aabc6addbb38c955af422fc9ec77dff536f1099b1f550ea71f5ade29d550027"
+    },
+    {
+      "bytes": 3445,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03/config.json",
+      "sha256": "afa0da8a211789963cc70d6fb36dce6914bd9207f0cc915e9b52bbd884dda30e"
+    },
+    {
+      "bytes": 6799,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/trial-03-summary.json",
+      "sha256": "46239eeda2c9deeaddaba49c5d576af52603873e19e2b7fbb9567ad8d6fc90e4"
+    },
+    {
+      "bytes": 36020,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-diagnosis-20261005/symbolic-03-post-merge/private-contract.json",
+      "sha256": "3802af85bb0e3382ca9e15ed73995e82ccbf233596087592d25a30d84a1ec983"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    }
+  ],
+  "execution_authority": false,
+  "frozen_controls": {
+    "archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+    "attempts": 1,
+    "cleanup_seconds": 60,
+    "codex_version": "0.160.0",
+    "coding_provider_seconds": 300,
+    "cpu_enforcement_policy": "limit",
+    "cpus": 5,
+    "credential_contents_in_archive": false,
+    "driver_seconds": 900,
+    "environment_delete": true,
+    "harbor_seconds": 960,
+    "implementation_watchdog_seconds": 360,
+    "max_retries": 0,
+    "memory_enforcement_policy": "limit",
+    "memory_mb": 16384,
+    "model": "gpt-6.1-sol",
+    "native_start_seconds": 120,
+    "native_stop_seconds": 20,
+    "planner_seconds": 90,
+    "reasoning_effort": "high",
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "runtime_python_version": "3.12.12",
+    "setup_cache_selection": {
+      "manifest_sha256": "9243e386b650ac1a0f97e42f28e94e302ffe9810ac939a2db713b6d5ef309f38",
+      "policy": "source384-native-aarch64-dontneed@2",
+      "schema": "terminal-setup-cache-selection@1"
+    },
+    "setup_seconds": 1800,
+    "source384_seconds": 180,
+    "task_inputs_in_archive": false,
+    "verifier_enabled": true,
+    "work_seconds": 840
+  },
+  "hidden_source_bodies_read": false,
+  "historical_success": {
+    "agent_execution_seconds": 336.359015,
+    "planning_provider_seconds": 74.6190695129917,
+    "planning_total_tokens": 23766,
+    "provider_sessions": 2,
+    "remaining_processes": 0,
+    "reward": 1.0,
+    "total_tokens": 291432,
+    "trial": "largest-eigenval__iieLP5S",
+    "worker_cleanup_returncode": 0
+  },
+  "limitations": [
+    "Static support and archive-body integrity do not establish frozen native execution or an official new-arm success.",
+    "Currentf69 admission and preparation differ from the frozen archive only for later opt-in multi-task-profile handling; sourcebound singleton@1/@2 planning support is present in the frozen archive.",
+    "Only one nonrandom historical direct-planning trial is available. Fresh-run differences in coding prompt/taskcontent, internal modelturns, cache, setup/load or timing prohibit a causal token or performance-advantage claim.",
+    "Router invocations/CLI sessions are not the number of internal API/modelturns. The projected2to1 supervisor sessions do not imply regular Codex itself drops below one session.",
+    "Requested output4096 is not an enforced provider output cap; existing receipts explicitly mark provider_output_token_cap_enforcedfalse.",
+    "Structural smoke and administrative requirements do not prove complex floating-point eigenpair correctness or microsecond timing. Official verifier remains the outcome authority.",
+    "The candidate contract and benchmark sources remain excluded from training and public raw-body export; no hidden reference or testsource body was inspected."
+  ],
+  "manifest": {
+    "bytes": 6233246,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03/manifest.json",
+    "sha256": "9243e386b650ac1a0f97e42f28e94e302ffe9810ac939a2db713b6d5ef309f38"
+  },
+  "missing_archive_source_bodies": [],
+  "next_trial_gates": [
+    "Use the detached clean8dab684 host runner plus datasets987cf856 and unchanged bundle03; do not rebuild latestmain for this comparison.",
+    "Run provider-forbidden native contract prepare/plan/admit/store/replay under the frozen host source before the paid trial; the existingf69 post-merge local qualification is not an exact frozen-runtime qualification.",
+    "Prepare a fresh unique output with historical prepare03 arguments and only the explicit @2 contract added; retain generic task-profile@1, Source384 config, full arm and cache policy.",
+    "Bind public instruction and program inputs to original hashes; retain unchanged official task, verifier, resources, model/CLI identity, attempts and timeout controls.",
+    "Persist preflight, command, config and source bindings before execution; record only contract/strategy and required outputpath differences in the comparison.",
+    "At completion require symbolic planner qualified, provider_calls0, all8 requirements covered and native one-task admission; distinguish administrative coverage from numerical proof.",
+    "Retain coding receipt proving canonical llm_router, codex_cli/gpt-6.1-sol, high reasoning, fallbackdisabled and known usage; missing receipts make token totals unknown.",
+    "Require STOP succeeded, remaining_processes0, worker_cleanup_returncode0, durable supervisor-result and no surviving exact owned trialcontainer; never clean unrelated containers.",
+    "Report official reward separately from task structural acceptance, one-sample observed usage/time, historical comparison, and projected planning-token saving."
+  ],
+  "observed_at_utc": "2026-10-06T06:05:59.156892+00:00",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "schema": "largest-eigenval-frozen-runtime-independent-preflight@1",
+  "scope": "read-only archive-body and host-file qualification; no native planning invocation, model provider invocation, benchmark execution or hidden-source inspection",
+  "selection": {
+    "arm": "full",
+    "contract_review_scope": "agent-authored administrative requirement/task coverage; no human semantic review",
+    "execution_route": "canonical llm_router codex_cli/gpt-6.1-sol with high reasoning, no cross-provider or local fallback",
+    "intent_requirement_contract_schema": "intent-plan-requirement-contract@2",
+    "intent_requirement_contract_source_path": ".supervisor-instruction.md",
+    "intent_requirement_count": 8,
+    "planning_allow_model": false,
+    "planning_model_candidates": 0,
+    "planning_provider_fallback": false,
+    "planning_strategy": "intent_symbolic",
+    "task": "largest-eigenval"
+  },
+  "semantic_alignment_verified": false,
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "download_calls": 0,
+    "embedding_asset_count": 9,
+    "embedding_revision": "17e1f347d17fe144873b1201da91788898c639cd",
+    "mode": "pinned_parent",
+    "source_training_data_included": false,
+    "training_steps": 0
+  },
+  "source_mutations": 0,
+  "source_roots": {
+    "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004": {
+      "head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+      "status_short": ""
+    },
+    "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005": {
+      "head": "f69d87fec31f5d76410217f740365b00f40d7b58",
+      "status_short": ""
+    },
+    "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006": {
+      "head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+      "status_short": ""
+    }
+  },
+  "source_semantics_verified": false,
+  "status": "passed_static_preflight",
+  "training_steps": 0
+}

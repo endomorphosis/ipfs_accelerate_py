@@ -1,0 +1,50 @@
+{
+  "additional_relative_link_errors": [],
+  "argv": [
+    "/home/barberb/lift_coding/.venv/bin/python",
+    "scripts/docs/run_documentation_gates.py"
+  ],
+  "evidence": {
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/README.md": {
+      "bytes": 8226,
+      "sha256": "94a6d30bc10945f1698571fbf4aaf1e7effd4186c318ed12bdc16b92880cca03"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/comparison.json": {
+      "bytes": 27327,
+      "sha256": "58e2966692dd726850ad5b8e07ccf11fd39199c1231bf07e23f8c819e4413cfd"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/completed-metadata-review.json": {
+      "bytes": 5102,
+      "sha256": "fda8c3497b268c32638a9d794c5daa96ffa5ced0d2c4969cabcd3ee0784c8840"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/harbor-token-readback.json": {
+      "bytes": 1165,
+      "sha256": "1677a585a96f4ce107d37f70e34d0e5de9b574e210b38f8fda07b9e9b4560b22"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/inspect_symbolic_trial.py": {
+      "bytes": 39519,
+      "sha256": "a7e05b5941eb39938ff40cdef305cad6e58fea891c718cfdabe849813ef25e5d"
+    },
+    "docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/run_matched_symbolic.py": {
+      "bytes": 7672,
+      "sha256": "e621098fbec0fc07ac6c39c237c4b0e9fbe237a852abb2856a8b87221f62295f"
+    },
+    "docs/agent_supervisor/terminal_symbolic_capabilities.md": {
+      "bytes": 76074,
+      "sha256": "05c068392aa04b4ce118070737e7da059b25a35217325f6d7234423d90593cfa"
+    }
+  },
+  "exit_code": 0,
+  "metadata_checks_passed": 21,
+  "native_admin_source_qualification_retained": true,
+  "official_fresh_trial_reward": 1.0,
+  "only_documentation_and_bounded_evidence_changes": true,
+  "prior_extra_link_check_retained": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/documentation-gates-before-self-link-created.json",
+  "prior_extra_link_failure_reason": "The gates receipt linked by README had not yet been created when the first additional check ran; final actual-file readback succeeds.",
+  "producer_syntax_checked": true,
+  "recorded_at_utc": "2026-10-06T07:37:53.853618+00:00",
+  "schema": "largest-eigenval-symbolic-trial-documentation-gates@1",
+  "stderr": "",
+  "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\nOK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\nOK: documentation-gates aligned at 0.0.45\n",
+  "test_counts_not_summed": true
+}

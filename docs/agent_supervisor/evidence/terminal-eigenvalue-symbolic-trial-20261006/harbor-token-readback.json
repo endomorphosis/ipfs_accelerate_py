@@ -1,0 +1,29 @@
+{
+  "billing_total_verified": false,
+  "cached_tokens_already_in_input": true,
+  "canonical_receipt": {
+    "bytes": 212168,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+    "sha256": "0cd4ad83a5ddf948286101e6ddc79dc8446b80ef0ee8e28d2b50bb6283d130c7"
+  },
+  "counters": {
+    "n_cache_tokens": 217472,
+    "n_completed_trials": 1,
+    "n_errored_trials": 0,
+    "n_input_tokens": 251752,
+    "n_output_tokens": 4199,
+    "n_retries": 0
+  },
+  "dollar_cost": null,
+  "job_result": {
+    "bytes": 1142,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/jobs/supervisor-full-largest-eigenval/result.json",
+    "sha256": "3982c1a102db5896d4b1ec8ba5751dbf62cc49bcf51b4c3a410451cd7e500d66"
+  },
+  "native_provider_counters_match": true,
+  "observed_total_tokens": 255951,
+  "official_single_trial_reward": 1.0,
+  "recorded_at_utc": "2026-10-06T07:37:53.618649+00:00",
+  "schema": "largest-eigenval-symbolic-harbor-token-readback@1",
+  "scope": "Completed Harbor job aggregate and native session counters agree; no model or hidden source body read."
+}

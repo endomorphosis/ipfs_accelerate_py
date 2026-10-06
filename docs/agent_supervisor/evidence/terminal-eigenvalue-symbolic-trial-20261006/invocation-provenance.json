@@ -1,0 +1,166 @@
+{
+  "comparison_invocation": {
+    "argv": [
+      "/home/barberb/.local/bin/python",
+      "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/inspect_symbolic_trial.py",
+      "--checkout",
+      "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006",
+      "--symbolic",
+      "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01",
+      "--direct",
+      "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/largest-eigenval-03",
+      "--baseline",
+      "/home/barberb/lift_coding/artifacts/terminal-codex-eigenvalue-baseline-20261005/native-01/receipt.json",
+      "--build-command",
+      "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-command.json",
+      "--contract",
+      "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/private-intent-contract.json",
+      "--runtime-observation",
+      "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/inflight-runtime-observation.json",
+      "--output",
+      "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/comparison-02.json"
+    ],
+    "exit_code": 0
+  },
+  "comparison_producer": {
+    "bytes": 39519,
+    "sha256": "a7e05b5941eb39938ff40cdef305cad6e58fea891c718cfdabe849813ef25e5d"
+  },
+  "frozen_native_qualification": {
+    "bytes": 8175,
+    "sha256": "0bb56c3345f05b1f08bd9465a5dc18dcbc1e28ad5ad6e6b57438ed31e70215fe"
+  },
+  "new_model_weights": false,
+  "no_hidden_test_reference_bodies_inspected": true,
+  "official_trials_executed": 1,
+  "operations": {
+    "execute": {
+      "command": {
+        "argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "execute",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01",
+          "--task",
+          "largest-eigenval"
+        ],
+        "cwd": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006",
+        "env": {
+          "HF_HUB_OFFLINE": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1",
+          "OMP_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+          "TOKENIZERS_PARALLELISM": "false",
+          "TRANSFORMERS_OFFLINE": "1"
+        },
+        "phase": "execute",
+        "producer": {
+          "bytes": 7672,
+          "sha256": "e621098fbec0fc07ac6c39c237c4b0e9fbe237a852abb2856a8b87221f62295f"
+        },
+        "runner_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+        "started_at_utc": "2026-10-06T06:08:40.521642+00:00"
+      },
+      "command_binding": {
+        "bytes": 1367,
+        "sha256": "0ecb534af133e5bcb119b7f0246dd85b1824967bc64a6316078d590942802883"
+      },
+      "exit": {
+        "completed_at_utc": "2026-10-06T06:15:48.877213+00:00",
+        "exit_code": 0,
+        "seconds": 428.3538149569649
+      },
+      "exit_binding": {
+        "bytes": 111,
+        "sha256": "58ba4cd79a08701db7dd48331c3ece83bc20821be8224356465ee5f8b2ffb5ec"
+      }
+    },
+    "prepare": {
+      "command": {
+        "argv": [
+          "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+          "-m",
+          "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+          "prepare",
+          "--dataset",
+          "/home/barberb/lift_coding/.benchmarks/terminal-bench-2",
+          "--task",
+          "largest-eigenval",
+          "--task-profile",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/largest-eigenval-profile.json",
+          "--archive",
+          "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/bundle-03",
+          "--output",
+          "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01",
+          "--arm",
+          "full",
+          "--resource-profile",
+          "source384-5cpu-16gib-extended@1",
+          "--source384-config",
+          "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+          "--setup-cache-policy",
+          "source384-native-aarch64-dontneed@2",
+          "--intent-requirement-contract",
+          "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/private-intent-contract.json"
+        ],
+        "cwd": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006",
+        "env": {
+          "HF_HUB_OFFLINE": "1",
+          "MKL_NUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1",
+          "OMP_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-runtime-20261006:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+          "TOKENIZERS_PARALLELISM": "false",
+          "TRANSFORMERS_OFFLINE": "1"
+        },
+        "phase": "prepare",
+        "producer": {
+          "bytes": 6248,
+          "sha256": "94f183ef2403008a170d3164e0df8f51af3cbb86ecfc5f893bdcd7dc7f178795"
+        },
+        "runner_head": "8dab684ef69f87a88c3dac1585eea07a5bf29a24",
+        "started_at_utc": "2026-10-06T06:06:37.550192+00:00"
+      },
+      "command_binding": {
+        "bytes": 2132,
+        "sha256": "ffaf7df22682170a23dd11220f70d85274608c9fe9f488de325690551daf2b5b"
+      },
+      "exit": {
+        "completed_at_utc": "2026-10-06T06:06:49.154930+00:00",
+        "exit_code": 0,
+        "seconds": 11.603051663027145
+      },
+      "exit_binding": {
+        "bytes": 112,
+        "sha256": "2edb5b2bf0605b9db61c8350c95689f28a65160b856b3847f3315321dd46e8ae"
+      }
+    }
+  },
+  "orchestration_producer": {
+    "bytes": 7672,
+    "sha256": "e621098fbec0fc07ac6c39c237c4b0e9fbe237a852abb2856a8b87221f62295f"
+  },
+  "original_build_command": {
+    "bytes": 2755,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-supervisor-blockers-20261005/build-03-command.json",
+    "sha256": "bd0a053425ba7c19da7ea04eeeb3063425bd7b135dc9c2233db7c1b80a30b076"
+  },
+  "prepared_receipt": {
+    "bytes": 61979,
+    "sha256": "64499c2142407f2295f756d73c3398a24987238af1da258e9abee7fa06081217"
+  },
+  "raw_model_bodies_exported": false,
+  "recorded_at_utc": "2026-10-06T07:36:29.026812+00:00",
+  "runtime_archive_reused": true,
+  "runtime_archive_sha256": "a9f25619d230725ebe9f0f784d74feaf9191905ab78216fcedaee45a95c0cbcc",
+  "schema": "largest-eigenval-symbolic-trial-invocation-provenance@1",
+  "source_contract_body_published": false,
+  "training_changes": false
+}

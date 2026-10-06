@@ -1,0 +1,9 @@
+{
+  "docker_global_cleanup_performed": false,
+  "docker_inspect_exit_code": 1,
+  "observed_at_utc": "2026-10-06T07:32:23.960918+00:00",
+  "owned_container_absent": true,
+  "owned_container_id": "6a9f3ccb9a0003969002cf14b3d2aed46a2729883c8cd48ff4c6547214730068",
+  "schema": "largest-eigenval-symbolic-owned-container-cleanup@1",
+  "scope": "Read-only post-completion inspection of the exact previously recorded owned container; no other containers touched."
+}

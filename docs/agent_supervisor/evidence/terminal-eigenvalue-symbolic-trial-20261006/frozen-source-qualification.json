@@ -1,0 +1,221 @@
+{
+  "admission": {
+    "bytes": 157231,
+    "sha256": "a1e017598d15455727859658727522ad2e21cb6e34286c58d0065b19afc966d0"
+  },
+  "authoring": "agent-authored interpretation candidate; no human semantic review",
+  "benchmark_success": null,
+  "coding_executed": false,
+  "completion_authority": false,
+  "contract": {
+    "bytes": 36020,
+    "sha256": "3802af85bb0e3382ca9e15ed73995e82ccbf233596087592d25a30d84a1ec983"
+  },
+  "contract_cid": "baguqeera24c5kvfweqygpt4j6k6wpcgt7hykotsxtqtfvdpwsitneabagofq",
+  "deterministic_replay_verified": true,
+  "execution_authority": false,
+  "goals": 2,
+  "input_files": {
+    "eigen.py": {
+      "bytes": 642,
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    "eval.py": {
+      "bytes": 2246,
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  },
+  "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+  "limitations": [
+    "The structural smoke does not verify eigenpair behavior or speed.",
+    "Requirements are authored candidates, not learned translations or numerical certificates.",
+    "No official symbolic-planning benchmark trial or coding token saving measured.",
+    "Optional autoencoder preprocessing explicitly disabled in this local qualification."
+  ],
+  "native_storage_verified": true,
+  "native_task_cids": [
+    "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+  ],
+  "planning_seconds": 1.7673966609872878,
+  "planning_strategy": "intent_symbolic",
+  "prepare_seconds": 0.4217517119832337,
+  "producer": {
+    "bytes": 13129,
+    "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_program_bytes_unchanged": true,
+  "requirement_atoms": [
+    "implement_entrypoint",
+    "dominant_modulus",
+    "input_domain",
+    "general_complex_eigenpair",
+    "faster_than_public_reference",
+    "public_residual",
+    "median_call_timing",
+    "python_entrypoint_retained"
+  ],
+  "requirement_coverage": {
+    "accepted": true,
+    "bindings": [
+      {
+        "requirement_id": "intent-requirement:0ab8c2eb638fefca22a82e37c58af80ce5dbabd371e979b0eadc8c673c552ccd",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:124d34a28275a0bd8b551612dc07bb800c4fd780c57f0f33a1492925d38a85e6",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:594a684e07ec034e5e7f8c49f10913df6a8a949ff4a131908e9c9f01bc3289c2",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:721c5e3f4cc8a55ea83e157723e558119842d1cf408fdcc15fadba6af1a28a79",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:ac568f0c903eb7b88a3aa9ee5e66fe4de3f670ec21a561637c9de11bbfb2f5bd",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:b309bd9f5dc762328a01c5f2063cc70030527838a8420e72fdd813adee141f57",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:d53133bd998ec4e0c6dd92076ddde4947ca3a26e8ebd4dc6cfc6860d2e6162bc",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      },
+      {
+        "requirement_id": "intent-requirement:eb7e59f8a85a95351b54c369598a54576fe5822209e0ddfed95254b9eac8c9bd",
+        "task_cids": [
+          "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+        ],
+        "task_keys": [
+          "TB-CODE-TASK"
+        ],
+        "validation_keys": [
+          "public-structural-smoke"
+        ]
+      }
+    ],
+    "completion_authority": false,
+    "contract_cid": "baguqeera24c5kvfweqygpt4j6k6wpcgt7hykotsxtqtfvdpwsitneabagofq",
+    "errors": [],
+    "execution_authority": false,
+    "graph_cid": "baguqeera3gxzbx2mbf7nfltxnb46ok4ywd22vprka4olzzd76r53x74oqc6q",
+    "ledger_sha256": "82323232ebba0dcc1fafb84fac80cd3f5b7084059f56d5afc9be7fe8f34a6a53",
+    "prohibited_output_violations": [],
+    "proof_authority": false,
+    "schema": "intent-plan-coverage-receipt@1",
+    "semantic_alignment_verified": false,
+    "semantic_support_complete": false,
+    "source_accounting_complete": true,
+    "uncovered_requirement_ids": [],
+    "unsupported_requirement_ids": []
+  },
+  "requirements": 8,
+  "schema": "largest-eigenval-symbolic-planning-qualification@1",
+  "scope": "native administrative planning, replay, admission and task storage only",
+  "semantic_alignment_verified": false,
+  "source_semantics_verified": false,
+  "status": "qualified",
+  "stored_tasks_sha256": "eecf330bfada73a1475e8ac230057e6e17d8fa83787c83d7a9a5a782d59314f9",
+  "symbolic_planning": {
+    "accepted": true,
+    "completion_authority": false,
+    "contract_cid": "baguqeera24c5kvfweqygpt4j6k6wpcgt7hykotsxtqtfvdpwsitneabagofq",
+    "coverage_cid": "baguqeera3rkctdycy47ixip2gu67tcwkn4tjlcwwwgzpw5v3lttstrgoghtq",
+    "critic_decision": "accepted",
+    "critic_id": "baguqeeraqvf2u74sm4o3dlivdhnin6kp5dbr7zykfgx7fukbnym76asaxyka",
+    "execution_authority": false,
+    "formal_effects_cid": "baguqeerals2kpjcgzgfoii46lvab4qgmluiftlojkx5icygbqdrnz2qwfw3a",
+    "formal_plan_id": "baguqeerabjchwc3fn7746lrwfo726vybygwyhrjs44lktklu4tysxjsatqpq",
+    "graph_cid": "baguqeera3gxzbx2mbf7nfltxnb46ok4ywd22vprka4olzzd76r53x74oqc6q",
+    "input_snapshot_cid": "sha256:03adafc7e7ea7df3a87b1e25f20bfc447e765de4b9ac04e130977d927b1a7948",
+    "interpretation_scope": "administrative_requirement_task_coverage",
+    "materials_cid": "baguqeeragln5mo7av5r2xpytwz52ujzfrcj7ia7dtms34a346k74cljf7oga",
+    "obligation_graph_id": "obligation-graph:sha256:6b1d060be0f8b59f457d5ca1691550993e8576fe8a95103a8ac8d6034efe1bda",
+    "observed_facts_supplied": 0,
+    "operation_contract_cid": "baguqeera3yqbkgqudmxchqk5sbvfbi6znwob5jxjb7yraj5ozyz633htyujq",
+    "portfolio_id": "baguqeeraxc43h5bfd3t7vpcpoh5fysf66tj5cq5kdvysx7nkzeho4hfw7dtq",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "schedule": {
+      "dependency_edges": [],
+      "schedule_id": "baguqeeranewqiocayvbpjlpo6uh6lp7i72e56h2vtibpjf6n43zfu623k3bq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/symbolic-partial-order-schedule@1",
+      "waves": [
+        [
+          "candidate:baguqeera3rvqj323ermxv2jfrum7562bgdjq4pvugnv2jex5bn6jfqy7kqua"
+        ]
+      ]
+    },
+    "schema": "intent-symbolic-planning-receipt@1",
+    "selected_candidate_id": "symbolic-8e946e7b907e04fe646a9cc7ea081700d5695dee846791a983cc29197319734d",
+    "selected_operation_ids": [
+      "operation:implement-eigenpair"
+    ],
+    "semantic_alignment_verified": false,
+    "source_semantics_verified": false
+  },
+  "tasks": 1,
+  "training_exclusion": true
+}

@@ -1,0 +1,99 @@
+{
+  "checks": {
+    "admission_coverage_matches": true,
+    "cache_in_input_not_added_again": true,
+    "coding_provider_identity": true,
+    "comparison_matches_official_counters": true,
+    "complete_native_usage": true,
+    "eight_native_bound_requirements": true,
+    "exact_owned_container_absent": true,
+    "false_interpretation_authority": true,
+    "false_plan_coverage_authority": true,
+    "input_and_output_sum": true,
+    "no_new_training_or_download": true,
+    "official_result_hash_matches_receipt": true,
+    "official_reward_one": true,
+    "one_receipted_router_coding_session": true,
+    "original_inputs_unchanged": true,
+    "planning_zero_provider_calls": true,
+    "quiescent_native_completion": true,
+    "receipt_complete": true,
+    "retained_retry_serialization_mismatch": true,
+    "same_archive_observed": true,
+    "source384_consumer_no_replay_invariant": true
+  },
+  "checks_failed": 0,
+  "checks_passed": 21,
+  "delegated_final_reviews_completed": false,
+  "delegated_review_limitation": "Both delegated final-review turns returned a usage-limit error; preflight and frozen native independent reviews completed earlier and are retained.",
+  "evidence": [
+    {
+      "bytes": 212168,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/receipt.json",
+      "sha256": "0cd4ad83a5ddf948286101e6ddc79dc8446b80ef0ee8e28d2b50bb6283d130c7"
+    },
+    {
+      "bytes": 157245,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__CkAh6qM/result.json",
+      "sha256": "204a805c4f7ba48a4271deefdeec57ec4f3407bfc082f33c160b2d134ee5336a"
+    },
+    {
+      "bytes": 113706,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__CkAh6qM/agent/supervisor-result.json",
+      "sha256": "aa0d56eaa3cc647c6178e3fefd4de0728a54731bc7605b56c39fd6388c34e2ff"
+    },
+    {
+      "bytes": 156328,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/run-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__CkAh6qM/agent/admission.json",
+      "sha256": "231d46b389bf5b4ef59a75f1381f12738cb003114adbbeb92cadde9353926a71"
+    },
+    {
+      "bytes": 27327,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/comparison-02.json",
+      "sha256": "58e2966692dd726850ad5b8e07ccf11fd39199c1231bf07e23f8c819e4413cfd"
+    },
+    {
+      "bytes": 460,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/container-cleanup.json",
+      "sha256": "e7892ff336305bf254ecaca66d5dc69eccdb798d04c13e118eaf77bcd0c7e571"
+    },
+    {
+      "bytes": 873,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/controls-preflight.json",
+      "sha256": "6683f73e03282e365b581d1de511f8b136a10c66c1fe62b59c2c62f692367b99"
+    },
+    {
+      "bytes": 39519,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-trial-20261006/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-trial-20261006/inspect_symbolic_trial.py",
+      "sha256": "a7e05b5941eb39938ff40cdef305cad6e58fea891c718cfdabe849813ef25e5d"
+    }
+  ],
+  "limits": [
+    "One historical direct comparator and one fresh symbolic trial; no causal efficiency estimate.",
+    "Archived source repeated exactly; task/container fingerprint, host load, time, package resolution and provider state differ.",
+    "A completed empirical benchmark is not universal float/complex verification."
+  ],
+  "numeric_universal_proof_claimed": false,
+  "producer_correction": {
+    "corrected_report": {
+      "bytes": 27327,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/comparison-02.json",
+      "sha256": "58e2966692dd726850ad5b8e07ccf11fd39199c1231bf07e23f8c819e4413cfd"
+    },
+    "effect": "Metadata checker only; no runtime, benchmark, candidate or numeric counter changed.",
+    "prior_bug": "Expected neural_inference_replayed=True, although frozen Source384 consumer deliberately records False for no replay.",
+    "prior_report": {
+      "bytes": 26447,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/comparison.json",
+      "sha256": "6bb1d8de7971519b252fa2d9a3186d03b0c3a0802c9c7aa39378be3f22f76de0"
+    }
+  },
+  "recorded_at_utc": "2026-10-06T07:34:16.856758+00:00",
+  "reviewer": "primary agent; direct source and receipt readbacks after delegated review capacity expired",
+  "schema": "largest-eigenval-symbolic-completed-metadata-review@1",
+  "scope": "Read-only completed official/result/provider/plan/admission metadata checks; no hidden source, model thought or solution-body inspection; no runtime rerun.",
+  "signed_admission_signature_replayed_here": false,
+  "source384_initial_inference_receipt_bound": true,
+  "source384_neural_replay_performed": false,
+  "status": "pass"
+}

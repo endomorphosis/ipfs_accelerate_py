@@ -1,0 +1,122 @@
+{
+  "benchmark_executed_by_reviewer": false,
+  "checks": {
+    "admission_bytes_match": true,
+    "all_eight_requirements_covered": true,
+    "authority_flags_stay_false": true,
+    "contract_bytes_match": true,
+    "contract_matches_selected_private_trial_contract": true,
+    "coverage_receipts_consistent": true,
+    "frozen_source_provenance_bound": true,
+    "model_disallowed_and_fallback_disabled": true,
+    "no_coding_or_benchmark_executed": true,
+    "no_provider_request_receipt_or_observation": true,
+    "one_task_two_goals": true,
+    "producer_bytes_match": true,
+    "producer_omits_provider_callable": true,
+    "provider_calls_zero": true,
+    "public_instruction_binding_unchanged": true,
+    "public_program_input_bindings_unchanged": true,
+    "qualified": true,
+    "readonly_sql_did_not_change_database": true,
+    "same_private_and_durable_planning_result": true,
+    "source_accounting_complete": true,
+    "sql_storage_canonical_hash_matches": true,
+    "strategy_matches": true,
+    "symbolic_receipts_consistent": true,
+    "task_cids_match_all_readbacks": true,
+    "training_excluded": true
+  },
+  "credential_contents_read": false,
+  "evidence_bindings": [
+    {
+      "bytes": 8175,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/qualification.json",
+      "sha256": "0bb56c3345f05b1f08bd9465a5dc18dcbc1e28ad5ad6e6b57438ed31e70215fe"
+    },
+    {
+      "bytes": 7165,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/private-planning-result.json",
+      "sha256": "135a6cd064f7c7f58b059e070875db61e693003f231b83159e3666a2baac3e9b"
+    },
+    {
+      "bytes": 7165,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/planning-result.json",
+      "sha256": "135a6cd064f7c7f58b059e070875db61e693003f231b83159e3666a2baac3e9b"
+    },
+    {
+      "bytes": 41,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/planner-invoked.json",
+      "sha256": "25ebc60f091104db571663884476c7a69dd9676a21e971d764500b1874bda126"
+    },
+    {
+      "bytes": 127106,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/prepared.json",
+      "sha256": "c01d8a6299890e6211e6cb30291cb25d3f3e6ea54283515e1a1273cbe082c7e6"
+    },
+    {
+      "bytes": 1892,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/symbolic-planning-receipt.json",
+      "sha256": "d63864b4aa4c2dab02f38c85e388ebf4be9b13320cf0300abc3f0de8d0ac91db"
+    },
+    {
+      "bytes": 157231,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/admission.json",
+      "sha256": "a1e017598d15455727859658727522ad2e21cb6e34286c58d0065b19afc966d0"
+    },
+    {
+      "bytes": 36020,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/private-contract.json",
+      "sha256": "3802af85bb0e3382ca9e15ed73995e82ccbf233596087592d25a30d84a1ec983"
+    },
+    {
+      "bytes": 13129,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-eigenvalue-symbolic-diagnosis-20261005/docs/agent_supervisor/evidence/terminal-eigenvalue-symbolic-diagnosis-20261005/qualify_symbolic_planning.py",
+      "sha256": "0525f6f36d45ed0461a169f8fd40c8087fc855ed12b64a290e06a293110cac13"
+    },
+    {
+      "bytes": 19877,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/independent-archive-preflight.json",
+      "sha256": "ff44afa779752744d40ec3b66451f91235aaf14e17c4a47edd072f2680b9d475"
+    }
+  ],
+  "failed_checks": [],
+  "lifecycle_calls_by_reviewer": 0,
+  "limitations": [
+    "Administrative planning coverage, replay and storage do not establish floating-point eigensolver behavior, speed or official reward.",
+    "Optional autoencoder preprocessing was disabled for the local qualification; the fresh full-arm trial retains Source384 through the unchanged archived assets.",
+    "The provider callable was omitted, rather than monkeypatched; the frozen direct planning branch requires a callable and would refuse before provider dispatch.",
+    "The historical comparator is one nonrandom trial; the reviewed contract may change downstream task and prompt bytes."
+  ],
+  "native_replay_independently_rerun": false,
+  "native_replay_observation": "Producer explicitly rebuilt the symbolic plan and asserted receipt equality, verified native admission, decoded stored native task contracts and requirement bindings before emitting the qualified receipt. This review inspected those assertions and matched durable receipts plus SQL task storage.",
+  "observed_at_utc": "2026-10-06T06:09:23.566732+00:00",
+  "provider_calls_by_reviewer": 0,
+  "raw_benchmark_bodies_exported": false,
+  "readback": {
+    "completion_authority": false,
+    "database": {
+      "bytes": 28323840,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-eigenvalue-symbolic-trial-20261006/frozen-source-qualification/state/intent.duckdb",
+      "sha256": "2a949f02f589688d29986a2944620e0affdddeefbeacac5047660ad20c407a48"
+    },
+    "duckdb_reader_version": "1.5.5",
+    "execution_authority": false,
+    "goals": 2,
+    "native_task_cids": [
+      "baguqeera5433prybrpr4qrhl53raau4iuqhq7etezbc426qo7imag2misoya"
+    ],
+    "planning_seconds": 1.7673966609872878,
+    "prepare_seconds": 0.4217517119832337,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "requirements": 8,
+    "semantic_alignment_verified": false,
+    "source_semantics_verified": false,
+    "sql_storage_canonical_sha256": "eecf330bfada73a1475e8ac230057e6e17d8fa83787c83d7a9a5a782d59314f9",
+    "tasks": 1
+  },
+  "schema": "largest-eigenval-frozen-native-qualification-independent-review@1",
+  "scope": "read-only receipt, producer and SQL storage review of the already-completed frozen-source native administrative qualification",
+  "status": "passed"
+}

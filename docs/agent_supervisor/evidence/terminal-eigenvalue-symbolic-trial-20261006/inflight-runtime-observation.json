@@ -1,0 +1,20 @@
+{
+  "actual_resources": {
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpusetCpus": "",
+    "Memory": 17179869184,
+    "MemorySwap": 34359738368,
+    "NanoCpus": 5000000000,
+    "NetworkMode": "largest-eigenval__ckah6qm__env_default"
+  },
+  "container_id": "6a9f3ccb9a0003969002cf14b3d2aed46a2729883c8cd48ff4c6547214730068",
+  "container_name": "largest-eigenval__ckah6qm__env-main-1",
+  "final_usage": null,
+  "image_id": "sha256:3617fe4ba97b7dcca603ba0129b02ec091c55094798c65dcf159ac01a8e9115b",
+  "observed_at_utc": "2026-10-06T06:10:30.196739+00:00",
+  "official_reward": null,
+  "running": true,
+  "schema": "largest-eigenval-symbolic-inflight-runtime@1",
+  "stage": "environment/setup still in progress"
+}
