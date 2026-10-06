@@ -1,0 +1,167 @@
+{
+  "active_instance_catalog_scope": "two registered candidates only; cold reloaded catalog initially includes the entire persisted population",
+  "active_manager_catalog": {
+    "catalog_revision": "bafkreibfhlxtm367gtid5za43oeqanqdi27fc5iipxpjbe73zqw3sdzfnm",
+    "matching_bindings": [
+      {
+        "canonical_model_id": "model_44858ac23de422d49c1f4c811ee8fdf7259ac3eefbea9f4d250bb5f003c6ef48",
+        "source_record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9"
+      },
+      {
+        "canonical_model_id": "model_6c3cd883a9bc2144ba3949030c48c7a645a4593cfb4672de19485652723cd272",
+        "source_record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+      }
+    ]
+  },
+  "after_count": 670,
+  "after_database_pin": {
+    "bytes": 2980589568,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+    "sha256": "85bc7743c7286a8f95a9e08a43ad1ed08d14de13b361f72a440a1c1c6ec608ca"
+  },
+  "after_records_pin": {
+    "bytes": 11483539,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-after-records.json",
+    "sha256": "f60840a9a6f285d91693638b7181b28b46af0524e0684aa777b1b25a18fe680b"
+  },
+  "before_count": 668,
+  "before_receipt_pin": {
+    "bytes": 15358,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-before.json",
+    "sha256": "2fcc2c1eb469eedae6d58ed06c5091f60a2427ed55712c83b5c2ef323df601c0"
+  },
+  "cold_genuine_manager_reload_verified": true,
+  "cold_manager_catalog": {
+    "catalog_revision": "bafkreidvasvxqsscednqvjsjhkniqoui6szrd5a7ppob7akpjm6icxibgy",
+    "matching_bindings": [
+      {
+        "canonical_model_id": "model_44858ac23de422d49c1f4c811ee8fdf7259ac3eefbea9f4d250bb5f003c6ef48",
+        "source_record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9"
+      },
+      {
+        "canonical_model_id": "model_6c3cd883a9bc2144ba3949030c48c7a645a4593cfb4672de19485652723cd272",
+        "source_record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+      }
+    ]
+  },
+  "cold_native_readback_verified": true,
+  "completed": true,
+  "cooperative_endpoint_scope": true,
+  "current_external_service_process_refreshed": false,
+  "genuine_instance_save_population_restricted_to_two_target_ids": true,
+  "genuine_source_optional_import_logger_bootstrap": "stdlib logger seeded before executing the exact committed module; actual source and all API methods unchanged",
+  "independent_review_pin": {
+    "bytes": 6626,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-driver-review.json",
+    "sha256": "0ee31f18291765003a9f5d61075deedbdf9cb0dd9225cf939130f48c6a782914"
+  },
+  "model_loaded_for_inference": false,
+  "native_api_result": {
+    "already_present_count": 0,
+    "authority": {
+      "active_process_refreshed": false,
+      "model_numerically_loaded": false,
+      "model_quality_qualified": false,
+      "proof_authority": false,
+      "registration_metadata_verified": true,
+      "remote_independently_verified_by_adapter": false,
+      "runtime_ready": false,
+      "teacher_qualified": false
+    },
+    "completed": true,
+    "manifest_receipt": {
+      "bytes": 172556,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+      "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+    },
+    "outcomes": [
+      {
+        "add_model_result": true,
+        "add_model_returned": true,
+        "add_model_started": true,
+        "already_present": false,
+        "checkpoint_sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+        "model_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+        "persisted_metadata_matched": true,
+        "persisted_readback_returned": true,
+        "persisted_readback_started": true,
+        "status": "registered_verified"
+      },
+      {
+        "add_model_result": true,
+        "add_model_returned": true,
+        "add_model_started": true,
+        "already_present": false,
+        "checkpoint_sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+        "model_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+        "persisted_metadata_matched": true,
+        "persisted_readback_returned": true,
+        "persisted_readback_started": true,
+        "status": "registered_verified"
+      }
+    ],
+    "persisted_metadata_matched_count": 2,
+    "publication_receipts": [
+      {
+        "bytes": 5143,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+        "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+      }
+    ],
+    "readback_semantics": "Explicit driver-owned reopened-storage callable; adapter verifies returned fields, not its implementation.",
+    "registered_count": 2,
+    "schema": "ir-model-manager-import-result/v1"
+  },
+  "native_schema_profile_format_unknown_preserved": true,
+  "network_or_execution_refusals": [],
+  "new_checkpoint_count": 2,
+  "new_embeddings_generated": false,
+  "new_huggingface_upload": false,
+  "new_model_ids": [
+    "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+    "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+  ],
+  "optional_owner_import_refusals": [
+    "ipfs_accelerate_py.common.storage_wrapper",
+    "ipfs_accelerate_py.common.storage_wrapper",
+    "ipfs_accelerate_py.ipfs_kit_integration",
+    "ipfs_accelerate_py.datasets_integration",
+    "ipfs_accelerate_py.model_manager_graphrag",
+    "sentence_transformers",
+    "sentence_transformers",
+    "sentence_transformers"
+  ],
+  "optional_provenance_storage_graphrag_owners_disabled": true,
+  "original_checkpoint_and_cache_bytes_unchanged": true,
+  "persisted_native_queries": [
+    {
+      "fresh_native_connection": true,
+      "manager_models_not_used": true,
+      "model_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "shared_native_engine_cache_possible": true
+    },
+    {
+      "fresh_native_connection": true,
+      "manager_models_not_used": true,
+      "model_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+      "shared_native_engine_cache_possible": true
+    }
+  ],
+  "preparation_pin": {
+    "bytes": 1969,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+    "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+  },
+  "proof_authority": false,
+  "protected_original_file_count": 49,
+  "runtime_ready": false,
+  "schema": "original-contextual-state-model-manager-registration/v1",
+  "schema_and_indexes_unchanged": true,
+  "selected_storage": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb",
+  "source_scope": "Selected genuine API and model-catalog Git objects pinned before/after; not a guarded full eager-import closure.",
+  "teacher_qualified": false,
+  "training_executed": false,
+  "unrelated_activity_timestamps_preserved": true,
+  "unrelated_persisted_records_exactly_equal": true,
+  "unrelated_stable_metadata_preserved": true
+}

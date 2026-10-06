@@ -1,0 +1,176 @@
+{
+  "approved": true,
+  "dimension_mirror_publication_review": {
+    "ModelManager_immutable_original_aggregate_binding_preserved": true,
+    "cross_repository_transaction_atomic": false,
+    "fresh_download_files_byte_rechecked": 2,
+    "fresh_download_receipt_pin": {
+      "bytes": 3844,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirror-fresh-downloads.json",
+      "sha256": "cb37d9e41ee20a801f06fb09ad700fd3a6dded5817a44004bbb9d5618c4be3d2"
+    },
+    "lanes": [
+      {
+        "baseline_snapshot_pin": {
+          "bytes": 214540,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-before-publication.json",
+          "sha256": "4ef9920dbc9a66679474174e29dd2022c171b3a0b98cb4b135ff4d33dbcd7601"
+        },
+        "dimension": 384,
+        "local_new_files_SHA256_and_remote_Git_blob_pins_match": true,
+        "new_path_count": 3,
+        "preservation_receipt_pin": {
+          "bytes": 1484,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-preservation.json",
+          "sha256": "3795c41b4847fe1e70694e0a821eb27ff54e690b610edda2c5ad491f0c65caae"
+        },
+        "prior_path_count": 502,
+        "prior_remote_path_preservation_observed_by_reviewed_publisher": true,
+        "publication_receipt_pin": {
+          "bytes": 3543,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-publication-receipt.json",
+          "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+        },
+        "repository_id": "Publicus/legal-ir-autoencoder-384d",
+        "revision": "f2c3714f7bf8e30177a799270f0cead51baf19dc"
+      },
+      {
+        "baseline_snapshot_pin": {
+          "bytes": 64840,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-before-publication.json",
+          "sha256": "f4ed34e9abe1329538018ea104e784ae477744d73cd283e105ddcfac82d1971d"
+        },
+        "dimension": 768,
+        "local_new_files_SHA256_and_remote_Git_blob_pins_match": true,
+        "new_path_count": 3,
+        "preservation_receipt_pin": {
+          "bytes": 1483,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-preservation.json",
+          "sha256": "5855ffc39b4b4074ec5e6c7672f385d2ab6a1ecb50b4acd3b52d9e96acfc673a"
+        },
+        "prior_path_count": 142,
+        "prior_remote_path_preservation_observed_by_reviewed_publisher": true,
+        "publication_receipt_pin": {
+          "bytes": 3543,
+          "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-publication-receipt.json",
+          "sha256": "9bf16ea7107775fc9f0709137239dceb282d27725ae3b121465bf5b2890ce51c"
+        },
+        "repository_id": "Publicus/legal-ir-autoencoder-768d",
+        "revision": "2fc77ccd037e7276c8bdd56a2c79cada0334fd79"
+      }
+    ],
+    "new_uploaded_file_local_and_remote_blob_identities_rechecked": 6,
+    "publication_summary_pin": {
+      "bytes": 2035,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/publication-summary.json",
+      "sha256": "757d37b29aeb4c5ed69c1ea2b9176f1d59de790dd34c41e3d303081ecd250583"
+    }
+  },
+  "evidence_curation_requirements": [
+    "Exclude checkpoint weight bytes, embedding/source payloads, database/backup binaries and complete ModelManager baseline/final record dumps.",
+    "Preserve exact selected metadata receipts, bounded scripts/logs/tests and stated authority limitations.",
+    "Keep historical diagnostic failures and source-custody refusals as scoped history."
+  ],
+  "findings": [],
+  "resolved_precision_notes": [
+    "Driver network/unreviewed extra-process fencing now explicitly permits its exact read-only Git witness commands.",
+    "The historical primary paragraph now identifies512 as decoder output limits and links separate source producer scopes."
+  ],
+  "review_scope_limits": [
+    "No additional Hub API calls or remote mutations were made by reviewer. All502/142 prior path preservation is supported by authenticated baseline snapshots, preservation receipts and inspected native-publisher checks; reviewer independently rehashed all6 new local file pins/Git blob identities and both fresh CLI downloads.",
+    "No ModelManager construction, live database writes, decoder/encoder loading, numerical replay or training was performed during final documentation review. Earlier independent postwrite audit reopened the670 live persisted rows read-only.",
+    "Metadata source restoration and fragment route resolution do not admit contextual states or all12 runtime paths.",
+    "This approves the two frozen document contents against available receipts. Root remains responsible for copying referenced scoped evidence, validating its archive manifest and running repository documentation gates before publishing."
+  ],
+  "reviewed_document_pins": [
+    {
+      "bytes": 12015,
+      "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/contextual_ir_checkpoint_recovery.md",
+      "sha256": "c46fa8f84f176e4eb24f9ce1cd69d7fbc4c9e45e00b05dd58578dc6ee948d645"
+    },
+    {
+      "bytes": 89120,
+      "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "6105589906ccc57e2a8225e6ff271d585ca76232575b15ee7c6a8b9a2aa36e36"
+    }
+  ],
+  "schema": "contextual-checkpoint-recovery-final-documentation-review/v1",
+  "supporting_evidence_pins": [
+    {
+      "bytes": 4163,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-postwrite-review.json",
+      "sha256": "f6bf406d8f22f5f27feedeae3774fedc0a455a083ecddd1a62b9214c407b0250"
+    },
+    {
+      "bytes": 92027,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-owner/qualification.json",
+      "sha256": "f526b9d0f860675d84503e124ecdc294261eea3bf91aa7bc585f51227427598c"
+    },
+    {
+      "bytes": 169498,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+      "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+    },
+    {
+      "bytes": 24113,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source-producer-joins.json",
+      "sha256": "0a6f970b0a0b27110d879b38a7d76a59ea11e852808ecf0e61abf656f4f7eb40"
+    }
+  ],
+  "verified_claims": {
+    "ModelManager670_rows_with668_exact_baseline": {
+      "after_count": 670,
+      "all_baseline_records_exact_including_activity": true,
+      "before_count": 668,
+      "current_read_only_native_rows_equal_driver_final_export": true,
+      "driver_observed_genuine_cold_reload": true,
+      "log_observed_full_load_counts": [
+        668,
+        670
+      ],
+      "log_observed_save_populations": [
+        1,
+        2,
+        2,
+        2
+      ],
+      "log_pin": {
+        "bytes": 2212,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-driver.log",
+        "sha256": "5afefcf1daed7ab0515c95982c18734cc96bd2d9d579dd5fdba84def23363934"
+      },
+      "model_ids": [
+        "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+        "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+      ],
+      "new_original_state_records": 2,
+      "public_API_outcomes_registered_verified": true,
+      "reviewer_reconstructed_model_manager": false,
+      "schema_and_indexes_exact": true
+    },
+    "both_declared_decoder_output_limits512_vocabulary32": true,
+    "catalog_generation_change_requires_reviewed_context_repreparation_preserving_old_pins": true,
+    "existing_importer_profile_controls": {
+      "XML_pin": {
+        "bytes": 30837,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-metadata-tests.xml",
+        "sha256": "5dd918c97054b32293d42b79de2471a8d0d4ed55bf1acf720983d3c3a7ab2908"
+      },
+      "cases": 158,
+      "errors": 0,
+      "failures": 0,
+      "skips": 0
+    },
+    "heldout_distillation_8192_source_fidelity_teacher_and_checked_proof_gates_remain_pending": true,
+    "historical_exposed_panel_only_exact_IR48_rules180_atomic_fields720_per_width": true,
+    "input_transform_real_clauses_then_zero_padding_separate_internal_feature_norms": true,
+    "metadata_catalog_resolution_and_byte_authentication_distinct_from_pending_contextual_runtime": true,
+    "metadata_native_output_schema_profile_format_unknown": true,
+    "native_input8192_declaration_distinct_from_mixed_cached_source_scope_and_decoder_qualification": true,
+    "normalization_fitted_on_TRAIN48_paragraphs_and113_unique_clauses": true,
+    "original_contextual_state_and_cache_reuse_without_new_training_or_inference": true,
+    "original_two_fragment_profile_stable_IDs_and12_lanes_verified": true,
+    "six_step_plan_preserves_separate_family_dimension_schema_task_and_ablation_namespaces": true,
+    "source_text_reconstruction_distinct_from_generated_canonical_semantic_IR": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "before_receipt_pin": {
+    "bytes": 15358,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-before.json",
+    "sha256": "2fcc2c1eb469eedae6d58ed06c5091f60a2427ed55712c83b5c2ef323df601c0"
+  },
+  "genuine_manager_source": {
+    "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+    "pin": {
+      "bytes": 176248,
+      "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_manager.py",
+      "sha256": "cd65b2e91c05a603ad984ddcef0e2967b90362f90ee212c1849f9e5bc81631d4"
+    },
+    "relative_path": "ipfs_accelerate_py/model_manager.py"
+  },
+  "independent_review_pin": {
+    "bytes": 6626,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-driver-review.json",
+    "sha256": "0ee31f18291765003a9f5d61075deedbdf9cb0dd9225cf939130f48c6a782914"
+  }
+}

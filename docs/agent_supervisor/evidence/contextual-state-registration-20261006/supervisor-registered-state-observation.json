@@ -1,0 +1,277 @@
+{
+  "binding_snapshot_revision": "06eb3e65a2d24af4fafd5260f7fc458f5f676aa75fcc8f555f60ae9c409a4413",
+  "catalog_revision": "bafkreifp4yjqiaxs3tusootgk6dl5uezpaibdase5gkjmtoqwosdy5q3pq",
+  "checkpoint_bytes_unchanged": true,
+  "completed": true,
+  "database_mutated": false,
+  "exact_selectors": [
+    {
+      "checkpoint_sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "format_id": null,
+      "ir_family_id": "legal_ir",
+      "profile_id": null,
+      "record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "role": "selected_contextual_semantic_decoder_state",
+      "schema_version": null,
+      "task_id": "semantic_IR_reconstruction"
+    },
+    {
+      "checkpoint_sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+      "dimension": 768,
+      "dimension_role": "input_embedding",
+      "format_id": null,
+      "ir_family_id": "legal_ir",
+      "profile_id": null,
+      "record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+      "role": "selected_contextual_semantic_decoder_state",
+      "schema_version": null,
+      "task_id": "semantic_IR_reconstruction"
+    }
+  ],
+  "inference_executed": false,
+  "model_loaded": false,
+  "model_manager_constructed": false,
+  "observations": [
+    {
+      "authority": {
+        "inference_executed": false,
+        "model_loaded": false,
+        "model_manager_constructed": false,
+        "proof_authority": false,
+        "runtime_admitted": false,
+        "teacher_qualified": false,
+        "training_executed": false
+      },
+      "checkpoint_bytes_authenticated": true,
+      "file_witness": {
+        "bytes": 2799098,
+        "ctime_ns": 1791129849995028798,
+        "device": 66306,
+        "inode": 74333128,
+        "mode": 33204,
+        "mtime_ns": 1791129849995028798,
+        "nlink": 1,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "native_resolution": {
+        "authority": {
+          "checkpoint_bytes_authenticated": false,
+          "inference_executed": false,
+          "model_loaded": false,
+          "model_manager_constructed": false,
+          "proof_authority": false,
+          "runtime_admitted": false,
+          "teacher_qualified": false,
+          "training_executed": false
+        },
+        "binding_snapshot_revision": "06eb3e65a2d24af4fafd5260f7fc458f5f676aa75fcc8f555f60ae9c409a4413",
+        "catalog_revision": "bafkreifp4yjqiaxs3tusootgk6dl5uezpaibdase5gkjmtoqwosdy5q3pq",
+        "schema": "ir-persisted-binding-resolution/v1",
+        "selected_binding": {
+          "catalog_model_id": "model_46157115c560c6a14101021ba3749c8a52e5dcb15f7c7e400d462510ca75e146",
+          "checkpoint_sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+          "declaration": {
+            "dimension": 384,
+            "dimension_role": "input_embedding",
+            "donor": null,
+            "format_id": null,
+            "initialization_only": false,
+            "ir_family_id": "legal_ir",
+            "original_checkpoint_pin": {
+              "bytes": 2799098,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+              "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+            },
+            "profile_id": null,
+            "proof_authority": false,
+            "record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+            "role": "selected_contextual_semantic_decoder_state",
+            "runtime_ready": false,
+            "schema_version": null,
+            "task_id": "semantic_IR_reconstruction",
+            "teacher_qualified": false,
+            "trained": true
+          },
+          "dimension": 384,
+          "dimension_role": "input_embedding",
+          "format_id": null,
+          "ir_family_id": "legal_ir",
+          "original_checkpoint_bytes_verified": false,
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+          "role": "selected_contextual_semantic_decoder_state",
+          "runtime_observation_performed": false,
+          "schema_version": null,
+          "task_id": "semantic_IR_reconstruction"
+        },
+        "storage_path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb"
+      },
+      "observation_scope": "cooperative-endpoint-checks",
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "schema": "task-ir-checkpoint-authentication/v1",
+      "selectors": {
+        "checkpoint_sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "ir_family_id": "legal_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+        "role": "selected_contextual_semantic_decoder_state",
+        "schema_version": null,
+        "task_id": "semantic_IR_reconstruction"
+      }
+    },
+    {
+      "authority": {
+        "inference_executed": false,
+        "model_loaded": false,
+        "model_manager_constructed": false,
+        "proof_authority": false,
+        "runtime_admitted": false,
+        "teacher_qualified": false,
+        "training_executed": false
+      },
+      "checkpoint_bytes_authenticated": true,
+      "file_witness": {
+        "bytes": 4781613,
+        "ctime_ns": 1791129924775973274,
+        "device": 66306,
+        "inode": 74333160,
+        "mode": 33204,
+        "mtime_ns": 1791129924775973274,
+        "nlink": 1,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "native_resolution": {
+        "authority": {
+          "checkpoint_bytes_authenticated": false,
+          "inference_executed": false,
+          "model_loaded": false,
+          "model_manager_constructed": false,
+          "proof_authority": false,
+          "runtime_admitted": false,
+          "teacher_qualified": false,
+          "training_executed": false
+        },
+        "binding_snapshot_revision": "06eb3e65a2d24af4fafd5260f7fc458f5f676aa75fcc8f555f60ae9c409a4413",
+        "catalog_revision": "bafkreifp4yjqiaxs3tusootgk6dl5uezpaibdase5gkjmtoqwosdy5q3pq",
+        "schema": "ir-persisted-binding-resolution/v1",
+        "selected_binding": {
+          "catalog_model_id": "model_cc2c421d6f8e4df328e5f76fa7bb14db21e2f0eadef7295569dd2c85487a857b",
+          "checkpoint_sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+          "declaration": {
+            "dimension": 768,
+            "dimension_role": "input_embedding",
+            "donor": null,
+            "format_id": null,
+            "initialization_only": false,
+            "ir_family_id": "legal_ir",
+            "original_checkpoint_pin": {
+              "bytes": 4781613,
+              "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+              "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+            },
+            "profile_id": null,
+            "proof_authority": false,
+            "record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+            "role": "selected_contextual_semantic_decoder_state",
+            "runtime_ready": false,
+            "schema_version": null,
+            "task_id": "semantic_IR_reconstruction",
+            "teacher_qualified": false,
+            "trained": true
+          },
+          "dimension": 768,
+          "dimension_role": "input_embedding",
+          "format_id": null,
+          "ir_family_id": "legal_ir",
+          "original_checkpoint_bytes_verified": false,
+          "profile_id": null,
+          "record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+          "role": "selected_contextual_semantic_decoder_state",
+          "runtime_observation_performed": false,
+          "schema_version": null,
+          "task_id": "semantic_IR_reconstruction"
+        },
+        "storage_path": "/home/barberb/lift_coding/external/ipfs_accelerate/model_manager.duckdb"
+      },
+      "observation_scope": "cooperative-endpoint-checks",
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "schema": "task-ir-checkpoint-authentication/v1",
+      "selectors": {
+        "checkpoint_sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+        "dimension": 768,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "ir_family_id": "legal_ir",
+        "profile_id": null,
+        "record_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+        "role": "selected_contextual_semantic_decoder_state",
+        "schema_version": null,
+        "task_id": "semantic_IR_reconstruction"
+      }
+    }
+  ],
+  "preparation_pin": {
+    "bytes": 1969,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+    "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+  },
+  "proof_authority": false,
+  "runtime_admitted": false,
+  "schema": "registered-contextual-states-supervisor-observation/v1",
+  "scope": "Existing explicit supervisor nominations and checkpoint byte authentication only; contextual runtime wrapper is pending.",
+  "source_owners": [
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 7534,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py",
+        "sha256": "2108e9ff11ae93adf4d11af30f7a8ff8a5003193d126436fbb72a8d69b7e5cd8"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_checkpoint.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 2722,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py",
+        "sha256": "c1f5c4860e3eca0fa8db0e1a584623b58b309f999f1290c331dfe3dba57fc002"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/task_ir_selection.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 19952,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/ir_persistent.py",
+        "sha256": "2cfdb2ad61c9bb1f2fe1c64cf6c70ca45c932d0ec53ccdd08640600d5730beed"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py"
+    },
+    {
+      "head": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+      "pin": {
+        "bytes": 3331,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/ipfs_accelerate_py/model_catalog/sources/persistent.py",
+        "sha256": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8"
+      },
+      "relative_path": "ipfs_accelerate_py/model_catalog/sources/persistent.py"
+    }
+  ],
+  "successful_byte_authentications": 2,
+  "training_executed": false
+}

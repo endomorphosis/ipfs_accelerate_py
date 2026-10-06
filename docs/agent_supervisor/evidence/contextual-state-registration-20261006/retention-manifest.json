@@ -1,0 +1,713 @@
+{
+  "completed": true,
+  "files": [
+    {
+      "relative_path": "asset-survey/contextual-state-custody-survey.json",
+      "retained_pin": {
+        "bytes": 169498,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/contextual-state-custody-survey.json",
+        "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+      },
+      "source_pin": {
+        "bytes": 169498,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/contextual-state-custody-survey.json",
+        "sha256": "b2dff342abaf085b67b2f19158527967fbb7405b49e9c10ea8ddedda1be65c46"
+      }
+    },
+    {
+      "relative_path": "asset-survey/development-diagnostics.json",
+      "retained_pin": {
+        "bytes": 1896,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/development-diagnostics.json",
+        "sha256": "6e19e9a24ac86773cf510364f491ffd978d459a03b7461cb1067d0ad77c1db12"
+      },
+      "source_pin": {
+        "bytes": 1896,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/development-diagnostics.json",
+        "sha256": "6e19e9a24ac86773cf510364f491ffd978d459a03b7461cb1067d0ad77c1db12"
+      }
+    },
+    {
+      "relative_path": "asset-survey/independent-plan-review.json",
+      "retained_pin": {
+        "bytes": 10738,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/independent-plan-review.json",
+        "sha256": "0981a86d9eb636f70a4b508512a78d0270c97ce918238088eb1423a9d0ce92f9"
+      },
+      "source_pin": {
+        "bytes": 10738,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/independent-plan-review.json",
+        "sha256": "0981a86d9eb636f70a4b508512a78d0270c97ce918238088eb1423a9d0ce92f9"
+      }
+    },
+    {
+      "relative_path": "asset-survey/review_registration_plan.py",
+      "retained_pin": {
+        "bytes": 10823,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/review_registration_plan.py",
+        "sha256": "14f9f639c3b560d2d4272a285467004cd9650af9a12b5bd0b010f84c2bd254d0"
+      },
+      "source_pin": {
+        "bytes": 10823,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/review_registration_plan.py",
+        "sha256": "14f9f639c3b560d2d4272a285467004cd9650af9a12b5bd0b010f84c2bd254d0"
+      }
+    },
+    {
+      "relative_path": "asset-survey/source-producer-joins.json",
+      "retained_pin": {
+        "bytes": 24113,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/source-producer-joins.json",
+        "sha256": "0a6f970b0a0b27110d879b38a7d76a59ea11e852808ecf0e61abf656f4f7eb40"
+      },
+      "source_pin": {
+        "bytes": 24113,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source-producer-joins.json",
+        "sha256": "0a6f970b0a0b27110d879b38a7d76a59ea11e852808ecf0e61abf656f4f7eb40"
+      }
+    },
+    {
+      "relative_path": "asset-survey/source_producer_joins.py",
+      "retained_pin": {
+        "bytes": 11637,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/source_producer_joins.py",
+        "sha256": "58647e89e82613f5b84a6dfd2bfe582942d964f53fa0aca1e1174f6fbd2d1038"
+      },
+      "source_pin": {
+        "bytes": 11637,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/source_producer_joins.py",
+        "sha256": "58647e89e82613f5b84a6dfd2bfe582942d964f53fa0aca1e1174f6fbd2d1038"
+      }
+    },
+    {
+      "relative_path": "asset-survey/survey.py",
+      "retained_pin": {
+        "bytes": 22953,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/asset-survey/survey.py",
+        "sha256": "c66bf7ca85a266281721689cf7af66bb43df27a29f11b6f18d107cdf9168104e"
+      },
+      "source_pin": {
+        "bytes": 22953,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/survey.py",
+        "sha256": "c66bf7ca85a266281721689cf7af66bb43df27a29f11b6f18d107cdf9168104e"
+      }
+    },
+    {
+      "relative_path": "build_registration_plan.py",
+      "retained_pin": {
+        "bytes": 10266,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/build_registration_plan.py",
+        "sha256": "ecca5da4d2c8b0f3f7ceda2c9663ebb31d8f0438db8c158b56d78b1862cb0a18"
+      },
+      "source_pin": {
+        "bytes": 10266,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/build_registration_plan.py",
+        "sha256": "ecca5da4d2c8b0f3f7ceda2c9663ebb31d8f0438db8c158b56d78b1862cb0a18"
+      }
+    },
+    {
+      "relative_path": "contextual-model-manager-import-plan.json",
+      "retained_pin": {
+        "bytes": 172556,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/contextual-model-manager-import-plan.json",
+        "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+      },
+      "source_pin": {
+        "bytes": 172556,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+        "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+      }
+    },
+    {
+      "relative_path": "custody.py",
+      "retained_pin": {
+        "bytes": 2714,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/custody.py",
+        "sha256": "c3b355c2b3e4743a839a721b61c1d2868fe25c609b8da562a6b302fbe0cb6864"
+      },
+      "source_pin": {
+        "bytes": 2714,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/custody.py",
+        "sha256": "c3b355c2b3e4743a839a721b61c1d2868fe25c609b8da562a6b302fbe0cb6864"
+      }
+    },
+    {
+      "relative_path": "dimension-mirror-fresh-downloads.json",
+      "retained_pin": {
+        "bytes": 3844,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirror-fresh-downloads.json",
+        "sha256": "cb37d9e41ee20a801f06fb09ad700fd3a6dded5817a44004bbb9d5618c4be3d2"
+      },
+      "source_pin": {
+        "bytes": 3844,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirror-fresh-downloads.json",
+        "sha256": "cb37d9e41ee20a801f06fb09ad700fd3a6dded5817a44004bbb9d5618c4be3d2"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d/README.md",
+      "retained_pin": {
+        "bytes": 2106,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d/README.md",
+        "sha256": "2d3a20e476e5925935677d1033db91d34a70740f2061c86489cd8e68b441c6b1"
+      },
+      "source_pin": {
+        "bytes": 2106,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/README.md",
+        "sha256": "2d3a20e476e5925935677d1033db91d34a70740f2061c86489cd8e68b441c6b1"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d/manifest.json",
+      "retained_pin": {
+        "bytes": 10074,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d/manifest.json",
+        "sha256": "ee74e5b9738caa94dc8f24e296d4895c16baf9a52eb2305b5c5fa3141e1b309e"
+      },
+      "source_pin": {
+        "bytes": 10074,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/manifest.json",
+        "sha256": "ee74e5b9738caa94dc8f24e296d4895c16baf9a52eb2305b5c5fa3141e1b309e"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d/publication-plan.json",
+      "retained_pin": {
+        "bytes": 1641,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d/publication-plan.json",
+        "sha256": "5f7e1f10952749a8c95c816ce20ecd00483ba3e3ba1daa9f05f6743fea0ec6d9"
+      },
+      "source_pin": {
+        "bytes": 1641,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/publication-plan.json",
+        "sha256": "5f7e1f10952749a8c95c816ce20ecd00483ba3e3ba1daa9f05f6743fea0ec6d9"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d-before-publication.json",
+      "retained_pin": {
+        "bytes": 214540,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d-before-publication.json",
+        "sha256": "4ef9920dbc9a66679474174e29dd2022c171b3a0b98cb4b135ff4d33dbcd7601"
+      },
+      "source_pin": {
+        "bytes": 214540,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-before-publication.json",
+        "sha256": "4ef9920dbc9a66679474174e29dd2022c171b3a0b98cb4b135ff4d33dbcd7601"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d-preservation.json",
+      "retained_pin": {
+        "bytes": 1484,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d-preservation.json",
+        "sha256": "3795c41b4847fe1e70694e0a821eb27ff54e690b610edda2c5ad491f0c65caae"
+      },
+      "source_pin": {
+        "bytes": 1484,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-preservation.json",
+        "sha256": "3795c41b4847fe1e70694e0a821eb27ff54e690b610edda2c5ad491f0c65caae"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/384d-publication-receipt.json",
+      "retained_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/384d-publication-receipt.json",
+        "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+      },
+      "source_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-publication-receipt.json",
+        "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d/README.md",
+      "retained_pin": {
+        "bytes": 2209,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d/README.md",
+        "sha256": "3b1303f8f491cc946a38a725d84e95f376f9d4f04eaed6a115e82fb727fad925"
+      },
+      "source_pin": {
+        "bytes": 2209,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d/README.md",
+        "sha256": "3b1303f8f491cc946a38a725d84e95f376f9d4f04eaed6a115e82fb727fad925"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d/manifest.json",
+      "retained_pin": {
+        "bytes": 10160,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d/manifest.json",
+        "sha256": "9e802e5a83d3503924c38d7caffa6d879f1914c7d0f0689487b1efd7035421b1"
+      },
+      "source_pin": {
+        "bytes": 10160,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d/manifest.json",
+        "sha256": "9e802e5a83d3503924c38d7caffa6d879f1914c7d0f0689487b1efd7035421b1"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d/publication-plan.json",
+      "retained_pin": {
+        "bytes": 1641,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d/publication-plan.json",
+        "sha256": "462d711d69e1408ca2089cab236470c1c9df3dcbf1400f4064e19f230e5ab877"
+      },
+      "source_pin": {
+        "bytes": 1641,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d/publication-plan.json",
+        "sha256": "462d711d69e1408ca2089cab236470c1c9df3dcbf1400f4064e19f230e5ab877"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d-before-publication.json",
+      "retained_pin": {
+        "bytes": 64840,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d-before-publication.json",
+        "sha256": "f4ed34e9abe1329538018ea104e784ae477744d73cd283e105ddcfac82d1971d"
+      },
+      "source_pin": {
+        "bytes": 64840,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-before-publication.json",
+        "sha256": "f4ed34e9abe1329538018ea104e784ae477744d73cd283e105ddcfac82d1971d"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d-preservation.json",
+      "retained_pin": {
+        "bytes": 1483,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d-preservation.json",
+        "sha256": "5855ffc39b4b4074ec5e6c7672f385d2ab6a1ecb50b4acd3b52d9e96acfc673a"
+      },
+      "source_pin": {
+        "bytes": 1483,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-preservation.json",
+        "sha256": "5855ffc39b4b4074ec5e6c7672f385d2ab6a1ecb50b4acd3b52d9e96acfc673a"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/768d-publication-receipt.json",
+      "retained_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/768d-publication-receipt.json",
+        "sha256": "9bf16ea7107775fc9f0709137239dceb282d27725ae3b121465bf5b2890ce51c"
+      },
+      "source_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-publication-receipt.json",
+        "sha256": "9bf16ea7107775fc9f0709137239dceb282d27725ae3b121465bf5b2890ce51c"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/operation-recipe-pins.json",
+      "retained_pin": {
+        "bytes": 892,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/operation-recipe-pins.json",
+        "sha256": "65ba0e7ace4472af62e776ee960036c60a81ed17129fa868dee3d3ee479938f3"
+      },
+      "source_pin": {
+        "bytes": 892,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/operation-recipe-pins.json",
+        "sha256": "65ba0e7ace4472af62e776ee960036c60a81ed17129fa868dee3d3ee479938f3"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/preparation.json",
+      "retained_pin": {
+        "bytes": 18114,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/preparation.json",
+        "sha256": "0da8fe2baaf6962660d0d7a0b306e8b6f036a2d86d8b18ea514403ca6e6e05db"
+      },
+      "source_pin": {
+        "bytes": 18114,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/preparation.json",
+        "sha256": "0da8fe2baaf6962660d0d7a0b306e8b6f036a2d86d8b18ea514403ca6e6e05db"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/publication-summary.json",
+      "retained_pin": {
+        "bytes": 2035,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/publication-summary.json",
+        "sha256": "757d37b29aeb4c5ed69c1ea2b9176f1d59de790dd34c41e3d303081ecd250583"
+      },
+      "source_pin": {
+        "bytes": 2035,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/publication-summary.json",
+        "sha256": "757d37b29aeb4c5ed69c1ea2b9176f1d59de790dd34c41e3d303081ecd250583"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/publish_dimension_mirrors.py",
+      "retained_pin": {
+        "bytes": 10529,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/publish_dimension_mirrors.py",
+        "sha256": "c67fdc0fb27e285a5afe9a12d8a8cc964c181c4117b9e940732dfd51536d4431"
+      },
+      "source_pin": {
+        "bytes": 10529,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/publish_dimension_mirrors.py",
+        "sha256": "c67fdc0fb27e285a5afe9a12d8a8cc964c181c4117b9e940732dfd51536d4431"
+      }
+    },
+    {
+      "relative_path": "dimension-mirrors/stage_dimension_mirrors.py",
+      "retained_pin": {
+        "bytes": 17899,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/dimension-mirrors/stage_dimension_mirrors.py",
+        "sha256": "3f0d31262a0b869d1e6f37e185c786d6c774d3f0da21cbe36c264b5267f89434"
+      },
+      "source_pin": {
+        "bytes": 17899,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/stage_dimension_mirrors.py",
+        "sha256": "3f0d31262a0b869d1e6f37e185c786d6c774d3f0da21cbe36c264b5267f89434"
+      }
+    },
+    {
+      "relative_path": "model-manager-api-import-result.json",
+      "retained_pin": {
+        "bytes": 2220,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/model-manager-api-import-result.json",
+        "sha256": "3702dadfad4e2e5e5a031a2fd7fe4d9159b75bd5fa5e39cf804f180e9b77b14e"
+      },
+      "source_pin": {
+        "bytes": 2220,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-api-import-result.json",
+        "sha256": "3702dadfad4e2e5e5a031a2fd7fe4d9159b75bd5fa5e39cf804f180e9b77b14e"
+      }
+    },
+    {
+      "relative_path": "model-manager-before.json",
+      "retained_pin": {
+        "bytes": 15358,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/model-manager-before.json",
+        "sha256": "2fcc2c1eb469eedae6d58ed06c5091f60a2427ed55712c83b5c2ef323df601c0"
+      },
+      "source_pin": {
+        "bytes": 15358,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-before.json",
+        "sha256": "2fcc2c1eb469eedae6d58ed06c5091f60a2427ed55712c83b5c2ef323df601c0"
+      }
+    },
+    {
+      "relative_path": "model-manager-construction-started.json",
+      "retained_pin": {
+        "bytes": 921,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/model-manager-construction-started.json",
+        "sha256": "f12364e995b09de1d1adde8042c4484c2f03c0ef8e0593a9255883f9faf82861"
+      },
+      "source_pin": {
+        "bytes": 921,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-construction-started.json",
+        "sha256": "f12364e995b09de1d1adde8042c4484c2f03c0ef8e0593a9255883f9faf82861"
+      }
+    },
+    {
+      "relative_path": "model-manager-driver.log",
+      "retained_pin": {
+        "bytes": 2212,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/model-manager-driver.log",
+        "sha256": "5afefcf1daed7ab0515c95982c18734cc96bd2d9d579dd5fdba84def23363934"
+      },
+      "source_pin": {
+        "bytes": 2212,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-driver.log",
+        "sha256": "5afefcf1daed7ab0515c95982c18734cc96bd2d9d579dd5fdba84def23363934"
+      }
+    },
+    {
+      "relative_path": "model-manager-registration.json",
+      "retained_pin": {
+        "bytes": 7619,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/model-manager-registration.json",
+        "sha256": "73e0f2b11c718d3f275d42f3fc975defed247c6a6ca004c6d5c89c58bcd01e88"
+      },
+      "source_pin": {
+        "bytes": 7619,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-registration.json",
+        "sha256": "73e0f2b11c718d3f275d42f3fc975defed247c6a6ca004c6d5c89c58bcd01e88"
+      }
+    },
+    {
+      "relative_path": "native-metadata-tests.log",
+      "retained_pin": {
+        "bytes": 260,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/native-metadata-tests.log",
+        "sha256": "cff27acca0d9bc54001a2a1aea9fa6e6272d7c7e827a3c593782dce7bb6acb90"
+      },
+      "source_pin": {
+        "bytes": 260,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-metadata-tests.log",
+        "sha256": "cff27acca0d9bc54001a2a1aea9fa6e6272d7c7e827a3c593782dce7bb6acb90"
+      }
+    },
+    {
+      "relative_path": "native-metadata-tests.xml",
+      "retained_pin": {
+        "bytes": 30837,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/native-metadata-tests.xml",
+        "sha256": "5dd918c97054b32293d42b79de2471a8d0d4ed55bf1acf720983d3c3a7ab2908"
+      },
+      "source_pin": {
+        "bytes": 30837,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-metadata-tests.xml",
+        "sha256": "5dd918c97054b32293d42b79de2471a8d0d4ed55bf1acf720983d3c3a7ab2908"
+      }
+    },
+    {
+      "relative_path": "native-owner/profile-inventory-current-3b3.json",
+      "retained_pin": {
+        "bytes": 125560,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/native-owner/profile-inventory-current-3b3.json",
+        "sha256": "b15f634bdf5f2171502184cebe2d4fadf7dd96538a88cdba7fd0986011b8ad39"
+      },
+      "source_pin": {
+        "bytes": 125560,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-owner/profile-inventory-current-3b3.json",
+        "sha256": "b15f634bdf5f2171502184cebe2d4fadf7dd96538a88cdba7fd0986011b8ad39"
+      }
+    },
+    {
+      "relative_path": "native-owner/qualification.json",
+      "retained_pin": {
+        "bytes": 92027,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/native-owner/qualification.json",
+        "sha256": "f526b9d0f860675d84503e124ecdc294261eea3bf91aa7bc585f51227427598c"
+      },
+      "source_pin": {
+        "bytes": 92027,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-owner/qualification.json",
+        "sha256": "f526b9d0f860675d84503e124ecdc294261eea3bf91aa7bc585f51227427598c"
+      }
+    },
+    {
+      "relative_path": "native-owner/qualify_current_native_owner.py",
+      "retained_pin": {
+        "bytes": 13661,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/native-owner/qualify_current_native_owner.py",
+        "sha256": "ed67c417058f3de74e84ca4c79a37eec35b1c4ff0bd18516b65f604e2aa47cff"
+      },
+      "source_pin": {
+        "bytes": 13661,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/native-owner/qualify_current_native_owner.py",
+        "sha256": "ed67c417058f3de74e84ca4c79a37eec35b1c4ff0bd18516b65f604e2aa47cff"
+      }
+    },
+    {
+      "relative_path": "observe_registered_contextual_states-diagnostic-01.py",
+      "retained_pin": {
+        "bytes": 3722,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/observe_registered_contextual_states-diagnostic-01.py",
+        "sha256": "0ef96072d90943e17eda7092a010a6f726c6a711ce70ab21f7563ebf0675dcec"
+      },
+      "source_pin": {
+        "bytes": 3722,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/observe_registered_contextual_states-diagnostic-01.py",
+        "sha256": "0ef96072d90943e17eda7092a010a6f726c6a711ce70ab21f7563ebf0675dcec"
+      }
+    },
+    {
+      "relative_path": "observe_registered_contextual_states.py",
+      "retained_pin": {
+        "bytes": 3709,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/observe_registered_contextual_states.py",
+        "sha256": "85c14938d61a2eba2f7d641306355ce713627670ea37ef993c82ff32081b8131"
+      },
+      "source_pin": {
+        "bytes": 3709,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/observe_registered_contextual_states.py",
+        "sha256": "85c14938d61a2eba2f7d641306355ce713627670ea37ef993c82ff32081b8131"
+      }
+    },
+    {
+      "relative_path": "qualification.json",
+      "retained_pin": {
+        "bytes": 2642,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/qualification.json",
+        "sha256": "3177caeeeb5ea267fa008f7606a8d1b8883f238c80c9ecef3b1063ef57f01740"
+      },
+      "source_pin": {
+        "bytes": 2642,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/qualification.json",
+        "sha256": "3177caeeeb5ea267fa008f7606a8d1b8883f238c80c9ecef3b1063ef57f01740"
+      }
+    },
+    {
+      "relative_path": "register_original_contextual_states.py",
+      "retained_pin": {
+        "bytes": 21050,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/register_original_contextual_states.py",
+        "sha256": "ddf62894bef8235f29321bd2173064c85b0132ccd8e8a75e9705753dcd753127"
+      },
+      "source_pin": {
+        "bytes": 21050,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/register_original_contextual_states.py",
+        "sha256": "ddf62894bef8235f29321bd2173064c85b0132ccd8e8a75e9705753dcd753127"
+      }
+    },
+    {
+      "relative_path": "registration-preparation.json",
+      "retained_pin": {
+        "bytes": 1969,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/registration-preparation.json",
+        "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+      },
+      "source_pin": {
+        "bytes": 1969,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+        "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+      }
+    },
+    {
+      "relative_path": "retain_evidence.py",
+      "retained_pin": {
+        "bytes": 6132,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/retain_evidence.py",
+        "sha256": "104e243e56c6190dc921a68dcdae3b097ab1047947de27adee2831b8bee4c6f7"
+      },
+      "source_pin": {
+        "bytes": 6132,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/retain_evidence.py",
+        "sha256": "104e243e56c6190dc921a68dcdae3b097ab1047947de27adee2831b8bee4c6f7"
+      }
+    },
+    {
+      "relative_path": "review/final-documentation-review.json",
+      "retained_pin": {
+        "bytes": 9460,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/review/final-documentation-review.json",
+        "sha256": "b4744e62652e0c5b98b335606b52a4f57d563a0a40f311e5ff9540ead6067edc"
+      },
+      "source_pin": {
+        "bytes": 9460,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/final-documentation-review.json",
+        "sha256": "b4744e62652e0c5b98b335606b52a4f57d563a0a40f311e5ff9540ead6067edc"
+      }
+    },
+    {
+      "relative_path": "review/independent-restoration-source-review.json",
+      "retained_pin": {
+        "bytes": 9319,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/review/independent-restoration-source-review.json",
+        "sha256": "9f1a0c3c727d243c8c46788e0354c3af7168f45593b507d89589ff7c74bc00ac"
+      },
+      "source_pin": {
+        "bytes": 9319,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/independent-restoration-source-review.json",
+        "sha256": "9f1a0c3c727d243c8c46788e0354c3af7168f45593b507d89589ff7c74bc00ac"
+      }
+    },
+    {
+      "relative_path": "review/registration-draft-review-01.json",
+      "retained_pin": {
+        "bytes": 3033,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/review/registration-draft-review-01.json",
+        "sha256": "768737c0785e6b27c0e29d307a800f35d9bcae19cf2ab137090c971154f8a4dd"
+      },
+      "source_pin": {
+        "bytes": 3033,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-draft-review-01.json",
+        "sha256": "768737c0785e6b27c0e29d307a800f35d9bcae19cf2ab137090c971154f8a4dd"
+      }
+    },
+    {
+      "relative_path": "review/registration-driver-review.json",
+      "retained_pin": {
+        "bytes": 6626,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/review/registration-driver-review.json",
+        "sha256": "0ee31f18291765003a9f5d61075deedbdf9cb0dd9225cf939130f48c6a782914"
+      },
+      "source_pin": {
+        "bytes": 6626,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-driver-review.json",
+        "sha256": "0ee31f18291765003a9f5d61075deedbdf9cb0dd9225cf939130f48c6a782914"
+      }
+    },
+    {
+      "relative_path": "review/registration-postwrite-review.json",
+      "retained_pin": {
+        "bytes": 4163,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/review/registration-postwrite-review.json",
+        "sha256": "f6bf406d8f22f5f27feedeae3774fedc0a455a083ecddd1a62b9214c407b0250"
+      },
+      "source_pin": {
+        "bytes": 4163,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-postwrite-review.json",
+        "sha256": "f6bf406d8f22f5f27feedeae3774fedc0a455a083ecddd1a62b9214c407b0250"
+      }
+    },
+    {
+      "relative_path": "supervisor-registered-state-observation-02.log",
+      "retained_pin": {
+        "bytes": 238,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/supervisor-registered-state-observation-02.log",
+        "sha256": "9c69adad9f4b733d1e6dcb920190d741fd8d2b309e419d38f743e64781776c6b"
+      },
+      "source_pin": {
+        "bytes": 238,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/supervisor-registered-state-observation-02.log",
+        "sha256": "9c69adad9f4b733d1e6dcb920190d741fd8d2b309e419d38f743e64781776c6b"
+      }
+    },
+    {
+      "relative_path": "supervisor-registered-state-observation.json",
+      "retained_pin": {
+        "bytes": 12855,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/supervisor-registered-state-observation.json",
+        "sha256": "a58d16b8a5119956d052a352899da4e1ffaa3431ee39a77caebc8e5dc459ff07"
+      },
+      "source_pin": {
+        "bytes": 12855,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/supervisor-registered-state-observation.json",
+        "sha256": "a58d16b8a5119956d052a352899da4e1ffaa3431ee39a77caebc8e5dc459ff07"
+      }
+    },
+    {
+      "relative_path": "supervisor-registered-state-observation.log",
+      "retained_pin": {
+        "bytes": 958,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/supervisor-registered-state-observation.log",
+        "sha256": "f3468163ebe6f230ca35a51bf1489f94b9d9cae0c7073b8a1dba39ffc699b63c"
+      },
+      "source_pin": {
+        "bytes": 958,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/supervisor-registered-state-observation.log",
+        "sha256": "f3468163ebe6f230ca35a51bf1489f94b9d9cae0c7073b8a1dba39ffc699b63c"
+      }
+    },
+    {
+      "relative_path": "verified-contextual-publication-receipt.json",
+      "retained_pin": {
+        "bytes": 5143,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/verified-contextual-publication-receipt.json",
+        "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+      },
+      "source_pin": {
+        "bytes": 5143,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+        "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+      }
+    },
+    {
+      "relative_path": "verify_dimension_mirror_downloads.py",
+      "retained_pin": {
+        "bytes": 2889,
+        "path": "/home/barberb/lift_coding/.worktrees/contextual-state-registration-accelerate-20261006/docs/agent_supervisor/evidence/contextual-state-registration-20261006/verify_dimension_mirror_downloads.py",
+        "sha256": "b366dfdd2350119e51ca1fe34873dc77fe1a111848b63b62a11d534378d11153"
+      },
+      "source_pin": {
+        "bytes": 2889,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verify_dimension_mirror_downloads.py",
+        "sha256": "b366dfdd2350119e51ca1fe34873dc77fe1a111848b63b62a11d534378d11153"
+      }
+    }
+  ],
+  "model_loaded": false,
+  "proof_authority": false,
+  "retained_count": 54,
+  "schema": "contextual-state-recovery-evidence-retention/v1",
+  "source_artifacts_preserved": true,
+  "weights_databases_and_complete_baseline_record_dumps_excluded": true
+}

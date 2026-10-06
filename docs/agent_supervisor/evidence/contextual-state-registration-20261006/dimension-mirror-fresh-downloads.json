@@ -1,0 +1,69 @@
+{
+  "completed": true,
+  "database_mutated": false,
+  "exact_original_state_matches": 2,
+  "inference_executed": false,
+  "method": "Fresh HF CLI downloads pinned to the immutable full revision, then bounded local SHA256 comparison with original retained states.",
+  "model_loaded": false,
+  "new_hub_upload": false,
+  "observations": [
+    {
+      "dimension": 384,
+      "fresh_download_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/mirror-download/384/releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "path_in_repo": "releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "publication_receipt_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d-publication-receipt.json",
+        "sha256": "e78212c0438201ebd322061d4050eff54f2454105911032cf92e93bac4084e72"
+      },
+      "remote_bytes_equal_original": true,
+      "repository_id": "Publicus/legal-ir-autoencoder-384d",
+      "revision": "f2c3714f7bf8e30177a799270f0cead51baf19dc"
+    },
+    {
+      "dimension": 768,
+      "fresh_download_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/mirror-download/768/releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "path_in_repo": "releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "publication_receipt_pin": {
+        "bytes": 3543,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/768d-publication-receipt.json",
+        "sha256": "9bf16ea7107775fc9f0709137239dceb282d27725ae3b121465bf5b2890ce51c"
+      },
+      "remote_bytes_equal_original": true,
+      "repository_id": "Publicus/legal-ir-autoencoder-768d",
+      "revision": "2fc77ccd037e7276c8bdd56a2c79cada0334fd79"
+    }
+  ],
+  "preparation_pin": {
+    "bytes": 1969,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/registration-preparation.json",
+    "sha256": "58639a3eed22dc356436f7fdb91c23b3105c0d807463f61efcef21760b9ac37b"
+  },
+  "proof_authority": false,
+  "publication_summary_pin": {
+    "bytes": 2035,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/publication-summary.json",
+    "sha256": "757d37b29aeb4c5ed69c1ea2b9176f1d59de790dd34c41e3d303081ecd250583"
+  },
+  "runtime_admitted": false,
+  "schema": "dimension-mirror-fresh-download-observation/v1",
+  "training_executed": false
+}

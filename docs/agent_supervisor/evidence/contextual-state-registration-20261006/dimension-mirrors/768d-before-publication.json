@@ -1,0 +1,1178 @@
+{
+  "files": {
+    ".gitattributes": {
+      "blob_id": "a90a1a515e6182bb1c6388dcddaf3b987f5d16c2",
+      "bytes": 1682,
+      "lfs": null,
+      "path": ".gitattributes"
+    },
+    "README.md": {
+      "blob_id": "22929a56eeaa4c6990ccc23e06cb30a98a3c1998",
+      "bytes": 1593,
+      "lfs": null,
+      "path": "README.md"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/1ffa63c4f95ff93ce40b16fee63eb766e0baf412f58b837b3addeb6b55154b00/asset-manifest.json": {
+      "blob_id": "cba7628b297bb8e13cae031f5c6af8309a8f51f1",
+      "bytes": 56871,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/1ffa63c4f95ff93ce40b16fee63eb766e0baf412f58b837b3addeb6b55154b00/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/1ffa63c4f95ff93ce40b16fee63eb766e0baf412f58b837b3addeb6b55154b00/checkpoint.json": {
+      "blob_id": "3deba5b615c86c87d2abbcbdcaa98985653f08fb",
+      "bytes": 6347807,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/1ffa63c4f95ff93ce40b16fee63eb766e0baf412f58b837b3addeb6b55154b00/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef/asset-manifest.json": {
+      "blob_id": "3a9cc362f991811d869f01a842208e82674b7cc3",
+      "bytes": 94020,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef/checkpoint.json": {
+      "blob_id": "e1d2eec339a9c963a9b39ed878011daed9e682d5",
+      "bytes": 6360717,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/4557e89d0a8f9c77ceed13b8df9b4e0c247a32b37003e7f559d2e195a23230ef/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/6a70108d76a548c04076d3cfb35eaa8e29f1b325ffafdd13a5fb5cf099205a0b/asset-manifest.json": {
+      "blob_id": "3186ce7d73926a23bf55d10f35f0be1f134c50bc",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/6a70108d76a548c04076d3cfb35eaa8e29f1b325ffafdd13a5fb5cf099205a0b/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/6a70108d76a548c04076d3cfb35eaa8e29f1b325ffafdd13a5fb5cf099205a0b/checkpoint.json": {
+      "blob_id": "ff9b5749db5a7b75af10da8312b98e995c2118fe",
+      "bytes": 3432437,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/6a70108d76a548c04076d3cfb35eaa8e29f1b325ffafdd13a5fb5cf099205a0b/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/a674bacba91df270a0baff11fc92909c0277d31c8a93c08af30454c358095c24/asset-manifest.json": {
+      "blob_id": "f0f7d7b4816995b80e56ec7f92a49a035a431960",
+      "bytes": 81325,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/a674bacba91df270a0baff11fc92909c0277d31c8a93c08af30454c358095c24/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/a674bacba91df270a0baff11fc92909c0277d31c8a93c08af30454c358095c24/checkpoint.json": {
+      "blob_id": "b57ac32ddc107fdfb4d3ca9a5bb1fe8730be25c2",
+      "bytes": 25545829,
+      "lfs": {
+        "bytes": 25545829,
+        "sha256": "a674bacba91df270a0baff11fc92909c0277d31c8a93c08af30454c358095c24"
+      },
+      "path": "releases/20261004-all-retained-v1/checkpoints/a674bacba91df270a0baff11fc92909c0277d31c8a93c08af30454c358095c24/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/a6d0c8e1428358be6f5601ff75eb62962611184f4b5cbae1747a31253640ccbe/asset-manifest.json": {
+      "blob_id": "fe1705c9a6c7b98568933e0f5548dcc3c8e6bd5c",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/a6d0c8e1428358be6f5601ff75eb62962611184f4b5cbae1747a31253640ccbe/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/a6d0c8e1428358be6f5601ff75eb62962611184f4b5cbae1747a31253640ccbe/checkpoint.json": {
+      "blob_id": "db46d5f1135a898a7a45617c37d5caa989765d75",
+      "bytes": 3430828,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/a6d0c8e1428358be6f5601ff75eb62962611184f4b5cbae1747a31253640ccbe/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/adb17a04854ea865ee0433d75405e15f62c1e7dedd4c60f8c889ed087958a2ef/asset-manifest.json": {
+      "blob_id": "377958de5649f6d6188e8751b127985d3328f25b",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/adb17a04854ea865ee0433d75405e15f62c1e7dedd4c60f8c889ed087958a2ef/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/adb17a04854ea865ee0433d75405e15f62c1e7dedd4c60f8c889ed087958a2ef/checkpoint.json": {
+      "blob_id": "deb8310a71e615460da49c687b9226642605179c",
+      "bytes": 3432783,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/adb17a04854ea865ee0433d75405e15f62c1e7dedd4c60f8c889ed087958a2ef/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/be269a0b0648063fe14ce0a291c474dd6c3aefbf3465b8adb2573346dc2315ba/asset-manifest.json": {
+      "blob_id": "50284e4bf40631bb8452ea4fde68806ade7dc2d0",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/be269a0b0648063fe14ce0a291c474dd6c3aefbf3465b8adb2573346dc2315ba/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/be269a0b0648063fe14ce0a291c474dd6c3aefbf3465b8adb2573346dc2315ba/checkpoint.json": {
+      "blob_id": "46cf6d4dcc066a513c365bf691434614143ff1ed",
+      "bytes": 3431987,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/be269a0b0648063fe14ce0a291c474dd6c3aefbf3465b8adb2573346dc2315ba/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/fd6bd55ba3a7698401c7b8201f8ebe195f364f8295e98a13d833f420c0add2fc/asset-manifest.json": {
+      "blob_id": "3d6cf459acd1868bc19a1af41ac3951f1738a192",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/fd6bd55ba3a7698401c7b8201f8ebe195f364f8295e98a13d833f420c0add2fc/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/fd6bd55ba3a7698401c7b8201f8ebe195f364f8295e98a13d833f420c0add2fc/checkpoint.json": {
+      "blob_id": "2daa0005cb6de32e3cee119ee8a4e5e0ca77921d",
+      "bytes": 3433326,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/fd6bd55ba3a7698401c7b8201f8ebe195f364f8295e98a13d833f420c0add2fc/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/ff41c3199ca3b84f10e4d3574103cf01051a42b33639fc50e748f1ae19bea3a0/asset-manifest.json": {
+      "blob_id": "0f83bf23721d060b1ea8cfd4b0c18dffaeb6f1de",
+      "bytes": 29033,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/ff41c3199ca3b84f10e4d3574103cf01051a42b33639fc50e748f1ae19bea3a0/asset-manifest.json"
+    },
+    "releases/20261004-all-retained-v1/checkpoints/ff41c3199ca3b84f10e4d3574103cf01051a42b33639fc50e748f1ae19bea3a0/checkpoint.json": {
+      "blob_id": "ac2bdac8f9abda954fd8bc76b76d25ca040402f7",
+      "bytes": 3431123,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/checkpoints/ff41c3199ca3b84f10e4d3574103cf01051a42b33639fc50e748f1ae19bea3a0/checkpoint.json"
+    },
+    "releases/20261004-all-retained-v1/companions/0262b94f80698111bb90d99cbd07d9dfe579292291c31228f6ead23d8048c4b4/asset.bin": {
+      "blob_id": "659cefdedf8b375607ceea7c3d189f28d5c1b52d",
+      "bytes": 9304,
+      "lfs": {
+        "bytes": 9304,
+        "sha256": "0262b94f80698111bb90d99cbd07d9dfe579292291c31228f6ead23d8048c4b4"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/0262b94f80698111bb90d99cbd07d9dfe579292291c31228f6ead23d8048c4b4/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/028d852708a0902285f89b25f56ef8b64308df76424ddf6d6938e0ce20e002ea/asset.bin": {
+      "blob_id": "e90406aa2211e843b284999c0db6da84130523f0",
+      "bytes": 18806,
+      "lfs": {
+        "bytes": 18806,
+        "sha256": "028d852708a0902285f89b25f56ef8b64308df76424ddf6d6938e0ce20e002ea"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/028d852708a0902285f89b25f56ef8b64308df76424ddf6d6938e0ce20e002ea/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/038eaaddf8b55db79ff00ed5de3a5eedc57d20be4bd6458b4613aaa2ed9cec79/asset.bin": {
+      "blob_id": "08470899a565354cb61b26145229f992b0d466e9",
+      "bytes": 155175,
+      "lfs": {
+        "bytes": 155175,
+        "sha256": "038eaaddf8b55db79ff00ed5de3a5eedc57d20be4bd6458b4613aaa2ed9cec79"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/038eaaddf8b55db79ff00ed5de3a5eedc57d20be4bd6458b4613aaa2ed9cec79/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd/asset.bin": {
+      "blob_id": "6b8de9c84e311280a0c2d30e87265eca41b0a19e",
+      "bytes": 146870,
+      "lfs": {
+        "bytes": 146870,
+        "sha256": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/0bccaa5aa7657a2cedaac6f480ed17c44e3198e3bdc6039735d1dc0ac4d535eb/asset.bin": {
+      "blob_id": "8b7422448acbf4c512d8a08192dc5d14214c2f47",
+      "bytes": 765,
+      "lfs": {
+        "bytes": 765,
+        "sha256": "0bccaa5aa7657a2cedaac6f480ed17c44e3198e3bdc6039735d1dc0ac4d535eb"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/0bccaa5aa7657a2cedaac6f480ed17c44e3198e3bdc6039735d1dc0ac4d535eb/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/0cff6e50bcf996dd70bbf3c63fcfe3a6875a177db87bdcdb4fba5c4d5dfdac88/asset.bin": {
+      "blob_id": "8e3dd91eeadd76a994938ad043f4c2a8a4486fb5",
+      "bytes": 25011,
+      "lfs": {
+        "bytes": 25011,
+        "sha256": "0cff6e50bcf996dd70bbf3c63fcfe3a6875a177db87bdcdb4fba5c4d5dfdac88"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/0cff6e50bcf996dd70bbf3c63fcfe3a6875a177db87bdcdb4fba5c4d5dfdac88/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/0d4789138072a6c0bae49dd49c792d22d9554de46fc85e5b58ffb8090c1a9141/asset.bin": {
+      "blob_id": "49031fa9cd3f889f1d7cedafdd3c540b3bff8f9c",
+      "bytes": 6623,
+      "lfs": {
+        "bytes": 6623,
+        "sha256": "0d4789138072a6c0bae49dd49c792d22d9554de46fc85e5b58ffb8090c1a9141"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/0d4789138072a6c0bae49dd49c792d22d9554de46fc85e5b58ffb8090c1a9141/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/10ac459f987d65519fec0a1c8dcfd1ff754932017f3c1d6ff3f755cf89987efa/asset.bin": {
+      "blob_id": "66f143f5c88c4f32ff2feb40fc5095f2eb2b31a0",
+      "bytes": 3190,
+      "lfs": {
+        "bytes": 3190,
+        "sha256": "10ac459f987d65519fec0a1c8dcfd1ff754932017f3c1d6ff3f755cf89987efa"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/10ac459f987d65519fec0a1c8dcfd1ff754932017f3c1d6ff3f755cf89987efa/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/12523d421fe888caf2421f385db229d75da91fb7e53f87245c95154ab83bd8dd/asset.bin": {
+      "blob_id": "5d3bb89efd224d13f5c8e540ed372344f63e3d76",
+      "bytes": 12369,
+      "lfs": {
+        "bytes": 12369,
+        "sha256": "12523d421fe888caf2421f385db229d75da91fb7e53f87245c95154ab83bd8dd"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/12523d421fe888caf2421f385db229d75da91fb7e53f87245c95154ab83bd8dd/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/12b7b3b93feb72fb5901600b9f7ca9e391278af298310ab34793da2a98cc2a6b/asset.bin": {
+      "blob_id": "5315227ad7830c09ed2221dd30a71990ba2131c5",
+      "bytes": 1450,
+      "lfs": {
+        "bytes": 1450,
+        "sha256": "12b7b3b93feb72fb5901600b9f7ca9e391278af298310ab34793da2a98cc2a6b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/12b7b3b93feb72fb5901600b9f7ca9e391278af298310ab34793da2a98cc2a6b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/17568396f00c91576dd7d7a8e6bb7de36f3f17ed8a2621e10125fe1e7f989222/asset.bin": {
+      "blob_id": "2560016926f188a7bef35a04b9207c6d2d42691d",
+      "bytes": 16653,
+      "lfs": {
+        "bytes": 16653,
+        "sha256": "17568396f00c91576dd7d7a8e6bb7de36f3f17ed8a2621e10125fe1e7f989222"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/17568396f00c91576dd7d7a8e6bb7de36f3f17ed8a2621e10125fe1e7f989222/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/19507b3cc31c2603f49978ce5f4b932af249edba510f6b90ddf0cbe1d5846ff3/asset.bin": {
+      "blob_id": "67c5f5e96b2b731fd2c09e10827c42097be6c623",
+      "bytes": 27441,
+      "lfs": {
+        "bytes": 27441,
+        "sha256": "19507b3cc31c2603f49978ce5f4b932af249edba510f6b90ddf0cbe1d5846ff3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/19507b3cc31c2603f49978ce5f4b932af249edba510f6b90ddf0cbe1d5846ff3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/1bf8fd385e0b484c4c99ef6465b1be9cfedfb24bcc252d354959a9610e73f0f3/asset.bin": {
+      "blob_id": "e433f7e53bac583bcc0c72fc4c5a6a7cdbf33728",
+      "bytes": 22705082,
+      "lfs": {
+        "bytes": 22705082,
+        "sha256": "1bf8fd385e0b484c4c99ef6465b1be9cfedfb24bcc252d354959a9610e73f0f3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/1bf8fd385e0b484c4c99ef6465b1be9cfedfb24bcc252d354959a9610e73f0f3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/1f09e5975e808e5f1afcd5fec25cd5c412524f89db691d0ab7c107e17f9a8f71/asset.bin": {
+      "blob_id": "fcab37b3f50ff20d8b8ed9945b80de86e14144c5",
+      "bytes": 30102,
+      "lfs": {
+        "bytes": 30102,
+        "sha256": "1f09e5975e808e5f1afcd5fec25cd5c412524f89db691d0ab7c107e17f9a8f71"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/1f09e5975e808e5f1afcd5fec25cd5c412524f89db691d0ab7c107e17f9a8f71/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/2180ac2d5d0b666d4f3088ded217e31d630a00b68fe736b81d2b8e28ed07107d/asset.bin": {
+      "blob_id": "28962897ce3f0d8ef00887f7a19bcd96db88d107",
+      "bytes": 2313,
+      "lfs": {
+        "bytes": 2313,
+        "sha256": "2180ac2d5d0b666d4f3088ded217e31d630a00b68fe736b81d2b8e28ed07107d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/2180ac2d5d0b666d4f3088ded217e31d630a00b68fe736b81d2b8e28ed07107d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/24598a143cc2f3c3730e550aa2f79421935bace6b47d7a18e298eb61a67dbeee/asset.bin": {
+      "blob_id": "95aa8cd62d318affe09441248bfc42ceec21a7a6",
+      "bytes": 725,
+      "lfs": {
+        "bytes": 725,
+        "sha256": "24598a143cc2f3c3730e550aa2f79421935bace6b47d7a18e298eb61a67dbeee"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/24598a143cc2f3c3730e550aa2f79421935bace6b47d7a18e298eb61a67dbeee/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/2d8bc4a22718392b250e777bba192512d1fcf60973bfa7e615a409c22fb7e6e3/asset.bin": {
+      "blob_id": "d332eedd26469d2393ec55b325d168cd078e0efc",
+      "bytes": 26165,
+      "lfs": {
+        "bytes": 26165,
+        "sha256": "2d8bc4a22718392b250e777bba192512d1fcf60973bfa7e615a409c22fb7e6e3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/2d8bc4a22718392b250e777bba192512d1fcf60973bfa7e615a409c22fb7e6e3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/2e8af403f437ec335a58d7b7c1a3a2771f3c047b6e41d55ce2e080dfb5187747/asset.bin": {
+      "blob_id": "b613833e5582feebb0df439666936aff8ac8a164",
+      "bytes": 13861,
+      "lfs": {
+        "bytes": 13861,
+        "sha256": "2e8af403f437ec335a58d7b7c1a3a2771f3c047b6e41d55ce2e080dfb5187747"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/2e8af403f437ec335a58d7b7c1a3a2771f3c047b6e41d55ce2e080dfb5187747/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/316283e980fae04dba3f61259664c2f887daa76f205e95e79894fff4e8980218/asset.bin": {
+      "blob_id": "0a9c6458ff908ca921a1a38d2a1f3ec1fce0c147",
+      "bytes": 20194,
+      "lfs": {
+        "bytes": 20194,
+        "sha256": "316283e980fae04dba3f61259664c2f887daa76f205e95e79894fff4e8980218"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/316283e980fae04dba3f61259664c2f887daa76f205e95e79894fff4e8980218/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/382213c3eefb9cf659653e73f1c6d3bca4a3c37e7cee7790f5739a75f7c82318/asset.bin": {
+      "blob_id": "85fc60b2cfc61b9e8383dea5bdc86914a0ab9a43",
+      "bytes": 4419,
+      "lfs": {
+        "bytes": 4419,
+        "sha256": "382213c3eefb9cf659653e73f1c6d3bca4a3c37e7cee7790f5739a75f7c82318"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/382213c3eefb9cf659653e73f1c6d3bca4a3c37e7cee7790f5739a75f7c82318/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/3a04f9f8d4329fc02cfc30741cad4f1bd683c603d5b5e48a3872d4cca14ca2d5/asset.bin": {
+      "blob_id": "d8eb55de679e75896cbf6ea38b37f6f0b583bb65",
+      "bytes": 12043,
+      "lfs": {
+        "bytes": 12043,
+        "sha256": "3a04f9f8d4329fc02cfc30741cad4f1bd683c603d5b5e48a3872d4cca14ca2d5"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/3a04f9f8d4329fc02cfc30741cad4f1bd683c603d5b5e48a3872d4cca14ca2d5/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/3bde3013f3229f5aba9d7b975a0180d02a8d297f1cc90f77b913384505c083bf/asset.bin": {
+      "blob_id": "442a08edff0533ecf50ada7d589b81bf5d1cc6c9",
+      "bytes": 18429,
+      "lfs": {
+        "bytes": 18429,
+        "sha256": "3bde3013f3229f5aba9d7b975a0180d02a8d297f1cc90f77b913384505c083bf"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/3bde3013f3229f5aba9d7b975a0180d02a8d297f1cc90f77b913384505c083bf/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/3ca5366fe1b298eaa1e925323a76b92a80331fcc600372287bc39a189c3d3934/asset.bin": {
+      "blob_id": "c41b26ea48ef680a28227b60a26dbd6929a68e6a",
+      "bytes": 7801,
+      "lfs": {
+        "bytes": 7801,
+        "sha256": "3ca5366fe1b298eaa1e925323a76b92a80331fcc600372287bc39a189c3d3934"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/3ca5366fe1b298eaa1e925323a76b92a80331fcc600372287bc39a189c3d3934/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/40d6007c9d93fd357abb9729f314e9ded6c6397c4b3c634ae484787d28d97f81/asset.bin": {
+      "blob_id": "7b4bf59d0d4a52e8536f6ed4243bb2c6fe37b5e2",
+      "bytes": 23079,
+      "lfs": {
+        "bytes": 23079,
+        "sha256": "40d6007c9d93fd357abb9729f314e9ded6c6397c4b3c634ae484787d28d97f81"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/40d6007c9d93fd357abb9729f314e9ded6c6397c4b3c634ae484787d28d97f81/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4783ad6640d43f17970268631f1152def2cd3b95c733b96695eb99564477a788/asset.bin": {
+      "blob_id": "38f6f90fa5389cfb720e4791eb3acadf5dc71822",
+      "bytes": 23643,
+      "lfs": {
+        "bytes": 23643,
+        "sha256": "4783ad6640d43f17970268631f1152def2cd3b95c733b96695eb99564477a788"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4783ad6640d43f17970268631f1152def2cd3b95c733b96695eb99564477a788/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/48709fa4a521046ad753c87afe2732d17968e33d51ab2f43e4c4fefe2182059f/asset.bin": {
+      "blob_id": "eeec3708b2da28c21865c33407fc3244b213100d",
+      "bytes": 24439,
+      "lfs": {
+        "bytes": 24439,
+        "sha256": "48709fa4a521046ad753c87afe2732d17968e33d51ab2f43e4c4fefe2182059f"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/48709fa4a521046ad753c87afe2732d17968e33d51ab2f43e4c4fefe2182059f/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4a073808c4e54647f5c97dcfdd61c14da5e204eb6fea76f4d95c3819e6b64746/asset.bin": {
+      "blob_id": "a85ab92ed411acfff1ee55f9b30c7b8da8eefc40",
+      "bytes": 20130,
+      "lfs": {
+        "bytes": 20130,
+        "sha256": "4a073808c4e54647f5c97dcfdd61c14da5e204eb6fea76f4d95c3819e6b64746"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4a073808c4e54647f5c97dcfdd61c14da5e204eb6fea76f4d95c3819e6b64746/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4ad50e3478d5553f62407feb5a86d6750bfcfae60652f96c994ec1a9b0e59eb3/asset.bin": {
+      "blob_id": "10b8baf83ba1e40f13ee1891429ab15ecce66fc0",
+      "bytes": 14406,
+      "lfs": {
+        "bytes": 14406,
+        "sha256": "4ad50e3478d5553f62407feb5a86d6750bfcfae60652f96c994ec1a9b0e59eb3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4ad50e3478d5553f62407feb5a86d6750bfcfae60652f96c994ec1a9b0e59eb3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4b55671a16186773dd65fa9b4b2d51aa7677e4ef89504e55b9937b1f9594fac7/asset.bin": {
+      "blob_id": "87f612fc7d18bfa027adecc9fe8fc4e857cb4a8b",
+      "bytes": 529665,
+      "lfs": {
+        "bytes": 529665,
+        "sha256": "4b55671a16186773dd65fa9b4b2d51aa7677e4ef89504e55b9937b1f9594fac7"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4b55671a16186773dd65fa9b4b2d51aa7677e4ef89504e55b9937b1f9594fac7/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4f1165de34f7048ec2abfae1f24451571174c66ca692235a90d7d4f5b6d729a1/asset.bin": {
+      "blob_id": "d58a8144aa7d7f096e42121e41b7e96eee1ec87b",
+      "bytes": 25808,
+      "lfs": {
+        "bytes": 25808,
+        "sha256": "4f1165de34f7048ec2abfae1f24451571174c66ca692235a90d7d4f5b6d729a1"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4f1165de34f7048ec2abfae1f24451571174c66ca692235a90d7d4f5b6d729a1/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/4fb3ea9cbb310f347dacc451946e15e0d4bffa5506c03b788746492336cb7440/asset.bin": {
+      "blob_id": "a0f87d1121bca7b692911db4df6d2d638eecbfde",
+      "bytes": 12378,
+      "lfs": {
+        "bytes": 12378,
+        "sha256": "4fb3ea9cbb310f347dacc451946e15e0d4bffa5506c03b788746492336cb7440"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/4fb3ea9cbb310f347dacc451946e15e0d4bffa5506c03b788746492336cb7440/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/52296118dca39918c024fc39791e20b61da769da424cef17575190962b600451/asset.bin": {
+      "blob_id": "61d942d70c46d509828037f2262264cd82977e14",
+      "bytes": 2033,
+      "lfs": {
+        "bytes": 2033,
+        "sha256": "52296118dca39918c024fc39791e20b61da769da424cef17575190962b600451"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/52296118dca39918c024fc39791e20b61da769da424cef17575190962b600451/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/52a9a590293e8d562f1889a0595ca30c36cfaec5261d8a15199552fcf92abe09/asset.bin": {
+      "blob_id": "b8cc69562a32e96078437dc91b0e1a647c1d7f32",
+      "bytes": 11729623,
+      "lfs": {
+        "bytes": 11729623,
+        "sha256": "52a9a590293e8d562f1889a0595ca30c36cfaec5261d8a15199552fcf92abe09"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/52a9a590293e8d562f1889a0595ca30c36cfaec5261d8a15199552fcf92abe09/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/56c9bb4ee4aa9b9eaf86465495da6a467b8881c5cde2453f2a46a7e12db2765d/asset.bin": {
+      "blob_id": "da494b3f22ee3bef90f2128a6c4faf1d11dfeb7e",
+      "bytes": 2736,
+      "lfs": {
+        "bytes": 2736,
+        "sha256": "56c9bb4ee4aa9b9eaf86465495da6a467b8881c5cde2453f2a46a7e12db2765d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/56c9bb4ee4aa9b9eaf86465495da6a467b8881c5cde2453f2a46a7e12db2765d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d/asset.bin": {
+      "blob_id": "88b3b00f7080944d8e0ecb213eb376ebcb384f05",
+      "bytes": 1948,
+      "lfs": {
+        "bytes": 1948,
+        "sha256": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/588dde10f54207476e429323ad0f6834d9b1bffb501dd7df5913e89bd9f180a1/asset.bin": {
+      "blob_id": "ccd05ae4d75e842ee786100017e7403afb6f8b1c",
+      "bytes": 3118665,
+      "lfs": {
+        "bytes": 3118665,
+        "sha256": "588dde10f54207476e429323ad0f6834d9b1bffb501dd7df5913e89bd9f180a1"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/588dde10f54207476e429323ad0f6834d9b1bffb501dd7df5913e89bd9f180a1/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5cb082a8e1324cceede4d513093690df4bab7ed9456a753caf5027298b6f7c28/asset.bin": {
+      "blob_id": "03a4d94b49521fc7564d29a0e207d78bd33c3968",
+      "bytes": 1675,
+      "lfs": {
+        "bytes": 1675,
+        "sha256": "5cb082a8e1324cceede4d513093690df4bab7ed9456a753caf5027298b6f7c28"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5cb082a8e1324cceede4d513093690df4bab7ed9456a753caf5027298b6f7c28/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5d283dd4b411edc982a4fb0b2114c74c6c7ba4d77dfb4e3634afa57fff2484b3/asset.bin": {
+      "blob_id": "57e8be0c090c97b0ef4b1b9010a7dc220cdefdcd",
+      "bytes": 26441,
+      "lfs": {
+        "bytes": 26441,
+        "sha256": "5d283dd4b411edc982a4fb0b2114c74c6c7ba4d77dfb4e3634afa57fff2484b3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5d283dd4b411edc982a4fb0b2114c74c6c7ba4d77dfb4e3634afa57fff2484b3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5d67a62d0c803ca480d0bba1b0d8f9416a76da1e32f5a67b143203c7e97be676/asset.bin": {
+      "blob_id": "6a96b333a1fca24b080c821c1500ac1419f4901f",
+      "bytes": 429390,
+      "lfs": {
+        "bytes": 429390,
+        "sha256": "5d67a62d0c803ca480d0bba1b0d8f9416a76da1e32f5a67b143203c7e97be676"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5d67a62d0c803ca480d0bba1b0d8f9416a76da1e32f5a67b143203c7e97be676/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5e997e84596c1875d0140573b33a08ff9c12902b003ed3669e1f7bf51aee7c2d/asset.bin": {
+      "blob_id": "69001589b832a5b17999cbfbaf0ce19b59c1209a",
+      "bytes": 7838,
+      "lfs": {
+        "bytes": 7838,
+        "sha256": "5e997e84596c1875d0140573b33a08ff9c12902b003ed3669e1f7bf51aee7c2d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5e997e84596c1875d0140573b33a08ff9c12902b003ed3669e1f7bf51aee7c2d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5ece358484545903d70ebc0c99ca761ee28f035b1d01b6ea92a1af46c722f6d5/asset.bin": {
+      "blob_id": "73351a6c00635bc9cd4678bfad7209d4ecd0274f",
+      "bytes": 39453,
+      "lfs": {
+        "bytes": 39453,
+        "sha256": "5ece358484545903d70ebc0c99ca761ee28f035b1d01b6ea92a1af46c722f6d5"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5ece358484545903d70ebc0c99ca761ee28f035b1d01b6ea92a1af46c722f6d5/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/5f22119fa64f08cf8cd5f8f805972b78554cfad13cda40a48fd9a4bb575a7b68/asset.bin": {
+      "blob_id": "5d010ee7877f76fbb69521016873415b12e891e4",
+      "bytes": 19997,
+      "lfs": {
+        "bytes": 19997,
+        "sha256": "5f22119fa64f08cf8cd5f8f805972b78554cfad13cda40a48fd9a4bb575a7b68"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/5f22119fa64f08cf8cd5f8f805972b78554cfad13cda40a48fd9a4bb575a7b68/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6410ec1ca4e03fb8600fc77d79aade85ca719bcc01146f31e364d7637db0b371/asset.bin": {
+      "blob_id": "0d8ace5b8f4cbcaca6a00c2f54838959556531e9",
+      "bytes": 17626,
+      "lfs": {
+        "bytes": 17626,
+        "sha256": "6410ec1ca4e03fb8600fc77d79aade85ca719bcc01146f31e364d7637db0b371"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6410ec1ca4e03fb8600fc77d79aade85ca719bcc01146f31e364d7637db0b371/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/657de3e47e4d1031692c4280bd69f206dc8d388c3d8f4e064f6657f96d4c6c47/asset.bin": {
+      "blob_id": "71a52c7a33966426dc5b115fb9f899f598167ba7",
+      "bytes": 19456,
+      "lfs": {
+        "bytes": 19456,
+        "sha256": "657de3e47e4d1031692c4280bd69f206dc8d388c3d8f4e064f6657f96d4c6c47"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/657de3e47e4d1031692c4280bd69f206dc8d388c3d8f4e064f6657f96d4c6c47/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6/asset.bin": {
+      "blob_id": "77a1f96a70470c5a2fef3b4a52532aa6de599cc5",
+      "bytes": 34679,
+      "lfs": {
+        "bytes": 34679,
+        "sha256": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6aca3825c772c2b0505cb772c118a0da516c0a853ed1884325b6a3e46cc470b3/asset.bin": {
+      "blob_id": "06da92e6735b808598b7fc6d33b76125bc508364",
+      "bytes": 12330,
+      "lfs": {
+        "bytes": 12330,
+        "sha256": "6aca3825c772c2b0505cb772c118a0da516c0a853ed1884325b6a3e46cc470b3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6aca3825c772c2b0505cb772c118a0da516c0a853ed1884325b6a3e46cc470b3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6b83aa2f0755edc8ab676b332b7c6fa6a32560681df3a6105b2d546fcb89b31c/asset.bin": {
+      "blob_id": "7088608ccebb35006ebe4b03d63d4dddbfc9738f",
+      "bytes": 1863,
+      "lfs": {
+        "bytes": 1863,
+        "sha256": "6b83aa2f0755edc8ab676b332b7c6fa6a32560681df3a6105b2d546fcb89b31c"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6b83aa2f0755edc8ab676b332b7c6fa6a32560681df3a6105b2d546fcb89b31c/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b/asset.bin": {
+      "blob_id": "5375a1b39e71320c5aea96ebbefc67635d2b86bd",
+      "bytes": 11527,
+      "lfs": {
+        "bytes": 11527,
+        "sha256": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61/asset.bin": {
+      "blob_id": "155fef01815499ab8b6c409fc1c60520e8d91201",
+      "bytes": 614534,
+      "lfs": {
+        "bytes": 614534,
+        "sha256": "6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6e3f4d731d798aa2732afc37bd74fec34da3267a323844975d2dab78f59f9c61/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6e5275dbd1f15d58bc7c0e1480b2af68fae11b08c03a8fe6a1c0e3d97c959501/asset.bin": {
+      "blob_id": "545076d1fabd007ec27a4ddab2a3610ab110e5a7",
+      "bytes": 16905,
+      "lfs": {
+        "bytes": 16905,
+        "sha256": "6e5275dbd1f15d58bc7c0e1480b2af68fae11b08c03a8fe6a1c0e3d97c959501"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6e5275dbd1f15d58bc7c0e1480b2af68fae11b08c03a8fe6a1c0e3d97c959501/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/6f781849dc87eba1b7f0929d292bb10f5724bb1ca5749989feb988cde243c609/asset.bin": {
+      "blob_id": "81d153e2bb7b0e8e8db6c9c90ebaac6e506f5393",
+      "bytes": 9556,
+      "lfs": {
+        "bytes": 9556,
+        "sha256": "6f781849dc87eba1b7f0929d292bb10f5724bb1ca5749989feb988cde243c609"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/6f781849dc87eba1b7f0929d292bb10f5724bb1ca5749989feb988cde243c609/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/710a0df6d1017db6bb6cd92f3ea803a73038a49f8dacf5c0e346103304be3777/asset.bin": {
+      "blob_id": "812cfa03a1a31695d1289741b353b6e077060b26",
+      "bytes": 12127,
+      "lfs": {
+        "bytes": 12127,
+        "sha256": "710a0df6d1017db6bb6cd92f3ea803a73038a49f8dacf5c0e346103304be3777"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/710a0df6d1017db6bb6cd92f3ea803a73038a49f8dacf5c0e346103304be3777/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/73a7841d7ec14db1ba3ce0b47084395bcc6c6558751f26c90866a0b737ce34f0/asset.bin": {
+      "blob_id": "fbd8c7580a60241878b844b77f76681a920c0eea",
+      "bytes": 44404,
+      "lfs": {
+        "bytes": 44404,
+        "sha256": "73a7841d7ec14db1ba3ce0b47084395bcc6c6558751f26c90866a0b737ce34f0"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/73a7841d7ec14db1ba3ce0b47084395bcc6c6558751f26c90866a0b737ce34f0/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/asset.bin": {
+      "blob_id": "ed3fc92b08293e5bae15896f1a236b542a0cb6d3",
+      "bytes": 6873498,
+      "lfs": {
+        "bytes": 6873498,
+        "sha256": "7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/74699c49dc64e7864d405d3dacee9e81b140f5ca92c7f4929da7e815c3ffac0b/asset.bin": {
+      "blob_id": "7487d0cfb2b318caadbe501120beb7fc5e4e5add",
+      "bytes": 8129,
+      "lfs": {
+        "bytes": 8129,
+        "sha256": "74699c49dc64e7864d405d3dacee9e81b140f5ca92c7f4929da7e815c3ffac0b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/74699c49dc64e7864d405d3dacee9e81b140f5ca92c7f4929da7e815c3ffac0b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257/asset.bin": {
+      "blob_id": "3d478ff47892fa0d6076ea236bfd7f579e6507f7",
+      "bytes": 24220,
+      "lfs": {
+        "bytes": 24220,
+        "sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/7bf93e75f7d899db046605ff84a42275d48452baeddf77a644d45ec6c8f5b85b/asset.bin": {
+      "blob_id": "1ae6178e516ac8f66f93db6fc5510f9aca1b404b",
+      "bytes": 15730,
+      "lfs": {
+        "bytes": 15730,
+        "sha256": "7bf93e75f7d899db046605ff84a42275d48452baeddf77a644d45ec6c8f5b85b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/7bf93e75f7d899db046605ff84a42275d48452baeddf77a644d45ec6c8f5b85b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/8284f3dda68384de197c71f38a641bfc71cc036cdb8497b464e9a511337bb965/asset.bin": {
+      "blob_id": "42a1585b0df8e4574e9ae135011484c049eb683d",
+      "bytes": 565,
+      "lfs": {
+        "bytes": 565,
+        "sha256": "8284f3dda68384de197c71f38a641bfc71cc036cdb8497b464e9a511337bb965"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/8284f3dda68384de197c71f38a641bfc71cc036cdb8497b464e9a511337bb965/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/82e7ef0eacec0dc392773cae62db84b7fba83812363004e73a168a366220e3e5/asset.bin": {
+      "blob_id": "a72720cd8c431d307f4b5e9758559f7ba2a5e386",
+      "bytes": 13945,
+      "lfs": {
+        "bytes": 13945,
+        "sha256": "82e7ef0eacec0dc392773cae62db84b7fba83812363004e73a168a366220e3e5"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/82e7ef0eacec0dc392773cae62db84b7fba83812363004e73a168a366220e3e5/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/872a7c083d3e6ff2f141b59a7ef4a72a4071a4039d981d30fc1218147f500be5/asset.bin": {
+      "blob_id": "ffcb6a12a1e3278da4536e97ed712c21b175d8a4",
+      "bytes": 17633,
+      "lfs": {
+        "bytes": 17633,
+        "sha256": "872a7c083d3e6ff2f141b59a7ef4a72a4071a4039d981d30fc1218147f500be5"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/872a7c083d3e6ff2f141b59a7ef4a72a4071a4039d981d30fc1218147f500be5/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/887dc1d23a9f0ed7a99c2b2f7c2500833f9328ddd97afd3ef750ddbffa5eb826/asset.bin": {
+      "blob_id": "53e8b2669ef263a8d0b2143f2c7c81f6b356f542",
+      "bytes": 1758910,
+      "lfs": {
+        "bytes": 1758910,
+        "sha256": "887dc1d23a9f0ed7a99c2b2f7c2500833f9328ddd97afd3ef750ddbffa5eb826"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/887dc1d23a9f0ed7a99c2b2f7c2500833f9328ddd97afd3ef750ddbffa5eb826/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/89a3be419027f1830f2ccff1353cbefad584b562226a44ec91a7891d4a17046e/asset.bin": {
+      "blob_id": "c3eac5f9acb333e31c3a8c9055f9658096f0fc83",
+      "bytes": 13538,
+      "lfs": {
+        "bytes": 13538,
+        "sha256": "89a3be419027f1830f2ccff1353cbefad584b562226a44ec91a7891d4a17046e"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/89a3be419027f1830f2ccff1353cbefad584b562226a44ec91a7891d4a17046e/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855/asset.bin": {
+      "blob_id": "2d7a0f6cb73cdb324ef102cfc7340a409631cfda",
+      "bytes": 120714,
+      "lfs": {
+        "bytes": 120714,
+        "sha256": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/8af805442fed1ad569890eff82cf2459848ce1f161644e9784af35a0c46d7e4e/asset.bin": {
+      "blob_id": "0750313218652b0164f5bed1b84d9a04604d5e3d",
+      "bytes": 910,
+      "lfs": {
+        "bytes": 910,
+        "sha256": "8af805442fed1ad569890eff82cf2459848ce1f161644e9784af35a0c46d7e4e"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/8af805442fed1ad569890eff82cf2459848ce1f161644e9784af35a0c46d7e4e/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4/asset.bin": {
+      "blob_id": "e1b56395e22b3c3408135ceb003649e3767f56e5",
+      "bytes": 31851,
+      "lfs": {
+        "bytes": 31851,
+        "sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/912f94c971e656db35a7b17b9c6dddd0379fecac687d6c35f5272aa8cdc38168/asset.bin": {
+      "blob_id": "c4a80d81ba5294432b3165f8bf57b801165fb712",
+      "bytes": 10566,
+      "lfs": {
+        "bytes": 10566,
+        "sha256": "912f94c971e656db35a7b17b9c6dddd0379fecac687d6c35f5272aa8cdc38168"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/912f94c971e656db35a7b17b9c6dddd0379fecac687d6c35f5272aa8cdc38168/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/91eb6240c5518d6105622160787144940fc58e751eb97b695ccfb1a8186e3c82/asset.bin": {
+      "blob_id": "7d71a2f9b37fbb6bb9448583eb17e5f458718e9d",
+      "bytes": 10943,
+      "lfs": {
+        "bytes": 10943,
+        "sha256": "91eb6240c5518d6105622160787144940fc58e751eb97b695ccfb1a8186e3c82"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/91eb6240c5518d6105622160787144940fc58e751eb97b695ccfb1a8186e3c82/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/9201756b560d566cc97792256fa9b5ccef24c33bec6fef5db8a0aac231303d41/asset.bin": {
+      "blob_id": "6eb27e2b966500585e9fb854ce133d67c344b90c",
+      "bytes": 785,
+      "lfs": {
+        "bytes": 785,
+        "sha256": "9201756b560d566cc97792256fa9b5ccef24c33bec6fef5db8a0aac231303d41"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/9201756b560d566cc97792256fa9b5ccef24c33bec6fef5db8a0aac231303d41/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/93bdff0cb791b542c222dc60c736717ee25b35b8e61d3fe66c9c3c58d52eff03/asset.bin": {
+      "blob_id": "a4d805bcaf4a24a0e177feb83f7098180b26ae16",
+      "bytes": 22900,
+      "lfs": {
+        "bytes": 22900,
+        "sha256": "93bdff0cb791b542c222dc60c736717ee25b35b8e61d3fe66c9c3c58d52eff03"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/93bdff0cb791b542c222dc60c736717ee25b35b8e61d3fe66c9c3c58d52eff03/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56/asset.bin": {
+      "blob_id": "240723e33e2e7362b937a1d1b0f2dd1ca987af95",
+      "bytes": 27163,
+      "lfs": {
+        "bytes": 27163,
+        "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/98bb0dce251acbb5252308eebedd39c92610c9ad1644fef3a21f5db62557ddc8/asset.bin": {
+      "blob_id": "287b0191292ecec8ab87440e4f076a9af44fe241",
+      "bytes": 17711,
+      "lfs": {
+        "bytes": 17711,
+        "sha256": "98bb0dce251acbb5252308eebedd39c92610c9ad1644fef3a21f5db62557ddc8"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/98bb0dce251acbb5252308eebedd39c92610c9ad1644fef3a21f5db62557ddc8/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/9a8f5582a8c6f774e9439c6b8d00e1b61a12c19e7bbade37927c7c6192af09a5/asset.bin": {
+      "blob_id": "111e0d4aa7281addb6c0ac70d09a6e157d6087d8",
+      "bytes": 4097704,
+      "lfs": {
+        "bytes": 4097704,
+        "sha256": "9a8f5582a8c6f774e9439c6b8d00e1b61a12c19e7bbade37927c7c6192af09a5"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/9a8f5582a8c6f774e9439c6b8d00e1b61a12c19e7bbade37927c7c6192af09a5/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/9fe3e0af3a70625ecd619b5fefb8ff94ade2b0648d36b757dfe2ea91f43858ce/asset.bin": {
+      "blob_id": "82542995f794f502daf08f73380a336e91bae4f4",
+      "bytes": 1212,
+      "lfs": {
+        "bytes": 1212,
+        "sha256": "9fe3e0af3a70625ecd619b5fefb8ff94ade2b0648d36b757dfe2ea91f43858ce"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/9fe3e0af3a70625ecd619b5fefb8ff94ade2b0648d36b757dfe2ea91f43858ce/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/a0acfc5675a9e34428d77957c73e9205a9baea78d911e3f0db541ac1d3d1e6d8/asset.bin": {
+      "blob_id": "2f18d385dddb7d29f5d308deff5ffe6b00e7a2bc",
+      "bytes": 18839,
+      "lfs": {
+        "bytes": 18839,
+        "sha256": "a0acfc5675a9e34428d77957c73e9205a9baea78d911e3f0db541ac1d3d1e6d8"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/a0acfc5675a9e34428d77957c73e9205a9baea78d911e3f0db541ac1d3d1e6d8/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/a223bc922eb316e01b96f7bf4dc323cf2d65f98247d7ae29408af6665b75a654/asset.bin": {
+      "blob_id": "cd8d65f83136b5c071bcc0a79fbf84368946e4ea",
+      "bytes": 15473,
+      "lfs": {
+        "bytes": 15473,
+        "sha256": "a223bc922eb316e01b96f7bf4dc323cf2d65f98247d7ae29408af6665b75a654"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/a223bc922eb316e01b96f7bf4dc323cf2d65f98247d7ae29408af6665b75a654/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/a4a8ce827df2a78ca8e07b0ab80e4f4cef2cfeb7d5d769a20726bb9e02d06f19/asset.bin": {
+      "blob_id": "933d0961713c155e9594728d4cee45f9c2241348",
+      "bytes": 21132,
+      "lfs": {
+        "bytes": 21132,
+        "sha256": "a4a8ce827df2a78ca8e07b0ab80e4f4cef2cfeb7d5d769a20726bb9e02d06f19"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/a4a8ce827df2a78ca8e07b0ab80e4f4cef2cfeb7d5d769a20726bb9e02d06f19/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39/asset.bin": {
+      "blob_id": "320c951580a33e4a006e4c618a134b085ec73a13",
+      "bytes": 37220,
+      "lfs": {
+        "bytes": 37220,
+        "sha256": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/afce326ec0c7288c3837491f90a92d12388c3c20c9f05106dcb7e6448b9e7f57/asset.bin": {
+      "blob_id": "5c3614c72488c20b34d726b7a012d6cd37a1316e",
+      "bytes": 11986,
+      "lfs": {
+        "bytes": 11986,
+        "sha256": "afce326ec0c7288c3837491f90a92d12388c3c20c9f05106dcb7e6448b9e7f57"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/afce326ec0c7288c3837491f90a92d12388c3c20c9f05106dcb7e6448b9e7f57/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/aff70d52971cd35f311a2fd70be68eb13b6748b2f35143c9c97f72c32a1a0b3d/asset.bin": {
+      "blob_id": "a048cc8430fdc60fc784a1aabb3dc3f2d557ba52",
+      "bytes": 16445,
+      "lfs": {
+        "bytes": 16445,
+        "sha256": "aff70d52971cd35f311a2fd70be68eb13b6748b2f35143c9c97f72c32a1a0b3d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/aff70d52971cd35f311a2fd70be68eb13b6748b2f35143c9c97f72c32a1a0b3d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/b13d1a5a702d2a4d29c41690745debd54cc92ea7df3f06f98c815eca718d8a16/asset.bin": {
+      "blob_id": "e4cb509d56ade2acd89d87a863ad6e032f70d805",
+      "bytes": 12330295,
+      "lfs": {
+        "bytes": 12330295,
+        "sha256": "b13d1a5a702d2a4d29c41690745debd54cc92ea7df3f06f98c815eca718d8a16"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/b13d1a5a702d2a4d29c41690745debd54cc92ea7df3f06f98c815eca718d8a16/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/b3c44a3427fd1aaecde6ee3ab5840b88e8297cd6c314c60838d1af80f57a8682/asset.bin": {
+      "blob_id": "c8333140e2514f5196b219437dec33c45779573c",
+      "bytes": 15340,
+      "lfs": {
+        "bytes": 15340,
+        "sha256": "b3c44a3427fd1aaecde6ee3ab5840b88e8297cd6c314c60838d1af80f57a8682"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/b3c44a3427fd1aaecde6ee3ab5840b88e8297cd6c314c60838d1af80f57a8682/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/b43a9363eeb8acca7cad3c89f9086c6e7db9dae3b4e6748833012bc290f09c2d/asset.bin": {
+      "blob_id": "385ba1ac7b8fb4d2cc72f7a718e3536f91444d27",
+      "bytes": 983,
+      "lfs": {
+        "bytes": 983,
+        "sha256": "b43a9363eeb8acca7cad3c89f9086c6e7db9dae3b4e6748833012bc290f09c2d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/b43a9363eeb8acca7cad3c89f9086c6e7db9dae3b4e6748833012bc290f09c2d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/b76cabadbcefb07738133a7d09c02c586af4f11426270903c7aeb6d5e3cbcc20/asset.bin": {
+      "blob_id": "f2bd956d87112c2770d3e7c0e413ef8201f97524",
+      "bytes": 1774,
+      "lfs": {
+        "bytes": 1774,
+        "sha256": "b76cabadbcefb07738133a7d09c02c586af4f11426270903c7aeb6d5e3cbcc20"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/b76cabadbcefb07738133a7d09c02c586af4f11426270903c7aeb6d5e3cbcc20/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/bfb80c990eb9239d4e83a91ec6fc6f8777f9b1f4cad4b937489004951b406405/asset.bin": {
+      "blob_id": "f77e9bcdc872051087d1ee4df6740b5bdb95b8f8",
+      "bytes": 16464840,
+      "lfs": {
+        "bytes": 16464840,
+        "sha256": "bfb80c990eb9239d4e83a91ec6fc6f8777f9b1f4cad4b937489004951b406405"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/bfb80c990eb9239d4e83a91ec6fc6f8777f9b1f4cad4b937489004951b406405/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/c42dc8dc14517caa347c372cddd54c2ff2e13f6e90514df17f50a5470ae1b497/asset.bin": {
+      "blob_id": "26795b11d3c90b319ca4fed1134ca17f5e240ea6",
+      "bytes": 15127,
+      "lfs": {
+        "bytes": 15127,
+        "sha256": "c42dc8dc14517caa347c372cddd54c2ff2e13f6e90514df17f50a5470ae1b497"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/c42dc8dc14517caa347c372cddd54c2ff2e13f6e90514df17f50a5470ae1b497/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/c896e0bbd9a9b9170ae12918afa8df6bf20131fd5957b11c7de483effd6ddffd/asset.bin": {
+      "blob_id": "6ba5387de0d869441ad7d67512842d561ce43302",
+      "bytes": 21747,
+      "lfs": {
+        "bytes": 21747,
+        "sha256": "c896e0bbd9a9b9170ae12918afa8df6bf20131fd5957b11c7de483effd6ddffd"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/c896e0bbd9a9b9170ae12918afa8df6bf20131fd5957b11c7de483effd6ddffd/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/ce81752459e324e659d369f126f542e855a847aa87950aa55f2415745e81a5bf/asset.bin": {
+      "blob_id": "c255a23699ede23664f270aeb4a55fdd12be2445",
+      "bytes": 29183,
+      "lfs": {
+        "bytes": 29183,
+        "sha256": "ce81752459e324e659d369f126f542e855a847aa87950aa55f2415745e81a5bf"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/ce81752459e324e659d369f126f542e855a847aa87950aa55f2415745e81a5bf/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d16572e665f95dd950e5d737d9610ed15a594b5a8ed2742a3f607a5839235e3d/asset.bin": {
+      "blob_id": "e00001e715cb67ffca8d04668be79cd81986083c",
+      "bytes": 8126349,
+      "lfs": {
+        "bytes": 8126349,
+        "sha256": "d16572e665f95dd950e5d737d9610ed15a594b5a8ed2742a3f607a5839235e3d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d16572e665f95dd950e5d737d9610ed15a594b5a8ed2742a3f607a5839235e3d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d2a21f1b23589bc2b1e2af4690c0fcdab6115c347a2bf6c1f5f945b541da771c/asset.bin": {
+      "blob_id": "ffac916e6171c0961a511cadce0a822e890207cb",
+      "bytes": 695,
+      "lfs": {
+        "bytes": 695,
+        "sha256": "d2a21f1b23589bc2b1e2af4690c0fcdab6115c347a2bf6c1f5f945b541da771c"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d2a21f1b23589bc2b1e2af4690c0fcdab6115c347a2bf6c1f5f945b541da771c/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d470c0771e19af2c829afa543ea6fe91bff17f8b734726cbcae32151d44c995a/asset.bin": {
+      "blob_id": "837199e9f3a21fc7110a32527f4e5f80e07a1613",
+      "bytes": 9903,
+      "lfs": {
+        "bytes": 9903,
+        "sha256": "d470c0771e19af2c829afa543ea6fe91bff17f8b734726cbcae32151d44c995a"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d470c0771e19af2c829afa543ea6fe91bff17f8b734726cbcae32151d44c995a/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b/asset.bin": {
+      "blob_id": "ad4c9571a4a720f6c7487a032ae7f03a7ca96101",
+      "bytes": 109257,
+      "lfs": {
+        "bytes": 109257,
+        "sha256": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d68d7c3c283225a27985553dc01662867f9b454f842831b903544784773bb07a/asset.bin": {
+      "blob_id": "45025678cc331996bf815c1887e920d7899a7e0b",
+      "bytes": 12338,
+      "lfs": {
+        "bytes": 12338,
+        "sha256": "d68d7c3c283225a27985553dc01662867f9b454f842831b903544784773bb07a"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d68d7c3c283225a27985553dc01662867f9b454f842831b903544784773bb07a/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/d7be6bff3a1f1464d4783567b90942258ef718bc1c2b7e02938698ed4e619e57/asset.bin": {
+      "blob_id": "c5c7a7eedb137cef9d36dff4cdd08f0c7e563698",
+      "bytes": 8008,
+      "lfs": {
+        "bytes": 8008,
+        "sha256": "d7be6bff3a1f1464d4783567b90942258ef718bc1c2b7e02938698ed4e619e57"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/d7be6bff3a1f1464d4783567b90942258ef718bc1c2b7e02938698ed4e619e57/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/dd8e555d0e742dc9c5375f4ce4857018e3d0c139ce859a5f26ec0a2cc5a35fd8/asset.bin": {
+      "blob_id": "18d0c366afed32e4baca1bac3b4e806344facd1d",
+      "bytes": 20016,
+      "lfs": {
+        "bytes": 20016,
+        "sha256": "dd8e555d0e742dc9c5375f4ce4857018e3d0c139ce859a5f26ec0a2cc5a35fd8"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/dd8e555d0e742dc9c5375f4ce4857018e3d0c139ce859a5f26ec0a2cc5a35fd8/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/df591bb9e379117482949db91b73a4c112b1b09f79d25234223a7b299453cb38/asset.bin": {
+      "blob_id": "6c1c08012d0d63a8c5a7e195118369404d9ff0a2",
+      "bytes": 14698,
+      "lfs": {
+        "bytes": 14698,
+        "sha256": "df591bb9e379117482949db91b73a4c112b1b09f79d25234223a7b299453cb38"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/df591bb9e379117482949db91b73a4c112b1b09f79d25234223a7b299453cb38/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/e7cd0134df183df54dd56822e8e72d042076a206d2527322e7e64122a85e50d6/asset.bin": {
+      "blob_id": "71c23b049f65eceddee8ded86c32b6e8aa18444c",
+      "bytes": 25849,
+      "lfs": {
+        "bytes": 25849,
+        "sha256": "e7cd0134df183df54dd56822e8e72d042076a206d2527322e7e64122a85e50d6"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/e7cd0134df183df54dd56822e8e72d042076a206d2527322e7e64122a85e50d6/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/eb17a4aaf3b74ddd4ef41c30febc01ce61978bc239fc60880ac6c75e88a0f4c3/asset.bin": {
+      "blob_id": "4551cdac94cff32c7a33f701d5f613ecb3269073",
+      "bytes": 33867,
+      "lfs": {
+        "bytes": 33867,
+        "sha256": "eb17a4aaf3b74ddd4ef41c30febc01ce61978bc239fc60880ac6c75e88a0f4c3"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/eb17a4aaf3b74ddd4ef41c30febc01ce61978bc239fc60880ac6c75e88a0f4c3/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36/asset.bin": {
+      "blob_id": "8f000e8770f24c267667e34e6cae28e7c704e29c",
+      "bytes": 35427,
+      "lfs": {
+        "bytes": 35427,
+        "sha256": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/ecebc7a009162ef42f796fc294b6778c040d9bd2ef05ffd2c059972188907b72/asset.bin": {
+      "blob_id": "11d1cc68b0b3b0dd6fbc3c19e0ec3b8a395bea51",
+      "bytes": 6321585,
+      "lfs": {
+        "bytes": 6321585,
+        "sha256": "ecebc7a009162ef42f796fc294b6778c040d9bd2ef05ffd2c059972188907b72"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/ecebc7a009162ef42f796fc294b6778c040d9bd2ef05ffd2c059972188907b72/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91/asset.bin": {
+      "blob_id": "c091a557dbf8dc19cc0fa37d9bcf1599ea6fd5bf",
+      "bytes": 58065,
+      "lfs": {
+        "bytes": 58065,
+        "sha256": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f24bfac7ea913c0b0109a1afc5dae667848b15e80daa4b5e0c47642af0d77372/asset.bin": {
+      "blob_id": "9d615fa81993919ab4971f86c07aec8d5ba13010",
+      "bytes": 24942,
+      "lfs": {
+        "bytes": 24942,
+        "sha256": "f24bfac7ea913c0b0109a1afc5dae667848b15e80daa4b5e0c47642af0d77372"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f24bfac7ea913c0b0109a1afc5dae667848b15e80daa4b5e0c47642af0d77372/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f4ad1d39677ed3184d019ad8556bf0cabd0957f855281c64343e8dfd73319c7b/asset.bin": {
+      "blob_id": "3b7b9175ba17dfcbd67e01a89142098e313ddd53",
+      "bytes": 1585950,
+      "lfs": {
+        "bytes": 1585950,
+        "sha256": "f4ad1d39677ed3184d019ad8556bf0cabd0957f855281c64343e8dfd73319c7b"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f4ad1d39677ed3184d019ad8556bf0cabd0957f855281c64343e8dfd73319c7b/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290/asset.bin": {
+      "blob_id": "4aeb034db2826cf55c0e9dc5719ae078ab0e072f",
+      "bytes": 14622,
+      "lfs": {
+        "bytes": 14622,
+        "sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f9db256940c81cdda0220b3f077d3f8a15c1ae03aacd3f980fca2a2baf29506d/asset.bin": {
+      "blob_id": "1f99c12b34e304c7e1d0b1a215a44e6358a78779",
+      "bytes": 12077,
+      "lfs": {
+        "bytes": 12077,
+        "sha256": "f9db256940c81cdda0220b3f077d3f8a15c1ae03aacd3f980fca2a2baf29506d"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f9db256940c81cdda0220b3f077d3f8a15c1ae03aacd3f980fca2a2baf29506d/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/companions/f9fea69376b762bcdc9e0d9691d4b9f833cfe8be9e9df9cf756e3338131bdd76/asset.bin": {
+      "blob_id": "9d78755eda78107693cba4604152efc47f9b9f30",
+      "bytes": 20286,
+      "lfs": {
+        "bytes": 20286,
+        "sha256": "f9fea69376b762bcdc9e0d9691d4b9f833cfe8be9e9df9cf756e3338131bdd76"
+      },
+      "path": "releases/20261004-all-retained-v1/companions/f9fea69376b762bcdc9e0d9691d4b9f833cfe8be9e9df9cf756e3338131bdd76/asset.bin"
+    },
+    "releases/20261004-all-retained-v1/indexes/chunk-0000.json": {
+      "blob_id": "4b757d6e07ae09a4ced43861c07e76cec63ddf5a",
+      "bytes": 28234,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/indexes/chunk-0000.json"
+    },
+    "releases/20261004-all-retained-v1/indexes/chunk-0001.json": {
+      "blob_id": "e021732d4dbcf6cd2a239d7d9c2918ba06fcee35",
+      "bytes": 8885,
+      "lfs": null,
+      "path": "releases/20261004-all-retained-v1/indexes/chunk-0001.json"
+    },
+    "releases/20261004-full-retained-campaigns-v1/initial-root-readme.md": {
+      "blob_id": "d2a730ce6c6b03f0c705a7fd4e172449205d5045",
+      "bytes": 1333,
+      "lfs": null,
+      "path": "releases/20261004-full-retained-campaigns-v1/initial-root-readme.md"
+    },
+    "releases/20261004-full-retained-campaigns-v1/registered-checkpoints.json": {
+      "blob_id": "b944b6e25a13d12ea6c9a9dab5a46ad454e291c9",
+      "bytes": 10180,
+      "lfs": null,
+      "path": "releases/20261004-full-retained-campaigns-v1/registered-checkpoints.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/MODEL_CARD.md": {
+      "blob_id": "d2a730ce6c6b03f0c705a7fd4e172449205d5045",
+      "bytes": 1333,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/MODEL_CARD.md"
+    },
+    "releases/20261004-retained-checkpoints-v1/SOURCE-LICENSE-AGPL-3.0.txt": {
+      "blob_id": "0ad25db4bd1d86c452db3f9602ccdbe172438f52",
+      "bytes": 34523,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/SOURCE-LICENSE-AGPL-3.0.txt"
+    },
+    "releases/20261004-retained-checkpoints-v1/context/22b4635e5689ed5e3482353a8cbcb5143f2f0268df6dd52e9409226c2a57c26f/inspection.json": {
+      "blob_id": "6fad90733ecf25ebca3208d711541fe5e9629119",
+      "bytes": 875,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/context/22b4635e5689ed5e3482353a8cbcb5143f2f0268df6dd52e9409226c2a57c26f/inspection.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/context/2b8017707f5619262b6cdf1d86f73035322fa6f3a9e5a521c2a42c029bf55cde/manifest.json": {
+      "blob_id": "0f0282a1cf478d196fb0abe45ee9ee24a4bfb81a",
+      "bytes": 9002,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/context/2b8017707f5619262b6cdf1d86f73035322fa6f3a9e5a521c2a42c029bf55cde/manifest.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/context/8284f3dda68384de197c71f38a641bfc71cc036cdb8497b464e9a511337bb965/donor-pins.json": {
+      "blob_id": "6e42999203d8efa34ce0395778baeb8c14c8c1be",
+      "bytes": 565,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/context/8284f3dda68384de197c71f38a641bfc71cc036cdb8497b464e9a511337bb965/donor-pins.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/context/d42ae4124d1e30a25f1f89ff1dbe133f4c64059bd7c6b1e5e054d5a4272cbb74/summary.json": {
+      "blob_id": "b20d944b178bc06c7b7a9a511c8eb6d00cd13b44",
+      "bytes": 1236,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/context/d42ae4124d1e30a25f1f89ff1dbe133f4c64059bd7c6b1e5e054d5a4272cbb74/summary.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/lane-manifest.json": {
+      "blob_id": "8379b3b57ad8e782bd0aab9a59c8d2333b8a4bdd",
+      "bytes": 11456,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/lane-manifest.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/original-lane-inventory.json": {
+      "blob_id": "1ebfc87dca257b213157aa46119d510c2646b585",
+      "bytes": 7577,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/original-lane-inventory.json"
+    },
+    "releases/20261004-retained-checkpoints-v1/source/1f09e5975e808e5f1afcd5fec25cd5c412524f89db691d0ab7c107e17f9a8f71/ipfs_datasets_py/logic/formalization/autoencoder/gte_legacy8_decoder_donor.py": {
+      "blob_id": "7f56d94a2261ab85034c7205782c36a509603eab",
+      "bytes": 30102,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/source/1f09e5975e808e5f1afcd5fec25cd5c412524f89db691d0ab7c107e17f9a8f71/ipfs_datasets_py/logic/formalization/autoencoder/gte_legacy8_decoder_donor.py"
+    },
+    "releases/20261004-retained-checkpoints-v1/source/2d8bc4a22718392b250e777bba192512d1fcf60973bfa7e615a409c22fb7e6e3/ipfs_datasets_py/logic/formalization/autoencoder/gte_decoder_warm_start.py": {
+      "blob_id": "7da48aeb0183997ba3de4079707ceef2c3fc3039",
+      "bytes": 26165,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/source/2d8bc4a22718392b250e777bba192512d1fcf60973bfa7e615a409c22fb7e6e3/ipfs_datasets_py/logic/formalization/autoencoder/gte_decoder_warm_start.py"
+    },
+    "releases/20261004-retained-checkpoints-v1/source/82e7ef0eacec0dc392773cae62db84b7fba83812363004e73a168a366220e3e5/ipfs_datasets_py/logic/formalization/autoencoder/gte_decoder_reuse.py": {
+      "blob_id": "3c96a1d0dc6b103321e9da8935153115f19e7dc5",
+      "bytes": 13945,
+      "lfs": null,
+      "path": "releases/20261004-retained-checkpoints-v1/source/82e7ef0eacec0dc392773cae62db84b7fba83812363004e73a168a366220e3e5/ipfs_datasets_py/logic/formalization/autoencoder/gte_decoder_reuse.py"
+    },
+    "releases/retained-checkpoints/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/asset-manifest.json": {
+      "blob_id": "91937d7ffa62d4056350f08fff67e792ee4accf3",
+      "bytes": 7414,
+      "lfs": null,
+      "path": "releases/retained-checkpoints/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/asset-manifest.json"
+    },
+    "releases/retained-checkpoints/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/checkpoint.json": {
+      "blob_id": "e37208a1fbbd777ff0511964f312bde5b4053e95",
+      "bytes": 6873498,
+      "lfs": null,
+      "path": "releases/retained-checkpoints/7443c8a60cb1f95e9a35017edcd394c0f47fd457c3733e0863d37bfc09a09a12/checkpoint.json"
+    }
+  },
+  "gated": false,
+  "private": false,
+  "repository_id": "Publicus/legal-ir-autoencoder-768d",
+  "revision": "81bf1d94cc48e16fbc1176d52f42dd78dc812631"
+}

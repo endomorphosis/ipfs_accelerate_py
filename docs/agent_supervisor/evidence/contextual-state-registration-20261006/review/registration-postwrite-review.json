@@ -1,0 +1,84 @@
+{
+  "approved_driver_review_pin": {
+    "bytes": 6626,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/review/registration-driver-review.json",
+    "sha256": "0ee31f18291765003a9f5d61075deedbdf9cb0dd9225cf939130f48c6a782914"
+  },
+  "completed": true,
+  "genuine_registration_evidence": {
+    "after_count": 670,
+    "all_baseline_records_exact_including_activity": true,
+    "before_count": 668,
+    "current_read_only_native_rows_equal_driver_final_export": true,
+    "driver_observed_genuine_cold_reload": true,
+    "log_observed_full_load_counts": [
+      668,
+      670
+    ],
+    "log_observed_save_populations": [
+      1,
+      2,
+      2,
+      2
+    ],
+    "log_pin": {
+      "bytes": 2212,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-driver.log",
+      "sha256": "5afefcf1daed7ab0515c95982c18734cc96bd2d9d579dd5fdba84def23363934"
+    },
+    "model_ids": [
+      "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2"
+    ],
+    "new_original_state_records": 2,
+    "public_API_outcomes_registered_verified": true,
+    "reviewer_reconstructed_model_manager": false,
+    "schema_and_indexes_exact": true
+  },
+  "protected_asset_fences": {
+    "all_protected_original_endpoint_pins_match": true,
+    "committed_registration_source_owners_rechecked": 20,
+    "protected_pin_entries": 49,
+    "protected_unique_paths": 48,
+    "supervisor_source_owners_rechecked": 4
+  },
+  "ready_for_scoped_docs": true,
+  "registration_receipt_pin": {
+    "bytes": 7619,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/model-manager-registration.json",
+    "sha256": "73e0f2b11c718d3f275d42f3fc975defed247c6a6ca004c6d5c89c58bcd01e88"
+  },
+  "reviewer_operations": {
+    "all_store_connections_read_only": true,
+    "database_or_asset_writes": false,
+    "encoder_or_decoder_loaded": false,
+    "full_live_database_SHA256_repeated": false,
+    "live_store_WAL_absent": true,
+    "live_store_connections": 1,
+    "live_store_stat_endpoint_unchanged": true,
+    "model_manager_constructed": false,
+    "provider_network_or_upload_calls": 0,
+    "training_or_inference_executed": false
+  },
+  "schema": "independent-contextual-model-manager-postwrite-review/v1",
+  "scope_limits": [
+    "Exact decoded persisted rows, activity values, schema and indexes were independently reopened and compared. This is logical content preservation, not a byte-identical postwrite database promise.",
+    "Driver database backup/full-file hashes are pinned receipt evidence; the reviewer did not repeat the 3 GiB database or backup hash.",
+    "Fresh per-API callbacks may share the native engine cache; the driver additionally closed both genuine instances and reopened native/read-only storage. Reviewer independently used one read-only native connection after completion.",
+    "Protected files and selected source checks are cooperative endpoints, not a filesystem/catalog atomic snapshot or ongoing lease.",
+    "Only the isolated registration instance and its cold reload were observed; other live service processes were not refreshed.",
+    "This confirms two retained contextual LegalIR asset registrations and byte authentication. Decoder shape/ABI/native schema, arbitrary new-text runtime, source prose reconstruction, holdout quality, 8192-token capability, teacher qualification and proof admission remain unqualified."
+  ],
+  "supervisor_observation_pin": {
+    "bytes": 12855,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/supervisor-registered-state-observation.json",
+    "sha256": "a58d16b8a5119956d052a352899da4e1ffaa3431ee39a77caebc8e5dc459ff07"
+  },
+  "supervisor_scope": {
+    "exact_nominations_and_checkpoint_byte_authentications": 2,
+    "fresh_contextual_runtime_wrapper_admitted": false,
+    "native_catalog_authority_unchanged_false": true,
+    "runtime_model_training_inference_and_proof_authority_false": true,
+    "schema_profile_format_remain_null": true
+  }
+}

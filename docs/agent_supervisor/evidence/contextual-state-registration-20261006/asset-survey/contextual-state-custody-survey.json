@@ -1,0 +1,4222 @@
+{
+  "authority": {
+    "fresh_quality_measured": false,
+    "proof_authority": false,
+    "runtime_admitted": false,
+    "source_fidelity_qualified": false,
+    "teacher_qualified": false
+  },
+  "bound_file_count": 44,
+  "bound_files_unchanged": true,
+  "completed": true,
+  "datasets_source": {
+    "head": "3b3b994407b2fcfef955ce5153afc2eea01e4eff",
+    "owner_source_pins": {
+      "checkpoint_hub.py": {
+        "bytes": 16384,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+        "sha256": "80da578b0b67ec9867012535df0e51d06ca72ea4ae397e07c922713dc3d9691f"
+      },
+      "ir_decoder_format_runtime.py": {
+        "bytes": 22669,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+        "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+      },
+      "ir_decoder_profile_inventory.py": {
+        "bytes": 20396,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+        "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+      },
+      "ir_model_hub_publish.py": {
+        "bytes": 14204,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_hub_publish.py",
+        "sha256": "bf6e0faa7f78054b3bfa751a10b854249b2174b53b83981091b653c5572d9780"
+      },
+      "ir_model_manager_import.py": {
+        "bytes": 29300,
+        "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py",
+        "sha256": "5d50f879d6e1e80fc68a29060680fcac9e234f62a3732f7c697f31360ca9506b"
+      }
+    },
+    "relevant_new_main_scope": "3b3b994 restores original384 cached/Intent/Securityfragment interfaces; it does not admit contextualprivate wrappers or infer unknownnativeoutputschema.",
+    "root": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006",
+    "status_after": [],
+    "status_before": [],
+    "tracked_state_preserved": true
+  },
+  "file_pins_after": [
+    {
+      "bytes": 6398,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/docs/autoencoders/ir_progress_recovery.md",
+      "sha256": "85d73aa103b676ee8da77cef0aa5175f02eeb47bf8f90b8c7c5455231a172234"
+    },
+    {
+      "bytes": 8586,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/docs/autoencoders/progress_integration.md",
+      "sha256": "e06d241532ae8ddaa6be94fc5d2a0406358540651f7ab665afc70082a2be90f7"
+    },
+    {
+      "bytes": 16384,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+      "sha256": "80da578b0b67ec9867012535df0e51d06ca72ea4ae397e07c922713dc3d9691f"
+    },
+    {
+      "bytes": 22669,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 20396,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 14204,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_hub_publish.py",
+      "sha256": "bf6e0faa7f78054b3bfa751a10b854249b2174b53b83981091b653c5572d9780"
+    },
+    {
+      "bytes": 29300,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py",
+      "sha256": "5d50f879d6e1e80fc68a29060680fcac9e234f62a3732f7c697f31360ca9506b"
+    },
+    {
+      "bytes": 1040710,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-coverage-01.json",
+      "sha256": "4969f73a7b6138343cc100f9e4ea88373f091b52b17bd0d1f804e697389776dd"
+    },
+    {
+      "bytes": 472138,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-remote-verification-01.json",
+      "sha256": "a6a582859a5cbb63eb5610ef75392b5c8c5cd6cb30e7576c944eae8afd0fdee5"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 29957,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/commit-created.json",
+      "sha256": "b51abd45cd1d68d167537dbf8bce1a590479340ef8412e5bda9cc049d58bd4ce"
+    },
+    {
+      "bytes": 55536,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+      "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+    },
+    {
+      "bytes": 103914,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional_decoder_publication_plan.json",
+      "sha256": "833ff8e593ef3962f9aa34b41a8e49fb15453b4c2cf7e11b8085dda723e035e6"
+    },
+    {
+      "bytes": 2295925,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-contexts.json",
+      "sha256": "3f124ce3210c68207d8405311742e5d5bedb43eab4f7c93cbf833aa7f5a223a2"
+    },
+    {
+      "bytes": 532522,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-inputs.json",
+      "sha256": "722f9909868d545b54d5a1fe5a19880ccefa8e21d1d7f9b6fd1548d78494e7da"
+    },
+    {
+      "bytes": 4520563,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-contexts.json",
+      "sha256": "a8353fe8311702f4adeb1aa483cdda218a48cc1327309737b5f0680d2a8b2529"
+    },
+    {
+      "bytes": 1051554,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-inputs.json",
+      "sha256": "e44720b13acb52306bb951ff500aa067a3c4ebe4a060139367e1d465e6511bd4"
+    },
+    {
+      "bytes": 7273,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/preparation.json",
+      "sha256": "0fc30d678fa26f94297885e82a56f5b50752404fed01979566577da508dae420"
+    },
+    {
+      "bytes": 7138,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/replay.py",
+      "sha256": "8382b20cd94970fab264ba731a23f2e365f2ad650b003dbdbf0652e47df25b29"
+    },
+    {
+      "bytes": 31339,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/scored-result.json",
+      "sha256": "b1ca6e82c3e68ce1fae18006db9ce16652e37e1c5174ba4f73eb53b6c33f32f5"
+    },
+    {
+      "bytes": 6877,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/score_contextual.py",
+      "sha256": "f2be56f7f8409f0eae186ed91a8ad6ae775f7f0fc1a41c3bfc2f766110c7dd90"
+    },
+    {
+      "bytes": 102696,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+      "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+    },
+    {
+      "bytes": 14249,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+      "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+    },
+    {
+      "bytes": 37989,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/decoder_distillation_experiment.py",
+      "sha256": "76252ad397492762d4fc41915afd1051a93a11b74994655326fe56fa722e3b61"
+    },
+    {
+      "bytes": 26392,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/ordered_clause_recurrent_decoder_experiment.py",
+      "sha256": "56392a6f37f528350f18b68b56a016aad170530e93e95e660b6898f1c4cef3da"
+    },
+    {
+      "bytes": 34576,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_clause_context_source_training.py",
+      "sha256": "e200a0289bac009f48d038b88da31472d4c7159a36c267cf781d595c6bc24a4f"
+    },
+    {
+      "bytes": 21010,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_ordered_clause_recurrent_training.py",
+      "sha256": "cafe6a5eef51cce0ab01537ec899549e6c412c0913841708dfdafcd5363b0c9e"
+    },
+    {
+      "bytes": 1510086,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/preprocessing.json",
+      "sha256": "de96c5f0a90a1472e346f3732ace42f0b4af4b3915026695fb705ae809663d8f"
+    },
+    {
+      "bytes": 3032308,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/source-contexts.json",
+      "sha256": "85415c5cef1c25450119cc419797c7f53b2817658d975cd4b357fdde01362a8c"
+    },
+    {
+      "bytes": 841411,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/training-rows.json",
+      "sha256": "854c059a7f7b2f9285eac10795191a9439b24ad6141d80406ffa9d6726892359"
+    },
+    {
+      "bytes": 2864122,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/preprocessing.json",
+      "sha256": "f4acb7b6b20a38c226a509e331d638fa667c929bd5b8970be44048d549f072ae"
+    },
+    {
+      "bytes": 5960181,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/source-contexts.json",
+      "sha256": "88406d13f72794934d4c9dc8aa69238004e1f6c5d7bd855ba319c14486392104"
+    },
+    {
+      "bytes": 1621518,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/training-rows.json",
+      "sha256": "a66ba07b38d101b48f8cd995cc82b2f22f220323ba6f7fc676b87638c4e05254"
+    },
+    {
+      "bytes": 279507,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/evaluation-manifest-r2.json",
+      "sha256": "d1096667f78c736daaa1abefc2c1ad9ae75133b1c4bcb67732b9f8628edb540e"
+    },
+    {
+      "bytes": 12525,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/experiment-source/scripts/ops/autoencoder/benchmark_selected_checkpoint_continuation.py",
+      "sha256": "39ad1308160766875cb670f92f8c783a01f6309b952277d37042aff7ec3110a5"
+    },
+    {
+      "bytes": 146849,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-manifest.json",
+      "sha256": "aeb47fbc8c5563abad0f6cce2776291581b686d727afb0bbf8109aa49d026930"
+    },
+    {
+      "bytes": 147708,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-plan.json",
+      "sha256": "ca115255d2f0403863fc7faf3e6c394b983074f483d7b565456d0ab10e4f54de"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 2077106,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected/evaluation-validation.json",
+      "sha256": "e9a4aa20effbe283731c772af0f43c4fce8577a65fc15065ddff6c50d2c396b6"
+    },
+    {
+      "bytes": 333836,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/summary.json",
+      "sha256": "b7bf5a06fa6181130657dd3438edf5f3ad620bcd0aa363531c0341865f5b329c"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 2467463,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected/evaluation-validation.json",
+      "sha256": "2e22c25fdeba1e620c31cfaba8e0e5a623b221673cf13ed7d57346e5b757de7c"
+    },
+    {
+      "bytes": 333828,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/summary.json",
+      "sha256": "84bbb101747de409cb60607653973f5fb353fdc8bb752a12dccc4f997a213219"
+    }
+  ],
+  "file_pins_before": [
+    {
+      "bytes": 6398,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/docs/autoencoders/ir_progress_recovery.md",
+      "sha256": "85d73aa103b676ee8da77cef0aa5175f02eeb47bf8f90b8c7c5455231a172234"
+    },
+    {
+      "bytes": 8586,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/docs/autoencoders/progress_integration.md",
+      "sha256": "e06d241532ae8ddaa6be94fc5d2a0406358540651f7ab665afc70082a2be90f7"
+    },
+    {
+      "bytes": 16384,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py",
+      "sha256": "80da578b0b67ec9867012535df0e51d06ca72ea4ae397e07c922713dc3d9691f"
+    },
+    {
+      "bytes": 22669,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_format_runtime.py",
+      "sha256": "e5521f573a5d592c2f452742c827104fe613d227591a04ab255ec46b2d34e33b"
+    },
+    {
+      "bytes": 20396,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_decoder_profile_inventory.py",
+      "sha256": "bc8aab1ba3a53b91c0e39fc813983657e52e07118a14c0d65c3c4e2aa660face"
+    },
+    {
+      "bytes": 14204,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_hub_publish.py",
+      "sha256": "bf6e0faa7f78054b3bfa751a10b854249b2174b53b83981091b653c5572d9780"
+    },
+    {
+      "bytes": 29300,
+      "path": "/home/barberb/lift_coding/.worktrees/decoder-profile-recovery-datasets-20261006/ipfs_datasets_py/logic/formalization/autoencoder/ir_model_manager_import.py",
+      "sha256": "5d50f879d6e1e80fc68a29060680fcac9e234f62a3732f7c697f31360ca9506b"
+    },
+    {
+      "bytes": 1040710,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-coverage-01.json",
+      "sha256": "4969f73a7b6138343cc100f9e4ea88373f091b52b17bd0d1f804e697389776dd"
+    },
+    {
+      "bytes": 472138,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-remote-verification-01.json",
+      "sha256": "a6a582859a5cbb63eb5610ef75392b5c8c5cd6cb30e7576c944eae8afd0fdee5"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 29957,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/commit-created.json",
+      "sha256": "b51abd45cd1d68d167537dbf8bce1a590479340ef8412e5bda9cc049d58bd4ce"
+    },
+    {
+      "bytes": 55536,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+      "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+    },
+    {
+      "bytes": 103914,
+      "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional_decoder_publication_plan.json",
+      "sha256": "833ff8e593ef3962f9aa34b41a8e49fb15453b4c2cf7e11b8085dda723e035e6"
+    },
+    {
+      "bytes": 2295925,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-contexts.json",
+      "sha256": "3f124ce3210c68207d8405311742e5d5bedb43eab4f7c93cbf833aa7f5a223a2"
+    },
+    {
+      "bytes": 532522,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-inputs.json",
+      "sha256": "722f9909868d545b54d5a1fe5a19880ccefa8e21d1d7f9b6fd1548d78494e7da"
+    },
+    {
+      "bytes": 4520563,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-contexts.json",
+      "sha256": "a8353fe8311702f4adeb1aa483cdda218a48cc1327309737b5f0680d2a8b2529"
+    },
+    {
+      "bytes": 1051554,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-inputs.json",
+      "sha256": "e44720b13acb52306bb951ff500aa067a3c4ebe4a060139367e1d465e6511bd4"
+    },
+    {
+      "bytes": 7273,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/preparation.json",
+      "sha256": "0fc30d678fa26f94297885e82a56f5b50752404fed01979566577da508dae420"
+    },
+    {
+      "bytes": 7138,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/replay.py",
+      "sha256": "8382b20cd94970fab264ba731a23f2e365f2ad650b003dbdbf0652e47df25b29"
+    },
+    {
+      "bytes": 31339,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/scored-result.json",
+      "sha256": "b1ca6e82c3e68ce1fae18006db9ce16652e37e1c5174ba4f73eb53b6c33f32f5"
+    },
+    {
+      "bytes": 6877,
+      "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/score_contextual.py",
+      "sha256": "f2be56f7f8409f0eae186ed91a8ad6ae775f7f0fc1a41c3bfc2f766110c7dd90"
+    },
+    {
+      "bytes": 102696,
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+      "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+    },
+    {
+      "bytes": 14249,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+      "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+    },
+    {
+      "bytes": 37989,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/decoder_distillation_experiment.py",
+      "sha256": "76252ad397492762d4fc41915afd1051a93a11b74994655326fe56fa722e3b61"
+    },
+    {
+      "bytes": 26392,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/ordered_clause_recurrent_decoder_experiment.py",
+      "sha256": "56392a6f37f528350f18b68b56a016aad170530e93e95e660b6898f1c4cef3da"
+    },
+    {
+      "bytes": 34576,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_clause_context_source_training.py",
+      "sha256": "e200a0289bac009f48d038b88da31472d4c7159a36c267cf781d595c6bc24a4f"
+    },
+    {
+      "bytes": 21010,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_ordered_clause_recurrent_training.py",
+      "sha256": "cafe6a5eef51cce0ab01537ec899549e6c412c0913841708dfdafcd5363b0c9e"
+    },
+    {
+      "bytes": 1510086,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/preprocessing.json",
+      "sha256": "de96c5f0a90a1472e346f3732ace42f0b4af4b3915026695fb705ae809663d8f"
+    },
+    {
+      "bytes": 3032308,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/source-contexts.json",
+      "sha256": "85415c5cef1c25450119cc419797c7f53b2817658d975cd4b357fdde01362a8c"
+    },
+    {
+      "bytes": 841411,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/training-rows.json",
+      "sha256": "854c059a7f7b2f9285eac10795191a9439b24ad6141d80406ffa9d6726892359"
+    },
+    {
+      "bytes": 2864122,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/preprocessing.json",
+      "sha256": "f4acb7b6b20a38c226a509e331d638fa667c929bd5b8970be44048d549f072ae"
+    },
+    {
+      "bytes": 5960181,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/source-contexts.json",
+      "sha256": "88406d13f72794934d4c9dc8aa69238004e1f6c5d7bd855ba319c14486392104"
+    },
+    {
+      "bytes": 1621518,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/training-rows.json",
+      "sha256": "a66ba07b38d101b48f8cd995cc82b2f22f220323ba6f7fc676b87638c4e05254"
+    },
+    {
+      "bytes": 279507,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/evaluation-manifest-r2.json",
+      "sha256": "d1096667f78c736daaa1abefc2c1ad9ae75133b1c4bcb67732b9f8628edb540e"
+    },
+    {
+      "bytes": 12525,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/experiment-source/scripts/ops/autoencoder/benchmark_selected_checkpoint_continuation.py",
+      "sha256": "39ad1308160766875cb670f92f8c783a01f6309b952277d37042aff7ec3110a5"
+    },
+    {
+      "bytes": 146849,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-manifest.json",
+      "sha256": "aeb47fbc8c5563abad0f6cce2776291581b686d727afb0bbf8109aa49d026930"
+    },
+    {
+      "bytes": 147708,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-plan.json",
+      "sha256": "ca115255d2f0403863fc7faf3e6c394b983074f483d7b565456d0ab10e4f54de"
+    },
+    {
+      "bytes": 2799098,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+    },
+    {
+      "bytes": 2077106,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected/evaluation-validation.json",
+      "sha256": "e9a4aa20effbe283731c772af0f43c4fce8577a65fc15065ddff6c50d2c396b6"
+    },
+    {
+      "bytes": 333836,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/summary.json",
+      "sha256": "b7bf5a06fa6181130657dd3438edf5f3ad620bcd0aa363531c0341865f5b329c"
+    },
+    {
+      "bytes": 4781613,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+      "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+    },
+    {
+      "bytes": 2467463,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected/evaluation-validation.json",
+      "sha256": "2e22c25fdeba1e620c31cfaba8e0e5a623b221673cf13ed7d57346e5b757de7c"
+    },
+    {
+      "bytes": 333828,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/summary.json",
+      "sha256": "84bbb101747de409cb60607653973f5fb353fdc8bb752a12dccc4f997a213219"
+    }
+  ],
+  "historical_publication_schema": "append-only-HF-publication/v1",
+  "importer_api": "import_ir_model_manager_records(manifest_pin, *, release_receipts, manager, readback, ...)",
+  "importer_required_publication_schema": "ir-model-hub-publication-receipt/v1",
+  "lanes": [
+    {
+      "append_only_registration_contract": {
+        "complete_runtime_io_contract": false,
+        "dimension": 384,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "input_contract": [
+          "native paragraph vector",
+          "exact literal-source clause vectors",
+          "derived boolsourcepadding mask",
+          "source text/IDs for cache validation"
+        ],
+        "ir_family_id": "legal_ir",
+        "known_checkpoint_schema_is_not_native_IR_schema_version": true,
+        "native_registered_format_prefix_forbidden_for_this_legacy_contract": true,
+        "output_contract": "ordered canonical rules JSON with seven fields; observed empty qualifiers and bounded inherited vocabulary",
+        "profile_id": null,
+        "proof_authority": false,
+        "record_prefix": "ir-model-asset-binding/v1:",
+        "runtime_ready": false,
+        "schema_version": null,
+        "task_id": "semantic_IR_reconstruction",
+        "task_identity_provenance": "literal decoder_task declaration in historical retained replay comparison; sourceparagraph+sourceclause inputs -> canonical rule array",
+        "teacher_qualified": false
+      },
+      "architecture": {
+        "action_feature_dimension": 64,
+        "action_feature_target_access": false,
+        "action_features": "masked_tanh_of_independent_normalized_clause_affine",
+        "action_features_normalized_to_unit_length": false,
+        "action_field": "action",
+        "action_projection_initialized_from_shared_projection": true,
+        "action_projection_shares_storage": false,
+        "action_representation_separate": true,
+        "activation": "tanh",
+        "added_recurrent_parameters": 2048,
+        "additional_trainable_parameters": 24640,
+        "admitted": false,
+        "ambient_rng_preserved": true,
+        "base_architecture_is_pre_replacement_donor": true,
+        "clause_normalization_weighting": "unique_training_source_first_occurrence",
+        "clause_projection": "same_frozen_paragraph_projection",
+        "clause_routing": "completed_rule_count_after_each_consumed_token",
+        "closed_actor_action_pair_classifier": false,
+        "closure_forced": false,
+        "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+        "contrastive_loss_owned_by_model": false,
+        "convergence_proven": false,
+        "count_path_changed": false,
+        "count_prior_frozen": true,
+        "dimension": 384,
+        "encoder_context_changed": false,
+        "feature_dimension": 384,
+        "feature_kind": "action_factorized_projected_clause_source",
+        "field_readout_initialization": "exact_original_field_rows",
+        "field_readouts_shared_across_slots": true,
+        "fitted_donor_affine_rounding_possible": false,
+        "fresh_holdout": false,
+        "full_vocabulary_retained": true,
+        "generation_reference_count_access": false,
+        "guidance": true,
+        "guide_boundary": true,
+        "head_initialization_seed": 1729,
+        "hidden_width": 64,
+        "independent_source_head_replaced": true,
+        "inherited_weights_sha256": "7d3c893dee06f4e7c95432b6a67879d33951a7eeceec1cb1d4b6c5d0adaeba93",
+        "initial_decoder_logits_unchanged": true,
+        "initial_recurrent_residual_zero": true,
+        "initialization_rng": "independent_local_cpu_generator",
+        "invalid_or_exhausted_clause_route": "zero_residual_no_forced_closure",
+        "lake_executed": false,
+        "max_rules": 8,
+        "native_family_validation_performed": false,
+        "normalization_statistics_frozen": true,
+        "old_action_readout_rows_retained": false,
+        "ordered_clause_recurrent_version": 1,
+        "ordered_recurrent_formula": "GRU(embedding(token)+paragraph_residual+zero_initialized_linear(concat(non_action_tanh,action_tanh)[causal_completed_rules_after_token]))",
+        "output_budget_changed": false,
+        "output_support": "complete_inherited_vocabulary",
+        "padding_policy": "zero_only_scalar_residual",
+        "paired_fresh_initial_logits_exact": true,
+        "paragraph_projection_path_changed": false,
+        "parameter_only_comparison": false,
+        "post_array_close_clause_route": "zero_residual",
+        "production_checkpoint": false,
+        "production_runtime_compatible": false,
+        "projection_frozen": true,
+        "proof_authority": false,
+        "qualified": false,
+        "recurrent_embedding_width": 16,
+        "recurrent_feature_dimension": 128,
+        "recurrent_parameter_count": 2048,
+        "recurrent_path_changed": true,
+        "reference_documents_passed_to_generation": false,
+        "scalar_guidance_kind": "soft_full_vocabulary_residual_at_inherited_causal_scalar_colon",
+        "scalar_mode": "raw",
+        "schema": "ordered-clause-recurrent-source-decoder-development/v1",
+        "scope": "exposed_authored_paragraph_development_only",
+        "slot_parameters": false,
+        "source_bias_initialization": "independent_exact_copy_of_original_shared_projection_bias",
+        "source_clause_availability_used_for_recurrence": true,
+        "source_clause_count_explicit_numeric_feature": false,
+        "source_clause_count_forces_stopping": false,
+        "source_clause_count_used_for_stopping": true,
+        "source_context_cached_on_module": false,
+        "source_context_input": "explicit_transformed_vectors_and_source_padding_mask",
+        "source_context_required": true,
+        "source_context_used_for_recurrence": true,
+        "source_context_used_for_scalar_head_only": false,
+        "source_fields": [
+          "actor",
+          "action",
+          "modality",
+          "object"
+        ],
+        "source_formula": "independent_action_tanh_projection_and_full_vocabulary_readout;shared_actor_modality_object_tanh_projection",
+        "source_semantics_verified": false,
+        "source_value_parameter_count": 57600,
+        "source_weight_initialization": "independent_exact_copy_of_original_shared_projection",
+        "state_layout": [
+          "recurrent_hidden",
+          "projected_source",
+          "consumed_prefix_position",
+          "source_count_logits",
+          "causal_grammar_state",
+          "source_value_logits",
+          "source_clause_recurrent_features"
+        ],
+        "syntax_forced": false,
+        "vocabulary_size": 32
+      },
+      "codec": {
+        "schema": "typed-json-lexical/v1",
+        "target_vocabulary": [
+          "<pad>",
+          "<bos>",
+          "<eos>",
+          "\"F\"",
+          "\"O\"",
+          "\"P\"",
+          "\"action\"",
+          "\"actor\"",
+          "\"approve\"",
+          "\"archive\"",
+          "\"conditions\"",
+          "\"deliver\"",
+          "\"examine\"",
+          "\"exceptions\"",
+          "\"modality\"",
+          "\"notary\"",
+          "\"notice\"",
+          "\"object\"",
+          "\"preserve\"",
+          "\"publish\"",
+          "\"registrar\"",
+          "\"rules\"",
+          "\"secretary\"",
+          "\"temporal\"",
+          "\"treasurer\"",
+          "\"trustee\"",
+          ",",
+          ":",
+          "[",
+          "]",
+          "{",
+          "}"
+        ]
+      },
+      "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+      "complete_model_state_entry_count": 32,
+      "decoder_output_limit_tokens": 512,
+      "dimension": 384,
+      "dimension_role": "input_embedding",
+      "encoder_experiment_limit_tokens": 512,
+      "exact_cached_file_pins": {
+        "original_contexts": {
+          "bytes": 3032308,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/source-contexts.json",
+          "sha256": "85415c5cef1c25450119cc419797c7f53b2817658d975cd4b357fdde01362a8c"
+        },
+        "original_preprocessing": {
+          "bytes": 1510086,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/preprocessing.json",
+          "sha256": "de96c5f0a90a1472e346f3732ace42f0b4af4b3915026695fb705ae809663d8f"
+        },
+        "original_training_rows": {
+          "bytes": 841411,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/384/training-rows.json",
+          "sha256": "854c059a7f7b2f9285eac10795191a9439b24ad6141d80406ffa9d6726892359"
+        },
+        "source_only_contexts": {
+          "bytes": 2295925,
+          "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-contexts.json",
+          "sha256": "3f124ce3210c68207d8405311742e5d5bedb43eab4f7c93cbf833aa7f5a223a2"
+        },
+        "source_only_inputs": {
+          "bytes": 532522,
+          "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/384-source-only-inputs.json",
+          "sha256": "722f9909868d545b54d5a1fe5a19880ccefa8e21d1d7f9b6fd1548d78494e7da"
+        }
+      },
+      "historical_complete_state_HF_publication": {
+        "file": {
+          "bytes": 2799098,
+          "git_blob_oid": "133591e3646e7b8dd77428694015ec5ba7020257",
+          "path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+          "verification_method": "exact_revision_streamed_sha256"
+        },
+        "fresh_remote_observation_this_survey": false,
+        "immutable_revision": "49839a5e55e2ef8ab3815f4e2650dc69ee72d5b8",
+        "later_historical_remote_observation": {
+          "bytes": 2799098,
+          "content_kind": "original_model_state_JSON",
+          "current_contents_unchanged": true,
+          "current_snapshot_revision": "d624057cf58e0090a0db9a3ad25857aaa91357de",
+          "git_blob_oid": "133591e3646e7b8dd77428694015ec5ba7020257",
+          "immutable_revision": "49839a5e55e2ef8ab3815f4e2650dc69ee72d5b8",
+          "lfs_sha256": null,
+          "path_in_repository": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+          "repo_id": "Publicus/legal-ir-autoencoder",
+          "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+          "verification_method": "immutable_receipt_prior_streamed_SHA256_plus_current_exact_plain_Git_blob_OID"
+        },
+        "later_historical_remote_receipt_pin": {
+          "bytes": 472138,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-remote-verification-01.json",
+          "sha256": "a6a582859a5cbb63eb5610ef75392b5c8c5cd6cb30e7576c944eae8afd0fdee5"
+        },
+        "local_publication_copy_git_blob_SHA1": "133591e3646e7b8dd77428694015ec5ba7020257",
+        "local_publication_copy_pin": {
+          "bytes": 2799098,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+        },
+        "publication_receipt_pin": {
+          "bytes": 55536,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+          "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+        },
+        "repository_id": "Publicus/legal-ir-autoencoder"
+      },
+      "historical_replay_metrics": {
+        "EOS_reached": 48,
+        "action_correct": 180,
+        "actor_correct": 180,
+        "exact_IR": 48,
+        "exact_token_sequence_with_EOS": 48,
+        "expected_rules": 180,
+        "extra_rule_positions": 0,
+        "generated_rules": 180,
+        "missing_rule_positions": 0,
+        "modality_correct": 180,
+        "object_correct": 180,
+        "rows": 48,
+        "rule_count_mismatch_rows": 0,
+        "valid_JSON": 48
+      },
+      "historical_replay_source_pin": {
+        "bytes": 31339,
+        "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/scored-result.json",
+        "sha256": "b1ca6e82c3e68ce1fae18006db9ce16652e37e1c5174ba4f73eb53b6c33f32f5"
+      },
+      "input_transform_content_sha256": "aaa6c0bfd041e4ddd6ec4d18d35ef5ea8efca8f2b7408e4a467cea64bb0ec8d2",
+      "input_transform_metadata": {
+        "mode": "center_rms",
+        "origin": "training_only",
+        "scale": 0.2684342563152313
+      },
+      "ir_family_id": "legal_ir",
+      "mask_contract": {
+        "batch_shape": [
+          "batch",
+          8,
+          384
+        ],
+        "mask_dtype": "bool",
+        "mask_shape": [
+          "batch",
+          8
+        ],
+        "padding_order": "transform actual clause vectors first; zero padding afterward",
+        "source_owner_pin": {
+          "bytes": 14249,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+          "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+        },
+        "standalone_cached_mask_file": false,
+        "torch_float32_transform_not_recomputed_by_this_survey": true,
+        "true_positions": "ordered literal source-clause positions; false pads to8"
+      },
+      "new_numerical_replay_this_survey": false,
+      "normalization": {
+        "clause_normalization": {
+          "content_sha256": "b7f65b74efc343c7bf25b4f23a90053edd57d7e44925b35a7c79d66b2fba870a",
+          "matches_checkpoint_architecture": true,
+          "metadata": {
+            "admitted": false,
+            "constant_training_features": false,
+            "convergence_proven": false,
+            "dimension": 384,
+            "fitted_rows": 113,
+            "fitted_training_centered_row_squared_norm": 1.679065520124597,
+            "fitted_training_scale": 1.2957876061008597,
+            "fresh_holdout": false,
+            "kind": "center_rms",
+            "lake_executed": false,
+            "model_buffer_dtype": "float32",
+            "native_family_validation_performed": false,
+            "normalization": "center_then_global_RMS_of_row_L2_norm",
+            "production_checkpoint": false,
+            "projection_provenance": "caller_authenticates_exact_frozen_projection_and_projected_feature_rows",
+            "proof_authority": false,
+            "qualified": false,
+            "receipt_sha256": "d89b4ad0bc06c8a5abb29b1144e02736b6de541ddc6bb4725d93c7605a7a4181",
+            "scale": 1.2957876061008597,
+            "schema": "training-source-normalization/v1",
+            "scope": "training_only_frozen_transform",
+            "source_semantics_verified": false,
+            "statistics_dtype": "float64",
+            "training_contexts_sha256": "c8acbcb28bf56a31b825572cc15ac0786ce2965e689ed8fd9ad8dba07a6243b7",
+            "training_feature_rows_sha256": "6d7f55c2d1b0a92459b908f897ff83593d981bb86d8947586c737e12fed07119",
+            "training_rows_sha256": "65646cffccb61226bfbe8f75fb25e208166b16b7587c40e67eacd8d796bde549",
+            "validation_rows_used_for_fitting": 0
+          }
+        },
+        "paragraph_normalization": {
+          "content_sha256": "acd19e314706fe6539c9748e1927d5ce973725763b74a812efb90d2dd2eb9bff",
+          "matches_checkpoint_architecture": true,
+          "metadata": {
+            "admitted": false,
+            "constant_training_features": false,
+            "convergence_proven": false,
+            "dimension": 384,
+            "fitted_rows": 48,
+            "fitted_training_centered_row_squared_norm": 1.0000002059627382,
+            "fitted_training_scale": 1.0000001029813639,
+            "fresh_holdout": false,
+            "kind": "center_rms",
+            "lake_executed": false,
+            "model_buffer_dtype": "float32",
+            "native_family_validation_performed": false,
+            "normalization": "center_then_global_RMS_of_row_L2_norm",
+            "production_checkpoint": false,
+            "projection_provenance": "caller_authenticates_exact_frozen_projection_and_projected_feature_rows",
+            "proof_authority": false,
+            "qualified": false,
+            "receipt_sha256": "77e6abb7d0a83d9ef431fb7652989ad64ec7bd38f8e944d7ea7d4b4909658b09",
+            "scale": 1.0000001029813639,
+            "schema": "training-source-normalization/v1",
+            "scope": "training_only_frozen_transform",
+            "source_semantics_verified": false,
+            "statistics_dtype": "float64",
+            "training_feature_rows_sha256": "54d097be43020bccc8cd43219f4172fb5c09d23978754ad5b0342415a99caaa4",
+            "training_rows_sha256": "65646cffccb61226bfbe8f75fb25e208166b16b7587c40e67eacd8d796bde549",
+            "validation_rows_used_for_fitting": 0
+          }
+        }
+      },
+      "original_checkpoint_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "representation_declaration": {
+        "context_binding_sha256": "c05616a4742952edbe649ec1d2817905507cd9c5548325eebc0d7dac0d73c953",
+        "dimension": 384,
+        "kind": "native_gte_small_semantic_embedding",
+        "paragraph_and_clause_views_preserved": true,
+        "producer_schema": "preserved_original_clause_context_inputs",
+        "profile_evidence_scope": "caller-authenticated original384 artifact closure; no encoder re-execution",
+        "profile_id": null,
+        "semantic_embedding": true
+      },
+      "saved_model_state_canonical_JSON_sha256": "9c3b22f64774a6910d3b4a2b5a62f8cfca7e0bdb4469c68aaed203859680dcdd",
+      "saved_model_state_hash_matches_full_publication_container": true,
+      "selected_catalog_observation": {
+        "binding_count": 668,
+        "exact_full_state_SHA_match_count": 0,
+        "fresh_catalog_load_this_survey": false,
+        "observed_at_utc": "2026-10-06T07:47:38.620823+00:00",
+        "source_receipt_pin": {
+          "bytes": 102696,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+          "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+        }
+      },
+      "serialization_schema": "private-native-dimension-source-state/v1",
+      "source_binding_content_sha256": "c05616a4742952edbe649ec1d2817905507cd9c5548325eebc0d7dac0d73c953",
+      "source_only48_copies_exact_original_validation_subset": true,
+      "split_observations": {
+        "train": {
+          "clause_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "clause_occurrences": 180,
+          "context_payload_sha256": "c8acbcb28bf56a31b825572cc15ac0786ce2965e689ed8fd9ad8dba07a6243b7",
+          "masks_sha256": "6d86378d29df47940070545775da8cd4262794e92c465ca24bf54286e50fd20b",
+          "ordered_IDs": [
+            "authored-paragraph:train:1:2781747e520dee4d065cbd179ea0ba1312f691438d25e928a26d8a5c53b71447",
+            "authored-paragraph:train:1:85169e0c268a86ab63f315d51034035567e86babcf4030083835e19a89c92f4b",
+            "authored-paragraph:train:1:20304d249e59252f06af2a9dc1d4f95ff48dabc2cf81334f5dad2e3ec89fc47f",
+            "authored-paragraph:train:1:d5bf9a395ba0795a137fce4789abfce5d4260bb3eaefee7eeb2baae092bff61e",
+            "authored-paragraph:train:1:31d4594185af2ca6d5f7c5fd4c41d5df09105b14f94251b993b714323c6ddd36",
+            "authored-paragraph:train:1:948779a55e2a80e96af4adf12ddbd383bfa7095cd41fa9696dcf2445cc96cf36",
+            "authored-paragraph:train:1:1ea28bd8d397f12cd592ea3ebf2e9c69d55cc79a2cfae92b71e463742ceabca2",
+            "authored-paragraph:train:1:9c3b1ba62dbb36c54c61fc0c48e006342aa2b478878cd66decfa71019207b819",
+            "authored-paragraph:train:1:11817652f0f5b527a549f1afc661e53da07fc08717894a78c8fc8226c34058d9",
+            "authored-paragraph:train:1:c98c8c0e19481af95e21c4e9bd6653a792463341ce5a4b2a6fda8e1375757ab8",
+            "authored-paragraph:train:1:a15f2d22dc99c495b4c442e5f6b98e58167e97b16fe06f2c7559b92ef0a5042a",
+            "authored-paragraph:train:1:5a429795666e79fc33711b38c13d9e8ee08622bdae120998296dd8548be43fb5",
+            "authored-paragraph:train:2:d0e585c222296f4200bae27413a558c1cdbc3b6036f72b7f2b1c45ef6d43e85c",
+            "authored-paragraph:train:2:bc51fa347e5bf9f1d37805d2349bbcc59189601040768334aecc62c374e74e32",
+            "authored-paragraph:train:2:b98ef42ae4cab13dafdec10c4c42ced06b1456145f9c757f9f4e3b16425320df",
+            "authored-paragraph:train:2:ce84763c11f2edbdfde9dce71db4bda08fd0d505156c1a791bf70020d3653cff",
+            "authored-paragraph:train:2:f730a8f407dd096cd3924f17c36ef8a99f9549fd8d91f363dff3e872611ec823",
+            "authored-paragraph:train:2:8fdb1a61c080d5b889cddab5cfdc23533b5fb65981f00727c03c43cafdd23748",
+            "authored-paragraph:train:2:ae8b10a436bc7ebcf9e9f17b5d2134afb516dadbc4e8c72280476fb04facb53a",
+            "authored-paragraph:train:2:bc46bd31687c54b91fa5c042590a387788bcc568ea98bacbbc94f2c32d1b2692",
+            "authored-paragraph:train:2:98fabe8d3c2411fe4bd116d2fe9c6cc9124fcdb42dbe67f0747aef8557986ca3",
+            "authored-paragraph:train:2:5ea1fe117d31df306daa6ffa58f8bf1c87c0e9bd19abc550c29cc444027741d2",
+            "authored-paragraph:train:2:70ed9b37836f6731f90b6f89d7c1f94c93acb3740861ac69326db61fa50624d4",
+            "authored-paragraph:train:2:f0449a716722546aeba637046f7326cf2f43b9e9a311de0322d19459b66ea5a8",
+            "authored-paragraph:train:4:ad6006aa98dfa4a0bc43b5a3413c0cff6af393df62f97f8ab2e4e5bb664070c7",
+            "authored-paragraph:train:4:9c4d628a5be7eaa5c05c53fbcdda279b04f40d4251198b9aa7ebd031eef62fc9",
+            "authored-paragraph:train:4:d93b3aed784b3db8160e675f0bd6d3e3df2263aec089de8a00368a767a769e47",
+            "authored-paragraph:train:4:adcad4d88f4403d793905c97f9a7501324a10f3388f8085b77ad97c7368446ca",
+            "authored-paragraph:train:4:2635e5c54b335b38b0fa4cc15cab465b41e5b4019f2fdf7e6ac1231f2d1975ae",
+            "authored-paragraph:train:4:cd0dae4ccc21a2397bf6186d6c394a0d7499660311a6e7ad40aee2fe27216e2b",
+            "authored-paragraph:train:4:e57e0c661c411ee40854585188e593d5de75e35358cf7b47e26aba25618dc5d3",
+            "authored-paragraph:train:4:20172a6c1d9250a148bde1886acf4c79824c498ee3fd7d8a84f73c3e56b7f61f",
+            "authored-paragraph:train:4:8b5bcd3874e54d0b9b0f9333364cc351098bb15bb4bb975bf3720083a8ad08f7",
+            "authored-paragraph:train:4:e38d07a0de3bbb3da02ed65e417ca27d16ce13dd93fd6ce802d120425d5282c8",
+            "authored-paragraph:train:4:d138fc86de5d38d4992c7e85cbb135daf97bce27c56ff189f5acee754a9ad004",
+            "authored-paragraph:train:4:3f480db2b3a73ecb7bf8a9f5ac58d88f9dfd5863e74ccebc3e37d1f8fbc774c7",
+            "authored-paragraph:train:8:619c891097b737d746c5d37b3b48c3c389c58f4526c9a6cc91f926594d92cc4f",
+            "authored-paragraph:train:8:07cc4434ad7ad3f9dd4bfb453325fbcf177f2aca3ae3a26595d5fbe66a223cc3",
+            "authored-paragraph:train:8:7d790174b66c6bef3363b11b670bdfe2b46d6ab2a7e7bceec1c0aa842b3f495c",
+            "authored-paragraph:train:8:6dda82be037cf0fe54c82158632da996e97aac9cb7c0fb5c41200091ae21b79e",
+            "authored-paragraph:train:8:31b3ca8942a96899ad3f80106176f48dcc32b0f2da85be8a87e6cb7522bdb221",
+            "authored-paragraph:train:8:8898f18544366e0bef118b8711014528a6d11a085d42c7c5b8756fb9704cd379",
+            "authored-paragraph:train:8:7368d52fa3de1234d9e759d354256e5eb1fd32426efb9250fca198ebb3791c13",
+            "authored-paragraph:train:8:786952adcdbb30771fc2940ef5bcf247b46ba3f74c37033b2940365b991b4402",
+            "authored-paragraph:train:8:71276925c90a2daee6bb1c861296493d43ab6b863e8d2edac3c9637e38a4a218",
+            "authored-paragraph:train:8:a29a8b97d89007714d9a11b0dd2a11547a850fad0549bf383e2e09b693da0854",
+            "authored-paragraph:train:8:ab498301d7380681d55eb6a252b4ebedcdb2c2f18c11e1ce17b47322f7dcfea2",
+            "authored-paragraph:train:8:bf68f91cd64454ae741f40c451e0059d346648448c6afc58451630f83a363039"
+          ],
+          "row_count": 48,
+          "source_SHA_set_sha256": "ce1d8a5a8e8196268ad7aa1c9b80341bacf2989c72a68c48f0cf40928712629f",
+          "source_padding_masks_derived_from_pinned_original_rule": [
+            {
+              "id": "authored-paragraph:train:1:2781747e520dee4d065cbd179ea0ba1312f691438d25e928a26d8a5c53b71447",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:85169e0c268a86ab63f315d51034035567e86babcf4030083835e19a89c92f4b",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:20304d249e59252f06af2a9dc1d4f95ff48dabc2cf81334f5dad2e3ec89fc47f",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:d5bf9a395ba0795a137fce4789abfce5d4260bb3eaefee7eeb2baae092bff61e",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:31d4594185af2ca6d5f7c5fd4c41d5df09105b14f94251b993b714323c6ddd36",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:948779a55e2a80e96af4adf12ddbd383bfa7095cd41fa9696dcf2445cc96cf36",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:1ea28bd8d397f12cd592ea3ebf2e9c69d55cc79a2cfae92b71e463742ceabca2",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:9c3b1ba62dbb36c54c61fc0c48e006342aa2b478878cd66decfa71019207b819",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:11817652f0f5b527a549f1afc661e53da07fc08717894a78c8fc8226c34058d9",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:c98c8c0e19481af95e21c4e9bd6653a792463341ce5a4b2a6fda8e1375757ab8",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:a15f2d22dc99c495b4c442e5f6b98e58167e97b16fe06f2c7559b92ef0a5042a",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:5a429795666e79fc33711b38c13d9e8ee08622bdae120998296dd8548be43fb5",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:d0e585c222296f4200bae27413a558c1cdbc3b6036f72b7f2b1c45ef6d43e85c",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:bc51fa347e5bf9f1d37805d2349bbcc59189601040768334aecc62c374e74e32",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:b98ef42ae4cab13dafdec10c4c42ced06b1456145f9c757f9f4e3b16425320df",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:ce84763c11f2edbdfde9dce71db4bda08fd0d505156c1a791bf70020d3653cff",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:f730a8f407dd096cd3924f17c36ef8a99f9549fd8d91f363dff3e872611ec823",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:8fdb1a61c080d5b889cddab5cfdc23533b5fb65981f00727c03c43cafdd23748",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:ae8b10a436bc7ebcf9e9f17b5d2134afb516dadbc4e8c72280476fb04facb53a",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:bc46bd31687c54b91fa5c042590a387788bcc568ea98bacbbc94f2c32d1b2692",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:98fabe8d3c2411fe4bd116d2fe9c6cc9124fcdb42dbe67f0747aef8557986ca3",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:5ea1fe117d31df306daa6ffa58f8bf1c87c0e9bd19abc550c29cc444027741d2",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:70ed9b37836f6731f90b6f89d7c1f94c93acb3740861ac69326db61fa50624d4",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:f0449a716722546aeba637046f7326cf2f43b9e9a311de0322d19459b66ea5a8",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:ad6006aa98dfa4a0bc43b5a3413c0cff6af393df62f97f8ab2e4e5bb664070c7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:9c4d628a5be7eaa5c05c53fbcdda279b04f40d4251198b9aa7ebd031eef62fc9",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:d93b3aed784b3db8160e675f0bd6d3e3df2263aec089de8a00368a767a769e47",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:adcad4d88f4403d793905c97f9a7501324a10f3388f8085b77ad97c7368446ca",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:2635e5c54b335b38b0fa4cc15cab465b41e5b4019f2fdf7e6ac1231f2d1975ae",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:cd0dae4ccc21a2397bf6186d6c394a0d7499660311a6e7ad40aee2fe27216e2b",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:e57e0c661c411ee40854585188e593d5de75e35358cf7b47e26aba25618dc5d3",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:20172a6c1d9250a148bde1886acf4c79824c498ee3fd7d8a84f73c3e56b7f61f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:8b5bcd3874e54d0b9b0f9333364cc351098bb15bb4bb975bf3720083a8ad08f7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:e38d07a0de3bbb3da02ed65e417ca27d16ce13dd93fd6ce802d120425d5282c8",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:d138fc86de5d38d4992c7e85cbb135daf97bce27c56ff189f5acee754a9ad004",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:3f480db2b3a73ecb7bf8a9f5ac58d88f9dfd5863e74ccebc3e37d1f8fbc774c7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:619c891097b737d746c5d37b3b48c3c389c58f4526c9a6cc91f926594d92cc4f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:07cc4434ad7ad3f9dd4bfb453325fbcf177f2aca3ae3a26595d5fbe66a223cc3",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:7d790174b66c6bef3363b11b670bdfe2b46d6ab2a7e7bceec1c0aa842b3f495c",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:6dda82be037cf0fe54c82158632da996e97aac9cb7c0fb5c41200091ae21b79e",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:31b3ca8942a96899ad3f80106176f48dcc32b0f2da85be8a87e6cb7522bdb221",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:8898f18544366e0bef118b8711014528a6d11a085d42c7c5b8756fb9704cd379",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:7368d52fa3de1234d9e759d354256e5eb1fd32426efb9250fca198ebb3791c13",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:786952adcdbb30771fc2940ef5bcf247b46ba3f74c37033b2940365b991b4402",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:71276925c90a2daee6bb1c861296493d43ab6b863e8d2edac3c9637e38a4a218",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:a29a8b97d89007714d9a11b0dd2a11547a850fad0549bf383e2e09b693da0854",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:ab498301d7380681d55eb6a252b4ebedcdb2c2f18c11e1ce17b47322f7dcfea2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:bf68f91cd64454ae741f40c451e0059d346648448c6afc58451630f83a363039",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ],
+          "source_text_order_sha256": "cd9c227e0707eef2b32568765fb3c9c7399c0facc62149e067a9029301c192c3",
+          "unique_clause_source_count": 113,
+          "vector_payload_order_sha256": "bc80c130524a3828513f4799c3a1610ae2ad9bd721f06cd8919e0ae04c2e6b4d"
+        },
+        "validation": {
+          "clause_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "clause_occurrences": 180,
+          "context_payload_sha256": "3724b11eba3c9428f2754949b183f17943d91249ab0532a1a77d0bf75877bb89",
+          "masks_sha256": "f82b62aab7b0525dd4a058bf90f59675cc76e44c90dc38a5851d882193bcb0d2",
+          "ordered_IDs": [
+            "authored-paragraph:validation:1:a06861d00057e7c87e59b07f0ffae619addc655c0c1aeee2b079993e1c101173",
+            "authored-paragraph:validation:1:4775114d32519d112f3e33dc6e2b787d42ac9c3011efadb455049b4c0419dbb2",
+            "authored-paragraph:validation:1:2bea29e0336598cbe3c1f7dfa79a2cf8457ef2f47af51d9947bd5d82841f76c9",
+            "authored-paragraph:validation:1:fbcf4156631fcea25a147e7949ab4e5e70831fd02c6ca4472ed41457af7a5bdd",
+            "authored-paragraph:validation:1:aee524aa64ac0524f933d3d32d03b3888077df3cf60ecb4d0ca5cce0164cede1",
+            "authored-paragraph:validation:1:20ad60b640b4178a22c2b5da7c2c38d160748301c3be4249c793a3db560de6c6",
+            "authored-paragraph:validation:1:909edd803468e704b77418ca07c00cae007e847ff4ed5f8fee891824b699116d",
+            "authored-paragraph:validation:1:68eb8a5c5a56de26110419fb404def8c6ec823697c4d22f9660ffcae9b715f4a",
+            "authored-paragraph:validation:1:06837a558ae4bb895fe20fccf0afdea6906806d115e29708295399def4f199cc",
+            "authored-paragraph:validation:1:36dcc0df724cf71c5a3c33e771abae1a18e4c55b1642112804f6a8ccb036a70f",
+            "authored-paragraph:validation:1:96301de6bf69c72818dc6e42e114a7fce95303618c62fbd61f52a1421374746b",
+            "authored-paragraph:validation:1:dbece175c37efa3dcebcbb30c7cd5f9996314b9a2808db488c5411c022f9be23",
+            "authored-paragraph:validation:2:f264507e4e49a7ea7c18fb42e280bd08b57c069d5ebf1fddf564ed29da9dca8d",
+            "authored-paragraph:validation:2:ac7a920087e8046617293d747e4a95cf55ba4fe6e19ac9f655d79f3e7a33f69a",
+            "authored-paragraph:validation:2:6b42904f2d123d5d7279479f0eb84f0c74d63669008294ecd9b2cc2419b67fca",
+            "authored-paragraph:validation:2:c0a0cf726d91dab0168ce53bd95301433ab51f12ff917bc660985e1004bb7554",
+            "authored-paragraph:validation:2:041ee5db1ee120f54229bc58bbd1ad00a42fb4cc8d6d02b3f11d8f57e617f907",
+            "authored-paragraph:validation:2:e05492475a9f1275ea6ca2eb37d12a9d8229399671f9d6307b13137bc4c2e5a3",
+            "authored-paragraph:validation:2:8b158951ab9ea9b3f8e8f19bb56aef0a93d4e1095dfc970a969a281dd12b9ead",
+            "authored-paragraph:validation:2:4086cf947baa096073903dd50dbfea333aace8c64bb772675b91078066c48f2d",
+            "authored-paragraph:validation:2:99e018098ab8c0988cf5bf98370e241f04416885c1f33ded2eac0025e8fde078",
+            "authored-paragraph:validation:2:023c8dada4cbab593da3882620178b2f8831699a84177a1c25f0e68522d93aca",
+            "authored-paragraph:validation:2:be56747cc70844f811cceebfe023e67bdb9976f5b40c58af5bd097f7ba0bf1bf",
+            "authored-paragraph:validation:2:a31a73f97f2066e6c10b704a1fdafec864bdae47861fb9bec776a9af11d570f7",
+            "authored-paragraph:validation:4:1901345179643e6062fabbd4091a74259915125a25d8d582629fe8e3c0c95aea",
+            "authored-paragraph:validation:4:c319ce29602e013cdae8d5da123e19184e18312316c8eb516cb6c84a5ee82127",
+            "authored-paragraph:validation:4:3fa77ac1ed9cd15f2114a420b87c871e7a9921f95732253acfccf45c3c071577",
+            "authored-paragraph:validation:4:c12be89acb5df6554b745ea5fbbd65c1ce06a2a55693cc5288a3a5c7be41d564",
+            "authored-paragraph:validation:4:5e77668d967077694f50f9f9c3754d500701771c2fd106cc17dfe78af1eda7e9",
+            "authored-paragraph:validation:4:dc7a808c00832b27d04f8e2874213c0ca55b02f46edee4b4f70ae4fa0687aad5",
+            "authored-paragraph:validation:4:4d1f7951368a9cb3bf1d13555936d7ac491a45dd81bb508182bce73d6f10b06f",
+            "authored-paragraph:validation:4:7e2d44674b9c5d11f7a9740bfb9157065be85157dc18ee43b5406e7e1ce73fdf",
+            "authored-paragraph:validation:4:198aade608e0b45554c174d3c344de3cc80284e99160fe81a765db6eff9f4963",
+            "authored-paragraph:validation:4:7b0712286ec10a51e0889d8eccfd170604a0b826777791a8859f50c2a040db00",
+            "authored-paragraph:validation:4:f024ba383f4583a22d01a131f33cbeead237451d91361328c768e8b7540d5cff",
+            "authored-paragraph:validation:4:836322e623a324a67e4d0a0fe501a67ce5988fef488aae955a6f002def473b3e",
+            "authored-paragraph:validation:8:dfd6d9b3624d2af4802618a322db1e62e9517c3cfdde701a4acfd7c888f0a035",
+            "authored-paragraph:validation:8:1b75dc3b8b395a1dd3f3bc44847434d9a3e458c0928934296674152d568850c2",
+            "authored-paragraph:validation:8:03efd114ed43e2057aaf75b61cc6d5ccf63fb81fd9309386c92725cfb5e1532a",
+            "authored-paragraph:validation:8:3fe9d39a0caeb80b1742220b64b15d2c8a8329c7be81b4a5fc4eb01c2819d9c8",
+            "authored-paragraph:validation:8:5cdd890b2a4cadb70751406c5e063e7209a3731524bb34c4d77a129942d025cc",
+            "authored-paragraph:validation:8:609032e1105427e7e8ca1640a0d89019e764dd0800c1f9fb879d45b20c7f50d6",
+            "authored-paragraph:validation:8:a7d949a743ef90b6022e3528ec7b22cb0ef06cf8db858c173ea3c55db739fcaf",
+            "authored-paragraph:validation:8:b54348b9e7b7a05e9d5f8e14945408435816d5c79d2c299dc2434834609a6b60",
+            "authored-paragraph:validation:8:d96fc947d7f73ff96d6d70ac6741433aa7f762f73c38af6394170654f9af10f5",
+            "authored-paragraph:validation:8:edf806e1c72cea54180b003cb64a91877947add81920042f43f1018af104f4e7",
+            "authored-paragraph:validation:8:f986c3596b9fd9284d191bdd8ae0f8f7bb859367649d915714e20b981d8f6ba2",
+            "authored-paragraph:validation:8:55be710187f78a848422afc0237f58e80cc43046b50222364c585a60691cd5e5"
+          ],
+          "row_count": 48,
+          "source_SHA_set_sha256": "c8756b0dd1191648f4f35de9cf3a94eb74daf525a92cdc80773b6f217a4d7e7c",
+          "source_padding_masks_derived_from_pinned_original_rule": [
+            {
+              "id": "authored-paragraph:validation:1:a06861d00057e7c87e59b07f0ffae619addc655c0c1aeee2b079993e1c101173",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:4775114d32519d112f3e33dc6e2b787d42ac9c3011efadb455049b4c0419dbb2",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:2bea29e0336598cbe3c1f7dfa79a2cf8457ef2f47af51d9947bd5d82841f76c9",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:fbcf4156631fcea25a147e7949ab4e5e70831fd02c6ca4472ed41457af7a5bdd",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:aee524aa64ac0524f933d3d32d03b3888077df3cf60ecb4d0ca5cce0164cede1",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:20ad60b640b4178a22c2b5da7c2c38d160748301c3be4249c793a3db560de6c6",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:909edd803468e704b77418ca07c00cae007e847ff4ed5f8fee891824b699116d",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:68eb8a5c5a56de26110419fb404def8c6ec823697c4d22f9660ffcae9b715f4a",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:06837a558ae4bb895fe20fccf0afdea6906806d115e29708295399def4f199cc",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:36dcc0df724cf71c5a3c33e771abae1a18e4c55b1642112804f6a8ccb036a70f",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:96301de6bf69c72818dc6e42e114a7fce95303618c62fbd61f52a1421374746b",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:dbece175c37efa3dcebcbb30c7cd5f9996314b9a2808db488c5411c022f9be23",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:f264507e4e49a7ea7c18fb42e280bd08b57c069d5ebf1fddf564ed29da9dca8d",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:ac7a920087e8046617293d747e4a95cf55ba4fe6e19ac9f655d79f3e7a33f69a",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:6b42904f2d123d5d7279479f0eb84f0c74d63669008294ecd9b2cc2419b67fca",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:c0a0cf726d91dab0168ce53bd95301433ab51f12ff917bc660985e1004bb7554",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:041ee5db1ee120f54229bc58bbd1ad00a42fb4cc8d6d02b3f11d8f57e617f907",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:e05492475a9f1275ea6ca2eb37d12a9d8229399671f9d6307b13137bc4c2e5a3",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:8b158951ab9ea9b3f8e8f19bb56aef0a93d4e1095dfc970a969a281dd12b9ead",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:4086cf947baa096073903dd50dbfea333aace8c64bb772675b91078066c48f2d",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:99e018098ab8c0988cf5bf98370e241f04416885c1f33ded2eac0025e8fde078",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:023c8dada4cbab593da3882620178b2f8831699a84177a1c25f0e68522d93aca",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:be56747cc70844f811cceebfe023e67bdb9976f5b40c58af5bd097f7ba0bf1bf",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:a31a73f97f2066e6c10b704a1fdafec864bdae47861fb9bec776a9af11d570f7",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:1901345179643e6062fabbd4091a74259915125a25d8d582629fe8e3c0c95aea",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:c319ce29602e013cdae8d5da123e19184e18312316c8eb516cb6c84a5ee82127",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:3fa77ac1ed9cd15f2114a420b87c871e7a9921f95732253acfccf45c3c071577",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:c12be89acb5df6554b745ea5fbbd65c1ce06a2a55693cc5288a3a5c7be41d564",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:5e77668d967077694f50f9f9c3754d500701771c2fd106cc17dfe78af1eda7e9",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:dc7a808c00832b27d04f8e2874213c0ca55b02f46edee4b4f70ae4fa0687aad5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:4d1f7951368a9cb3bf1d13555936d7ac491a45dd81bb508182bce73d6f10b06f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:7e2d44674b9c5d11f7a9740bfb9157065be85157dc18ee43b5406e7e1ce73fdf",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:198aade608e0b45554c174d3c344de3cc80284e99160fe81a765db6eff9f4963",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:7b0712286ec10a51e0889d8eccfd170604a0b826777791a8859f50c2a040db00",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:f024ba383f4583a22d01a131f33cbeead237451d91361328c768e8b7540d5cff",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:836322e623a324a67e4d0a0fe501a67ce5988fef488aae955a6f002def473b3e",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:dfd6d9b3624d2af4802618a322db1e62e9517c3cfdde701a4acfd7c888f0a035",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:1b75dc3b8b395a1dd3f3bc44847434d9a3e458c0928934296674152d568850c2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:03efd114ed43e2057aaf75b61cc6d5ccf63fb81fd9309386c92725cfb5e1532a",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:3fe9d39a0caeb80b1742220b64b15d2c8a8329c7be81b4a5fc4eb01c2819d9c8",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:5cdd890b2a4cadb70751406c5e063e7209a3731524bb34c4d77a129942d025cc",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:609032e1105427e7e8ca1640a0d89019e764dd0800c1f9fb879d45b20c7f50d6",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:a7d949a743ef90b6022e3528ec7b22cb0ef06cf8db858c173ea3c55db739fcaf",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:b54348b9e7b7a05e9d5f8e14945408435816d5c79d2c299dc2434834609a6b60",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:d96fc947d7f73ff96d6d70ac6741433aa7f762f73c38af6394170654f9af10f5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:edf806e1c72cea54180b003cb64a91877947add81920042f43f1018af104f4e7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:f986c3596b9fd9284d191bdd8ae0f8f7bb859367649d915714e20b981d8f6ba2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:55be710187f78a848422afc0237f58e80cc43046b50222364c585a60691cd5e5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ],
+          "source_text_order_sha256": "34a11257775ec10b7abe075b8aae309cfc992da586dc3021dc927649b61d6288",
+          "unique_clause_source_count": 54,
+          "vector_payload_order_sha256": "b5ef3c56ca482d3560778aced3018236f99a7b4d9dd76d3be6e3fde12c6a8bbd"
+        }
+      },
+      "target_contract_observations": {
+        "train": {
+          "canonical_target_documents_sha256": "4816fd630515a959d673aaf823dd06ed11cd26d77c6c122fad028eeecfcfb7f6",
+          "native_IR_schema_version": null,
+          "observed_fields": [
+            "action",
+            "actor",
+            "conditions",
+            "exceptions",
+            "modality",
+            "object",
+            "temporal"
+          ],
+          "observed_qualifier_fields_empty": true,
+          "ordered_target_ids_sha256": "b8806a3be148c70c714586c8b9016e509fd5fa3d57a1b6d43b8dfbc90cd75536",
+          "output_shape": "JSON object with ordered rules array; each rule has exactly seven canonical fields",
+          "rows": 48,
+          "rule_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "schema_version_unknown_reason": "Observed seven-field target shape and pinned validator are not an explicit native schema version declaration.",
+          "target_token_lengths_excluding_BOS_EOS": {
+            "maximum": 269,
+            "minimum": 38
+          },
+          "total_rules": 180
+        },
+        "validation": {
+          "canonical_target_documents_sha256": "fd48a8f4982b932412229a2282a151cf65e81303e9fa622ca3218392bb2f4e9f",
+          "native_IR_schema_version": null,
+          "observed_fields": [
+            "action",
+            "actor",
+            "conditions",
+            "exceptions",
+            "modality",
+            "object",
+            "temporal"
+          ],
+          "observed_qualifier_fields_empty": true,
+          "ordered_target_ids_sha256": "55f9149b9263e832a7887034d3b5b783dd28bbeacc0930c34fb3894058988e9c",
+          "output_shape": "JSON object with ordered rules array; each rule has exactly seven canonical fields",
+          "rows": 48,
+          "rule_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "schema_version_unknown_reason": "Observed seven-field target shape and pinned validator are not an explicit native schema version declaration.",
+          "target_token_lengths_excluding_BOS_EOS": {
+            "maximum": 269,
+            "minimum": 38
+          },
+          "total_rules": 180
+        }
+      }
+    },
+    {
+      "append_only_registration_contract": {
+        "complete_runtime_io_contract": false,
+        "dimension": 768,
+        "dimension_role": "input_embedding",
+        "format_id": null,
+        "input_contract": [
+          "native paragraph vector",
+          "exact literal-source clause vectors",
+          "derived boolsourcepadding mask",
+          "source text/IDs for cache validation"
+        ],
+        "ir_family_id": "legal_ir",
+        "known_checkpoint_schema_is_not_native_IR_schema_version": true,
+        "native_registered_format_prefix_forbidden_for_this_legacy_contract": true,
+        "output_contract": "ordered canonical rules JSON with seven fields; observed empty qualifiers and bounded inherited vocabulary",
+        "profile_id": null,
+        "proof_authority": false,
+        "record_prefix": "ir-model-asset-binding/v1:",
+        "runtime_ready": false,
+        "schema_version": null,
+        "task_id": "semantic_IR_reconstruction",
+        "task_identity_provenance": "literal decoder_task declaration in historical retained replay comparison; sourceparagraph+sourceclause inputs -> canonical rule array",
+        "teacher_qualified": false
+      },
+      "architecture": {
+        "action_feature_dimension": 64,
+        "action_feature_target_access": false,
+        "action_features": "masked_tanh_of_independent_normalized_clause_affine",
+        "action_features_normalized_to_unit_length": false,
+        "action_field": "action",
+        "action_projection_initialized_from_shared_projection": true,
+        "action_projection_shares_storage": false,
+        "action_representation_separate": true,
+        "activation": "tanh",
+        "added_recurrent_parameters": 2048,
+        "additional_trainable_parameters": 49216,
+        "admitted": false,
+        "ambient_rng_preserved": true,
+        "base_architecture_is_pre_replacement_donor": true,
+        "clause_normalization_weighting": "unique_training_source_first_occurrence",
+        "clause_projection": "same_frozen_paragraph_projection",
+        "clause_routing": "completed_rule_count_after_each_consumed_token",
+        "closed_actor_action_pair_classifier": false,
+        "closure_forced": false,
+        "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+        "contrastive_loss_owned_by_model": false,
+        "convergence_proven": false,
+        "count_path_changed": false,
+        "count_prior_frozen": true,
+        "dimension": 768,
+        "encoder_context_changed": false,
+        "feature_dimension": 768,
+        "feature_kind": "action_factorized_projected_clause_source",
+        "field_readout_initialization": "exact_original_field_rows",
+        "field_readouts_shared_across_slots": true,
+        "fitted_donor_affine_rounding_possible": false,
+        "fresh_holdout": false,
+        "full_vocabulary_retained": true,
+        "generation_reference_count_access": false,
+        "guidance": true,
+        "guide_boundary": true,
+        "head_initialization_seed": 1729,
+        "hidden_width": 64,
+        "independent_source_head_replaced": true,
+        "inherited_weights_sha256": "764bed7d69d43534b197689958783bb40ee6c220e06ac0eb6ee3805edb7ee2d8",
+        "initial_decoder_logits_unchanged": true,
+        "initial_recurrent_residual_zero": true,
+        "initialization_rng": "independent_local_cpu_generator",
+        "invalid_or_exhausted_clause_route": "zero_residual_no_forced_closure",
+        "lake_executed": false,
+        "max_rules": 8,
+        "native_family_validation_performed": false,
+        "normalization_statistics_frozen": true,
+        "old_action_readout_rows_retained": false,
+        "ordered_clause_recurrent_version": 1,
+        "ordered_recurrent_formula": "GRU(embedding(token)+paragraph_residual+zero_initialized_linear(concat(non_action_tanh,action_tanh)[causal_completed_rules_after_token]))",
+        "output_budget_changed": false,
+        "output_support": "complete_inherited_vocabulary",
+        "padding_policy": "zero_only_scalar_residual",
+        "paired_fresh_initial_logits_exact": true,
+        "paragraph_projection_path_changed": false,
+        "parameter_only_comparison": false,
+        "post_array_close_clause_route": "zero_residual",
+        "production_checkpoint": false,
+        "production_runtime_compatible": false,
+        "projection_frozen": true,
+        "proof_authority": false,
+        "qualified": false,
+        "recurrent_embedding_width": 16,
+        "recurrent_feature_dimension": 128,
+        "recurrent_parameter_count": 2048,
+        "recurrent_path_changed": true,
+        "reference_documents_passed_to_generation": false,
+        "scalar_guidance_kind": "soft_full_vocabulary_residual_at_inherited_causal_scalar_colon",
+        "scalar_mode": "raw",
+        "schema": "ordered-clause-recurrent-source-decoder-development/v1",
+        "scope": "exposed_authored_paragraph_development_only",
+        "slot_parameters": false,
+        "source_bias_initialization": "independent_exact_copy_of_original_shared_projection_bias",
+        "source_clause_availability_used_for_recurrence": true,
+        "source_clause_count_explicit_numeric_feature": false,
+        "source_clause_count_forces_stopping": false,
+        "source_clause_count_used_for_stopping": true,
+        "source_context_cached_on_module": false,
+        "source_context_input": "explicit_transformed_vectors_and_source_padding_mask",
+        "source_context_required": true,
+        "source_context_used_for_recurrence": true,
+        "source_context_used_for_scalar_head_only": false,
+        "source_fields": [
+          "actor",
+          "action",
+          "modality",
+          "object"
+        ],
+        "source_formula": "independent_action_tanh_projection_and_full_vocabulary_readout;shared_actor_modality_object_tanh_projection",
+        "source_semantics_verified": false,
+        "source_value_parameter_count": 106752,
+        "source_weight_initialization": "independent_exact_copy_of_original_shared_projection",
+        "state_layout": [
+          "recurrent_hidden",
+          "projected_source",
+          "consumed_prefix_position",
+          "source_count_logits",
+          "causal_grammar_state",
+          "source_value_logits",
+          "source_clause_recurrent_features"
+        ],
+        "syntax_forced": false,
+        "vocabulary_size": 32
+      },
+      "codec": {
+        "schema": "typed-json-lexical/v1",
+        "target_vocabulary": [
+          "<pad>",
+          "<bos>",
+          "<eos>",
+          "\"F\"",
+          "\"O\"",
+          "\"P\"",
+          "\"action\"",
+          "\"actor\"",
+          "\"approve\"",
+          "\"archive\"",
+          "\"conditions\"",
+          "\"deliver\"",
+          "\"examine\"",
+          "\"exceptions\"",
+          "\"modality\"",
+          "\"notary\"",
+          "\"notice\"",
+          "\"object\"",
+          "\"preserve\"",
+          "\"publish\"",
+          "\"registrar\"",
+          "\"rules\"",
+          "\"secretary\"",
+          "\"temporal\"",
+          "\"treasurer\"",
+          "\"trustee\"",
+          ",",
+          ":",
+          "[",
+          "]",
+          "{",
+          "}"
+        ]
+      },
+      "codec_sha256": "cba3e5384e2bee12e709ccc8e9ee430e51cf09a8fc2e8abdd57143fdaa38dba2",
+      "complete_model_state_entry_count": 32,
+      "decoder_output_limit_tokens": 512,
+      "dimension": 768,
+      "dimension_role": "input_embedding",
+      "encoder_experiment_limit_tokens": 512,
+      "exact_cached_file_pins": {
+        "original_contexts": {
+          "bytes": 5960181,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/source-contexts.json",
+          "sha256": "88406d13f72794934d4c9dc8aa69238004e1f6c5d7bd855ba319c14486392104"
+        },
+        "original_preprocessing": {
+          "bytes": 2864122,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/preprocessing.json",
+          "sha256": "f4acb7b6b20a38c226a509e331d638fa667c929bd5b8970be44048d549f072ae"
+        },
+        "original_training_rows": {
+          "bytes": 1621518,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-four-width-20261004/training-r1/results/768/training-rows.json",
+          "sha256": "a66ba07b38d101b48f8cd995cc82b2f22f220323ba6f7fc676b87638c4e05254"
+        },
+        "source_only_contexts": {
+          "bytes": 4520563,
+          "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-contexts.json",
+          "sha256": "a8353fe8311702f4adeb1aa483cdda218a48cc1327309737b5f0680d2a8b2529"
+        },
+        "source_only_inputs": {
+          "bytes": 1051554,
+          "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/768-source-only-inputs.json",
+          "sha256": "e44720b13acb52306bb951ff500aa067a3c4ebe4a060139367e1d465e6511bd4"
+        }
+      },
+      "historical_complete_state_HF_publication": {
+        "file": {
+          "bytes": 4781613,
+          "git_blob_oid": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+          "path": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+          "verification_method": "exact_revision_streamed_sha256"
+        },
+        "fresh_remote_observation_this_survey": false,
+        "immutable_revision": "49839a5e55e2ef8ab3815f4e2650dc69ee72d5b8",
+        "later_historical_remote_observation": {
+          "bytes": 4781613,
+          "content_kind": "original_model_state_JSON",
+          "current_contents_unchanged": true,
+          "current_snapshot_revision": "d624057cf58e0090a0db9a3ad25857aaa91357de",
+          "git_blob_oid": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+          "immutable_revision": "49839a5e55e2ef8ab3815f4e2650dc69ee72d5b8",
+          "lfs_sha256": null,
+          "path_in_repository": "releases/20261004-additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+          "repo_id": "Publicus/legal-ir-autoencoder",
+          "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+          "verification_method": "immutable_receipt_prior_streamed_SHA256_plus_current_exact_plain_Git_blob_OID"
+        },
+        "later_historical_remote_receipt_pin": {
+          "bytes": 472138,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/all_weights/prior-remote-verification-01.json",
+          "sha256": "a6a582859a5cbb63eb5610ef75392b5c8c5cd6cb30e7576c944eae8afd0fdee5"
+        },
+        "local_publication_copy_git_blob_SHA1": "f5813c6d46f1a2e0ec3aeafe6506462757537361",
+        "local_publication_copy_pin": {
+          "bytes": 4781613,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-cutoff-v1/checkpoints/decoder-selected-continuation-20261004/768-selected-followup-lr0001-1729/selected-state.json",
+          "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+        },
+        "publication_receipt_pin": {
+          "bytes": 55536,
+          "path": "/home/barberb/lift_coding/artifacts/autoformalization-publication-20261004/huggingface/additional-decoder-upload-01/publication.json",
+          "sha256": "47d75bbdf56702d4e0e741db4d9442ab440313c8dcbc8e2d024062a4b89745c6"
+        },
+        "repository_id": "Publicus/legal-ir-autoencoder"
+      },
+      "historical_replay_metrics": {
+        "EOS_reached": 48,
+        "action_correct": 180,
+        "actor_correct": 180,
+        "exact_IR": 48,
+        "exact_token_sequence_with_EOS": 48,
+        "expected_rules": 180,
+        "extra_rule_positions": 0,
+        "generated_rules": 180,
+        "missing_rule_positions": 0,
+        "modality_correct": 180,
+        "object_correct": 180,
+        "rows": 48,
+        "rule_count_mismatch_rows": 0,
+        "valid_JSON": 48
+      },
+      "historical_replay_source_pin": {
+        "bytes": 31339,
+        "path": "/home/barberb/lift_coding/artifacts/ir-semantic-reconstruction-replay-20261004/contextual384-768-v1/scored-result.json",
+        "sha256": "b1ca6e82c3e68ce1fae18006db9ce16652e37e1c5174ba4f73eb53b6c33f32f5"
+      },
+      "input_transform_content_sha256": "8d218aed3e20cc94ae7a561f551c8374b23164c947cbb0db3ef364d5e8ff7bc9",
+      "input_transform_metadata": {
+        "mode": "center_rms",
+        "origin": "training_only",
+        "scale": 0.44104841351509094
+      },
+      "ir_family_id": "legal_ir",
+      "mask_contract": {
+        "batch_shape": [
+          "batch",
+          8,
+          768
+        ],
+        "mask_dtype": "bool",
+        "mask_shape": [
+          "batch",
+          8
+        ],
+        "padding_order": "transform actual clause vectors first; zero padding afterward",
+        "source_owner_pin": {
+          "bytes": 14249,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+          "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+        },
+        "standalone_cached_mask_file": false,
+        "torch_float32_transform_not_recomputed_by_this_survey": true,
+        "true_positions": "ordered literal source-clause positions; false pads to8"
+      },
+      "new_numerical_replay_this_survey": false,
+      "normalization": {
+        "clause_normalization": {
+          "content_sha256": "2637a222762fd65b38139716d48fecf92355c70ba7a3509cee7580e789e88d7c",
+          "matches_checkpoint_architecture": true,
+          "metadata": {
+            "admitted": false,
+            "constant_training_features": false,
+            "convergence_proven": false,
+            "dimension": 768,
+            "fitted_rows": 113,
+            "fitted_training_centered_row_squared_norm": 1.6681368809559276,
+            "fitted_training_scale": 1.2915637347633788,
+            "fresh_holdout": false,
+            "kind": "center_rms",
+            "lake_executed": false,
+            "model_buffer_dtype": "float32",
+            "native_family_validation_performed": false,
+            "normalization": "center_then_global_RMS_of_row_L2_norm",
+            "production_checkpoint": false,
+            "projection_provenance": "caller_authenticates_exact_frozen_projection_and_projected_feature_rows",
+            "proof_authority": false,
+            "qualified": false,
+            "receipt_sha256": "df4dc0235e82174ab989b60937f68feb9d303086c05e640cac6eb2c9c62124da",
+            "scale": 1.2915637347633788,
+            "schema": "training-source-normalization/v1",
+            "scope": "training_only_frozen_transform",
+            "source_semantics_verified": false,
+            "statistics_dtype": "float64",
+            "training_contexts_sha256": "807a5bdcd228ee222196fca8167435af8baeeedc2582e581edce7b23bf1ff075",
+            "training_feature_rows_sha256": "b98538214ca393ee848900f4550e490811e2c85b54e851d3c9524a6146ef382d",
+            "training_rows_sha256": "d4c19c16b7fd0b90e808cbd85b0cf465316c17c96c35d40b0fa19ea6cd338776",
+            "validation_rows_used_for_fitting": 0
+          }
+        },
+        "paragraph_normalization": {
+          "content_sha256": "394d3aa5888e8acd02e6648403a8596ac8d2b57d72833c0e9ea55a95726d2525",
+          "matches_checkpoint_architecture": true,
+          "metadata": {
+            "admitted": false,
+            "constant_training_features": false,
+            "convergence_proven": false,
+            "dimension": 768,
+            "fitted_rows": 48,
+            "fitted_training_centered_row_squared_norm": 0.9999999714399558,
+            "fitted_training_scale": 0.9999999857199778,
+            "fresh_holdout": false,
+            "kind": "center_rms",
+            "lake_executed": false,
+            "model_buffer_dtype": "float32",
+            "native_family_validation_performed": false,
+            "normalization": "center_then_global_RMS_of_row_L2_norm",
+            "production_checkpoint": false,
+            "projection_provenance": "caller_authenticates_exact_frozen_projection_and_projected_feature_rows",
+            "proof_authority": false,
+            "qualified": false,
+            "receipt_sha256": "a2a0b622b911d8dba3a23db837f7daae618f5ba6adb317abaf39e03ed91bbe29",
+            "scale": 0.9999999857199778,
+            "schema": "training-source-normalization/v1",
+            "scope": "training_only_frozen_transform",
+            "source_semantics_verified": false,
+            "statistics_dtype": "float64",
+            "training_feature_rows_sha256": "b067b1b03af9066a84e0349ae3f89cc335c24c4ab6b0fbd41d3776158e128c1b",
+            "training_rows_sha256": "d4c19c16b7fd0b90e808cbd85b0cf465316c17c96c35d40b0fa19ea6cd338776",
+            "validation_rows_used_for_fitting": 0
+          }
+        }
+      },
+      "original_checkpoint_pin": {
+        "bytes": 4781613,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-selected-continuation-20261004/training-r1/results/768-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4"
+      },
+      "representation_declaration": {
+        "cached_profile_relabelled": false,
+        "dimension": 768,
+        "experiment_admission_token_limit": 512,
+        "historical_profile_token_limit": 8192,
+        "kind": "native_gte_multilingual_semantic_embedding",
+        "producer_schema": "bounded-native768-source-production/v1",
+        "profile_id": "Alibaba-NLP/gte-multilingual-base@9bbca17d9273fd0d03d5725c7a4b0f6b45142062:code=Alibaba-NLP/new-impl@40ced75c3017eb27626c9d4ea981bde21a2662f4:d768:pool=cls:norm=l2:cpu:float32:tokens8192:reject_overlength:v1",
+        "semantic_embedding": true
+      },
+      "saved_model_state_canonical_JSON_sha256": "76828a25003a9aead638071c7375b0eb16ef8a6ed097d405fe9d5c83d89b9356",
+      "saved_model_state_hash_matches_full_publication_container": true,
+      "selected_catalog_observation": {
+        "binding_count": 668,
+        "exact_full_state_SHA_match_count": 0,
+        "fresh_catalog_load_this_survey": false,
+        "observed_at_utc": "2026-10-06T07:47:38.620823+00:00",
+        "source_receipt_pin": {
+          "bytes": 102696,
+          "path": "/home/barberb/lift_coding/artifacts/supervisor-decoder-contract-20261006/retained-decoder-contract-survey.json",
+          "sha256": "244c2d69445e39be5ef077c629153f6f0622b7848e2cf95a604e32d3e2924c99"
+        }
+      },
+      "serialization_schema": "private-native-dimension-source-state/v1",
+      "source_binding_content_sha256": "4bc93d4226d28774d95c1b677c8077b452c05083d6e4c2cb8f3787ba3699b6a3",
+      "source_only48_copies_exact_original_validation_subset": true,
+      "split_observations": {
+        "train": {
+          "clause_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "clause_occurrences": 180,
+          "context_payload_sha256": "807a5bdcd228ee222196fca8167435af8baeeedc2582e581edce7b23bf1ff075",
+          "masks_sha256": "6d86378d29df47940070545775da8cd4262794e92c465ca24bf54286e50fd20b",
+          "ordered_IDs": [
+            "authored-paragraph:train:1:2781747e520dee4d065cbd179ea0ba1312f691438d25e928a26d8a5c53b71447",
+            "authored-paragraph:train:1:85169e0c268a86ab63f315d51034035567e86babcf4030083835e19a89c92f4b",
+            "authored-paragraph:train:1:20304d249e59252f06af2a9dc1d4f95ff48dabc2cf81334f5dad2e3ec89fc47f",
+            "authored-paragraph:train:1:d5bf9a395ba0795a137fce4789abfce5d4260bb3eaefee7eeb2baae092bff61e",
+            "authored-paragraph:train:1:31d4594185af2ca6d5f7c5fd4c41d5df09105b14f94251b993b714323c6ddd36",
+            "authored-paragraph:train:1:948779a55e2a80e96af4adf12ddbd383bfa7095cd41fa9696dcf2445cc96cf36",
+            "authored-paragraph:train:1:1ea28bd8d397f12cd592ea3ebf2e9c69d55cc79a2cfae92b71e463742ceabca2",
+            "authored-paragraph:train:1:9c3b1ba62dbb36c54c61fc0c48e006342aa2b478878cd66decfa71019207b819",
+            "authored-paragraph:train:1:11817652f0f5b527a549f1afc661e53da07fc08717894a78c8fc8226c34058d9",
+            "authored-paragraph:train:1:c98c8c0e19481af95e21c4e9bd6653a792463341ce5a4b2a6fda8e1375757ab8",
+            "authored-paragraph:train:1:a15f2d22dc99c495b4c442e5f6b98e58167e97b16fe06f2c7559b92ef0a5042a",
+            "authored-paragraph:train:1:5a429795666e79fc33711b38c13d9e8ee08622bdae120998296dd8548be43fb5",
+            "authored-paragraph:train:2:d0e585c222296f4200bae27413a558c1cdbc3b6036f72b7f2b1c45ef6d43e85c",
+            "authored-paragraph:train:2:bc51fa347e5bf9f1d37805d2349bbcc59189601040768334aecc62c374e74e32",
+            "authored-paragraph:train:2:b98ef42ae4cab13dafdec10c4c42ced06b1456145f9c757f9f4e3b16425320df",
+            "authored-paragraph:train:2:ce84763c11f2edbdfde9dce71db4bda08fd0d505156c1a791bf70020d3653cff",
+            "authored-paragraph:train:2:f730a8f407dd096cd3924f17c36ef8a99f9549fd8d91f363dff3e872611ec823",
+            "authored-paragraph:train:2:8fdb1a61c080d5b889cddab5cfdc23533b5fb65981f00727c03c43cafdd23748",
+            "authored-paragraph:train:2:ae8b10a436bc7ebcf9e9f17b5d2134afb516dadbc4e8c72280476fb04facb53a",
+            "authored-paragraph:train:2:bc46bd31687c54b91fa5c042590a387788bcc568ea98bacbbc94f2c32d1b2692",
+            "authored-paragraph:train:2:98fabe8d3c2411fe4bd116d2fe9c6cc9124fcdb42dbe67f0747aef8557986ca3",
+            "authored-paragraph:train:2:5ea1fe117d31df306daa6ffa58f8bf1c87c0e9bd19abc550c29cc444027741d2",
+            "authored-paragraph:train:2:70ed9b37836f6731f90b6f89d7c1f94c93acb3740861ac69326db61fa50624d4",
+            "authored-paragraph:train:2:f0449a716722546aeba637046f7326cf2f43b9e9a311de0322d19459b66ea5a8",
+            "authored-paragraph:train:4:ad6006aa98dfa4a0bc43b5a3413c0cff6af393df62f97f8ab2e4e5bb664070c7",
+            "authored-paragraph:train:4:9c4d628a5be7eaa5c05c53fbcdda279b04f40d4251198b9aa7ebd031eef62fc9",
+            "authored-paragraph:train:4:d93b3aed784b3db8160e675f0bd6d3e3df2263aec089de8a00368a767a769e47",
+            "authored-paragraph:train:4:adcad4d88f4403d793905c97f9a7501324a10f3388f8085b77ad97c7368446ca",
+            "authored-paragraph:train:4:2635e5c54b335b38b0fa4cc15cab465b41e5b4019f2fdf7e6ac1231f2d1975ae",
+            "authored-paragraph:train:4:cd0dae4ccc21a2397bf6186d6c394a0d7499660311a6e7ad40aee2fe27216e2b",
+            "authored-paragraph:train:4:e57e0c661c411ee40854585188e593d5de75e35358cf7b47e26aba25618dc5d3",
+            "authored-paragraph:train:4:20172a6c1d9250a148bde1886acf4c79824c498ee3fd7d8a84f73c3e56b7f61f",
+            "authored-paragraph:train:4:8b5bcd3874e54d0b9b0f9333364cc351098bb15bb4bb975bf3720083a8ad08f7",
+            "authored-paragraph:train:4:e38d07a0de3bbb3da02ed65e417ca27d16ce13dd93fd6ce802d120425d5282c8",
+            "authored-paragraph:train:4:d138fc86de5d38d4992c7e85cbb135daf97bce27c56ff189f5acee754a9ad004",
+            "authored-paragraph:train:4:3f480db2b3a73ecb7bf8a9f5ac58d88f9dfd5863e74ccebc3e37d1f8fbc774c7",
+            "authored-paragraph:train:8:619c891097b737d746c5d37b3b48c3c389c58f4526c9a6cc91f926594d92cc4f",
+            "authored-paragraph:train:8:07cc4434ad7ad3f9dd4bfb453325fbcf177f2aca3ae3a26595d5fbe66a223cc3",
+            "authored-paragraph:train:8:7d790174b66c6bef3363b11b670bdfe2b46d6ab2a7e7bceec1c0aa842b3f495c",
+            "authored-paragraph:train:8:6dda82be037cf0fe54c82158632da996e97aac9cb7c0fb5c41200091ae21b79e",
+            "authored-paragraph:train:8:31b3ca8942a96899ad3f80106176f48dcc32b0f2da85be8a87e6cb7522bdb221",
+            "authored-paragraph:train:8:8898f18544366e0bef118b8711014528a6d11a085d42c7c5b8756fb9704cd379",
+            "authored-paragraph:train:8:7368d52fa3de1234d9e759d354256e5eb1fd32426efb9250fca198ebb3791c13",
+            "authored-paragraph:train:8:786952adcdbb30771fc2940ef5bcf247b46ba3f74c37033b2940365b991b4402",
+            "authored-paragraph:train:8:71276925c90a2daee6bb1c861296493d43ab6b863e8d2edac3c9637e38a4a218",
+            "authored-paragraph:train:8:a29a8b97d89007714d9a11b0dd2a11547a850fad0549bf383e2e09b693da0854",
+            "authored-paragraph:train:8:ab498301d7380681d55eb6a252b4ebedcdb2c2f18c11e1ce17b47322f7dcfea2",
+            "authored-paragraph:train:8:bf68f91cd64454ae741f40c451e0059d346648448c6afc58451630f83a363039"
+          ],
+          "row_count": 48,
+          "source_SHA_set_sha256": "ce1d8a5a8e8196268ad7aa1c9b80341bacf2989c72a68c48f0cf40928712629f",
+          "source_padding_masks_derived_from_pinned_original_rule": [
+            {
+              "id": "authored-paragraph:train:1:2781747e520dee4d065cbd179ea0ba1312f691438d25e928a26d8a5c53b71447",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:85169e0c268a86ab63f315d51034035567e86babcf4030083835e19a89c92f4b",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:20304d249e59252f06af2a9dc1d4f95ff48dabc2cf81334f5dad2e3ec89fc47f",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:d5bf9a395ba0795a137fce4789abfce5d4260bb3eaefee7eeb2baae092bff61e",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:31d4594185af2ca6d5f7c5fd4c41d5df09105b14f94251b993b714323c6ddd36",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:948779a55e2a80e96af4adf12ddbd383bfa7095cd41fa9696dcf2445cc96cf36",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:1ea28bd8d397f12cd592ea3ebf2e9c69d55cc79a2cfae92b71e463742ceabca2",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:9c3b1ba62dbb36c54c61fc0c48e006342aa2b478878cd66decfa71019207b819",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:11817652f0f5b527a549f1afc661e53da07fc08717894a78c8fc8226c34058d9",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:c98c8c0e19481af95e21c4e9bd6653a792463341ce5a4b2a6fda8e1375757ab8",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:a15f2d22dc99c495b4c442e5f6b98e58167e97b16fe06f2c7559b92ef0a5042a",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:1:5a429795666e79fc33711b38c13d9e8ee08622bdae120998296dd8548be43fb5",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:d0e585c222296f4200bae27413a558c1cdbc3b6036f72b7f2b1c45ef6d43e85c",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:bc51fa347e5bf9f1d37805d2349bbcc59189601040768334aecc62c374e74e32",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:b98ef42ae4cab13dafdec10c4c42ced06b1456145f9c757f9f4e3b16425320df",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:ce84763c11f2edbdfde9dce71db4bda08fd0d505156c1a791bf70020d3653cff",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:f730a8f407dd096cd3924f17c36ef8a99f9549fd8d91f363dff3e872611ec823",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:8fdb1a61c080d5b889cddab5cfdc23533b5fb65981f00727c03c43cafdd23748",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:ae8b10a436bc7ebcf9e9f17b5d2134afb516dadbc4e8c72280476fb04facb53a",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:bc46bd31687c54b91fa5c042590a387788bcc568ea98bacbbc94f2c32d1b2692",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:98fabe8d3c2411fe4bd116d2fe9c6cc9124fcdb42dbe67f0747aef8557986ca3",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:5ea1fe117d31df306daa6ffa58f8bf1c87c0e9bd19abc550c29cc444027741d2",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:70ed9b37836f6731f90b6f89d7c1f94c93acb3740861ac69326db61fa50624d4",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:2:f0449a716722546aeba637046f7326cf2f43b9e9a311de0322d19459b66ea5a8",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:ad6006aa98dfa4a0bc43b5a3413c0cff6af393df62f97f8ab2e4e5bb664070c7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:9c4d628a5be7eaa5c05c53fbcdda279b04f40d4251198b9aa7ebd031eef62fc9",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:d93b3aed784b3db8160e675f0bd6d3e3df2263aec089de8a00368a767a769e47",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:adcad4d88f4403d793905c97f9a7501324a10f3388f8085b77ad97c7368446ca",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:2635e5c54b335b38b0fa4cc15cab465b41e5b4019f2fdf7e6ac1231f2d1975ae",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:cd0dae4ccc21a2397bf6186d6c394a0d7499660311a6e7ad40aee2fe27216e2b",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:e57e0c661c411ee40854585188e593d5de75e35358cf7b47e26aba25618dc5d3",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:20172a6c1d9250a148bde1886acf4c79824c498ee3fd7d8a84f73c3e56b7f61f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:8b5bcd3874e54d0b9b0f9333364cc351098bb15bb4bb975bf3720083a8ad08f7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:e38d07a0de3bbb3da02ed65e417ca27d16ce13dd93fd6ce802d120425d5282c8",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:d138fc86de5d38d4992c7e85cbb135daf97bce27c56ff189f5acee754a9ad004",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:4:3f480db2b3a73ecb7bf8a9f5ac58d88f9dfd5863e74ccebc3e37d1f8fbc774c7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:619c891097b737d746c5d37b3b48c3c389c58f4526c9a6cc91f926594d92cc4f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:07cc4434ad7ad3f9dd4bfb453325fbcf177f2aca3ae3a26595d5fbe66a223cc3",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:7d790174b66c6bef3363b11b670bdfe2b46d6ab2a7e7bceec1c0aa842b3f495c",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:6dda82be037cf0fe54c82158632da996e97aac9cb7c0fb5c41200091ae21b79e",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:31b3ca8942a96899ad3f80106176f48dcc32b0f2da85be8a87e6cb7522bdb221",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:8898f18544366e0bef118b8711014528a6d11a085d42c7c5b8756fb9704cd379",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:7368d52fa3de1234d9e759d354256e5eb1fd32426efb9250fca198ebb3791c13",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:786952adcdbb30771fc2940ef5bcf247b46ba3f74c37033b2940365b991b4402",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:71276925c90a2daee6bb1c861296493d43ab6b863e8d2edac3c9637e38a4a218",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:a29a8b97d89007714d9a11b0dd2a11547a850fad0549bf383e2e09b693da0854",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:ab498301d7380681d55eb6a252b4ebedcdb2c2f18c11e1ce17b47322f7dcfea2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:train:8:bf68f91cd64454ae741f40c451e0059d346648448c6afc58451630f83a363039",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ],
+          "source_text_order_sha256": "cd9c227e0707eef2b32568765fb3c9c7399c0facc62149e067a9029301c192c3",
+          "unique_clause_source_count": 113,
+          "vector_payload_order_sha256": "f65e20a4923d3d7d5f3f0c70b95e5bd3b13dd17fb3e9cdcf5603dc07eac67062"
+        },
+        "validation": {
+          "clause_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "clause_occurrences": 180,
+          "context_payload_sha256": "c9f44fe597b094fad86b603dc0e7ab0ea7f5902b8a845a56d97ae726245ca6cd",
+          "masks_sha256": "f82b62aab7b0525dd4a058bf90f59675cc76e44c90dc38a5851d882193bcb0d2",
+          "ordered_IDs": [
+            "authored-paragraph:validation:1:a06861d00057e7c87e59b07f0ffae619addc655c0c1aeee2b079993e1c101173",
+            "authored-paragraph:validation:1:4775114d32519d112f3e33dc6e2b787d42ac9c3011efadb455049b4c0419dbb2",
+            "authored-paragraph:validation:1:2bea29e0336598cbe3c1f7dfa79a2cf8457ef2f47af51d9947bd5d82841f76c9",
+            "authored-paragraph:validation:1:fbcf4156631fcea25a147e7949ab4e5e70831fd02c6ca4472ed41457af7a5bdd",
+            "authored-paragraph:validation:1:aee524aa64ac0524f933d3d32d03b3888077df3cf60ecb4d0ca5cce0164cede1",
+            "authored-paragraph:validation:1:20ad60b640b4178a22c2b5da7c2c38d160748301c3be4249c793a3db560de6c6",
+            "authored-paragraph:validation:1:909edd803468e704b77418ca07c00cae007e847ff4ed5f8fee891824b699116d",
+            "authored-paragraph:validation:1:68eb8a5c5a56de26110419fb404def8c6ec823697c4d22f9660ffcae9b715f4a",
+            "authored-paragraph:validation:1:06837a558ae4bb895fe20fccf0afdea6906806d115e29708295399def4f199cc",
+            "authored-paragraph:validation:1:36dcc0df724cf71c5a3c33e771abae1a18e4c55b1642112804f6a8ccb036a70f",
+            "authored-paragraph:validation:1:96301de6bf69c72818dc6e42e114a7fce95303618c62fbd61f52a1421374746b",
+            "authored-paragraph:validation:1:dbece175c37efa3dcebcbb30c7cd5f9996314b9a2808db488c5411c022f9be23",
+            "authored-paragraph:validation:2:f264507e4e49a7ea7c18fb42e280bd08b57c069d5ebf1fddf564ed29da9dca8d",
+            "authored-paragraph:validation:2:ac7a920087e8046617293d747e4a95cf55ba4fe6e19ac9f655d79f3e7a33f69a",
+            "authored-paragraph:validation:2:6b42904f2d123d5d7279479f0eb84f0c74d63669008294ecd9b2cc2419b67fca",
+            "authored-paragraph:validation:2:c0a0cf726d91dab0168ce53bd95301433ab51f12ff917bc660985e1004bb7554",
+            "authored-paragraph:validation:2:041ee5db1ee120f54229bc58bbd1ad00a42fb4cc8d6d02b3f11d8f57e617f907",
+            "authored-paragraph:validation:2:e05492475a9f1275ea6ca2eb37d12a9d8229399671f9d6307b13137bc4c2e5a3",
+            "authored-paragraph:validation:2:8b158951ab9ea9b3f8e8f19bb56aef0a93d4e1095dfc970a969a281dd12b9ead",
+            "authored-paragraph:validation:2:4086cf947baa096073903dd50dbfea333aace8c64bb772675b91078066c48f2d",
+            "authored-paragraph:validation:2:99e018098ab8c0988cf5bf98370e241f04416885c1f33ded2eac0025e8fde078",
+            "authored-paragraph:validation:2:023c8dada4cbab593da3882620178b2f8831699a84177a1c25f0e68522d93aca",
+            "authored-paragraph:validation:2:be56747cc70844f811cceebfe023e67bdb9976f5b40c58af5bd097f7ba0bf1bf",
+            "authored-paragraph:validation:2:a31a73f97f2066e6c10b704a1fdafec864bdae47861fb9bec776a9af11d570f7",
+            "authored-paragraph:validation:4:1901345179643e6062fabbd4091a74259915125a25d8d582629fe8e3c0c95aea",
+            "authored-paragraph:validation:4:c319ce29602e013cdae8d5da123e19184e18312316c8eb516cb6c84a5ee82127",
+            "authored-paragraph:validation:4:3fa77ac1ed9cd15f2114a420b87c871e7a9921f95732253acfccf45c3c071577",
+            "authored-paragraph:validation:4:c12be89acb5df6554b745ea5fbbd65c1ce06a2a55693cc5288a3a5c7be41d564",
+            "authored-paragraph:validation:4:5e77668d967077694f50f9f9c3754d500701771c2fd106cc17dfe78af1eda7e9",
+            "authored-paragraph:validation:4:dc7a808c00832b27d04f8e2874213c0ca55b02f46edee4b4f70ae4fa0687aad5",
+            "authored-paragraph:validation:4:4d1f7951368a9cb3bf1d13555936d7ac491a45dd81bb508182bce73d6f10b06f",
+            "authored-paragraph:validation:4:7e2d44674b9c5d11f7a9740bfb9157065be85157dc18ee43b5406e7e1ce73fdf",
+            "authored-paragraph:validation:4:198aade608e0b45554c174d3c344de3cc80284e99160fe81a765db6eff9f4963",
+            "authored-paragraph:validation:4:7b0712286ec10a51e0889d8eccfd170604a0b826777791a8859f50c2a040db00",
+            "authored-paragraph:validation:4:f024ba383f4583a22d01a131f33cbeead237451d91361328c768e8b7540d5cff",
+            "authored-paragraph:validation:4:836322e623a324a67e4d0a0fe501a67ce5988fef488aae955a6f002def473b3e",
+            "authored-paragraph:validation:8:dfd6d9b3624d2af4802618a322db1e62e9517c3cfdde701a4acfd7c888f0a035",
+            "authored-paragraph:validation:8:1b75dc3b8b395a1dd3f3bc44847434d9a3e458c0928934296674152d568850c2",
+            "authored-paragraph:validation:8:03efd114ed43e2057aaf75b61cc6d5ccf63fb81fd9309386c92725cfb5e1532a",
+            "authored-paragraph:validation:8:3fe9d39a0caeb80b1742220b64b15d2c8a8329c7be81b4a5fc4eb01c2819d9c8",
+            "authored-paragraph:validation:8:5cdd890b2a4cadb70751406c5e063e7209a3731524bb34c4d77a129942d025cc",
+            "authored-paragraph:validation:8:609032e1105427e7e8ca1640a0d89019e764dd0800c1f9fb879d45b20c7f50d6",
+            "authored-paragraph:validation:8:a7d949a743ef90b6022e3528ec7b22cb0ef06cf8db858c173ea3c55db739fcaf",
+            "authored-paragraph:validation:8:b54348b9e7b7a05e9d5f8e14945408435816d5c79d2c299dc2434834609a6b60",
+            "authored-paragraph:validation:8:d96fc947d7f73ff96d6d70ac6741433aa7f762f73c38af6394170654f9af10f5",
+            "authored-paragraph:validation:8:edf806e1c72cea54180b003cb64a91877947add81920042f43f1018af104f4e7",
+            "authored-paragraph:validation:8:f986c3596b9fd9284d191bdd8ae0f8f7bb859367649d915714e20b981d8f6ba2",
+            "authored-paragraph:validation:8:55be710187f78a848422afc0237f58e80cc43046b50222364c585a60691cd5e5"
+          ],
+          "row_count": 48,
+          "source_SHA_set_sha256": "c8756b0dd1191648f4f35de9cf3a94eb74daf525a92cdc80773b6f217a4d7e7c",
+          "source_padding_masks_derived_from_pinned_original_rule": [
+            {
+              "id": "authored-paragraph:validation:1:a06861d00057e7c87e59b07f0ffae619addc655c0c1aeee2b079993e1c101173",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:4775114d32519d112f3e33dc6e2b787d42ac9c3011efadb455049b4c0419dbb2",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:2bea29e0336598cbe3c1f7dfa79a2cf8457ef2f47af51d9947bd5d82841f76c9",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:fbcf4156631fcea25a147e7949ab4e5e70831fd02c6ca4472ed41457af7a5bdd",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:aee524aa64ac0524f933d3d32d03b3888077df3cf60ecb4d0ca5cce0164cede1",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:20ad60b640b4178a22c2b5da7c2c38d160748301c3be4249c793a3db560de6c6",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:909edd803468e704b77418ca07c00cae007e847ff4ed5f8fee891824b699116d",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:68eb8a5c5a56de26110419fb404def8c6ec823697c4d22f9660ffcae9b715f4a",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:06837a558ae4bb895fe20fccf0afdea6906806d115e29708295399def4f199cc",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:36dcc0df724cf71c5a3c33e771abae1a18e4c55b1642112804f6a8ccb036a70f",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:96301de6bf69c72818dc6e42e114a7fce95303618c62fbd61f52a1421374746b",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:1:dbece175c37efa3dcebcbb30c7cd5f9996314b9a2808db488c5411c022f9be23",
+              "mask": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:f264507e4e49a7ea7c18fb42e280bd08b57c069d5ebf1fddf564ed29da9dca8d",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:ac7a920087e8046617293d747e4a95cf55ba4fe6e19ac9f655d79f3e7a33f69a",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:6b42904f2d123d5d7279479f0eb84f0c74d63669008294ecd9b2cc2419b67fca",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:c0a0cf726d91dab0168ce53bd95301433ab51f12ff917bc660985e1004bb7554",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:041ee5db1ee120f54229bc58bbd1ad00a42fb4cc8d6d02b3f11d8f57e617f907",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:e05492475a9f1275ea6ca2eb37d12a9d8229399671f9d6307b13137bc4c2e5a3",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:8b158951ab9ea9b3f8e8f19bb56aef0a93d4e1095dfc970a969a281dd12b9ead",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:4086cf947baa096073903dd50dbfea333aace8c64bb772675b91078066c48f2d",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:99e018098ab8c0988cf5bf98370e241f04416885c1f33ded2eac0025e8fde078",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:023c8dada4cbab593da3882620178b2f8831699a84177a1c25f0e68522d93aca",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:be56747cc70844f811cceebfe023e67bdb9976f5b40c58af5bd097f7ba0bf1bf",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:2:a31a73f97f2066e6c10b704a1fdafec864bdae47861fb9bec776a9af11d570f7",
+              "mask": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:1901345179643e6062fabbd4091a74259915125a25d8d582629fe8e3c0c95aea",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:c319ce29602e013cdae8d5da123e19184e18312316c8eb516cb6c84a5ee82127",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:3fa77ac1ed9cd15f2114a420b87c871e7a9921f95732253acfccf45c3c071577",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:c12be89acb5df6554b745ea5fbbd65c1ce06a2a55693cc5288a3a5c7be41d564",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:5e77668d967077694f50f9f9c3754d500701771c2fd106cc17dfe78af1eda7e9",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:dc7a808c00832b27d04f8e2874213c0ca55b02f46edee4b4f70ae4fa0687aad5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:4d1f7951368a9cb3bf1d13555936d7ac491a45dd81bb508182bce73d6f10b06f",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:7e2d44674b9c5d11f7a9740bfb9157065be85157dc18ee43b5406e7e1ce73fdf",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:198aade608e0b45554c174d3c344de3cc80284e99160fe81a765db6eff9f4963",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:7b0712286ec10a51e0889d8eccfd170604a0b826777791a8859f50c2a040db00",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:f024ba383f4583a22d01a131f33cbeead237451d91361328c768e8b7540d5cff",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:4:836322e623a324a67e4d0a0fe501a67ce5988fef488aae955a6f002def473b3e",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:dfd6d9b3624d2af4802618a322db1e62e9517c3cfdde701a4acfd7c888f0a035",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:1b75dc3b8b395a1dd3f3bc44847434d9a3e458c0928934296674152d568850c2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:03efd114ed43e2057aaf75b61cc6d5ccf63fb81fd9309386c92725cfb5e1532a",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:3fe9d39a0caeb80b1742220b64b15d2c8a8329c7be81b4a5fc4eb01c2819d9c8",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:5cdd890b2a4cadb70751406c5e063e7209a3731524bb34c4d77a129942d025cc",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:609032e1105427e7e8ca1640a0d89019e764dd0800c1f9fb879d45b20c7f50d6",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:a7d949a743ef90b6022e3528ec7b22cb0ef06cf8db858c173ea3c55db739fcaf",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:b54348b9e7b7a05e9d5f8e14945408435816d5c79d2c299dc2434834609a6b60",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:d96fc947d7f73ff96d6d70ac6741433aa7f762f73c38af6394170654f9af10f5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:edf806e1c72cea54180b003cb64a91877947add81920042f43f1018af104f4e7",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:f986c3596b9fd9284d191bdd8ae0f8f7bb859367649d915714e20b981d8f6ba2",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            {
+              "id": "authored-paragraph:validation:8:55be710187f78a848422afc0237f58e80cc43046b50222364c585a60691cd5e5",
+              "mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          ],
+          "source_text_order_sha256": "34a11257775ec10b7abe075b8aae309cfc992da586dc3021dc927649b61d6288",
+          "unique_clause_source_count": 54,
+          "vector_payload_order_sha256": "c293de078afd336b843f53c934b60adaf9cb2e695d677ae52efeee2e07ecbcd8"
+        }
+      },
+      "target_contract_observations": {
+        "train": {
+          "canonical_target_documents_sha256": "4816fd630515a959d673aaf823dd06ed11cd26d77c6c122fad028eeecfcfb7f6",
+          "native_IR_schema_version": null,
+          "observed_fields": [
+            "action",
+            "actor",
+            "conditions",
+            "exceptions",
+            "modality",
+            "object",
+            "temporal"
+          ],
+          "observed_qualifier_fields_empty": true,
+          "ordered_target_ids_sha256": "b8806a3be148c70c714586c8b9016e509fd5fa3d57a1b6d43b8dfbc90cd75536",
+          "output_shape": "JSON object with ordered rules array; each rule has exactly seven canonical fields",
+          "rows": 48,
+          "rule_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "schema_version_unknown_reason": "Observed seven-field target shape and pinned validator are not an explicit native schema version declaration.",
+          "target_token_lengths_excluding_BOS_EOS": {
+            "maximum": 269,
+            "minimum": 38
+          },
+          "total_rules": 180
+        },
+        "validation": {
+          "canonical_target_documents_sha256": "fd48a8f4982b932412229a2282a151cf65e81303e9fa622ca3218392bb2f4e9f",
+          "native_IR_schema_version": null,
+          "observed_fields": [
+            "action",
+            "actor",
+            "conditions",
+            "exceptions",
+            "modality",
+            "object",
+            "temporal"
+          ],
+          "observed_qualifier_fields_empty": true,
+          "ordered_target_ids_sha256": "55f9149b9263e832a7887034d3b5b783dd28bbeacc0930c34fb3894058988e9c",
+          "output_shape": "JSON object with ordered rules array; each rule has exactly seven canonical fields",
+          "rows": 48,
+          "rule_count_distribution": {
+            "1": 12,
+            "2": 12,
+            "4": 12,
+            "8": 12
+          },
+          "schema_version_unknown_reason": "Observed seven-field target shape and pinned validator are not an explicit native schema version declaration.",
+          "target_token_lengths_excluding_BOS_EOS": {
+            "maximum": 269,
+            "minimum": 38
+          },
+          "total_rules": 180
+        }
+      }
+    }
+  ],
+  "new_asset_upload_not_needed_to_establish_historical_complete_state_bytes": true,
+  "new_dimension_repo_or_profile_metadata_publication_requires_separate_explicit_receipt": true,
+  "observed_at_utc": "2026-10-06T08:50:31.871715+00:00",
+  "operations": {
+    "Hub_mutations": false,
+    "asset_mutations": false,
+    "database_access": false,
+    "model_invoked": false,
+    "model_loaded": false,
+    "network_calls": false,
+    "new_embeddings_generated": false,
+    "registrations": false,
+    "source_modules_imported": false,
+    "training_executed": false
+  },
+  "publication_scope": "Fresh local exact file/state/cache hashes and historical receipt joins. Historical exactstate publication now established; remote currentness remains a separate fresh network observation.",
+  "publisher_api": "publish_ir_model_hub_release(plan, *, api=None, operation_factory=None)",
+  "quality_scope": "Exposed authored48paragraph regression and cachedliteralclause inputs; no sourceparagraphsinglevector, independentholdout, nonemptyqualifier, arbitrarynewsource, originalprose,8192span, teacher or proof qualification.",
+  "receipt_adapter_needed": "Historical append-only-HF-publication/v1 differs from importerreceipt schema. Fresh checked remote file hashes/GitOIDs may support an explicit transparent adapter, not relabeling unsupported history.",
+  "schema": "retained-contextual-decoder-cache-publication-survey/v1",
+  "script_pin": {
+    "bytes": 22953,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/asset-survey/survey.py",
+    "sha256": "c66bf7ca85a266281721689cf7af66bb43df27a29f11b6f18d107cdf9168104e"
+  },
+  "source_owner_selected_historical_pins": [
+    {
+      "bytes": 14249,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+      "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6"
+    },
+    {
+      "bytes": 37989,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/decoder_distillation_experiment.py",
+      "sha256": "76252ad397492762d4fc41915afd1051a93a11b74994655326fe56fa722e3b61"
+    },
+    {
+      "bytes": 26392,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/ipfs_datasets_py/logic/formalization/autoencoder/ordered_clause_recurrent_decoder_experiment.py",
+      "sha256": "56392a6f37f528350f18b68b56a016aad170530e93e95e660b6898f1c4cef3da"
+    },
+    {
+      "bytes": 34576,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_clause_context_source_training.py",
+      "sha256": "e200a0289bac009f48d038b88da31472d4c7159a36c267cf781d595c6bc24a4f"
+    },
+    {
+      "bytes": 21010,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/decoder-content-matched-r3-20261004/experiment-source/scripts/ops/autoencoder/benchmark_ordered_clause_recurrent_training.py",
+      "sha256": "cafe6a5eef51cce0ab01537ec899549e6c412c0913841708dfdafcd5363b0c9e"
+    }
+  ]
+}

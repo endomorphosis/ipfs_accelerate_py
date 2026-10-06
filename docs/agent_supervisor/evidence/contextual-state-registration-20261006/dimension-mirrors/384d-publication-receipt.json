@@ -1,0 +1,85 @@
+{
+  "commit_returned": true,
+  "commit_started": true,
+  "created_paths": [
+    "releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+    "releases/20261006-contextual-selected-v1/manifest.json",
+    "releases/20261006-contextual-selected-v1/README.md"
+  ],
+  "cross_repository_transaction_atomic": false,
+  "existing_visibility_preserved": true,
+  "files": [
+    {
+      "bytes": 2799098,
+      "file_pin": {
+        "bytes": 2799098,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+        "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00"
+      },
+      "path_in_repo": "releases/20261006-contextual-selected-v1/checkpoints/decoder-selected-continuation-20261004/384-selected-followup-lr0001-1729/selected-state.json",
+      "remote_identity": {
+        "blob_id": "133591e3646e7b8dd77428694015ec5ba7020257",
+        "bytes": 2799098,
+        "scheme": "git-blob-sha1"
+      },
+      "sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+      "verified": true
+    },
+    {
+      "bytes": 10074,
+      "file_pin": {
+        "bytes": 10074,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/manifest.json",
+        "sha256": "ee74e5b9738caa94dc8f24e296d4895c16baf9a52eb2305b5c5fa3141e1b309e"
+      },
+      "path_in_repo": "releases/20261006-contextual-selected-v1/manifest.json",
+      "remote_identity": {
+        "blob_id": "1cca1f74462ed3218e3131aee241b090a0179bf9",
+        "bytes": 10074,
+        "scheme": "git-blob-sha1"
+      },
+      "sha256": "ee74e5b9738caa94dc8f24e296d4895c16baf9a52eb2305b5c5fa3141e1b309e",
+      "verified": true
+    },
+    {
+      "bytes": 2106,
+      "file_pin": {
+        "bytes": 2106,
+        "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/README.md",
+        "sha256": "2d3a20e476e5925935677d1033db91d34a70740f2061c86489cd8e68b441c6b1"
+      },
+      "path_in_repo": "releases/20261006-contextual-selected-v1/README.md",
+      "remote_identity": {
+        "blob_id": "0ae34fdd3a9fb9cc1a4af6167c359448bf5749b8",
+        "bytes": 2106,
+        "scheme": "git-blob-sha1"
+      },
+      "sha256": "2d3a20e476e5925935677d1033db91d34a70740f2061c86489cd8e68b441c6b1",
+      "verified": true
+    }
+  ],
+  "files_verified": true,
+  "idempotent_reuse": false,
+  "initial_revision": "6a1a85e868ec7c073a484112efac417904cebdea",
+  "manifest_pin": {
+    "bytes": 10074,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/dimension-mirrors/384d/manifest.json",
+    "sha256": "ee74e5b9738caa94dc8f24e296d4895c16baf9a52eb2305b5c5fa3141e1b309e"
+  },
+  "model_loaded": false,
+  "numerical_quality_qualified": false,
+  "proof_qualified": false,
+  "repository_create_returned": false,
+  "repository_create_started": false,
+  "repository_created": false,
+  "repository_creation_indeterminate": false,
+  "repository_id": "Publicus/legal-ir-autoencoder-384d",
+  "repository_private": false,
+  "repository_supplied_python_executed": false,
+  "requested_private_new": false,
+  "reused_paths": [],
+  "revision": "f2c3714f7bf8e30177a799270f0cead51baf19dc",
+  "schema": "ir-model-hub-publication-receipt/v1",
+  "teacher_qualified": false,
+  "trust_remote_code": false
+}

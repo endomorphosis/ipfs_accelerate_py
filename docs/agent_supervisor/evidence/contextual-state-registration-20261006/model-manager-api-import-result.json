@@ -1,0 +1,56 @@
+{
+  "already_present_count": 0,
+  "authority": {
+    "active_process_refreshed": false,
+    "model_numerically_loaded": false,
+    "model_quality_qualified": false,
+    "proof_authority": false,
+    "registration_metadata_verified": true,
+    "remote_independently_verified_by_adapter": false,
+    "runtime_ready": false,
+    "teacher_qualified": false
+  },
+  "completed": true,
+  "manifest_receipt": {
+    "bytes": 172556,
+    "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/contextual-model-manager-import-plan.json",
+    "sha256": "dbebc27e6a0c0de0bb96f0fbd600118389675ee8650a5771ba5dd0acd9cca99b"
+  },
+  "outcomes": [
+    {
+      "add_model_result": true,
+      "add_model_returned": true,
+      "add_model_started": true,
+      "already_present": false,
+      "checkpoint_sha256": "0ac5c21656187d1d8040a02bcc0b4716a8093db17f05adc9a22e99d5b6b2cc00",
+      "model_id": "ir-model-asset-binding/v1:10485c538f0f4a64e9ec0b6fa1c62e06af1f368446cd2c0e8e342e127e9055d9",
+      "persisted_metadata_matched": true,
+      "persisted_readback_returned": true,
+      "persisted_readback_started": true,
+      "status": "registered_verified"
+    },
+    {
+      "add_model_result": true,
+      "add_model_returned": true,
+      "add_model_started": true,
+      "already_present": false,
+      "checkpoint_sha256": "8892a3261c0750a6247ba5400069ed18cad3354426e2095ed1d295287e3559b4",
+      "model_id": "ir-model-asset-binding/v1:c992440d87ae57cffb689aa37fe2f3b63e9ae4c251a9ad65697148e576f840e2",
+      "persisted_metadata_matched": true,
+      "persisted_readback_returned": true,
+      "persisted_readback_started": true,
+      "status": "registered_verified"
+    }
+  ],
+  "persisted_metadata_matched_count": 2,
+  "publication_receipts": [
+    {
+      "bytes": 5143,
+      "path": "/home/barberb/lift_coding/artifacts/decoder-profile-recovery-20261006/verified-contextual-publication-receipt.json",
+      "sha256": "7c8d5b92d5ae0cd564c61a53e1cd8db5fda0fed795a270467c1973ee4a722fb3"
+    }
+  ],
+  "readback_semantics": "Explicit driver-owned reopened-storage callable; adapter verifies returned fields, not its implementation.",
+  "registered_count": 2,
+  "schema": "ir-model-manager-import-result/v1"
+}
