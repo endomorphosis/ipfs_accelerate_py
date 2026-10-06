@@ -72,6 +72,11 @@ _SAFE_MEDIA_TYPES = frozenset(
     {
         "application/json",
         "application/octet-stream",
+        # Explicit public data formats; labels grant no parsing or execution
+        # authority. Format validation and exact signed admission remain local.
+        "application/x-ndjson",
+        "application/xml",
+        "text/calendar",
         "text/markdown",
         "text/plain",
         "text/x-python",

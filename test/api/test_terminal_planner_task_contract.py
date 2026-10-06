@@ -172,14 +172,11 @@ def test_rehashed_decoding_hint_still_cannot_authorize_a_different_task(prepared
         local.admit_local_benchmark_plan(graph=parsed, manifest=prepared["manifest"])
 
 
-@pytest.mark.parametrize("drift", [False, True])
-def test_actual_cli_router_parser_and_signed_admission(prepared, tmp_path, monkeypatch, drift):
+def _invoke_authored_cli(prepared, tmp_path, monkeypatch, value):
+    """Exercise the real process adapter with authored output, never a provider."""
     from ipfs_accelerate_py import llm_router
-    from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
     from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
     from ipfs_accelerate_py.llm_allocation import duckdb_store, intelligence_index
-    value = proposal(prepared)
-    if drift: value["tasks"][0]["acceptance"][0]["criterion"] = "Schema-valid signed-contract drift"
     fixture = tmp_path / "proposal.json"
     fixture.write_text(json.dumps(value))
     executable = tmp_path / "grok"
@@ -190,8 +187,10 @@ def test_actual_cli_router_parser_and_signed_admission(prepared, tmp_path, monke
         "def option(name):\n assert argv.count(name)==1\n return argv[argv.index(name)+1]\n"
         "prompt=json.loads(pathlib.Path(option('--prompt-file')).read_text())\n"
         "wire=json.loads(option('--json-schema'))\n"
+        "Draft202012Validator.check_schema(wire)\n"
         "assert '$id' not in wire\n"
         "assert wire['definitions']['task']['allOf'][0]['properties']['acceptance']['const']==prompt['terminal_planner_task_contract']['tasks'][0]['acceptance']\n"
+        "assert wire['definitions']['task']['allOf'][0]['properties']['outputs']['const']==prompt['terminal_planner_task_contract']['tasks'][0]['outputs']\n"
         "assert option('--tools')=='read_file' and option('--disallowed-tools')=='read_file,search_tool,use_tool'\n"
         "assert option('--max-turns')=='2' and option('--permission-mode')=='dontAsk'\n"
         f"proposal=json.loads(pathlib.Path({str(fixture)!r}).read_text())\n"
@@ -205,13 +204,21 @@ def test_actual_cli_router_parser_and_signed_admission(prepared, tmp_path, monke
     monkeypatch.setattr(intelligence_index, "select_efficient_route", lambda **kw:
         SimpleNamespace(provider="grok_cli", model_name="grok-4.7", catalog_revision="authored-fixture"))
     monkeypatch.setattr(duckdb_store, "_DEFAULT_STORE", duckdb_store.AllocationStore(tmp_path / "allocation.duckdb"))
+    return runner.run(prompt=request_text(prepared), provider="grok_cli", model="grok-4.7", timeout=20,
+        max_output_tokens=4096, purpose="planning")
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_actual_cli_router_parser_and_signed_admission(prepared, tmp_path, monkeypatch, drift):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+    value = proposal(prepared)
+    if drift: value["tasks"][0]["acceptance"][0]["criterion"] = "Schema-valid signed-contract drift"
     if drift:
         with pytest.raises(llm_router.LLMRouterError, match="structured response failed validation"):
-            runner.run(prompt=request_text(prepared), provider="grok_cli", model="grok-4.7", timeout=20,
-                max_output_tokens=4096, purpose="planning")
+            _invoke_authored_cli(prepared, tmp_path, monkeypatch, value)
     else:
-        text, receipt = runner.run(prompt=request_text(prepared), provider="grok_cli", model="grok-4.7", timeout=20,
-            max_output_tokens=4096, purpose="planning")
+        text, receipt = _invoke_authored_cli(prepared, tmp_path, monkeypatch, value)
         assert json.loads(text) == value
         typed = receipt["provider_invocation_policy"]["structured_output"]["native_schema_projection"]
         assert typed["projection_id"] == "canonical-prompt-goal-task-contract@1"
