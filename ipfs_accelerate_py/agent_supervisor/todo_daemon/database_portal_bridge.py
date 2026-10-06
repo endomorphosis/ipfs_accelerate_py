@@ -1919,6 +1919,7 @@ class DatabasePortalExecutionBridge:
         self.portal_factory = portal_factory
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
+        self._issued_provider_exit_failure = None
         # Zero preserves the no-automatic-candidate-retry default. The outer
         # database owner remains responsible for admitting successor claims.
         self.max_task_attempts = max_task_attempts
@@ -11064,6 +11065,121 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    @staticmethod
+    def _native_provider_state(paths):
+        from .portal_task_state_control_plane import load_portal_task_state, resolve_control_plane
+        target = resolve_control_plane(paths.state)
+        state = load_portal_task_state(paths.state.stem, state_path=paths.state, create=False)
+        if (target[0] is None or resolve_control_plane(paths.state) != target
+                or type(state) is not dict or not state
+                or state.get("completion_authority") is not False):
+            raise DatabasePortalBridgeError("native provider state binding is unavailable")
+        payload = _canonical_json(state)
+        if len(payload) > _MAX_ATTEMPT_CONTROL_BYTES:
+            raise DatabasePortalBridgeError("native provider state exceeds its bound")
+        return payload, _sha256_bytes(_canonical_json({"target": target, "lane_key": paths.state.stem,
+                                                     "state_path": str(paths.state.resolve())}))
+
+    def _native_provider_exit_failure(self, *, attempt, paths, binding, daemon,
+                                      authority, implementation, summary):
+        """Join actual child custody to this sealed, durably finished projection."""
+        from .implementation_daemon import PortalImplementationDaemon
+
+        if (type(daemon) is not PortalImplementationDaemon
+                or daemon.state_path.resolve() != paths.state.resolve()
+                or daemon.events_path.resolve() != paths.events.resolve()):
+            return None
+        observed = daemon._take_database_provider_exit(authority, implementation)
+        if observed is None:
+            return None
+        implementation = observed["implementation_result"]
+        try:
+            directory = self._seal_attempt_directory(
+                paths, attempt_id=str(attempt.attempt_id), create=False)
+            if self._strict_binding(paths.binding) != dict(binding):
+                return None
+            self._verify_projection(paths, binding)
+            records, events_digest = _accepted_source_events(paths.events)
+            finished = [item for item in records
+                        if item.get("type") == "implementation_finished"]
+            if (len(finished) != 1
+                    or _canonical_json({key: finished[0].get(key) for key in observed["finished_event"]})
+                    != _canonical_json(observed["finished_event"])
+                    or implementation.get("task_id") != binding["task_alias"]
+                    or implementation.get("canonical_task_cid") != authority["canonical_task_cid"]
+                    or implementation.get("provider_dispatched") is not True
+                    or implementation.get("attempt_consumed") is not True
+                    or type(implementation.get("attempt")) is not int
+                    or not 1 <= implementation["attempt"] < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+                    or implementation.get("returncode") != observed["returncode"]
+                    or implementation.get("lifecycle_finalize", {}).get("finalized") is not True):
+                return None
+            state_bytes, state_target_digest = self._native_provider_state(paths)
+            state = json.loads(state_bytes, object_pairs_hook=_reject_duplicate_control_keys)
+            if (type(state) is not dict
+                    or state.get("implementation_in_progress") is not False
+                    or state.get("active_provider_runner") != {}
+                    or type(state.get("active_attempt")) is not int or state["active_attempt"] != 0
+                    or any(state.get(name) not in (None, "") for name in (
+                        "active_task_id", "active_task_cid", "active_task_key",
+                        "active_branch", "active_worktree_path", "active_log_path"))
+                    or state.get("last_implementation_task_id") != binding["task_alias"]
+                    or state.get("last_implementation_task_cid") != authority["canonical_task_cid"]
+                    or type(state.get("last_implementation_returncode")) is not int
+                    or state.get("last_implementation_returncode") != observed["returncode"]
+                    or state.get("last_implementation_commit") not in (None, "")
+                    or not self.protected_path_failure_rearm_ready(attempt)):
+                return None
+            # The native subreaper proves this callback's whole descendant
+            # custody empty, including new sessions and changed working dirs.
+            # Unrelated host processes are not evidence about this callback.
+            receipt = {
+                "schema": "database-native-provider-exit@1",
+                **{key: getattr(attempt, key) for key in (
+                    "attempt_id", "task_cid", "task_alias", "claim_id", "lease_id",
+                    "owner_session_id", "fencing_token", "fence_epoch")},
+                "binding_id": binding["binding_id"],
+                "portal_attempt": implementation["attempt"],
+                "returncode": observed["returncode"],
+                "reaped": True, "process_group_absent": True,
+                "subreaper_children_absent": True,
+                "lifecycle_finalized": True,
+                "events_digest": events_digest,
+                "state_digest": _sha256_bytes(state_bytes),
+                "state_target_digest": state_target_digest,
+                "completion_authority": False, "automatic_retry_admitted": False,
+            }
+            receipt["receipt_id"] = content_identity(receipt)
+            failure = DatabasePortalBridgeError("portal_provider_failed", result=summary)
+            self._issued_provider_exit_failure = (
+                failure, receipt, paths, dict(binding), directory, state_bytes)
+            return failure
+        except Exception:
+            # A returned CLI status never substitutes for missing native proof.
+            return None
+
+    def take_native_provider_exit_failure(self, attempt, failure):
+        """Take this bridge's one-use capability after callback cleanup returns."""
+        issued, self._issued_provider_exit_failure = self._issued_provider_exit_failure, None
+        if issued is None or issued[0] is not failure:
+            return None
+        _, receipt, paths, binding, directory, state_bytes = issued
+        try:
+            if (any(type(receipt[key]) is not type(getattr(attempt, key))
+                    or receipt[key] != getattr(attempt, key) for key in (
+                        "attempt_id", "task_cid", "task_alias", "claim_id", "lease_id",
+                        "owner_session_id", "fencing_token", "fence_epoch"))
+                    or self._strict_binding(paths.binding) != binding
+                    or self._seal_attempt_directory(paths, attempt_id=attempt.attempt_id, create=False) != directory
+                    or self._native_provider_state(paths) != (state_bytes, receipt["state_target_digest"])
+                    or _accepted_source_events(paths.events)[1] != receipt["events_digest"]
+                    or not self.protected_path_failure_rearm_ready(attempt)):
+                return None
+            self._verify_projection(paths, binding)
+            return dict(receipt)
+        except Exception:
+            return None
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -11077,6 +11193,7 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database attempt ordinal must be a positive u32 integer"
             )
+        self._issued_provider_exit_failure = None
         record = self._record_for_attempt(self.task_source, attempt)
         paths, binding = self._ensure_attempt_projection(attempt, record)
         summaries: list[Mapping[str, Any]] = []
@@ -11280,6 +11397,13 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(candidate_reason, result=summary)
                 failure = self._terminal_failure(raw_result)
                 if failure:
+                    if failure == "portal_provider_failed" and isinstance(implementation, Mapping):
+                        settled = self._native_provider_exit_failure(
+                            attempt=attempt, paths=paths, binding=binding, daemon=daemon,
+                            authority=bound_attempt_authority, implementation=implementation,
+                            summary=summary)
+                        if settled is not None:
+                            raise settled
                     raise DatabasePortalBridgeError(failure, result=summary)
             return self._acceptance_receipt(
                 attempt=attempt,

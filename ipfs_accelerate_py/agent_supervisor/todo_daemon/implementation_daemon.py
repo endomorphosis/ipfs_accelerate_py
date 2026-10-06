@@ -5583,6 +5583,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # not restart at attempt 1 and collide with retained quarantine
         # evidence from a superseded database attempt.
         self._database_attempt_authority: dict[str, Any] | None = None
+        self._database_provider_exit = None
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
@@ -30500,6 +30501,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         prompt: str,
         retry_no_change_probe_only: bool = False,
     ) -> dict[str, Any]:
+        # Process custody is attempt-local and never reconstructed from model output.
+        self._database_provider_exit = None
+        provider_process = None
+        provider_process_returned = False
+        provider_child_custody = None
         # A no-change gate is valid for one implementation attempt only.
         self._implementation_no_change_policy_gates.clear()
         if self.manual_completion_authority_revalidation_only:
@@ -30920,7 +30926,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             }
                     else:
                         def invoke_provider() -> subprocess.CompletedProcess[str]:
-                            nonlocal provider_dispatched
+                            nonlocal provider_dispatched, provider_process_returned, provider_child_custody
                             # Fail closed if gate identity drifted.
                             if not provider_gate.get("provider_authorized"):
                                 raise RuntimeError(
@@ -30969,12 +30975,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             def provider_started(
                                 process: subprocess.Popen[Any],
                             ) -> None:
-                                nonlocal provider_dispatched
+                                nonlocal provider_dispatched, provider_process
                                 provider_dispatched = True
+                                provider_process = process
                                 if birth_callback is not None:
                                     birth_callback(process)
 
-                            return run_process_group_stream(
+                            if self._database_attempt_authority is not None:
+                                provider_child_custody = self._begin_database_provider_child_custody()
+                            provider_completed = run_process_group_stream(
                                 command,
                                 cwd=worktree_path,
                                 stdout=log_fh,
@@ -31001,6 +31010,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 on_started=provider_started,
                                 on_progress=progress_observer,
                             )
+                            provider_process_returned = True
+                            return provider_completed
 
                         completed = self._decision_runtime_mutation(
                             "command_invocation",
@@ -31771,13 +31782,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "pooled": bool(pool_failure_release.get("pooled", False)),
                         "pool_release": pool_failure_release,
                     }
-                    if cleanup_result["cleaned"]:
-                        cleanup_result["lifecycle_finalize"] = (
-                            self._finalize_worktree_lifecycle(
-                                worktree_path,
-                                reason="failed_implementation_pool_lease_released",
-                            )
-                        )
+                    # Release already finalized the captured lease/fence.
+                    # Looking up this pooled path again can see no record or
+                    # a different lane's newly acquired ownership.
+                    cleanup_result["lifecycle_finalize"] = lifecycle_finalize or {
+                        "finalized": False, "reason": "pool_release_lifecycle_unverified",
+                    }
                 else:
                     # A non-pooled failed checkout remains available for
                     # diagnostics, but the provider process no longer owns it.
@@ -33036,13 +33046,107 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 }
                 if isinstance(prior_lifecycle_finalize, Mapping)
                 and prior_lifecycle_finalize.get("finalized") is True
+                else dict(prior_lifecycle_finalize)
+                if (isinstance(prior_lifecycle_finalize, Mapping)
+                    and isinstance(cleanup_result.get("pool_release"), Mapping)
+                    and cleanup_result["pool_release"].get("attempted") is True
+                    and cleanup_result["pool_release"].get("released") is True)
                 else self._finalize_worktree_lifecycle(
                     worktree_path,
                     reason="implementation_attempt_finished",
                 )
             )
-        self._record_event("implementation_finished", result)
+        finished_event = self._record_event("implementation_finished", result)
+        if (provider_process_returned and provider_process is not None
+                and self._database_attempt_authority is not None
+                and type(returncode) is int and returncode != 0
+                and provider_process.returncode == returncode
+                and provider_dispatched and attempt_consumed
+                and not exception_result and not timeout_result
+                and not protected_path_violation
+                and validation_result.get("attempted") is False
+                and result.get("lifecycle_finalize", {}).get("finalized") is True):
+            # This reference comes from the native Popen hook, never a provider
+            # receipt. The bridge consumes it only after independent durable
+            # state/event and process-group verification.
+            self._database_provider_exit = (
+                provider_process, dict(self._database_attempt_authority),
+                json.dumps(result, sort_keys=True, allow_nan=False), provider_child_custody,
+                json.dumps(finished_event, sort_keys=True, allow_nan=False),
+            )
         return result
+
+    @staticmethod
+    def _database_provider_children_empty():
+        # Unlike the cleanup helper's retry loop, a settlement observation may
+        # not ignore a thread disappearing during its only child enumeration.
+        from .native_cli_subreaper import _direct_child_pids
+        task_root = Path("/proc/self/task")
+        before = tuple(sorted(entry.name for entry in task_root.iterdir()))
+        first = _direct_child_pids()
+        middle = tuple(sorted(entry.name for entry in task_root.iterdir()))
+        second = _direct_child_pids()
+        after = tuple(sorted(entry.name for entry in task_root.iterdir()))
+        return bool(before and before == middle == after and not first and not second)
+
+    @staticmethod
+    def _begin_database_provider_child_custody():
+        """Use the existing Linux subreaper fence; never adopt another child's evidence."""
+        from .native_cli_subreaper import _enable_child_subreaper
+        try:
+            if not _enable_child_subreaper() or not PortalImplementationDaemon._database_provider_children_empty():
+                return None
+            return (os.getpid(), PortalImplementationDaemon._provider_process_identity(os.getpid()))
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+    @staticmethod
+    def _database_provider_children_quiesced(custody):
+        from .native_cli_subreaper import _PR_GET_CHILD_SUBREAPER
+        import ctypes
+        try:
+            enabled = ctypes.c_int(0)
+            prctl = ctypes.CDLL(None, use_errno=True).prctl
+            prctl.restype = ctypes.c_int
+            return bool(custody is not None
+                and custody == (os.getpid(), PortalImplementationDaemon._provider_process_identity(os.getpid()))
+                and prctl(_PR_GET_CHILD_SUBREAPER, ctypes.byref(enabled), 0, 0, 0) == 0
+                and enabled.value == 1 and PortalImplementationDaemon._database_provider_children_empty())
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
+            return False
+
+    def _take_database_provider_exit(self, authority, implementation):
+        """Consume native waited-child custody, without granting task authority."""
+        issued, self._database_provider_exit = self._database_provider_exit, None
+        if issued is None:
+            return None
+        process, bound_authority, result_json, custody, event_json = issued
+        native_result = json.loads(result_json)
+        returned_result = dict(implementation)
+        # The outer native implementation method appends these diagnostic
+        # pointers after the durable finished event. They grant no authority.
+        for key in ("context_receipt_path", "retry_probe_result"):
+            if key not in native_result:
+                returned_result.pop(key, None)
+        if (not self._database_provider_children_quiesced(custody)
+                or type(process) is not subprocess.Popen
+                or bound_authority != authority
+                or self._database_attempt_authority != authority
+                or json.dumps(returned_result, sort_keys=True, allow_nan=False) != result_json
+                or type(process.returncode) is not int or process.returncode == 0
+                or process.poll() != process.returncode
+                or implementation.get("returncode") != process.returncode):
+            return None
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return {"pid": process.pid, "returncode": process.returncode,
+                    "reaped": True, "process_group_absent": True,
+                    "subreaper_children_absent": True, "implementation_result": native_result,
+                    "finished_event": json.loads(event_json)}
+        except OSError:
+            return None
+        return None
 
     def _take_issued_no_change_policy_gate(
         self,
@@ -67125,7 +67229,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _record_event(
         self, event_type: str, payload: dict[str, Any], *,
         dependency_preflight_inline_error: Mapping[str, Any] | None = None,
-    ) -> None:
+    ) -> dict[str, Any]:
         enriched = self._project_dependency_preflight_event_payload(
             payload, inline_error=dependency_preflight_inline_error,
         )
@@ -67142,6 +67246,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             enriched.setdefault("board_namespace", identity.board_namespace)
         append_jsonl_event(self.events_path, event_type, enriched)
         self._invalidate_event_cache()
+        # Return the exact native projection that reached durable append;
+        # callers may bind it without republishing artifact references.
+        return enriched
 
     def _prior_attempt_seed_recovery_slug(task: PortalTask) -> str:
         return (
@@ -73927,6 +74034,61 @@ class DatabaseImplementationDaemon:
         self._record_event("source384_resource_retry_deferred", attempt_id=attempt.attempt_id,
                            task_cid=attempt.task_cid, body=receipt)
 
+    def _require_native_provider_failure(self, attempt, receipt, key):
+        """Validate owner-persisted failure evidence; it never authorizes effects."""
+        identity = {**self._source384_retry_identity(attempt), "task_alias": attempt.task_alias}
+        native = receipt.get("native_exit") if isinstance(receipt, dict) else None
+        native_keys = {*identity, "schema", "binding_id", "portal_attempt", "returncode",
+                       "reaped", "process_group_absent", "subreaper_children_absent", "lifecycle_finalized", "events_digest",
+                       "state_digest", "state_target_digest", "completion_authority", "automatic_retry_admitted", "receipt_id"}
+        if (type(receipt) is not dict or set(receipt) != {*identity, "schema", "callback_state",
+                "provider_effect_state", "reason", "native_exit"}
+                or receipt.get("schema") != "database-native-provider-failure@1"
+                or receipt.get("callback_state") != "failed_outcome_settled"
+                or receipt.get("provider_effect_state") != "failed_provider_exited"
+                or receipt.get("reason") != "portal_provider_failed"
+                or key != f"provider:{attempt.attempt_id}"
+                or any(type(receipt.get(k)) is not type(v) or receipt.get(k) != v for k, v in identity.items())
+                or type(native) is not dict or set(native) != native_keys
+                or any(type(native.get(k)) is not type(v) or native.get(k) != v for k, v in identity.items())
+                or native.get("schema") != "database-native-provider-exit@1"
+                or native.get("reaped") is not True or native.get("process_group_absent") is not True
+                or native.get("lifecycle_finalized") is not True
+                or native.get("subreaper_children_absent") is not True
+                or native.get("completion_authority") is not False or native.get("automatic_retry_admitted") is not False
+                or type(native.get("returncode")) is not int or not -255 <= native["returncode"] <= 255
+                or native["returncode"] == 0
+                or type(native.get("portal_attempt")) is not int or not 1 <= native["portal_attempt"] < 65536
+                or any(type(native.get(k)) is not str or not re.fullmatch(r"sha256:[0-9a-f]{64}", native[k])
+                       for k in ("binding_id", "events_digest", "state_digest", "state_target_digest"))
+                or native.get("receipt_id") != content_identity({k: v for k, v in native.items() if k != "receipt_id"})):
+            raise DatabaseImplementationAuthorityError("native provider failure custody differs")
+        if (attempt.committed_phase not in {ATTEMPT_PHASE_CLAIMED, ATTEMPT_PHASE_CONTEXT}
+                or self.effect_claim_recorded(attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}") is not None):
+            raise DatabaseImplementationAuthorityError("native provider failure has later effects")
+
+    def _settle_native_provider_failure(self, attempt, *, native_exit, idempotency_key):
+        attempt = self._owned_running_attempt(attempt)
+        self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
+        identity = self._source384_retry_identity(attempt)
+        receipt = dict(schema="database-native-provider-failure@1", **identity,
+            task_alias=attempt.task_alias, callback_state="failed_outcome_settled",
+            provider_effect_state="failed_provider_exited", reason="portal_provider_failed",
+            native_exit=dict(native_exit))
+        self._require_native_provider_failure(attempt, receipt, idempotency_key)
+        expected = dict(schema="database-portal-callback-intent@1", callback_state="started_outcome_unknown",
+                        provider_effect_state="unknown_may_have_started",
+                        **{key: value for key, value in identity.items() if key != "owner_session_id"})
+        changed = self._require_connection().execute(
+            "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+            [_database_daemon_json(receipt), self._now_ms(), attempt.attempt_id, idempotency_key,
+             _database_daemon_json(expected), self.owner_session_id, attempt.task_cid]).fetchone()
+        if changed is None:
+            raise DatabaseImplementationAuthorityError("native provider callback changed before settlement")
+        self._record_event("native_provider_failure_observed", attempt_id=attempt.attempt_id,
+                           task_cid=attempt.task_cid, body=receipt)
+
     def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
@@ -73974,6 +74136,10 @@ class DatabaseImplementationDaemon:
             self._require_source384_retry_state(attempt, prior, key)
             retry_prior, prior = prior, None
         if prior is not None:
+            if prior.get("schema") == "database-native-provider-failure@1":
+                from .database_portal_bridge import DatabasePortalBridgeError
+                self._require_native_provider_failure(attempt, prior, key)
+                raise DatabasePortalBridgeError("portal_provider_failed")
             if prior.get("callback_state") == "started_outcome_unknown":
                 from .database_portal_bridge import DatabasePortalBridgeDeferred
 
@@ -74062,8 +74228,13 @@ class DatabaseImplementationDaemon:
                 result = dict(self._run_with_attempt_heartbeat(attempt, lambda: callback(attempt)))
             except Exception as exc:
                 from .database_portal_bridge import DatabasePortalSource384Deferred
-                if type(exc) is DatabasePortalSource384Deferred and type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
-                    self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
+                if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
+                    if type(exc) is DatabasePortalSource384Deferred:
+                        self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
+                    else:
+                        native_exit = callback.__self__.take_native_provider_exit_failure(attempt, exc)
+                        if native_exit is not None:
+                            self._settle_native_provider_failure(attempt, native_exit=native_exit, idempotency_key=key)
                 raise
             finally:
                 if token is not None:
