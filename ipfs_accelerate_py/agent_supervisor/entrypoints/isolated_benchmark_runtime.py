@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import uuid
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
@@ -25,7 +26,7 @@ from ..control.control_contracts import (
     get_operation_catalog,
 )
 from ..control.control_plane import (
-    MutationRecoveryAction, MutationTransactionPhase, RepositorySupervisorBackend,
+    MutationRecoveryAction, MutationTransactionPhase, MutationTransactionState, RepositorySupervisorBackend,
     SupervisorControlService, TransactionConflictError,
 )
 from ..control.lifecycle_orchestrator import (
@@ -448,6 +449,42 @@ class IsolatedBenchmarkRuntime:
     def _bounded_lifecycle_response(self, request):
         return self.orchestrator(request)
 
+    def _start_transaction_for_shutdown(self, request):
+        """Read exact START custody under a fresh, independently bound STOP.
+
+        Publication can invalidate START's source context after a successful
+        run. Reading its durable control phase must not reauthorize that old
+        launch. Any actual repair still uses the original START permit and
+        unchanged recovery/CAS checks below.
+        """
+        if (type(request) is not OperationRequest
+                or request.operation is not Operation.START or request.dry_run
+                or self._requests.get(request.request_id) != request):
+            raise TransactionConflictError("shutdown lookup requires the exact locally issued START")
+        stop_request = self.request(Operation.STOP)
+        for field in ("repository_root", "state_root", "repository_id", "tree_id",
+                      "objective_id", "objective_revision", "policy_id", "policy_revision",
+                      "caller", "lease_id", "fencing_epoch"):
+            if getattr(request, field) != getattr(stop_request, field):
+                raise TransactionConflictError("shutdown lookup changed the original START binding")
+        service = self.service
+        store = service._state_store
+        transaction = getattr(store, "transaction", None)
+        guard = transaction(request) if callable(transaction) else nullcontext()
+        with service._lock, guard:
+            # The lock order matches mutation_transaction. Validation occurs
+            # inside the store guard and grants observation only, never repair.
+            service._check_target(stop_request)
+            service._check_bounds(stop_request)
+            service._check_authorization(stop_request)
+            service._check_lease(stop_request)
+            current = store.get_mutation(request)
+            expected = MutationTransactionState.prepare(request, now_ms=0)
+            if current is not None and (type(current) is not MutationTransactionState
+                    or current.transaction_id != expected.transaction_id):
+                raise TransactionConflictError("shutdown lookup found another START transaction")
+            return current
+
     def _repair_interrupted_start_before_stop(self):
         latest = self.orchestrator.store.latest().get(self.profile.target_id)
         if latest is None or latest.intent.action.value != Operation.START.value:
@@ -457,7 +494,7 @@ class IsolatedBenchmarkRuntime:
             if not latest.phase.terminal:
                 raise TransactionConflictError("interrupted START has no locally issued repair request")
             return
-        transaction = self.service.mutation_transaction(request)
+        transaction = self._start_transaction_for_shutdown(request)
         if transaction is None or transaction.phase is not MutationTransactionPhase.REPAIR_REQUIRED:
             return
         # Reuse the original exact permit. Expiration, revocation, source or
