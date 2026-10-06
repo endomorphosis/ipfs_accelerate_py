@@ -37,6 +37,7 @@ from . import terminal_indexed_preparation as preparation
 
 
 SCHEMA = "terminal-reviewed-ready-task-contexts@1"
+CHECKPOINT_SCHEMA = "terminal-reviewed-ready-task-contexts@2"
 MAX_TASKS = 16
 MAX_SOURCE_BYTES = 1_000_000
 MAX_INPUT_FILES = 64
@@ -192,6 +193,43 @@ def _resolve_ir(catalog_path, selections, selected):
     return results
 
 
+def _authenticate_ir(catalog_path, selections, selected, metadata):
+    """Observe original checkpoint bytes without promoting a decoder runtime."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.task_ir_checkpoint import (
+        MAX_TOTAL_CHECKPOINT_BYTES, authenticate_task_ir_checkpoints,
+    )
+    total = sum(row["selected_binding"]["declaration"]["original_checkpoint_pin"]["bytes"]
+                for cid in selected for row in metadata[cid])
+    if total > MAX_TOTAL_CHECKPOINT_BYTES:
+        raise ValueError("per-task checkpoint population exceeds the aggregate byte bound")
+    observed = {cid: authenticate_task_ir_checkpoints(catalog_path=catalog_path,
+        selections=selections[cid]) for cid in selected}
+    if any([row["native_resolution"] for row in observed[cid]] != metadata[cid]
+           for cid in selected):
+        raise ValueError("checkpoint observations differ from exact per-task catalog nominations")
+    # Close the per-task batch against a fresh complete metadata generation.
+    if _resolve_ir(catalog_path, selections, selected) != metadata:
+        raise ValueError("checkpoint catalog changed during per-task authentication")
+    _checkpoint_file_fence(observed)
+    return observed
+
+
+def _checkpoint_file_fence(observations):
+    """Close all earlier task files after later cooperative owner observations."""
+    for rows in observations.values():
+        for row in rows:
+            pin, witness = row["original_checkpoint_pin"], row["file_witness"]
+            path = Path(pin["path"])
+            if path.resolve(strict=True) != path:
+                raise ValueError("checkpoint path changed after task authentication")
+            info = path.lstat()
+            current = {"path": str(path), "bytes": info.st_size, "sha256": pin["sha256"],
+                "device": info.st_dev, "inode": info.st_ino, "mode": info.st_mode,
+                "nlink": info.st_nlink, "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns}
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or current != witness):
+                raise ValueError("checkpoint file identity changed after task authentication")
+
+
 def _verify_plain_bundle(repository, reference, selected):
     path = retrieval._path(repository, reference["artifact"])
     if not path.is_relative_to(repository / ".runtime"):
@@ -315,15 +353,22 @@ def _retrieval_binding(repository, context):
 
 def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output: Path,
         code_vector_snapshot=None, code_vector_result=None,
-        ir_catalog_path: Path | None = None, ir_selections: Mapping[str, list[dict]] | None = None) -> dict:
+        ir_catalog_path: Path | None = None, ir_selections: Mapping[str, list[dict]] | None = None,
+        authenticate_ir_checkpoints: bool = False) -> dict:
     """Prepare advisory contexts for explicitly selected admitted ready roots.
 
     Nonempty source programs require existing complete native retrieval objects.
     This function replays their numerical/source bindings, without proving that
     a supplied query vector represents the instruction's semantics. Optional IR
     bindings nominate metadata only; checkpoint bytes and runtime usability are
-    independent future gates.
+    independent future gates. Explicit checkpoint authentication additionally
+    streams original registered byte pins and binds file identities; it does
+    not deserialize weights, verify an ABI or admit a runtime.
     """
+    if type(authenticate_ir_checkpoints) is not bool:
+        raise ValueError("checkpoint authentication requires an explicit boolean selection")
+    if authenticate_ir_checkpoints and (ir_catalog_path is None or ir_selections is None):
+        raise ValueError("checkpoint authentication requires exact per-task IR catalog selections")
     if (isinstance(task_cids, (str, bytes)) or not isinstance(task_cids, Sequence)
             or not 1 <= len(task_cids) <= MAX_TASKS
             or any(type(cid) is not str or not cid for cid in task_cids)
@@ -365,6 +410,8 @@ def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output
             raise ValueError("IR metadata selection must bind exactly the selected task CIDs")
         ir_selections = _freeze(dict(ir_selections))
     ir_metadata = _resolve_ir(ir_catalog_path, ir_selections, selected)
+    ir_checkpoints = (_authenticate_ir(ir_catalog_path, ir_selections, selected, ir_metadata)
+                      if authenticate_ir_checkpoints else None)
     program_paths = profile["input_paths"]
     partition = _partition(profile, verified["manifest"])
     if (code_vector_snapshot is None) != (code_vector_result is None):
@@ -394,8 +441,20 @@ def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output
                     or local.verify_local_benchmark_admission(admission, initial=True)["manifest"] != verified["manifest"]
                     or _database_identity(database) != database_identity
                     or _native_observation(intent, admission, verified, selected) != native
-                    or _resolve_ir(ir_catalog_path, ir_selections, selected) != ir_metadata):
+                    or _resolve_ir(ir_catalog_path, ir_selections, selected) != ir_metadata
+                    or (authenticate_ir_checkpoints and _authenticate_ir(
+                        ir_catalog_path, ir_selections, selected, ir_metadata) != ir_checkpoints)):
                 raise ValueError("ready task context profile, source, task owner or IR selection changed")
+            if authenticate_ir_checkpoints:
+                # Checkpoint reads may be long. Close source/native owners
+                # after them, then close every earlier checkpoint witness.
+                if (preparation._load_prepared(state) != prepared
+                        or _admission(state)[1] != admission_identity
+                        or _database_identity(database) != database_identity
+                        or _native_observation(intent, admission, verified, selected) != native
+                        or _resolve_ir(ir_catalog_path, ir_selections, selected) != ir_metadata):
+                    raise ValueError("ready task context owners changed during checkpoint authentication")
+                _checkpoint_file_fence(ir_checkpoints)
             if retrieval_identity is not None and retrieval_identity != {
                     "snapshot_sha256": _digest(code_vector_snapshot.to_dict()),
                     "result_sha256": _digest(code_vector_result.to_dict())}:
@@ -440,7 +499,8 @@ def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output
                 raise ValueError("ready task bundle differs from the verified native context")
         current()
         result = {
-            "schema": SCHEMA, "repository": str(repository), "state": str(state),
+            "schema": CHECKPOINT_SCHEMA if authenticate_ir_checkpoints else SCHEMA,
+            "repository": str(repository), "state": str(state),
             "task_cids": list(selected), "contexts": contexts, "context_bundle": bundle,
             "manifest_cid": local.content_identity(admission["manifest"]),
             "admission_cid": local.content_identity(admission),
@@ -454,15 +514,18 @@ def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output
                 "model_revision": code_vector_snapshot.config.model_revision,
                 "dimensions": code_vector_snapshot.config.dimensions} if retrieval_identity else
                 {"status": "verified_empty_program", "index_id": None}),
-            "ir_selection_mode": "metadata_nomination" if ir_metadata is not None else "structural_source_context",
+            "ir_selection_mode": ("authenticated_checkpoint_nomination" if authenticate_ir_checkpoints else
+                "metadata_nomination" if ir_metadata is not None else "structural_source_context"),
             "ir_catalog_path": str(ir_catalog_path) if ir_metadata is not None else None,
             "ir_selections": ir_selections,
             "ir_metadata_nominations": ir_metadata,
-            "checkpoint_bytes_authenticated": False, "decoder_runtime_admitted": False,
+            "checkpoint_bytes_authenticated": authenticate_ir_checkpoints, "decoder_runtime_admitted": False,
             "new_embedding_calls": 0, "model_loading_calls": 0, "training_steps": 0, "provider_calls": 0,
             "query_semantic_alignment_verified": False, "proof_authority": False,
             "execution_authority": False, "completion_authority": False, "canonical_task_mutated": False,
         }
+        if authenticate_ir_checkpoints:
+            result["ir_checkpoint_observations"] = ir_checkpoints
         raw = _wire(result)
         if len(raw) > MAX_RESULT_BYTES:
             raise ValueError("ready task context receipt exceeds its byte bound")
@@ -471,8 +534,11 @@ def prepare_ready_task_contexts(*, state: Path, task_cids: Sequence[str], output
     return result
 
 
-def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str) -> dict:
+def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str,
+        require_checkpoint_authentication: bool = False) -> dict:
     """Cold-reopen a sealed nomination against current source and native owners."""
+    if type(require_checkpoint_authentication) is not bool:
+        raise ValueError("checkpoint authentication requirement must be an explicit boolean")
     state = Path(state).absolute()
     if state.resolve(strict=True) != state or not state.is_dir():
         raise ValueError("ready task context state must be its exact existing canonical directory")
@@ -502,10 +568,16 @@ def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str
         "model_loading_calls", "training_steps", "provider_calls", "query_semantic_alignment_verified",
         "proof_authority", "execution_authority", "completion_authority", "canonical_task_mutated",
     }
-    if (type(result) is not dict or set(result) != fields or result["schema"] != SCHEMA
+    authenticated = type(result) is dict and result.get("schema") == CHECKPOINT_SCHEMA
+    if authenticated:
+        fields.add("ir_checkpoint_observations")
+    if require_checkpoint_authentication and not authenticated:
+        raise ValueError("ready task receipt requires authenticated original checkpoint observations")
+    if (type(result) is not dict or set(result) != fields or result["schema"] not in (SCHEMA, CHECKPOINT_SCHEMA)
             or _wire(result) != raw or result["repository"] != str(repository) or result["state"] != str(state)
+            or result["checkpoint_bytes_authenticated"] is not authenticated
             or any(result[name] is not False for name in (
-                "checkpoint_bytes_authenticated", "decoder_runtime_admitted", "query_semantic_alignment_verified",
+                "decoder_runtime_admitted", "query_semantic_alignment_verified",
                 "proof_authority", "execution_authority", "completion_authority", "canonical_task_mutated"))
             or any(type(result[name]) is not int or result[name] != 0 for name in (
                 "new_embedding_calls", "model_loading_calls", "training_steps", "provider_calls"))):
@@ -537,6 +609,8 @@ def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str
             or result["native_binding"].get("database") != database_identity):
         raise ValueError("ready task receipt differs from the exact existing file-backed owner")
     ir_path, ir_requests = result["ir_catalog_path"], result["ir_selections"]
+    if authenticated and (ir_path is None or ir_requests is None):
+        raise ValueError("authenticated checkpoint receipt requires exact per-task IR nominations")
     if (ir_path is None) != (ir_requests is None):
         raise ValueError("ready task receipt IR metadata nomination is incomplete")
     if ir_path is not None and type(ir_path) is not str:
@@ -550,8 +624,11 @@ def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str
             raise ValueError("ready task receipt native task revision, dependency or world binding is stale")
         ir_current = _resolve_ir(catalog, ir_requests, selected)
         if (ir_current != result["ir_metadata_nominations"]
-                or result["ir_selection_mode"] != ("metadata_nomination" if ir_current is not None else "structural_source_context")):
+                or result["ir_selection_mode"] != ("authenticated_checkpoint_nomination" if authenticated else
+                    "metadata_nomination" if ir_current is not None else "structural_source_context")):
             raise ValueError("ready task receipt IR catalog generation or exact selection changed")
+        if authenticated and _wire(_authenticate_ir(catalog, ir_requests, selected, ir_current)) != _wire(result["ir_checkpoint_observations"]):
+            raise ValueError("ready task receipt original checkpoint bytes or file identities changed")
         _verify_plain_bundle(repository, result["context_bundle"], selected)
         for context in result["contexts"]:
             task = next(row for row in native["tasks"] if row["task_cid"] == context["task_cid"])
@@ -569,12 +646,16 @@ def load_ready_task_contexts(*, state: Path, artifact: str, expected_sha256: str
                 raise ValueError("ready task context bundle differs from the sealed task nomination")
             if _retrieval_binding(repository, context) != result["retrieval_reuse"]:
                 raise ValueError("ready task receipt differs from the exact reused retrieval configuration")
+        if authenticated and _wire(_authenticate_ir(catalog, ir_requests, selected, ir_current)) != _wire(result["ir_checkpoint_observations"]):
+            raise ValueError("ready task checkpoint owners changed during cold reopening")
         if (_native_observation(intent, admission, verified, selected) != native
                 or preparation._load_prepared(state) != prepared
                 or _admission(state)[1] != admission_identity
                 or _resolve_ir(catalog, ir_requests, selected) != ir_current
                 or _database_identity(database) != result["native_binding"]["database"]):
             raise ValueError("ready task context owners changed during cold reopening")
+        if authenticated:
+            _checkpoint_file_fence(result["ir_checkpoint_observations"])
     return result
 
 
