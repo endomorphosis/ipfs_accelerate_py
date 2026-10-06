@@ -10,7 +10,8 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
 from benchmarks.agent_supervisor.container_coding import terminal_doctor_dispatch as doctor
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    EXTENDED_SOURCE384_PROFILE, SOURCE384_PROFILE, admission_environment,
+    EXTENDED_SOURCE384_PROFILE, EXTENDED_PROFILES, SOURCE384_PROFILE,
+    CODING600_SOURCE384_PROFILE, admission_environment,
 )
 
 
@@ -19,6 +20,7 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 @pytest.mark.parametrize(('budget_kwargs','total','cleanup_seconds','source_seconds'), [
     ({},285,40,90),
     ({'resource_profile':EXTENDED_SOURCE384_PROFILE},900,60,180),
+    ({'resource_profile':CODING600_SOURCE384_PROFILE},900,60,180),
 ])
 def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         tmp_path, monkeypatch, route, remaining_work_seconds, budget_kwargs,total,cleanup_seconds,source_seconds,
@@ -91,8 +93,9 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         module=ModuleType(name);vars(module).update(attrs);monkeypatch.setitem(sys.modules,name,module)
     state=tmp_path/'state/run';state.mkdir(parents=True);(state/'admission.json').write_text('{}')
     report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json',**budget_kwargs)
-    reached_native=(route!='model_router' or remaining_work_seconds is None) and used_work_seconds<cutoff
-    extended = budget_kwargs.get('resource_profile') == EXTENDED_SOURCE384_PROFILE
+    reached_native=(route!='model_router' or remaining_work_seconds is None
+        or remaining_work_seconds>25) and used_work_seconds<cutoff
+    extended = budget_kwargs.get('resource_profile') in EXTENDED_PROFILES
     admitted=reached_native and not (extended and remaining_work_seconds == 1)
     assert bool(entered)==admitted
     assert report['error']['type']==('RuntimeError' if admitted and native_failure == 'close'
@@ -116,9 +119,18 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         if route=='model_router':
             import shlex
             command=shlex.split(native_options[0]['implementation_command'])
-            # The isolated worker accepts at most 300 seconds per router call,
-            # including when the outer supervisor has an extended work budget.
-            assert int(command[command.index('--timeout')+1])==min(300,cutoff-25)
+            # Only the explicit coding600 profile changes the provider and
+            # daemon caps. Both stay inside the same original work deadline.
+            coding_cap = 600 if budget_kwargs.get('resource_profile') == CODING600_SOURCE384_PROFILE else 300
+            available = cutoff-used_work_seconds-25
+            assert int(command[command.index('--timeout')+1])==min(coding_cap,available)
+            assert native_options[0]['implementation_timeout_seconds']==min(coding_cap+60,available)
+            assert report['provider_coding_timeout_cap_seconds']==coding_cap
+            assert report['provider_coding_timeout_seconds']==min(coding_cap,available)
+        else:
+            assert native_options[0]['implementation_timeout_seconds']==cutoff-used_work_seconds
+            assert report['provider_coding_timeout_cap_seconds'] is None
+            assert report['provider_coding_timeout_seconds'] is None
     assert report['provider_invocations']==[] and report['task_completed'] is False
     assert report['worker_cleanup_returncode']==0 and len(cleanup)==1
     assert (driver.signal.ITIMER_REAL,cutoff) in alarms and alarms[-1]==(driver.signal.ITIMER_REAL,0)
@@ -131,6 +143,13 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
             {'attempted':True,'succeeded':False,'error_type':'RuntimeError'}
             if native_failure == 'close' else {'attempted':True,'succeeded':True})
         assert 'PRIVATE' not in json.dumps(report)
+
+
+@pytest.mark.parametrize('route',['doctor_candidate','doctor_contract_candidate','model_router'])
+@pytest.mark.parametrize('left',[700,625,26,25])
+def test_coding600_clamps_both_caps_without_charging_provider_free_routes(tmp_path,monkeypatch,route,left):
+    test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+        tmp_path,monkeypatch,route,left,{'resource_profile':CODING600_SOURCE384_PROFILE},900,60,180)
 
 
 def test_startup_diagnostic_failure_does_not_mask_start_failure_or_skip_stop(tmp_path,monkeypatch):
@@ -179,6 +198,7 @@ def test_startup_projection_refuses_raw_or_unbounded_metadata(change):
 @pytest.mark.parametrize(('profile','timeout'), [
     (None,True),(None,285.0),(None,89),(None,301),(SOURCE384_PROFILE,900),
     (EXTENDED_SOURCE384_PROFILE,901),(EXTENDED_SOURCE384_PROFILE,90.0),
+    (CODING600_SOURCE384_PROFILE,901),(CODING600_SOURCE384_PROFILE,900.0),
 ])
 def test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects(tmp_path,monkeypatch,profile,timeout):
     monkeypatch.setattr(driver.os,'umask',lambda *args:pytest.fail('invalid budget reached setup'))
