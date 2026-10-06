@@ -27,6 +27,7 @@ from .native_codex_baseline import MODEL, CLI_VERSION
 from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
+from .terminal_retrieval_selection import require_retrieval_revision
 from .terminal_semantic_transport_policy import (
     DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema,
     semantic_transport_selection, require_semantic_transport_archive,
@@ -316,6 +317,7 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_transport_archive(manifest,
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
+        require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         validate_setup_cache_prerequisites(selection, install_codex=selected_provider["provider"] == "codex_cli", auth_json=self.auth_json,
@@ -344,6 +346,8 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        retrieval_revision = require_retrieval_revision(manifest, self.arm,
+            getattr(self, "model_revision", ""))
         transport = validate_semantic_transport_schema(
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=self.arm)
         require_semantic_transport_archive(manifest, transport)
@@ -385,8 +389,8 @@ class FullSupervisorAgent(BaseAgent):
             requirement_path = ROOT + "/intent-requirements.json"
             await environment.upload_file(artifact, requirement_path)
             argv += ["--intent-requirement-contract", requirement_path]
-        if self.arm == "full" and manifest["learned_requirements"]:
-            argv += ["--model-snapshot", ROOT + "/models/embedding", "--model-revision", self.model_revision]
+        if retrieval_revision:
+            argv += ["--model-snapshot", ROOT + "/models/embedding", "--model-revision", retrieval_revision]
         asset_arguments, asset_observation = security_asset_arguments(manifest, self.arm)
         argv += asset_arguments
         intent_arguments, intent_observation = intent_asset_arguments(manifest,
