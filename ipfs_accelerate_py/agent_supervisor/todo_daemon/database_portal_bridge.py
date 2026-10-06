@@ -1773,6 +1773,14 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
         if "source384_resource_deferral" in implementation:
             summary["implementation"]["source384_resource_deferral"] = _source384_deferral(
                 implementation["source384_resource_deferral"])
+        if "child_reported_router_failure" in implementation:
+            from .bridge_failure_diagnostics import validate_child_report
+            try:
+                reported = validate_child_report(implementation["child_reported_router_failure"])
+            except Exception:
+                reported = None
+            if reported is not None:
+                summary["implementation"]["child_reported_router_failure"] = reported
         validation = implementation.get("validation_result")
         if isinstance(validation, Mapping) and validation.get("passed") is False:
             from ..validation.proposal_validation import ProposalFindingCode
