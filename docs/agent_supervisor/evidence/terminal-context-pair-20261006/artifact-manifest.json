@@ -1,0 +1,80 @@
+{
+  "files": [
+    {
+      "bytes": 5015,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/README.md",
+      "sha256": "b01fa89a84d399fda928c06f036d228cdec2ca574663c4c4a04da8e31721d5d4"
+    },
+    {
+      "bytes": 56678,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/archive-preflight.json",
+      "sha256": "a12bb1eb2cb558d4a7d59a8db2e81323bde159a1b3b3fe72bedae7dad39276dd"
+    },
+    {
+      "bytes": 32471,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/compare_receipts.py",
+      "sha256": "e3cde58b7e8c98962582c98adcbd988cc570f65b1e7dd75bbacf12387dcfd1ac"
+    },
+    {
+      "bytes": 60481,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/comparison.json",
+      "sha256": "f217c9ffbf94ae5a9a7d5d1bc3d5c7c530840fd01a21dbed968c42268137f0da"
+    },
+    {
+      "bytes": 6451,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/independent-factual-review.json",
+      "sha256": "597d563efcf08d0214b9a9ce143f08d70603e7e2bc20eaf24d3c078d691a7f57"
+    },
+    {
+      "bytes": 991,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/monitor-path-correction.json",
+      "sha256": "9fa3105ace97034292a86f09a1a962a3a3de2253ed4f95f2625bec11b4af7f09"
+    },
+    {
+      "bytes": 22438,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/next-treatment-design.json",
+      "sha256": "55e0944dc993e2f83cf25e3f4471a140ce2405ed5ee690e26e7e310706437d95"
+    },
+    {
+      "bytes": 11560,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/pair-preflight.json",
+      "sha256": "723658cd07504c503382f73ec4b995f65fce824366e09fb24595714426db967d"
+    },
+    {
+      "bytes": 2990,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/phase-ledger.json",
+      "sha256": "d31c9c161b4a28028992f3d9f1af93c32ae77f749059d80ecb8cb08e097cfd6e"
+    },
+    {
+      "bytes": 1858,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/qualification.json",
+      "sha256": "738cb6850d08cc054b11e4b0b40d611f21999034f6c43099ecbd0c25e314cdb0"
+    },
+    {
+      "bytes": 15486,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/receipt-review.json",
+      "sha256": "0df6756c4de5305d0f2744a1798f9853a857857ebd777622294cb6f621968037"
+    },
+    {
+      "bytes": 20572,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/response-settlement-diagnosis.json",
+      "sha256": "598f261319041a3fb3c46b01e9d195668c8c13c59ba3bdf68ef9c82567524c6b"
+    },
+    {
+      "bytes": 2123,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/results.md",
+      "sha256": "0372194738bbb6bbde55d3efedef0497a98350302b68f7040e6b9dcfe32ba8fd"
+    },
+    {
+      "bytes": 19528,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/review_completed_pair.py",
+      "sha256": "0c4f533f30d05193261df1d761cf9e0c0f97360057abfa30c7b7bd07292e87d7"
+    },
+    {
+      "bytes": 4700,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/roadmap.md",
+      "sha256": "96bdc8ae12c4a40b8b0d03168d30adeb1c4fc404def7a0c74ebb2e2d1f8e4db1"
+    }
+  ],
+  "schema": "terminal-context-pair-public-artifact-manifest@1"
+}

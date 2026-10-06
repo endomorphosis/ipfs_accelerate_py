@@ -1,0 +1,411 @@
+{
+  "alternatives_deferred": [
+    {
+      "candidate": "Doctor advisory shared residual metadata",
+      "reason": "Already canonical minified JSON with native artifact/source/worktree checks. Its projected open_obligation_ids duplicates residual IDs and rows can repeat evidence_refs, but this is a separate appended coding view. Use an exact normalized table first; do not erase capability gaps or proof uncertainty."
+    },
+    {
+      "candidate": "IntentIR requirement context table normalization",
+      "reason": "build_task_intent_context repeats source-unit text/span/hash, native atom and authority metadata per selected/dependency/global-prohibition record. It is a useful later target for selected atoms + dependency closure + all prohibitions; it is absent from direct paired arms and must not be attributed to the baseline route."
+    },
+    {
+      "candidate": "Extend coding dictionary to verified appendices",
+      "reason": "router_implementation_runner appends Doctor and public instruction after semantic encoding. This leaves appended typed IDs outside @2, but changing that scope would confound the next planning-only treatment and must preserve literal public instruction."
+    }
+  ],
+  "catalog_roles_for_subsequent_integration": {
+    "autoencoders": "8D spaCy, 384D embedding, 768D embedding and any Leanstral-derived vectors can rank candidate records; similarity and reconstruction loss cannot certify semantic equivalence or authorize omission of mandatory facts.",
+    "duckdb_quack": "supervisor_meta_index.compose_for_subject already parameterizes exact subject-kind/ref queries and bounds results to 1..256. Use it to nominate current task/source/proof/capsule records. Locators and mtimes are not record-content freshness proofs and not an already installed model expansion tool.",
+    "ducklake": "Use federation-owned typed range/cursor/checksum receipts for changed-record observations. Check present native freshness separately; history projection cannot confer scheduling, lease, completion or omission authority.",
+    "ownership": "Do not attach extra-gate exclusive control.duckdb or send owner credentials, raw locators or arbitrary SQL to an LLM. Owners resolve typed bounded record lookups, authenticate source/root/scope and return only authorized projected facts.",
+    "semantic_capsules": "For future selection, package decision-relevant interfaces, dependencies, effects, unresolved obligations and checked proof state; carry completeness/closure bindings and an actual bounded expansion path before withholding mandatory details."
+  },
+  "context_compiler_and_closure_boundary": {
+    "authority_limit": "Its return value explicitly has code_semantic_closure_claimed=false and proof_authority=false. Administrative completeness does not prove algorithm semantics, floating-point behavior or benchmark speed.",
+    "existing_declared_closure": "local_planning_admission._declared_closure creates mandatory graph nodes for complete signed declarations and tracked-file inventory, and rejects omitted declared nodes.",
+    "existing_reusable_hooks": [
+      "context_compiler.DecisionContextCompiler compile/verify and compile_decision_context",
+      "context_compiler.DecisionContextCompiler._core preserves assumptions, obligations, proof state, effects, validation, acceptance, authorization and unknowns",
+      "planner_doctor_context.compile_proof_carrying_context rejects stale tree roots and missing affected interfaces, obligations, assumptions, policy, effects or validation"
+    ],
+    "first_treatment_certificate": "Exact reconstruction and signed task_spec equality certify representation deduplication only. It omits no fact population and therefore does not pretend to solve semantic selection.",
+    "gate_for_later_fact_selection": "Reuse DecisionContextCompiler rather than adding a parallel selection authority: bind current DecisionRequest, semantic roots, authenticated graph/retrieval receipt, mandatory closure and ContextCompletenessWitness entries; verify all inline or expandable mandatory references. Unknowns, assumptions, effects, acceptance, validation and failure behavior remain mandatory.",
+    "missing_integration": "The active terminal planning path does not currently supply a full DecisionContextCompiler witness at the final provider boundary. That adapter is a separate change; no semantic coverage or lookup tool is claimed by this design.",
+    "timing_limit": "The declared closure is constructed after a proposed PromptGoalGraph exists. Do not invent a graph or claim it is a preplanning semantic omission certificate."
+  },
+  "controls": {
+    "benchmark_solution_bodies_read": false,
+    "coding_transport_already_implemented": "supervisor-semantic-router-input@2",
+    "coding_transport_changed_by_this_design": false,
+    "containers_started": 0,
+    "experiments_run": 0,
+    "frozen_checkout_clean_at_audit": true,
+    "hidden_evaluation_bodies_read": false,
+    "llm_coding_preserved": true,
+    "llm_planning_preserved": true,
+    "measured_token_savings_for_next_treatment": null,
+    "new_provider_calls": 0,
+    "production_source_edits": 0,
+    "raw_model_thoughts_read": false
+  },
+  "created_at": "2026-10-06T13:02:06.704694+00:00",
+  "formal_status_card_design_for_later_treatment": {
+    "authorities": {
+      "completion": false,
+      "execution": false,
+      "publication": false,
+      "scope_expansion": false
+    },
+    "certificate_storage": "Keep full certificates and native records in the authenticated local catalogs; provider sees short references only after bounded expansion is actually available. Otherwise retain necessary explanatory facts inline.",
+    "closed_statuses": [
+      "proved",
+      "disproved",
+      "unknown",
+      "unsupported"
+    ],
+    "data_source": "Fresh owner-verified Doctor/proof records and exact task acceptance/validation bindings, not model guesses.",
+    "example_unchecked_behavior": {
+      "certificate_ref": null,
+      "obligation_ref": "numerical-behavior",
+      "reason_codes": [
+        "matching_check_not_present"
+      ],
+      "status": "unknown"
+    },
+    "example_unchecked_speed": {
+      "certificate_ref": null,
+      "obligation_ref": "runtime-performance",
+      "reason_codes": [
+        "required_timing_validation_pending"
+      ],
+      "status": "unknown"
+    },
+    "required_card_fields": [
+      "obligation_ref",
+      "status",
+      "reason_codes",
+      "logic_family",
+      "assumptions",
+      "source_revision",
+      "dependency_revision",
+      "certificate_ref",
+      "validation_ref"
+    ],
+    "schema_proposed": "terminal-obligation-status-view@1",
+    "status": "proposed_companion_not_part_of_single_field_experiment",
+    "status_rules": [
+      "proved requires an actual accepted native certificate for this exact obligation, source/dependency revision and assumption scope; an administrative plan-consistency result is insufficient.",
+      "disproved requires a checked native counterexample within the supported obligation semantics; unavailable analysis is not a counterexample.",
+      "Doctor UNSUPPORTED or CAPABILITY_GAP retains unsupported plus native required_capability and reason_codes; open/frontier/unrun validation remains unknown.",
+      "Missing records are unknown, never proved. Stale certificates cannot be reused for a current-source card.",
+      "Floating-point/complex numerical correctness and speed obligations remain visibly unknown unless independently checked by a matching supported certificate or required validation; an exact-real or algebraic proof does not establish these results.",
+      "Retain native Doctor kind, reason_codes, attempted_strategies, context paths and evidence handles where relevant. Do not collapse unsupported, failed and unknown into one affirmative label."
+    ]
+  },
+  "measurement_requirements": {
+    "cache": "cached_input_tokens is a subset of input_tokens. Report it separately; never add it again or subtract it when claiming total-token reduction.",
+    "interpretation": "A smaller initial input is not measured cumulative savings. A single matched pair is a pilot observation; repeat controlled pairs before asserting robust savings or preserving outcome reliability.",
+    "live_control": "Run a fresh matched planning-preserved pair on the same frozen new runtime archive/provider/model/reasoning settings/public task inputs, with identical coding @2 mode in both arms; vary only the planning acceptance-reference flag.",
+    "offline_first": "Build both complete planning model inputs from authorized public task/declaration metadata only; record bytes and one explicitly named tokenizer estimate without a provider call. No reduction figure is reported for this proposed treatment.",
+    "primary_metric": "Cumulative provider input_tokens + output_tokens across both sessions, all native token records, lookups, retries and continuations.",
+    "secondary_metrics": [
+      "initial complete prompt bytes",
+      "labeled estimated initial prompt tokens",
+      "uncached input tokens",
+      "output tokens",
+      "lookup/expansion/retry counts",
+      "planning and coding elapsed times",
+      "official reward",
+      "native lifecycle/cleanup result"
+    ],
+    "sessions": "Retain one LLM planning and one LLM coding session through llm_router; native continuation and tool turns still count."
+  },
+  "native_checks_retained": {
+    "after_response": "PromptGoalProposal parser and full response schema, FormalPlanCompiler, validate_formal_plan and local_planning_admission._graph_contract compare complete proposed scope, acceptance, dependencies and commands to independently signed declarations.",
+    "before_dispatch": "Current prepared record equality, signed source inventory and exact initial selection replay; bind_public_instruction retains verbatim text and signed source SHA256.",
+    "persisted_facts": "IntentRepository task/goal persistence remains native; meta-index mirrors are locators and never admission authority.",
+    "post_execution": "Original output/source checks, required validation and official Terminal Bench result remain necessary. A smaller model view proves neither numerical behavior nor performance."
+  },
+  "recommended_next_treatment": {
+    "budget_gate": "Choose the view only if the complete final planning input, including unchanged public instruction and every retained summary, is smaller under the same explicitly named estimator and fits existing bounds. Otherwise use the original planning input. This gate does not claim actual provider-token or total-session savings.",
+    "controller_receipt_schema_proposed": "terminal-planning-acceptance-reference@1",
+    "current_behavior": "Serializes the complete task acceptance array in summary item 2, then serializes the same array again inside the complete signed task specification in summary item 3.",
+    "current_producer": "terminal_indexed_preparation._constraints",
+    "exact_model_field": "constraints.constraint_summaries[2]",
+    "example_projected_item_2": "All goal/task acceptance arrays must exactly equal the acceptance array in the independently signed task declaration in the next constraint summary.",
+    "name": "planning acceptance reference",
+    "native_provider_request_schema_unchanged": true,
+    "preconditions": [
+      "One signed task specification, direct or planning-preserved intent_coverage path; reject multitask and intent_symbolic mode for this treatment.",
+      "Strict duplicate-free, finite canonical JSON parse; existing request/schema/version/stage intact.",
+      "Recompute the legacy administrative summaries from current signed task_spec and literal instruction; the target item and declaration item must match the native producer exactly before replacing any text.",
+      "Decode the following signed declaration and check its full acceptance array equals current manifest task_spec.acceptance; never infer acceptance from prose or vector similarity.",
+      "Complete public instruction, all appended initial/advisor summaries, response_schema, budgets, evidence handles, allowed paths, outputs, validation commands and policy constraints remain unchanged.",
+      "Retain an immutable reconstruction receipt and full native input outside the provider context; the view cannot become admission, execution, proof, completion or publication authority."
+    ],
+    "reason_for_order": "This is a lossless shared-declaration projection in a currently active planning field, with no retrieval-tool or semantic-selection prerequisite. It isolates a treatment from the current coding identifier dictionary.",
+    "receipt_fields": [
+      "schema",
+      "runtime_source_commit",
+      "manifest_cid",
+      "request_cid",
+      "native_request_sha256",
+      "model_request_sha256",
+      "task_spec_cid",
+      "modified_field",
+      "rule_id",
+      "acceptance_equal_to_signed_declaration",
+      "reconstructed_native_sha256",
+      "native_request_bytes",
+      "complete_model_request_bytes",
+      "token_estimate_encoding",
+      "native_token_estimate",
+      "model_token_estimate",
+      "non_expanding",
+      "execution_authority=false",
+      "proof_authority=false",
+      "completion_authority=false"
+    ],
+    "reconstruction": "Restore the exact legacy item 2 from the already retained current signed task acceptance array using the native _constraints serialization. Reconstructed full request digest must equal native_request_sha256. Foreign or changed declarations, absent fields, extra fields and malformed references fail closed.",
+    "response_grammar": "No response-schema shortening or output acceptance references. The LLM must continue emitting complete native goal/task acceptance arrays and existing graph fields; parsing, compilation and admission remain unchanged.",
+    "scope": "single-task direct or independently qualified intent_coverage planning only",
+    "smallest_change": "Replace only item 2 with an instruction to use exactly the acceptance array in the immediately following signed task declaration for root goal, child goal and task. Keep item 3 byte-for-byte and retain every native acceptance criterion, evidence CID and validation key there.",
+    "suggested_insertion_hook": "terminal_indexed_preparation._plan_prepared.router: after current preparation and initial-selection replay and bind_public_instruction; before model_request_sha256 and planner-provider-request.json persistence.",
+    "why_model_boundary": "The prepared manifest, request, scan and constraints remain native records. An opt-in final-input projection changes only the provider view, without changing freshness comparisons or admitting a derived task source."
+  },
+  "required_tests_before_implementation_qualification": [
+    {
+      "case": "Lossless planner reconstruction",
+      "expected": "Exact native full-request SHA256 round trip; untouched fields deep-equal and verbatim instruction text/source digest preserved."
+    },
+    {
+      "case": "Signed acceptance mismatch",
+      "expected": "Changed criterion, evidence CID, validation key, order-sensitive serialization or task declaration rejects projection; no model call occurs."
+    },
+    {
+      "case": "Input shape and routing",
+      "expected": "Duplicate fields, nonfinite values, unexpected item 2/3, foreign request/manifest, multitask, intent_symbolic and unsupported schema cannot silently apply the rule."
+    },
+    {
+      "case": "Currentness at dispatch",
+      "expected": "Changed source tree, prepared records or initial capsule selection retains existing native rejection; compaction does not bypass replay."
+    },
+    {
+      "case": "Unchanged proposal grammar",
+      "expected": "Complete native response fixture still parses/compiles/admits identically; output acceptance references or widened scope still reject."
+    },
+    {
+      "case": "Complete-input nonexpansion",
+      "expected": "Compare the final provider string including receipt instructions if any, literal instruction and all summaries. Short/few-criterion cases fall back when the reference would expand input."
+    },
+    {
+      "case": "Native authority unchanged",
+      "expected": "Projection receipt and catalog locators cannot establish proof, execution, completion, publication or expand paths/commands."
+    },
+    {
+      "case": "Future closure selection negatives",
+      "expected": "Mandatory assumption/interface/effect/obligation/validation removal, unresolved handles, changed dependency/root, stale proof and out-of-scope lookup reject before provider dispatch."
+    },
+    {
+      "case": "Formal unknown visibility",
+      "expected": "Unavailable provers and unsupported float/complex/speed semantics remain unsupported/unknown; no administrative structural result upgrades numerical or timing status."
+    }
+  ],
+  "runtime_checkout": "/home/barberb/lift_coding_worktrees/terminal-context-paired-runtime-20261006",
+  "runtime_source_commit": "26dc83812d25093594752fedf3c0ef5b998f4d79",
+  "schema": "supervisor-next-catalog-capsule-treatment-design@1",
+  "source_bindings": [
+    {
+      "bytes": 69552,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "5c2cebfd4c0bcf04e6174aed3ce853bfdcd4efd8ee04b031b3f2d157f908e3d6",
+      "symbols": [
+        {
+          "end_line": 103,
+          "line": 91,
+          "name": "_constraints"
+        },
+        {
+          "end_line": 924,
+          "line": 702,
+          "name": "_plan_prepared"
+        }
+      ]
+    },
+    {
+      "bytes": 2174,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_planner_instruction.py",
+      "sha256": "052ae6ac4db607755d424727743373d0774a55e2c52c257b59d4cc8e67b9687c",
+      "symbols": [
+        {
+          "end_line": 46,
+          "line": 10,
+          "name": "bind_public_instruction"
+        }
+      ]
+    },
+    {
+      "bytes": 46937,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d",
+      "symbols": [
+        {
+          "end_line": 177,
+          "line": 91,
+          "name": "_summaries"
+        },
+        {
+          "end_line": 398,
+          "line": 393,
+          "name": "load_initial_context"
+        }
+      ]
+    },
+    {
+      "bytes": 115722,
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "09168760a63d32b3305191e72501d9776f7c967212c9e9beb33791c499003811",
+      "symbols": [
+        {
+          "end_line": 563,
+          "line": 474,
+          "name": "_frozen_summary_map"
+        },
+        {
+          "end_line": 1003,
+          "line": 845,
+          "name": "build_prompt_goal_provider_request"
+        }
+      ]
+    },
+    {
+      "bytes": 94089,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "02ef0fa3ffc34005ea1442e87fbf8f3a1ae199e9568662d85d41402e634fab30",
+      "symbols": [
+        {
+          "end_line": 874,
+          "line": 802,
+          "name": "_declared_closure"
+        },
+        {
+          "end_line": 978,
+          "line": 877,
+          "name": "_graph_contract"
+        }
+      ]
+    },
+    {
+      "bytes": 14744,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00",
+      "symbols": [
+        {
+          "end_line": 220,
+          "line": 125,
+          "name": "load_doctor_residual_advisory"
+        }
+      ]
+    },
+    {
+      "bytes": 5309,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_context.py",
+      "sha256": "d293d3177366ab5b546f43555889f9fb6e5af04bc05347d3297c35be9f3836dd",
+      "symbols": [
+        {
+          "end_line": 89,
+          "line": 23,
+          "name": "build_task_intent_context"
+        }
+      ]
+    },
+    {
+      "bytes": 21395,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "6540ee2fe4328992b9061fce6f07d47f8441f2bbecbdaf0ab982042fe207aacc",
+      "symbols": [
+        {
+          "end_line": 304,
+          "line": 73,
+          "name": "run"
+        }
+      ]
+    },
+    {
+      "bytes": 293498,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406",
+      "symbols": [
+        {
+          "end_line": 5368,
+          "line": 5350,
+          "name": "compile_decision_context"
+        },
+        {
+          "end_line": 7193,
+          "line": 7149,
+          "name": "compile_decision_context"
+        }
+      ]
+    },
+    {
+      "bytes": 102188,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603",
+      "symbols": [
+        {
+          "end_line": 1953,
+          "line": 1825,
+          "name": "compile_proof_carrying_context"
+        }
+      ]
+    },
+    {
+      "bytes": 53490,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+      "symbols": [
+        {
+          "end_line": 752,
+          "line": 670,
+          "name": "compose_for_subject"
+        },
+        {
+          "end_line": 1049,
+          "line": 1028,
+          "name": "compose_for_subject"
+        }
+      ]
+    },
+    {
+      "bytes": 2372,
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "sha256": "2a262b7d278ed8ac56dfc3792c39da7d04a54044b7313772af8c63c989771723",
+      "symbols": [
+        {
+          "end_line": 55,
+          "line": 43,
+          "name": "project_history"
+        },
+        {
+          "end_line": 80,
+          "line": 58,
+          "name": "project_range"
+        }
+      ]
+    },
+    {
+      "bytes": 101009,
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/doctor_plan_refill.py",
+      "sha256": "fd1daf3e66f5b75ade28328fc1ed4efa76fe63c5ac1d9affb27fe209cb2f49a9",
+      "symbols": [
+        {
+          "end_line": 151,
+          "line": 139,
+          "name": "DoctorResidualKind"
+        }
+      ]
+    }
+  ],
+  "status": "read_only_design_not_implemented"
+}

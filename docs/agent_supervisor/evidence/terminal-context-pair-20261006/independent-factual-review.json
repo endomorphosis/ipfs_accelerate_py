@@ -1,0 +1,161 @@
+{
+  "artifact_only_changes": [
+    "review_completed_pair.py",
+    "completed-pair-review-03.json",
+    "completed-pair-report-03.md"
+  ],
+  "benchmark_pair_qualified": false,
+  "checks": [
+    {
+      "name": "exact_native_token_arithmetic_and_cache_subsets",
+      "passed": true
+    },
+    {
+      "name": "both_two_session_llm_planning_and_coding_retained",
+      "passed": true
+    },
+    {
+      "name": "baseline_reward_one_compact_reward_zero",
+      "passed": true
+    },
+    {
+      "name": "compact_used_43384_more_observed_tokens",
+      "passed": true
+    },
+    {
+      "name": "no_qualified_saving_percentage_or_causal_claim",
+      "passed": true
+    },
+    {
+      "name": "all_common_schema_context_input_and_runtime_control_gates_pass",
+      "passed": true
+    },
+    {
+      "name": "only_compact_original_verifier_and_native_completion_gates_fail",
+      "passed": true
+    },
+    {
+      "name": "completed_coding_cli_exit_zero_and_usage_complete",
+      "passed": true
+    },
+    {
+      "name": "strict_response_envelope_rejection_is_distinct_from_later_lifecycle_timeout",
+      "passed": true
+    },
+    {
+      "name": "cleanup_zero_processes_and_worker_return_code_zero",
+      "passed": true
+    },
+    {
+      "name": "failed_first_baseline_23737_tokens_retained",
+      "passed": true
+    },
+    {
+      "name": "prepared_unexecuted_compact_not_treated_as_completed_zero_cost_trial",
+      "passed": true
+    },
+    {
+      "name": "campaign_complete_total_651877",
+      "passed": true
+    },
+    {
+      "name": "report03_adds_failure_chronology_without_changing_comparison02_or_receipts",
+      "passed": true
+    }
+  ],
+  "comparison_and_final_receipts_modified": false,
+  "findings": [
+    {
+      "finding": "Report-02 was numerically correct but omitted the result-rejection and later timeout sequence. Report-03 adds these facts. Review-passed denotes faithful accounting; it does not denote a qualified or successful benchmark pair.",
+      "severity": "report_clarification"
+    }
+  ],
+  "input_bindings": [
+    {
+      "bytes": 60481,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/comparison-02.json",
+      "relative_path": "comparison-02.json",
+      "sha256": "f217c9ffbf94ae5a9a7d5d1bc3d5c7c530840fd01a21dbed968c42268137f0da"
+    },
+    {
+      "bytes": 13200,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/completed-pair-review-02.json",
+      "relative_path": "completed-pair-review-02.json",
+      "sha256": "02301b49964b2f05ad278dc14327e0fc1b0863b0358358387ceee12a20846e57"
+    },
+    {
+      "bytes": 1557,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/completed-pair-report-02.md",
+      "relative_path": "completed-pair-report-02.md",
+      "sha256": "1c97f74eb968d122d5e891d23e69614d40ed67ddede0232110bf192f4a3b12af"
+    },
+    {
+      "bytes": 15486,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/completed-pair-review-03.json",
+      "relative_path": "completed-pair-review-03.json",
+      "sha256": "0df6756c4de5305d0f2744a1798f9853a857857ebd777622294cb6f621968037"
+    },
+    {
+      "bytes": 2123,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/completed-pair-report-03.md",
+      "relative_path": "completed-pair-report-03.md",
+      "sha256": "0372194738bbb6bbde55d3efedef0497a98350302b68f7040e6b9dcfe32ba8fd"
+    },
+    {
+      "bytes": 19528,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/review_completed_pair.py",
+      "relative_path": "review_completed_pair.py",
+      "sha256": "0c4f533f30d05193261df1d761cf9e0c0f97360057abfa30c7b7bd07292e87d7"
+    },
+    {
+      "bytes": 113835,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-01/receipt.json",
+      "relative_path": "baseline-01/receipt.json",
+      "sha256": "43dbe4a81760a132331e4bac3d94d18492de0ef9240ea2aa92d64807f5e17361"
+    },
+    {
+      "bytes": 203394,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+      "relative_path": "baseline-02/receipt.json",
+      "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+    },
+    {
+      "bytes": 172812,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+      "relative_path": "compact-02/receipt.json",
+      "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+    }
+  ],
+  "limitations": [
+    "The closed response_envelope_binding_mismatch reason does not identify which binding field differed. No raw model response was read to infer it.",
+    "The compact model input was 1,374 bytes shorter, but its native input was also 74 bytes shorter. Cross-arm byte differences are not a pure same-input transport saving measurement and do not establish total token savings.",
+    "Only one pair was observed; matching declared controls and source/archive bindings do not establish causality or repeatability.",
+    "Official compact reward zero is preserved; this review does not infer detailed hidden-verifier failure families."
+  ],
+  "new_provider_calls_by_review": 0,
+  "observed_results": {
+    "baseline_official_reward": 1.0,
+    "baseline_total_tokens": 292378,
+    "campaign_total_tokens": 651877,
+    "coding_cli_seconds": 174.4419019940542,
+    "coding_exit_code": 0,
+    "coding_native_usage_complete": true,
+    "compact_more_tokens": 43384,
+    "compact_official_reward": 0.0,
+    "compact_total_tokens": 335762,
+    "earlier_failed_baseline_tokens": 23737,
+    "later_supervisor_error_type": "TimeoutError",
+    "later_supervisor_seconds": 844.6143916610163,
+    "remaining_processes": 0,
+    "router_failure_phase": "semantic_response_decode",
+    "router_failure_reason_code": "response_envelope_binding_mismatch",
+    "worker_cleanup_returncode": 0
+  },
+  "recorded_at_utc": "2026-10-06T14:03:49.919725+00:00",
+  "repo_source_or_runtime_edits_by_review": 0,
+  "review_mode": "bounded final metadata and report readback; no model/tool transcript or hidden evaluator bodies",
+  "review_passed": true,
+  "reviewer": "/root/matched_transport_accounting",
+  "saving_claim_supported": false,
+  "schema": "terminal-planning-retained-pair-factual-independent-review@1"
+}

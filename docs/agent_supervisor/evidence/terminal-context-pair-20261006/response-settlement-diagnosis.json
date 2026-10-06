@@ -1,0 +1,379 @@
+{
+  "already_implemented_current_main": [
+    {
+      "area": "Known native child exit custody",
+      "behavior": "Requires actual waited native Popen, empty process group and subreaper children, one-use issued capability, matching sealed task/attempt authority, durable state/event and finalized lifecycle; child-reported diagnostics alone grant no custody.",
+      "hooks": [
+        "PortalImplementationDaemon._take_database_provider_exit",
+        "DatabasePortalExecutionBridge._native_provider_exit_failure",
+        "DatabasePortalExecutionBridge.take_native_provider_exit_failure"
+      ],
+      "status": "Source present; qualify the exact compact post-decode case rather than implement a second settlement mechanism."
+    },
+    {
+      "area": "Owner failure settlement",
+      "behavior": "After the exact bridge capability is consumed, compare-and-swap callback intent to failed_outcome_settled, then reuse native claim/control failure settlement. Completion and automatic replay remain disallowed.",
+      "hooks": [
+        "DatabaseImplementationDaemon._require_native_provider_failure",
+        "DatabaseImplementationDaemon._settle_native_provider_failure",
+        "DatabaseImplementationDaemon._run_provider_impl",
+        "DatabaseImplementationDaemon._settle_terminal_portal_failure"
+      ],
+      "status": "Source present; retain current fences and custody checks."
+    },
+    {
+      "area": "Closed failure visibility",
+      "behavior": "Exports bounded closed phases/types/frames and exact task/attempt-bound observations without raw exception text or dispatch/settlement authority.",
+      "hooks": [
+        "router_implementation_runner._runner_failure_diagnostic",
+        "bridge_failure_diagnostics",
+        "terminal_failure_observation.collect"
+      ],
+      "status": "Source present; use these diagnostics on a newly pinned runtime rather than read model transcripts."
+    }
+  ],
+  "created_at_utc": "2026-10-06T14:06:27.897090+00:00",
+  "current_source_review_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa",
+  "frozen_trial_source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb",
+  "hidden_evaluation_reads": 0,
+  "limitations": [
+    "Only repository source and bounded final receipts were used. No runtime, provider, hidden evaluation, private database, raw transcript or solution reads were performed.",
+    "Existing source/tests establish implementation presence, not a test pass or fresh qualification."
+  ],
+  "measurements": {
+    "baseline-02": {
+      "latest_progress_seconds": 256.293006590975,
+      "official_reward": {
+        "reward": 1.0
+      },
+      "planning_qualified": true,
+      "planning_strategy": "direct",
+      "progress_stop_reason": "native_task_completed",
+      "remaining_processes": 0,
+      "seconds": 273.9478834159672,
+      "sessions": [
+        {
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_cli_exit_code": 0,
+          "native_session_complete": true,
+          "phase": "planning",
+          "seconds": 41.49101681797765,
+          "semantic_response_failure": null,
+          "status": "provider_returned",
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 23711,
+            "output_tokens": 1621,
+            "reasoning_output_tokens": 89,
+            "total_tokens": 25332
+          },
+          "usage_records": 1
+        },
+        {
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 59128,
+          "native_cli_exit_code": 0,
+          "native_session_complete": true,
+          "phase": "coding",
+          "seconds": 157.6311978700105,
+          "semantic_response_failure": null,
+          "status": "provider_returned",
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 232192,
+            "input_tokens": 262771,
+            "output_tokens": 4275,
+            "reasoning_output_tokens": 1254,
+            "total_tokens": 267046
+          },
+          "usage_records": 7
+        }
+      ],
+      "stop_status": "succeeded",
+      "task_completed": true,
+      "task_state_revision": 4,
+      "task_state_status": "completed",
+      "total_tokens": 292378,
+      "work_cutoff_seconds": 840,
+      "worker_cleanup_returncode": 0
+    },
+    "compact-02": {
+      "latest_progress_seconds": 838.9723991870414,
+      "official_reward": {
+        "reward": 0.0
+      },
+      "planning_qualified": true,
+      "planning_strategy": "direct",
+      "progress_stop_reason": "timeout_observed_without_terminal_state",
+      "remaining_processes": 0,
+      "seconds": 844.6143916610163,
+      "sessions": [
+        {
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_cli_exit_code": 0,
+          "native_session_complete": true,
+          "phase": "planning",
+          "seconds": 42.59893174096942,
+          "semantic_response_failure": null,
+          "status": "provider_returned",
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 23681,
+            "output_tokens": 1665,
+            "reasoning_output_tokens": 156,
+            "total_tokens": 25346
+          },
+          "usage_records": 1
+        },
+        {
+          "error_type": "SemanticTranslationError",
+          "failure_phase": "semantic_response_decode",
+          "model_prompt_bytes": 57754,
+          "native_cli_exit_code": 0,
+          "native_session_complete": true,
+          "phase": "coding",
+          "seconds": 174.4419019940542,
+          "semantic_response_failure": {
+            "phase": "semantic_response_decode",
+            "reason_code": "response_envelope_binding_mismatch"
+          },
+          "status": "failed",
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 272128,
+            "input_tokens": 304921,
+            "output_tokens": 5495,
+            "reasoning_output_tokens": 2035,
+            "total_tokens": 310416
+          },
+          "usage_records": 8
+        }
+      ],
+      "stop_status": "succeeded",
+      "task_completed": false,
+      "task_state_revision": 3,
+      "task_state_status": "in_progress",
+      "total_tokens": 335762,
+      "work_cutoff_seconds": 840,
+      "worker_cleanup_returncode": 0
+    }
+  },
+  "mode": "read_only_source_and_bounded_final_receipt_metadata",
+  "new_provider_calls": 0,
+  "not_proposed": [
+    "Remove the planning session",
+    "Ignore a bad reserved response envelope",
+    "Rewrite model binding values to expected IDs",
+    "Set task failed/completed directly from benchmark diagnostics",
+    "Treat CLIexit0 as native completion or settled effects",
+    "Reimplement settlement functions already present on currentmain"
+  ],
+  "private_database_reads": 0,
+  "proven_facts": [
+    "Both arms retain one qualified direct planning session and one completed native coding CLI session; the compact router rejected the completed coding result before candidate acceptance.",
+    "Compact final router status is failed, failure_phase semantic_response_decode, error_type SemanticTranslationError, closed reason response_envelope_binding_mismatch. Native CLI exit code is zero, proving transport decode failure differs from provider process failure.",
+    "The frozen decoder reaches this reason only after parsing a reserved supervisor-semantic-router-reply@1 JSON object and revalidating the live translation table against the current producer.",
+    "The rejecting conditional groups an incorrect exact seven-key envelope and/or mismatch in translation_cid, task_id, semantic_root_cid or scope_cid. It precedes candidate_only, alias resolution and native residual grammar checks.",
+    "Compact coding model input is 57754 bytes, native CLI coding total is 310416 tokens across eight observed native usage records, and coding router elapsed time is174.4419019940542seconds.",
+    "Compact admitted task remains in_progress revision3 through the latest838.9723991870414second progress sample; native STOP succeeds, remaining processes arezero and worker cleanup returnszero at finalization.",
+    "Frozen native progress observes owner task state and heartbeat; final provider outcomes are projected only in finish(), after the execution loop. The outer work cutoff is840seconds.",
+    "Frozen database callback custody is committed started_outcome_unknown before Portal entry. If that callback throws without committed native outcome evidence, its outer handler retains running custody rather than inferring failure settlement from an exception.",
+    "The frozen semantic instructions offer prose and reserved structured replies but contain no explicit owner-selected output mode, complete generation template or native response JSON schema.",
+    "Current source e3a44 leaves semantic_router_translation.py unchanged but adds native provider exit/failure settlement and closed router, bridge and terminal diagnostic observation paths. These additions cannot be retroactively attributed to frozenpair02."
+  ],
+  "raw_response_reads": 0,
+  "receipt_bindings": [
+    {
+      "bytes": 203394,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+      "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+    },
+    {
+      "bytes": 172812,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+      "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+    }
+  ],
+  "remaining_backlog": [
+    {
+      "acceptance": [
+        "Exercise an actual fixture router child that completes a native CLI receipt then exitsnonzero for SemanticTranslationError, with a partial candidate edit and both pooled and detached lifecycles.",
+        "Verify one provider dispatch, exact waited-child/subreaper/lifecycle/event/state proof, owner-persistedfailedcallback, fenced terminal failure status and prompt cleanSTOP; no840second spin.",
+        "Keep foreign/replaced authority, stale lifecycle, surviving detached descendants, missing child custody and forged diagnostic cases unresolved; diagnostics do not authorize settlement.",
+        "Reuse and extend current test_native_provider_failure_settlement.py and test_lifecycle_captured_settlement.py; avoid duplicate implementation."
+      ],
+      "boundary": "Native Portal/database owner path, not a benchmark-side task-status override.",
+      "priority": 0,
+      "work": "Qualify existing currentmain settlement on post-decode failure"
+    },
+    {
+      "acceptance": [
+        "Select an explicit owner-controlled output mode before dispatch: ordinary coding completion versus an independently selected residual-reference candidate. Do not make the model invent a residual task_family for ordinary editing.",
+        "For an ordinary completion mode, give a short literal final acknowledgment instruction. An already returned reserved envelope with bad bindings must still be rejected; never strip it or relabel it as prose.",
+        "For a structured candidate mode, provide the complete exact seven-key envelope template with literal translation/task/root/scope bindings, owner-selectedtask_family, candidate_onlytrue, and allowed alias positions.",
+        "Where a structured mode is selected, compile a bounded closed native output schema from the verified binding and native grammar. Reuse Codexcodex_output_schema or Grokresponse_format hooks instead of repairing returned data.",
+        "Verify schema digest/byte custody, literal identifiers, response currentness, allowed aliases, candidate grammar and native effect/admission gates independently. No field substitution or validation weakening.",
+        "Add offline generated-contract roundtrips and negative tests for every missing/extra/wrong binding, foreign root/table, stale producer, unknown alias and unsupported family."
+      ],
+      "boundary": "semantic_router_translation producer/prompt presentation plus router provider options; strict decoder and native candidate validators remain authoritative.",
+      "priority": 1,
+      "work": "Declare and present a compact coding response contract"
+    },
+    {
+      "acceptance": [
+        "Project only predefined mismatch categories such as envelope_keys, translation_cid, task_id, semantic_root_cid andscope_cid; report booleans/counts, never raw response values or arbitrary extra key names.",
+        "Preserve the current response rejection and error taxonomy; failure diagnostics do not gain completion, dispatch, retry or settlement authority."
+      ],
+      "boundary": "SemanticTranslationError diagnostic receipt only.",
+      "priority": 2,
+      "work": "Add a closed binding-mismatch projection"
+    },
+    {
+      "acceptance": [
+        "Use one fresh source/archive for both arms and preserve the frozenpair02 receipts. Keep source/profile/CLI/resources/retries/publicinputs equal.",
+        "If adding an explicit common output contract, apply that common contract consistently to both arms; do not silently mix representation and different final-output protocols.",
+        "Include contract/schema transport overhead, all later native turns, retrieval, retries and input/output/cache totals. Cached input is counted once within input.",
+        "Require successful original task outcomes, native admission and cleanup before a savings claim. Report onepair as descriptive and repeated trials separately."
+      ],
+      "boundary": "New immutable matched runtime and full @1/@2 trials retaining both sessions.",
+      "priority": 3,
+      "work": "Requalify representation efficiency after reliable response handling"
+    }
+  ],
+  "reviewer": "/root/matched_transport_preflight",
+  "schema": "terminal-compact-response-and-settlement-diagnosis@1",
+  "source_bindings": [
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 25594,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e9373e4c0f10ac8a856a6d258ba4023dba960b9e20935bea86040d48f1a81238",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 479688,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "2496155e186306e20a127e1efd724be374b4d238add556dbcc25e9bad1bae872",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 3232572,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "6a2067f057a753bbdff98a44e64f80498840bb1486014ae57cc46bd254b48d32",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 17403,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py",
+      "sha256": "b448c15bdd5f6e5fe6472c520b155895f0e83eec8c95e99a2cf980e0c0aad601",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 55347,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "cb543a2109bc67dc5abf32ae7be2130e41afd0dd7fcd84c1c540978cc18981c1",
+      "source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 32366,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "92a5c3467a7dabb14ea43e51e0d53cea799f67fc1d3ca1c76b4c326ca9aebc3f",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 487991,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "e6aca6559a4c4b64d1b3c2fea309febfb12847cf8b49b2d4572f774746ac137e",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 3244982,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "e2c302d33822cd9b67f0f30db18d4927c04521367238403725f2cb2251c6cb7b",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 17403,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py",
+      "sha256": "b448c15bdd5f6e5fe6472c520b155895f0e83eec8c95e99a2cf980e0c0aad601",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 65313,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "ec4f8d7373f1b6a3a54c92e4e43cdb11706368bc749088ae95d08443e8420d5b",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 14403,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "sha256": "dd0aba8a3d71993f248c384c13bad299163584dc768c42f2fce963a1c10b3619",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 7160,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py",
+      "sha256": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 22007,
+      "path": "test/api/test_native_provider_failure_settlement.py",
+      "sha256": "2f8c8465beda9597e5a12fc062784d011a4fa6712e232f9ba8ee114b9c6d62ee",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 12237,
+      "path": "test/api/test_lifecycle_captured_settlement.py",
+      "sha256": "381ab49478e34b5f321ee7964caf5046d130f647190a03f267871af26f298012",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 7425,
+      "path": "test/api/test_router_failure_diagnostics.py",
+      "sha256": "fdcd9f20d5421404db5db8c02e9ff12ad540895fced29f7c68a561107078116c",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 13656,
+      "path": "test/api/test_bridge_failure_diagnostics.py",
+      "sha256": "4ed8288bdde3e80b9d794ed84b628ace4c1589002d81f1862670f245e0640d01",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    },
+    {
+      "bytes": 13239,
+      "path": "test/api/test_terminal_failure_observation.py",
+      "sha256": "970738a6ff06fb0a022d0fd1378a4e2b1fd06a2c1a1093fed876a7fbb532d821",
+      "source_head": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa"
+    }
+  ],
+  "source_edits": 0,
+  "total_token_difference_compact_minus_baseline": 43384,
+  "unknowns": [
+    "Which particular envelope key or binding mismatched is unknown from the closed reason; model response bodies were not read.",
+    "Why the model chose the reserved residual envelope for a terminal coding task is unknown. Generic presentation is a source-level hypothesis, not a proven model intention.",
+    "Whether any proposed code changes would pass native candidate gates or the official task verifier if the response decoded is unknown; provider CLI completion is not task completion.",
+    "The exact retained callback/attempt custody record and whether a specific lower Portal failure predicate fired are not observable from these exported receipts; private databases/events were not read.",
+    "The absolute timestamp of coding completion versus settlement wait is not directly bound in the final receipt; coding174.44seconds cannot be subtracted directly from supervisor844.61seconds to claim exact waiting duration.",
+    "Currentmain native settlement source is present, with existing tests, but this diagnosis did not run those tests or a fresh benchmark. Its behavior on this exact post-decode rejection needs independent qualification.",
+    "One successful baseline and a failed compact trial do not establish general transport token savings or causal efficiency. Compact used43384more total tokens in this observed pair."
+  ]
+}

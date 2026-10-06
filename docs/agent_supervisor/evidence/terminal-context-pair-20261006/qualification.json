@@ -1,0 +1,56 @@
+{
+  "accounting_review_passed": true,
+  "archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+  "baseline_tokens": 292378,
+  "benchmark_pair_qualified": false,
+  "closed_metadata_diagnosis": {
+    "coding_cli_exit": 0,
+    "coding_router_status": "failed",
+    "exact_mismatched_field_known": false,
+    "later_supervisor_error": "TimeoutError",
+    "phase": "semantic_response_decode",
+    "reason": "response_envelope_binding_mismatch",
+    "worker_cleanup_returncode": 0
+  },
+  "compact01_status": "prepared_not_executed",
+  "compact_minus_baseline_tokens": 43384,
+  "compact_tokens": 335762,
+  "complete_experiment_tokens": 651877,
+  "diagnosis_read_only_review": {
+    "exact_response_mismatch_unknown": true,
+    "frozen_and_current_sources_bound": true,
+    "no_provider_calls": true,
+    "receipt": "response-settlement-diagnosis.json"
+  },
+  "documentation_checks": {
+    "artifact_python_ast_parses": 2,
+    "diff_check_passed": true,
+    "json_parse_passed": true,
+    "maintained_surface_gates_exit": 0,
+    "new_markdown_files": 3,
+    "new_markdown_relative_links_passed": true
+  },
+  "failed_first_attempt_tokens": 23737,
+  "fresh_router_sessions": {
+    "baseline": [
+      "planning",
+      "coding"
+    ],
+    "compact": [
+      "planning",
+      "coding"
+    ]
+  },
+  "later_main_runtime_changes_exercised_by_pair": false,
+  "new_provider_calls_by_publication": 0,
+  "preflight_checks": {
+    "archive_passed": 219,
+    "prepared_pair_passed": 85
+  },
+  "publication_base_commit": "e3a44a6ddf8a1373223eee015b2a2066f4ddd9fa",
+  "raw_model_data_read": false,
+  "repeatable_or_causal_saving_established": false,
+  "runtime_source_commit": "82671e6c8411875cb9919e3a71b07831548c0aeb",
+  "schema": "terminal-context-pair-publication-qualification@1",
+  "total_invoked_router_sessions_including_failed_first": 5
+}

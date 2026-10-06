@@ -1,0 +1,98 @@
+{
+  "cached_input_included_in_input": true,
+  "counter_records_are_not_certified_api_call_counts": true,
+  "new_provider_calls": 0,
+  "receipt_bindings": [
+    {
+      "bytes": 203394,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+      "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+    },
+    {
+      "bytes": 172812,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+      "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+    }
+  ],
+  "rows": [
+    {
+      "arm": "baseline-02",
+      "cli_exit_code": 0,
+      "model_prompt_bytes": 25678,
+      "native_counter_records": 1,
+      "native_prompt_bytes": 25678,
+      "phase": "planning",
+      "router_status": "provider_returned",
+      "seconds": 41.49101681797765,
+      "tokens": {
+        "cached_input_tokens": 0,
+        "input_tokens": 23711,
+        "output_tokens": 1621,
+        "total_tokens": 25332
+      },
+      "usage_complete": true,
+      "workspace_advisory_bytes": 0
+    },
+    {
+      "arm": "baseline-02",
+      "cli_exit_code": 0,
+      "model_prompt_bytes": 59128,
+      "native_counter_records": 7,
+      "native_prompt_bytes": 62346,
+      "phase": "coding",
+      "router_status": "provider_returned",
+      "seconds": 157.6311978700105,
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "tokens": {
+        "cached_input_tokens": 232192,
+        "input_tokens": 262771,
+        "output_tokens": 4275,
+        "total_tokens": 267046
+      },
+      "usage_complete": true,
+      "workspace_advisory_bytes": 890
+    },
+    {
+      "arm": "compact-02",
+      "cli_exit_code": 0,
+      "model_prompt_bytes": 25678,
+      "native_counter_records": 1,
+      "native_prompt_bytes": 25678,
+      "phase": "planning",
+      "router_status": "provider_returned",
+      "seconds": 42.59893174096942,
+      "tokens": {
+        "cached_input_tokens": 0,
+        "input_tokens": 23681,
+        "output_tokens": 1665,
+        "total_tokens": 25346
+      },
+      "usage_complete": true,
+      "workspace_advisory_bytes": 0
+    },
+    {
+      "arm": "compact-02",
+      "cli_exit_code": 0,
+      "model_prompt_bytes": 57754,
+      "native_counter_records": 8,
+      "native_prompt_bytes": 62272,
+      "phase": "coding",
+      "response_failure": {
+        "phase": "semantic_response_decode",
+        "reason_code": "response_envelope_binding_mismatch"
+      },
+      "router_status": "failed",
+      "seconds": 174.4419019940542,
+      "semantic_transport_schema": "supervisor-semantic-router-input@2",
+      "tokens": {
+        "cached_input_tokens": 272128,
+        "input_tokens": 304921,
+        "output_tokens": 5495,
+        "total_tokens": 310416
+      },
+      "usage_complete": true,
+      "workspace_advisory_bytes": 890
+    }
+  ],
+  "schema": "terminal-retained-planning-phase-ledger@1"
+}

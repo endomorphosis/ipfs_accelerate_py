@@ -1,0 +1,22 @@
+{
+  "benchmark_changed": false,
+  "corrected_path": "/opt/ipfs-supervisor/state/benchmark/launch/state/run",
+  "earlier_missing_heartbeat_is_not_runtime_failure_evidence": true,
+  "native_producer": "terminal_native_progress.read_heartbeat",
+  "old_path": "/opt/ipfs-supervisor/state/benchmark/launch/run",
+  "producer_bindings": [
+    {
+      "bytes": 14656,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/observe_owned_trial.py",
+      "sha256": "216a2ffb56ff49dc1f31ad632492293e9be42fdee0cbd1179dd3e38797487d38"
+    },
+    {
+      "bytes": 14680,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/observe_owned_trial_02.py",
+      "sha256": "77e68930d9ba4fdf4d239ee41b3d3d429c5ee19cbbc23a5dd0adf0c5b23a0dff"
+    }
+  ],
+  "provider_calls": 0,
+  "read_scope": "fixed bounded native heartbeat projected without body, path, command or credential fields",
+  "schema": "owned-trial-monitor-path-correction@1"
+}

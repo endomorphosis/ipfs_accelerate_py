@@ -1,0 +1,1442 @@
+{
+  "arms": [
+    {
+      "admission_environment_sha256": "86b6f582ed469e3a408226a179f1217abce4228562cfe29e9c22375523551e6d",
+      "archive_manifest_sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74",
+      "archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+      "declared_controls": {
+        "configuration_unchanged": true,
+        "declared": {
+          "agent_controls_sha256": {
+            "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "max_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+            "override_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "configuration_sha256": "ccdbb07f9c8163e24fa9902fdeceed3d684c99f9e3150c0a2a6c7905cddb94b7",
+          "identity": {
+            "cli_version": "0.160.0",
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "task": "largest-eigenval"
+          },
+          "job_controls_sha256": {
+            "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "environment": "b363af0c7f21036235243e251d02203df8a4c5d8cca693c191f6d715d62b937b",
+            "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "retry": "e7aac3e26527d96bfa51b85bb79b812ebe2b91d58a66e9531b584df0ec567ea2",
+            "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+            "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+            "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "schema": "terminal-benchmark-declared-controls@1",
+          "sha256": "eb1690fc75ae8f87d9fcbc509c7afcffc405be8cf4c8b671a8da47bb5538296a",
+          "task_input_sha256": {
+            "environment/Dockerfile": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+            "environment/src/eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+            "environment/src/eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+            "instruction.md": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "task.toml": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+            "tests/test.sh": "fc40868bee6cbcfd6e906b0522dda9a778064ea9876e64a40a377d66087a174b",
+            "tests/test_outputs.py": "cdc58e3aa0960dac2e12a12b1cfa4131237d697762a6a78ebf33f80d2eb168ce"
+          }
+        },
+        "reason": null,
+        "status": "observed"
+      },
+      "execution_budget_sha256": "98249b1060a58561fd7313ef8bf3db1f1d25a1f485ca21cbb2c58ca630777120",
+      "host_sources_sha256": "1d73cac0c3192a84775cf695166d2177bb7fc9510c1b9154444e948e9bd1cb2b",
+      "inputs": [
+        {
+          "bytes": 203394,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+          "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+        },
+        {
+          "bytes": 63346,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/preparation.json",
+          "sha256": "b5599a07b9d37749bc7564483101fccd30072a1109e7cd5272d0d3c2b3eef7b3"
+        },
+        {
+          "bytes": 3439,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/config.json",
+          "sha256": "ce57b1167f8fa062e8eed0369dcfe505380c48fb2c5e73182a5fb22e8c7e288c"
+        },
+        {
+          "bytes": 6235827,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/bundle-02/manifest.json",
+          "sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74"
+        },
+        {
+          "bytes": 91105,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/jobs/supervisor-full-largest-eigenval/largest-eigenval__4LQEkbK/result.json",
+          "sha256": "18e4366abdfd7fa51c82cf7e627cd3d4b693b66b449f4e1ae1803b8b87ef4f73"
+        },
+        {
+          "bytes": 1142,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/jobs/supervisor-full-largest-eigenval/result.json",
+          "sha256": "38e40907b35461f2d5280e0f53dfe67816ecea183271749d0e9755848d34309e"
+        }
+      ],
+      "intent_action_binding_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "label": "baseline",
+      "normalized_configuration_sha256": "12c3c7160be28e1192d4b07d20b7fa4445f22978971f83f292b3b4da1e13e981",
+      "normalized_native_trial_configuration_sha256": "76fa4636f0a5dcf1945315fe4701753da0d4d7a32cb2b55ec6b8dab1605c2b66",
+      "observed_setup_cache_sha256": "52f1b761a99cc8f05bb8cc8ef3faa228a925512841bffb266d857cf092308e68",
+      "phases": [
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "2970adce5560419985e0de756c338168",
+          "native_token_count_records": 1,
+          "phase": "planning",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 90
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 25678,
+            "model_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+            "native_prompt_bytes": 25678,
+            "native_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+            "planning_generation": {
+              "native_schema_projection": {
+                "bounds_annotation_omitted": true,
+                "canonical_schema_bytes": 4493,
+                "canonical_schema_sha256": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+                "canonical_validation_preserved": true,
+                "completion_authority": false,
+                "definitions_relocated": true,
+                "execution_authority": false,
+                "native_wire_schema_bytes": 4378,
+                "native_wire_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+                "projection_id": "canonical-prompt-goal-codex-generation-schema@1",
+                "proof_authority": false,
+                "publication_authority": false,
+                "scope_expansion_authority": false,
+                "shape_only": true,
+                "top_level_id_omitted": true
+              },
+              "observed_schema_bytes": 4378,
+              "observed_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+              "policy": {
+                "native_schema_requested": true,
+                "plan_admitted": false,
+                "response_schema_validated": true,
+                "schema": "codex-native-planning-json-schema@1"
+              }
+            },
+            "router_prompt_bytes": 25678,
+            "router_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+            "workspace_advisory_bytes": 0,
+            "workspace_advisory_sha256": null
+          },
+          "status": "provider_returned"
+        },
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "e136a60eaee2409d93354859657c1f2b",
+          "native_token_count_records": 7,
+          "phase": "coding",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 300
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 59128,
+            "model_prompt_sha256": "bac893f2f08a92f023a1ca9b556d37759d7ef5e0bfcc305bd58526f840435e10",
+            "native_prompt_bytes": 62346,
+            "native_prompt_sha256": "a0887be5b72c56aaae62aa71f4bad9d4bc53d6c5a7b19b54a2dc7be6cc332a1e",
+            "prompt_components_bytes": {
+              "doctor": 2109,
+              "public_instruction": 1226,
+              "semantic_transport": 54903,
+              "workspace": 890
+            },
+            "router_prompt_bytes": 58238,
+            "router_prompt_sha256": "f2fe717315bfc2deec1c20ffeb5daa6c0c71fd3447afa5c81452629863fe7885",
+            "transport_receipt": {
+              "freshness_checked": true,
+              "identifier_mappings": 19,
+              "identifier_occurrences": 50,
+              "provider_prompt_bytes": 54903,
+              "provider_prompt_sha256": "9299b9f7310a73904c5c4ccf76ab3850ac77f918c3f72496e723ea8f3e582967",
+              "schema": "supervisor-semantic-router-encoding@1",
+              "translation_cid": "bafkreihytplgk7jnrv36n2t3xc52xks2tybq6ow5w6ei6kw6kuqpdg6ms4",
+              "transport_schema": null
+            },
+            "workspace_advisory_bytes": 890,
+            "workspace_advisory_sha256": "4dbd9d0bad0002cdebd8b7742aa0677e0e3feb3a3d2d0dd79b0ea395b4924caf"
+          },
+          "status": "provider_returned"
+        }
+      ],
+      "planning_generation_schema_required": true,
+      "qualification_checks": [
+        {
+          "name": "supported_receipt_schema",
+          "passed": true
+        },
+        {
+          "name": "complete_single_trial_receipt",
+          "passed": true
+        },
+        {
+          "name": "one_full_supervisor_agent",
+          "passed": true
+        },
+        {
+          "name": "prepared_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "valid_frozen_controls",
+          "passed": true
+        },
+        {
+          "name": "observed_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "control_configuration_digest_matches",
+          "passed": true
+        },
+        {
+          "name": "preparation_controls_unchanged",
+          "passed": true
+        },
+        {
+          "name": "identity_matches_declaration_and_preparation",
+          "passed": true
+        },
+        {
+          "name": "original_task_inputs_unchanged",
+          "passed": true
+        },
+        {
+          "name": "intent_contract_not_selected",
+          "passed": true
+        },
+        {
+          "name": "direct_planning_retained",
+          "passed": true
+        },
+        {
+          "name": "explicit_expected_transport",
+          "passed": true
+        },
+        {
+          "name": "single_worker",
+          "passed": true
+        },
+        {
+          "name": "planning_and_indexing_inside_agent_time",
+          "passed": true
+        },
+        {
+          "name": "runtime_archive_bound",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_manifest_unchanged",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+          "passed": true
+        },
+        {
+          "name": "setup_cache_advice_completed_and_bound",
+          "passed": true
+        },
+        {
+          "name": "exactly_one_planning_and_one_coding_router_cli_session",
+          "passed": true
+        },
+        {
+          "name": "provider_identity_matches",
+          "passed": true
+        },
+        {
+          "name": "native_result_hash_bound",
+          "passed": true
+        },
+        {
+          "name": "exact_native_task_binding",
+          "passed": true
+        },
+        {
+          "name": "native_trial_controls_match_frozen_config",
+          "passed": true
+        },
+        {
+          "name": "native_observations_unchanged",
+          "passed": true
+        },
+        {
+          "name": "one_finished_native_job_trial",
+          "passed": true
+        },
+        {
+          "name": "complete_exact_coding_context_audit",
+          "passed": true
+        },
+        {
+          "name": "planning_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "planning_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_unchanged_by_transport",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_requested_and_validated",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_projection_preserves_native_validation",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_digests_bounded_and_bound",
+          "passed": true
+        },
+        {
+          "name": "native_plan_independently_qualified_after_generation",
+          "passed": true
+        },
+        {
+          "name": "coding_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "coding_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "coding_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "correct_coding_transport_receipt",
+          "passed": true
+        },
+        {
+          "name": "complete_appended_prompt_byte_accounting",
+          "passed": true
+        },
+        {
+          "name": "coding_hashes_match_reconstructed_inputs",
+          "passed": true
+        },
+        {
+          "name": "all_provider_attempts_receipted",
+          "passed": true
+        },
+        {
+          "name": "native_total_equals_agent_summary",
+          "passed": true
+        },
+        {
+          "name": "original_verifier_passed",
+          "passed": true
+        },
+        {
+          "name": "native_task_completed",
+          "passed": true
+        },
+        {
+          "name": "worker_and_supervisor_cleaned_up",
+          "passed": true
+        },
+        {
+          "name": "harbor_completed",
+          "passed": true
+        }
+      ],
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "row": {
+        "arm": "full",
+        "cli_version": "0.160.0",
+        "code_learning_observation": null,
+        "context_input_audit": {
+          "all_observed_coding_inputs_verified": true,
+          "any_model_input_verified": true,
+          "any_native_input_verified": true,
+          "coding_receipts_seen": 1,
+          "error_type": null,
+          "invocations": [
+            {
+              "invocation_id": "e136a60eaee2409d93354859657c1f2b",
+              "model_input_verified": true,
+              "native_input_verified": true,
+              "reason": "exact_context_and_input_digests_match",
+              "status": "verified_exact_model_input"
+            }
+          ],
+          "reason": "per_invocation_context_and_input_comparison",
+          "seconds": 2.486542068014387,
+          "status": "verified_all_observed_model_inputs",
+          "task_correctness_established": false,
+          "usable_coding_receipts": 1
+        },
+        "context_seconds": 3.3755827359855175,
+        "doctor_observation": {
+          "candidate_materializations_observed": null,
+          "local_contract_proof_status": null,
+          "observed_worker_receipts": null,
+          "provider_calls": 0,
+          "residual_context_prepared": true,
+          "residual_successors": 1,
+          "residual_work_proposals": 0,
+          "route": "model_router",
+          "selection_is_publication_or_completion_evidence": false,
+          "status": "residual",
+          "whole_program_proved": false
+        },
+        "durations_seconds": {
+          "agent_execution": 275.292047,
+          "agent_setup": 251.131829,
+          "environment_setup": 3.558495,
+          "verifier": 2.137393
+        },
+        "exception_type": null,
+        "indexed_context_observation": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context_observation": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "e46358a411cf743cceb46074614544c01d48d4ab2e0b2f52351d7bcb5a16eb60",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "invocations": [
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": null,
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 25678,
+              "model_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+              "native_prompt_bytes": 25678,
+              "native_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+              "router_prompt_bytes": 25678,
+              "router_prompt_sha256": "2201b0a29e5e2bc73d1b02e38db3f07b28fa45c662c6e549ed8ba02cf7535a41",
+              "semantic_translation": null,
+              "workspace_advisory_bytes": 0,
+              "workspace_advisory_sha256": null
+            },
+            "invocation_id": "2970adce5560419985e0de756c338168",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23711,
+              "output_tokens": 1621,
+              "total_tokens": 25332
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "planning",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 41.49101681797765,
+            "status": "provider_returned",
+            "timeout_seconds": 90,
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23711,
+              "output_tokens": 1621,
+              "total_tokens": 25332
+            }
+          },
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": {
+                "advisory_bytes": 2109,
+                "advisory_sha256": "daf05cd26ab9c6c230609549865d1272cd65786ed53be67240a5a70fe30afd79",
+                "candidate_only": true,
+                "context_cid": "baguqeera3pan3jwv5ftser3awf5tswtxynoctarhmvog3qvycjamoxwuyfbq",
+                "derived_runtime_admitted": false,
+                "extra_provider_calls": 0,
+                "native_capsule_id": "baguqeerarlc7vm32bb4nakfgbltjukqzr4ccrutrxyj3xecppfgrmfruk4ha",
+                "schema": "doctor-residual-router-context@1",
+                "source_freshness_verified": true
+              },
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 59128,
+              "model_prompt_sha256": "bac893f2f08a92f023a1ca9b556d37759d7ef5e0bfcc305bd58526f840435e10",
+              "native_prompt_bytes": 62346,
+              "native_prompt_sha256": "a0887be5b72c56aaae62aa71f4bad9d4bc53d6c5a7b19b54a2dc7be6cc332a1e",
+              "router_prompt_bytes": 58238,
+              "router_prompt_sha256": "f2fe717315bfc2deec1c20ffeb5daa6c0c71fd3447afa5c81452629863fe7885",
+              "semantic_translation": {
+                "freshness_checked": true,
+                "identifier_mappings": 19,
+                "identifier_occurrences": 50,
+                "native_prompt_bytes": 62346,
+                "provider_prompt_bytes": 54903,
+                "schema": "supervisor-semantic-router-encoding@1",
+                "translation_cid": "bafkreihytplgk7jnrv36n2t3xc52xks2tybq6ow5w6ei6kw6kuqpdg6ms4"
+              },
+              "workspace_advisory_bytes": 890,
+              "workspace_advisory_sha256": "4dbd9d0bad0002cdebd8b7742aa0677e0e3feb3a3d2d0dd79b0ea395b4924caf"
+            },
+            "invocation_id": "e136a60eaee2409d93354859657c1f2b",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 232192,
+              "input_tokens": 262771,
+              "output_tokens": 4275,
+              "total_tokens": 267046
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "coding",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 157.6311978700105,
+            "status": "provider_returned",
+            "timeout_seconds": 300,
+            "tokens": {
+              "cached_input_tokens": 232192,
+              "input_tokens": 262771,
+              "output_tokens": 4275,
+              "total_tokens": 267046
+            }
+          }
+        ],
+        "known_reported_cost_subtotal_usd": null,
+        "known_token_subtotals": {
+          "cached_input_tokens": 232192,
+          "input_tokens": 286482,
+          "output_tokens": 5896,
+          "total_tokens": 292378
+        },
+        "label": "Supervisor: full indexed context",
+        "model": "gpt-6.1-sol",
+        "native_completion_applicable": true,
+        "native_result_sha256": "18e4366abdfd7fa51c82cf7e627cd3d4b693b66b449f4e1ae1803b8b87ef4f73",
+        "native_task_completed": true,
+        "native_total_seconds": null,
+        "native_usage_complete_observed": true,
+        "observed_provider_invocations": 2,
+        "official_reward": 1.0,
+        "original_task_inputs_unchanged": true,
+        "outcome": "official_verifier_passed",
+        "post_publication_context": {
+          "budget_seconds": 582.5504069160088,
+          "embedding_accounting": {
+            "all_refreshes_receipted": false,
+            "known_subtotals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            },
+            "totals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            }
+          },
+          "embedding_calls": null,
+          "error_type": null,
+          "reason": null,
+          "refresh_seconds": 13.220467353996355,
+          "status": "incomplete",
+          "task_completion_is_context_refresh_evidence": false
+        },
+        "post_publication_proof_index": null,
+        "preparation_seconds": 0.7906782900099643,
+        "provider_calls": 2,
+        "reasoning_effort": "high",
+        "reported_cost_usd": null,
+        "retained_trial": true,
+        "runtime_archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+        "source_receipts": [
+          {
+            "bytes": 203394,
+            "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+            "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+          }
+        ],
+        "supervisor_error_type": null,
+        "supervisor_phases_seconds": {
+          "context_seconds": 3.3755827359855175,
+          "doctor_seconds": 1.5501954189967364,
+          "initial_context_seconds": 15.050754002993926,
+          "planning_seconds": 47.85004197800299,
+          "post_publication_refresh_seconds": 13.220467353996355,
+          "prepare_seconds": 0.7906782900099643
+        },
+        "supervisor_seconds": 273.9478834159672,
+        "task": "largest-eigenval",
+        "tokens": {
+          "cached_input_tokens": 232192,
+          "input_tokens": 286482,
+          "output_tokens": 5896,
+          "total_tokens": 292378
+        },
+        "trial": "largest-eigenval__4LQEkbK",
+        "uncached_input_tokens": 54290,
+        "unreceipted_provider_attempt": false
+      },
+      "setup_cache_selection": {
+        "manifest_sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74",
+        "policy": "source384-native-aarch64-dontneed@2",
+        "schema": "terminal-setup-cache-selection@1"
+      },
+      "source384_binding_sha256": "f61f4ed137abd66a26931bbcd1bc74421a5c1b8b2bb45a32d9783ebaa7c4198c",
+      "transport": "supervisor-semantic-router-input@1"
+    },
+    {
+      "admission_environment_sha256": "86b6f582ed469e3a408226a179f1217abce4228562cfe29e9c22375523551e6d",
+      "archive_manifest_sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74",
+      "archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+      "declared_controls": {
+        "configuration_unchanged": true,
+        "declared": {
+          "agent_controls_sha256": {
+            "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "max_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+            "override_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "configuration_sha256": "9f694df097caa823ff4f31b3e41147a81da1f8c43d13a79cede93c042f8eaba6",
+          "identity": {
+            "cli_version": "0.160.0",
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "task": "largest-eigenval"
+          },
+          "job_controls_sha256": {
+            "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "environment": "b363af0c7f21036235243e251d02203df8a4c5d8cca693c191f6d715d62b937b",
+            "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "retry": "e7aac3e26527d96bfa51b85bb79b812ebe2b91d58a66e9531b584df0ec567ea2",
+            "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+            "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+            "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "schema": "terminal-benchmark-declared-controls@1",
+          "sha256": "6564a9b3db998870de939512c3a7cf60a282915a340126601b9ea9f3c0072cca",
+          "task_input_sha256": {
+            "environment/Dockerfile": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+            "environment/src/eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+            "environment/src/eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+            "instruction.md": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "task.toml": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+            "tests/test.sh": "fc40868bee6cbcfd6e906b0522dda9a778064ea9876e64a40a377d66087a174b",
+            "tests/test_outputs.py": "cdc58e3aa0960dac2e12a12b1cfa4131237d697762a6a78ebf33f80d2eb168ce"
+          }
+        },
+        "reason": null,
+        "status": "observed"
+      },
+      "execution_budget_sha256": "98249b1060a58561fd7313ef8bf3db1f1d25a1f485ca21cbb2c58ca630777120",
+      "host_sources_sha256": "1d73cac0c3192a84775cf695166d2177bb7fc9510c1b9154444e948e9bd1cb2b",
+      "inputs": [
+        {
+          "bytes": 172812,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+          "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+        },
+        {
+          "bytes": 63414,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/preparation.json",
+          "sha256": "56aa7e002306439a70ae7073ac16802a1728b40c13cf0a9c31bc3f9cdfdd0dce"
+        },
+        {
+          "bytes": 3513,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/config.json",
+          "sha256": "d8067dcabc855d54f5615b52e19bf65905d89fada34dcd2c5319578703bbe61f"
+        },
+        {
+          "bytes": 6235827,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/bundle-02/manifest.json",
+          "sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74"
+        },
+        {
+          "bytes": 91319,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/jobs/supervisor-full-largest-eigenval/largest-eigenval__Tfd6HRP/result.json",
+          "sha256": "d0c52bdea04d058c0e7b948d2e622491c54e2f296ed13fcc9dcee377f6ac1b91"
+        },
+        {
+          "bytes": 1142,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/jobs/supervisor-full-largest-eigenval/result.json",
+          "sha256": "d663a3346a810237776ff488363dcd6b9d4f3f866846067735aa74257a8fbae4"
+        }
+      ],
+      "intent_action_binding_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "label": "compact",
+      "normalized_configuration_sha256": "12c3c7160be28e1192d4b07d20b7fa4445f22978971f83f292b3b4da1e13e981",
+      "normalized_native_trial_configuration_sha256": "76fa4636f0a5dcf1945315fe4701753da0d4d7a32cb2b55ec6b8dab1605c2b66",
+      "observed_setup_cache_sha256": "52f1b761a99cc8f05bb8cc8ef3faa228a925512841bffb266d857cf092308e68",
+      "phases": [
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "07ecc4834a2c41ab94a6ea3e5b6e59d1",
+          "native_token_count_records": 1,
+          "phase": "planning",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 90
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 25678,
+            "model_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+            "native_prompt_bytes": 25678,
+            "native_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+            "planning_generation": {
+              "native_schema_projection": {
+                "bounds_annotation_omitted": true,
+                "canonical_schema_bytes": 4493,
+                "canonical_schema_sha256": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+                "canonical_validation_preserved": true,
+                "completion_authority": false,
+                "definitions_relocated": true,
+                "execution_authority": false,
+                "native_wire_schema_bytes": 4378,
+                "native_wire_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+                "projection_id": "canonical-prompt-goal-codex-generation-schema@1",
+                "proof_authority": false,
+                "publication_authority": false,
+                "scope_expansion_authority": false,
+                "shape_only": true,
+                "top_level_id_omitted": true
+              },
+              "observed_schema_bytes": 4378,
+              "observed_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+              "policy": {
+                "native_schema_requested": true,
+                "plan_admitted": false,
+                "response_schema_validated": true,
+                "schema": "codex-native-planning-json-schema@1"
+              }
+            },
+            "router_prompt_bytes": 25678,
+            "router_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+            "workspace_advisory_bytes": 0,
+            "workspace_advisory_sha256": null
+          },
+          "status": "provider_returned"
+        },
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "37d5e9e7fc2b418e9e26ba04051b2653",
+          "native_token_count_records": 8,
+          "phase": "coding",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 300
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 57754,
+            "model_prompt_sha256": "cc689cd875de0fdd7133d29ab0ae8117a3f7f17755d1379534656c2cdd62d882",
+            "native_prompt_bytes": 62272,
+            "native_prompt_sha256": "04cd7d42c7fa4b72d08ed83b9ab0742aeff50b20702ff88a2cbcd322cef6312e",
+            "prompt_components_bytes": {
+              "doctor": 2109,
+              "public_instruction": 1226,
+              "semantic_transport": 53529,
+              "workspace": 890
+            },
+            "router_prompt_bytes": 56864,
+            "router_prompt_sha256": "9d1df8e96ccaa3b7a49709b186530842c65f7083a473dd2b2d85279a1f4a8165",
+            "transport_receipt": {
+              "freshness_checked": true,
+              "identifier_mappings": 19,
+              "identifier_occurrences": 50,
+              "provider_prompt_bytes": 53529,
+              "provider_prompt_sha256": "a308fd80e09a9af15aa48eeed600600c3000bb6f3841e545f369f41575bf52ed",
+              "schema": "supervisor-semantic-router-encoding@2",
+              "translation_cid": "bafkreig56o74xpi2p4p67krbgl5pzzup4pfbl27mgpr2bwantlbjdwhzoq",
+              "transport_schema": "supervisor-semantic-router-input@2"
+            },
+            "workspace_advisory_bytes": 890,
+            "workspace_advisory_sha256": "5a08199e0a41f6cac09e87bb968c8001975840fa576579289203aa8003853cec"
+          },
+          "status": "failed"
+        }
+      ],
+      "planning_generation_schema_required": true,
+      "qualification_checks": [
+        {
+          "name": "supported_receipt_schema",
+          "passed": true
+        },
+        {
+          "name": "complete_single_trial_receipt",
+          "passed": true
+        },
+        {
+          "name": "one_full_supervisor_agent",
+          "passed": true
+        },
+        {
+          "name": "prepared_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "valid_frozen_controls",
+          "passed": true
+        },
+        {
+          "name": "observed_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "control_configuration_digest_matches",
+          "passed": true
+        },
+        {
+          "name": "preparation_controls_unchanged",
+          "passed": true
+        },
+        {
+          "name": "identity_matches_declaration_and_preparation",
+          "passed": true
+        },
+        {
+          "name": "original_task_inputs_unchanged",
+          "passed": true
+        },
+        {
+          "name": "intent_contract_not_selected",
+          "passed": true
+        },
+        {
+          "name": "direct_planning_retained",
+          "passed": true
+        },
+        {
+          "name": "explicit_expected_transport",
+          "passed": true
+        },
+        {
+          "name": "single_worker",
+          "passed": true
+        },
+        {
+          "name": "planning_and_indexing_inside_agent_time",
+          "passed": true
+        },
+        {
+          "name": "runtime_archive_bound",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_manifest_unchanged",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+          "passed": true
+        },
+        {
+          "name": "setup_cache_advice_completed_and_bound",
+          "passed": true
+        },
+        {
+          "name": "exactly_one_planning_and_one_coding_router_cli_session",
+          "passed": true
+        },
+        {
+          "name": "provider_identity_matches",
+          "passed": true
+        },
+        {
+          "name": "native_result_hash_bound",
+          "passed": true
+        },
+        {
+          "name": "exact_native_task_binding",
+          "passed": true
+        },
+        {
+          "name": "native_trial_controls_match_frozen_config",
+          "passed": true
+        },
+        {
+          "name": "native_observations_unchanged",
+          "passed": true
+        },
+        {
+          "name": "one_finished_native_job_trial",
+          "passed": true
+        },
+        {
+          "name": "complete_exact_coding_context_audit",
+          "passed": true
+        },
+        {
+          "name": "planning_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "planning_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_unchanged_by_transport",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_requested_and_validated",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_projection_preserves_native_validation",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_digests_bounded_and_bound",
+          "passed": true
+        },
+        {
+          "name": "native_plan_independently_qualified_after_generation",
+          "passed": true
+        },
+        {
+          "name": "coding_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "coding_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "coding_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "correct_coding_transport_receipt",
+          "passed": true
+        },
+        {
+          "name": "complete_appended_prompt_byte_accounting",
+          "passed": true
+        },
+        {
+          "name": "coding_hashes_match_reconstructed_inputs",
+          "passed": true
+        },
+        {
+          "name": "all_provider_attempts_receipted",
+          "passed": true
+        },
+        {
+          "name": "native_total_equals_agent_summary",
+          "passed": true
+        },
+        {
+          "name": "original_verifier_passed",
+          "passed": false
+        },
+        {
+          "name": "native_task_completed",
+          "passed": false
+        },
+        {
+          "name": "worker_and_supervisor_cleaned_up",
+          "passed": true
+        },
+        {
+          "name": "harbor_completed",
+          "passed": true
+        }
+      ],
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "row": {
+        "arm": "full",
+        "cli_version": "0.160.0",
+        "code_learning_observation": null,
+        "context_input_audit": {
+          "all_observed_coding_inputs_verified": true,
+          "any_model_input_verified": true,
+          "any_native_input_verified": true,
+          "coding_receipts_seen": 1,
+          "error_type": null,
+          "invocations": [
+            {
+              "invocation_id": "37d5e9e7fc2b418e9e26ba04051b2653",
+              "model_input_verified": true,
+              "native_input_verified": true,
+              "reason": "exact_context_and_input_digests_match",
+              "status": "verified_exact_model_input"
+            }
+          ],
+          "reason": "per_invocation_context_and_input_comparison",
+          "seconds": 2.5792635650141165,
+          "status": "verified_all_observed_model_inputs",
+          "task_correctness_established": false,
+          "usable_coding_receipts": 1
+        },
+        "context_seconds": 3.299410782987252,
+        "doctor_observation": {
+          "candidate_materializations_observed": null,
+          "local_contract_proof_status": null,
+          "observed_worker_receipts": null,
+          "provider_calls": 0,
+          "residual_context_prepared": true,
+          "residual_successors": 1,
+          "residual_work_proposals": 0,
+          "route": "model_router",
+          "selection_is_publication_or_completion_evidence": false,
+          "status": "residual",
+          "whole_program_proved": false
+        },
+        "durations_seconds": {
+          "agent_execution": 845.978015,
+          "agent_setup": 255.865934,
+          "environment_setup": 2.994912,
+          "verifier": 1.961223
+        },
+        "exception_type": null,
+        "indexed_context_observation": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context_observation": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "768fe6b5287c24489df933a92f38aac6d3c1398d9996b27c87945b94fbb5e83c",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "invocations": [
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": null,
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 25678,
+              "model_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+              "native_prompt_bytes": 25678,
+              "native_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+              "router_prompt_bytes": 25678,
+              "router_prompt_sha256": "888109f0aeaf7ef614ebbed6ebf705f765e60236f6889c0daef85622050991ae",
+              "semantic_translation": null,
+              "workspace_advisory_bytes": 0,
+              "workspace_advisory_sha256": null
+            },
+            "invocation_id": "07ecc4834a2c41ab94a6ea3e5b6e59d1",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23681,
+              "output_tokens": 1665,
+              "total_tokens": 25346
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "planning",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 42.59893174096942,
+            "status": "provider_returned",
+            "timeout_seconds": 90,
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23681,
+              "output_tokens": 1665,
+              "total_tokens": 25346
+            }
+          },
+          {
+            "error_type": "SemanticTranslationError",
+            "input_observation": {
+              "doctor_residual_context": {
+                "advisory_bytes": 2109,
+                "advisory_sha256": "accee97d845c0831c3a20587cb68d23ee67cd2d6ee18e7ff7d389e857a58b463",
+                "candidate_only": true,
+                "context_cid": "baguqeerafcq2ukretmub4trikseq7lmvm73fvrwb6ake7qgjkdjl444jaroq",
+                "derived_runtime_admitted": false,
+                "extra_provider_calls": 0,
+                "native_capsule_id": "baguqeerav4tha3petmlgrn6baurwnmhps7dwrk7yegtiwk2y54bllaful4fq",
+                "schema": "doctor-residual-router-context@1",
+                "source_freshness_verified": true
+              },
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 57754,
+              "model_prompt_sha256": "cc689cd875de0fdd7133d29ab0ae8117a3f7f17755d1379534656c2cdd62d882",
+              "native_prompt_bytes": 62272,
+              "native_prompt_sha256": "04cd7d42c7fa4b72d08ed83b9ab0742aeff50b20702ff88a2cbcd322cef6312e",
+              "router_prompt_bytes": 56864,
+              "router_prompt_sha256": "9d1df8e96ccaa3b7a49709b186530842c65f7083a473dd2b2d85279a1f4a8165",
+              "semantic_translation": {
+                "freshness_checked": true,
+                "identifier_mappings": 19,
+                "identifier_occurrences": 50,
+                "native_prompt_bytes": 62272,
+                "provider_prompt_bytes": 53529,
+                "schema": "supervisor-semantic-router-encoding@2",
+                "translation_cid": "bafkreig56o74xpi2p4p67krbgl5pzzup4pfbl27mgpr2bwantlbjdwhzoq"
+              },
+              "workspace_advisory_bytes": 890,
+              "workspace_advisory_sha256": "5a08199e0a41f6cac09e87bb968c8001975840fa576579289203aa8003853cec"
+            },
+            "invocation_id": "37d5e9e7fc2b418e9e26ba04051b2653",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 272128,
+              "input_tokens": 304921,
+              "output_tokens": 5495,
+              "total_tokens": 310416
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "coding",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 174.4419019940542,
+            "status": "failed",
+            "timeout_seconds": 300,
+            "tokens": {
+              "cached_input_tokens": 272128,
+              "input_tokens": 304921,
+              "output_tokens": 5495,
+              "total_tokens": 310416
+            }
+          }
+        ],
+        "known_reported_cost_subtotal_usd": null,
+        "known_token_subtotals": {
+          "cached_input_tokens": 272128,
+          "input_tokens": 328602,
+          "output_tokens": 7160,
+          "total_tokens": 335762
+        },
+        "label": "Supervisor: full indexed context",
+        "model": "gpt-6.1-sol",
+        "native_completion_applicable": true,
+        "native_result_sha256": "d0c52bdea04d058c0e7b948d2e622491c54e2f296ed13fcc9dcee377f6ac1b91",
+        "native_task_completed": false,
+        "native_total_seconds": null,
+        "native_usage_complete_observed": true,
+        "observed_provider_invocations": 2,
+        "official_reward": 0.0,
+        "original_task_inputs_unchanged": true,
+        "outcome": "official_verifier_not_passed",
+        "post_publication_context": null,
+        "post_publication_proof_index": null,
+        "preparation_seconds": 0.7402828329941258,
+        "provider_calls": 2,
+        "reasoning_effort": "high",
+        "reported_cost_usd": null,
+        "retained_trial": true,
+        "runtime_archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+        "source_receipts": [
+          {
+            "bytes": 172812,
+            "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+            "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+          }
+        ],
+        "supervisor_error_type": "TimeoutError",
+        "supervisor_phases_seconds": {
+          "context_seconds": 3.299410782987252,
+          "doctor_seconds": 1.5476646659662947,
+          "initial_context_seconds": 15.269844320951961,
+          "planning_seconds": 49.02600266697118,
+          "post_publication_refresh_seconds": null,
+          "prepare_seconds": 0.7402828329941258
+        },
+        "supervisor_seconds": 844.6143916610163,
+        "task": "largest-eigenval",
+        "tokens": {
+          "cached_input_tokens": 272128,
+          "input_tokens": 328602,
+          "output_tokens": 7160,
+          "total_tokens": 335762
+        },
+        "trial": "largest-eigenval__Tfd6HRP",
+        "uncached_input_tokens": 56474,
+        "unreceipted_provider_attempt": false
+      },
+      "setup_cache_selection": {
+        "manifest_sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74",
+        "policy": "source384-native-aarch64-dontneed@2",
+        "schema": "terminal-setup-cache-selection@1"
+      },
+      "source384_binding_sha256": "f61f4ed137abd66a26931bbcd1bc74421a5c1b8b2bb45a32d9783ebaa7c4198c",
+      "transport": "supervisor-semantic-router-input@2"
+    }
+  ],
+  "benchmark_advantage_claimed": false,
+  "cached_input_already_in_input_total": true,
+  "comparison": {
+    "declared_controls_comparison": {
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+      "differences": [],
+      "matches": true,
+      "status": "matched"
+    },
+    "matched_pair_qualified": false,
+    "observed_baseline_minus_compact_tokens": {
+      "cached_input_tokens": -39936,
+      "input_tokens": -42120,
+      "output_tokens": -1264,
+      "total_tokens": -43384
+    },
+    "qualification_checks": [
+      {
+        "name": "same_declared_task_job_agent_controls",
+        "passed": true
+      },
+      {
+        "name": "same_normalized_configuration_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_normalized_native_trial_configuration_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_archive_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_archive_manifest_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_host_sources_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_resource_profile",
+        "passed": true
+      },
+      {
+        "name": "same_source384_binding_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_intent_action_binding_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_setup_cache_selection",
+        "passed": true
+      },
+      {
+        "name": "same_observed_setup_cache_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_execution_budget_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_admission_environment_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_phase_provider_controls",
+        "passed": true
+      },
+      {
+        "name": "same_planning_generation_requirement",
+        "passed": true
+      },
+      {
+        "name": "same_requested_and_observed_planning_generation_schema",
+        "passed": true
+      },
+      {
+        "name": "distinct_native_trials",
+        "passed": true
+      }
+    ],
+    "qualified_pair_observed_total_token_reduction_percent": null,
+    "repeatable_or_causal_reduction_established": false
+  },
+  "limitations": [
+    "One matched pair is descriptive; it does not establish a repeatable or causal saving percentage.",
+    "Internal model turns, output length, tool usage and stochastic choices can differ despite matching declared controls.",
+    "Initial model input hashes exclude provider harness/system context and later internal history; native cumulative tokens include the observed complete sessions.",
+    "The existing context audit reconstructs coding inputs; planning prompt consistency is checked from receipts without an independent planning reconstruction.",
+    "Matching setup advice and selected asset inventories does not prove equal kernel or provider cache occupancy.",
+    "Recorded native controls are checked against frozen configurations; this producer does not independently prove runtime enforcement.",
+    "Cached input is already counted in input tokens; cache/reasoning subcategories are not added again.",
+    "Failed and interrupted attempts remain visible; incomplete totals are unknown and observed counters are retained as subtotals.",
+    "No transcript, model thought, task source body, solution or hidden verifier body is read; only bounded metadata and comparator/planning generation implementation sources are accessed."
+  ],
+  "new_provider_calls_by_accounting": 0,
+  "planning_generation_source_bindings": [
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/ipfs_accelerate_py/llm_router.py",
+      "relative_path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 6186,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 25594,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e9373e4c0f10ac8a856a6d258ba4023dba960b9e20935bea86040d48f1a81238"
+    },
+    {
+      "bytes": 13799,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 115963,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    }
+  ],
+  "producer_sha256": "e3cde58b7e8c98962582c98adcbd988cc570f65b1e7dd75bbacf12387dcfd1ac",
+  "provider_cost_calculated": false,
+  "raw_model_data_read": false,
+  "recorded_at_utc": "2026-10-06T13:58:34.299027+00:00",
+  "reused_comparison_sources": [
+    {
+      "bytes": 11715,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "cb9428caf9b2997759d8a816c4dad46a63ac2abc971281c1d02f4fc428363531"
+    },
+    {
+      "bytes": 38444,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-planning-schema-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "0494f2c7bdf7f223dd7748582d517dc6725d093fdaad24d15fb36c06721c62c8"
+    }
+  ],
+  "schema": "terminal-planning-retained-transport-pair-accounting@1",
+  "unknown_fields_are_zero": false
+}

@@ -1,0 +1,420 @@
+{
+  "archive_sha256": "8157d05c180f902305b5a8f9c151493a86a660bdcc60292c8407bcc9d001d8ef",
+  "benchmark_executed": false,
+  "bindings": [
+    {
+      "bytes": 6235827,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/bundle-02/manifest.json",
+      "sha256": "74096fe3a123751a3dcab355380e028c28b65f07fc03eb5aea02b70ee8b0df74"
+    },
+    {
+      "bytes": 3439,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/config.json",
+      "sha256": "ce57b1167f8fa062e8eed0369dcfe505380c48fb2c5e73182a5fb22e8c7e288c"
+    },
+    {
+      "bytes": 63346,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/preparation.json",
+      "sha256": "b5599a07b9d37749bc7564483101fccd30072a1109e7cd5272d0d3c2b3eef7b3"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02-prepare-command.json",
+      "sha256": "31998220c33ee48b294b07e3b150fbd7d8754704ac4207cdba1242c23400c747"
+    },
+    {
+      "bytes": 3513,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/config.json",
+      "sha256": "d8067dcabc855d54f5615b52e19bf65905d89fada34dcd2c5319578703bbe61f"
+    },
+    {
+      "bytes": 63414,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/preparation.json",
+      "sha256": "56aa7e002306439a70ae7073ac16802a1728b40c13cf0a9c31bc3f9cdfdd0dce"
+    },
+    {
+      "bytes": 2092,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02-prepare-command.json",
+      "sha256": "9cd68a702688a7edbd582232117b632cfec25815911365559568787fffbe7c71"
+    }
+  ],
+  "checks": [
+    {
+      "check": "runtime_exact_source_head",
+      "passed": true
+    },
+    {
+      "check": "runtime_clean",
+      "passed": true
+    },
+    {
+      "check": "archive_digest",
+      "passed": true
+    },
+    {
+      "check": "archive_schema",
+      "passed": true
+    },
+    {
+      "check": "archive_cli_pin",
+      "passed": true
+    },
+    {
+      "check": "native_schema_dependencies",
+      "passed": true
+    },
+    {
+      "check": "generic_source384",
+      "passed": true
+    },
+    {
+      "check": "manifest_unique_paths",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:ipfs_accelerate_py/llm_router.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "archive_current_source:benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "passed": true
+    },
+    {
+      "check": "baseline:preparation_hashseed",
+      "passed": true
+    },
+    {
+      "check": "baseline:preparation_current_checkout",
+      "passed": true
+    },
+    {
+      "check": "baseline:prepared",
+      "passed": true
+    },
+    {
+      "check": "baseline:preparation_schema",
+      "passed": true
+    },
+    {
+      "check": "baseline:config_digest",
+      "passed": true
+    },
+    {
+      "check": "baseline:archive_digest",
+      "passed": true
+    },
+    {
+      "check": "baseline:manifest_digest",
+      "passed": true
+    },
+    {
+      "check": "baseline:archive_paths",
+      "passed": true
+    },
+    {
+      "check": "baseline:direct_planning",
+      "passed": true
+    },
+    {
+      "check": "baseline:transport",
+      "passed": true
+    },
+    {
+      "check": "baseline:full",
+      "passed": true
+    },
+    {
+      "check": "baseline:task",
+      "passed": true
+    },
+    {
+      "check": "baseline:provider",
+      "passed": true
+    },
+    {
+      "check": "baseline:no_provider_calls_in_preparation",
+      "passed": true
+    },
+    {
+      "check": "baseline:single_attempt",
+      "passed": true
+    },
+    {
+      "check": "baseline:same_budget_profile",
+      "passed": true
+    },
+    {
+      "check": "baseline:declared_resources",
+      "passed": true
+    },
+    {
+      "check": "baseline:source384",
+      "passed": true
+    },
+    {
+      "check": "baseline:cache_selection",
+      "passed": true
+    },
+    {
+      "check": "baseline:host_sources",
+      "passed": true
+    },
+    {
+      "check": "baseline:frozen_controls_schema",
+      "passed": true
+    },
+    {
+      "check": "baseline:frozen_controls_digest",
+      "passed": true
+    },
+    {
+      "check": "baseline:frozen_config_digest",
+      "passed": true
+    },
+    {
+      "check": "baseline:frozen_task_hashes",
+      "passed": true
+    },
+    {
+      "check": "candidate:preparation_hashseed",
+      "passed": true
+    },
+    {
+      "check": "candidate:preparation_current_checkout",
+      "passed": true
+    },
+    {
+      "check": "candidate:prepared",
+      "passed": true
+    },
+    {
+      "check": "candidate:preparation_schema",
+      "passed": true
+    },
+    {
+      "check": "candidate:config_digest",
+      "passed": true
+    },
+    {
+      "check": "candidate:archive_digest",
+      "passed": true
+    },
+    {
+      "check": "candidate:manifest_digest",
+      "passed": true
+    },
+    {
+      "check": "candidate:archive_paths",
+      "passed": true
+    },
+    {
+      "check": "candidate:direct_planning",
+      "passed": true
+    },
+    {
+      "check": "candidate:transport",
+      "passed": true
+    },
+    {
+      "check": "candidate:full",
+      "passed": true
+    },
+    {
+      "check": "candidate:task",
+      "passed": true
+    },
+    {
+      "check": "candidate:provider",
+      "passed": true
+    },
+    {
+      "check": "candidate:no_provider_calls_in_preparation",
+      "passed": true
+    },
+    {
+      "check": "candidate:single_attempt",
+      "passed": true
+    },
+    {
+      "check": "candidate:same_budget_profile",
+      "passed": true
+    },
+    {
+      "check": "candidate:declared_resources",
+      "passed": true
+    },
+    {
+      "check": "candidate:source384",
+      "passed": true
+    },
+    {
+      "check": "candidate:cache_selection",
+      "passed": true
+    },
+    {
+      "check": "candidate:host_sources",
+      "passed": true
+    },
+    {
+      "check": "candidate:frozen_controls_schema",
+      "passed": true
+    },
+    {
+      "check": "candidate:frozen_controls_digest",
+      "passed": true
+    },
+    {
+      "check": "candidate:frozen_config_digest",
+      "passed": true
+    },
+    {
+      "check": "candidate:frozen_task_hashes",
+      "passed": true
+    },
+    {
+      "check": "only_output_identity_and_semantic_transport_differ",
+      "passed": true
+    },
+    {
+      "check": "frozen_common_controls_equal:identity",
+      "passed": true
+    },
+    {
+      "check": "frozen_common_controls_equal:task_input_sha256",
+      "passed": true
+    },
+    {
+      "check": "frozen_common_controls_equal:job_controls_sha256",
+      "passed": true
+    },
+    {
+      "check": "frozen_common_controls_equal:agent_controls_sha256",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:archive",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:archive_sha256",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:manifest_sha256",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:source384",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:setup_cache_selection",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:host_source_sha256",
+      "passed": true
+    },
+    {
+      "check": "preparation_equal:task_input_sha256",
+      "passed": true
+    }
+  ],
+  "configuration_difference_fields": [
+    "agents[0].kwargs.semantic_transport_schema",
+    "jobs_dir"
+  ],
+  "container_executed": false,
+  "created_at_utc": "2026-10-06T13:28:35.238299+00:00",
+  "expected_source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb",
+  "failure_count": 0,
+  "limits": [
+    "Metadata controls do not establish runtime enforcement, successful installation or completed sessions.",
+    "Public task body, hidden evaluation, solutions and model thoughts are not read by this audit.",
+    "Native outcomes, accounting completeness and cleanup require post-execution receipts."
+  ],
+  "native_routes": {
+    "grok": "Source hooks and validators packaged; Grok route is not selected or executed in this pair.",
+    "selected": "codex_cli gpt-6.1-sol high CLI0.160.0"
+  },
+  "new_provider_calls": 0,
+  "normalization": [
+    "jobs_dir output identity",
+    "agents[0].kwargs.semantic_transport_schema explicit treatment"
+  ],
+  "passed": true,
+  "planning_schema_post_run_gate": [
+    "One planning receipt per arm must show codex-native-planning-json-schema@1 with native_schema_requested and response_schema_validated true.",
+    "Provider-native observation schema digest and byte count must match the requested wire schema.",
+    "Canonical plan scope, graph/effect constraints, native admission and original task outcomes remain independent gates."
+  ],
+  "producer": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/validate_prepared_pair_02.py",
+    "sha256": "a4f3de11f707745af769ec75aaf89208d83b1ff540fe852ab5acb3e835aca8c9"
+  },
+  "retry_serialization_normalized": false,
+  "reviewer": "/root/matched_transport_preflight",
+  "runtime_source_head": "82671e6c8411875cb9919e3a71b07831548c0aeb",
+  "schema": "terminal-retained-planning-prepared-pair-independent-audit@2",
+  "unexpected_difference_fields": []
+}
