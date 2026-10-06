@@ -1303,6 +1303,16 @@ steps; the initial coding-input transport does not control native CLI history.
 
 ## Grok planning, resource admission and lifecycle recovery (2026-10-06)
 
+The later [worker-custody qualification](evidence/grok-worker-custody-20261006/README.md)
+reproduces and repairs descendant cleanup inside the isolated router worker,
+requires rebuilt capability `@2` archives for every supervisor profile, and
+retains bounded failure-gate observations. Fresh full-indexed trial12 still
+timed out with reward 0.0, but its callback settled, the task became blocked,
+and START/STOP/runtime closure completed with no remaining tracked processes.
+Planning used 22,072 observed native tokens; coding and aggregate usage remain
+unknown. The evidence also records concrete proposed data-contract and
+package-aware symbolic coverage extensions, without claiming they are implemented.
+
 The [Grok recovery evidence](evidence/grok-recovery-20261006/README.md) records
 canonical structured planning through `llm_router`, a signed single-task schema
 constraint and explicit XML, NDJSON and calendar output labels. Native Grok
