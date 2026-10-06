@@ -14,6 +14,7 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding import terminal_coding_reply_policy as policy
 from benchmarks.agent_supervisor.container_coding.benchmark_provider_profile import CLI_VERSION, GROK_PROFILE
 from benchmarks.agent_supervisor.container_coding.benchmark_controls import build_controls
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 
 
 MODE = policy.ORDINARY_CODING_REPLY_MODE
@@ -80,8 +81,8 @@ def test_unqualified_route_refused_before_any_preparation_reads(tmp_path, option
 
 def test_adapter_rejects_missing_archive_support_before_upload(tmp_path):
     from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import FullSupervisorAgent
-    (tmp_path / "manifest.json").write_text(json.dumps({"archive_sha256": "a" * 64,
-        "codex_version": CLI_VERSION, "files": [], "learned_requirements": []}))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "a" * 64,
+        "codex_version": CLI_VERSION, "files": [], "learned_requirements": []})))
     agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=benchmark.MODEL,
         runtime_archive=str(tmp_path), arm="full", coding_reply_mode=MODE)
     environment = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock(), download_file=AsyncMock())
@@ -96,7 +97,7 @@ def test_adapter_forwards_mode_and_keeps_planning(tmp_path, monkeypatch):
     from harbor.models.agent.context import AgentContext
     from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
     manifest = {**inventory(), "archive_sha256": "a" * 64, "codex_version": CLI_VERSION, "learned_requirements": []}
-    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    (tmp_path / "manifest.json").write_text(json.dumps(_supervisor_manifest(manifest)))
     monkeypatch.setattr(adapter, "capture_public_inputs", AsyncMock(return_value={"status": "captured"}))
     monkeypatch.setattr(adapter, "export_public_outputs", AsyncMock(return_value={"status": "captured"}))
     calls = []
