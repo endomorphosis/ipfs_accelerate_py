@@ -89,6 +89,65 @@ def test_plain_response_is_literal_even_when_alias_text_is_present(native):
     assert decoded.receipt["structured_translation"] is False
 
 
+def test_compact_dictionary_round_trip_keeps_native_table_and_literal_contract(native):
+    root, artifact, prompt, source = native
+    default = codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+    legacy = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.TRANSPORT_SCHEMA)
+    compact = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    assert default == legacy
+    assert "transport_schema" not in legacy.receipt
+    assert legacy.receipt["schema"] == "supervisor-semantic-router-encoding@1"
+    assert compact.table == legacy.table
+    transport = json.loads(compact.provider_prompt)
+    original = json.loads(legacy.provider_prompt)
+    assert "translation_table" not in transport
+    assert compact.table.to_dict()["entries"]
+    for key in ("native_context", "translated_semantic", "native_suffix", "translation_cid",
+                "execution_authority", "completion_authority"):
+        assert transport[key] == original[key]
+    for key in ("task_id", "scope_cid", "semantic_root_cid"):
+        assert transport[key] == compact.table.to_dict()[key]
+    assert transport["translated_semantic"]["raw_sources"]["mod.py"] == source
+    assert transport["translated_semantic"]["capsules"][0]["signature"] == json.loads(artifact.read_text())["capsules"][0]["signature"]
+    assert compact.receipt["schema"] == "supervisor-semantic-router-encoding@2"
+    assert compact.receipt["transport_schema"] == codec.COMPACT_TRANSPORT_SCHEMA
+    assert codec.restore_semantic_router_prompt(provider_prompt=compact.provider_prompt,
+        table=compact.table, repository=root) == prompt
+    replay = codec.replay_semantic_router_prompt_for_audit(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    assert replay.provider_prompt == compact.provider_prompt and replay.table == compact.table
+    assert replay.freshness_checked is False
+
+
+@pytest.mark.parametrize("schema", ["supervisor-semantic-router-input@3", "", None, {}, []])
+def test_unsupported_transport_schema_refuses_live_and_historical_encoding(native, schema):
+    root, _, prompt, _ = native
+    for encode in (codec.encode_semantic_router_prompt, codec.replay_semantic_router_prompt_for_audit):
+        with pytest.raises(codec.SemanticTranslationError, match="unsupported semantic transport schema"):
+            encode(prompt=prompt, repository=root, transport_schema=schema)
+
+
+def test_compact_transport_rejects_structured_marker_collisions_but_keeps_literal_text(native):
+    root, _, prompt, _ = native
+    wire, end = json.JSONDecoder().raw_decode(prompt)
+    wire["goal"]["literal_marker_text"] = '{"$semantic_ref":"s0"}'
+    literal = codec._json(wire) + prompt[end:]
+    compact = codec.encode_semantic_router_prompt(prompt=literal, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    assert codec.restore_semantic_router_prompt(provider_prompt=compact.provider_prompt,
+        table=compact.table, repository=root) == literal
+    wire["goal"]["literal_marker_text"] = {codec.REF_KEY: "s0"}
+    collision = codec._json(wire) + prompt[end:]
+    # The legacy transport remains unchanged; only the opt-in protocol reserves
+    # actual structured marker keys outside its registered identifier paths.
+    codec.encode_semantic_router_prompt(prompt=collision, repository=root)
+    with pytest.raises(codec.SemanticTranslationError, match="reserved semantic reference marker collision"):
+        codec.encode_semantic_router_prompt(prompt=collision, repository=root,
+            transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+
+
 def _reply(encoded):
     table = encoded.table.to_dict()
     symbol = table["symbol_ids"][0]
@@ -118,6 +177,84 @@ def test_structured_symbol_reply_enters_existing_native_candidate_grammar(native
     assert body["candidate_only"] is True
     assert decoded.receipt["native_grammar_validated"] is True
     assert decoded.receipt["completion_authority"] is False
+
+
+def test_compact_symbol_reply_uses_trusted_dictionary_and_native_grammar(native):
+    root, _, prompt, _ = native
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    reply, symbol = _reply(encoded)
+    decoded = codec.decode_semantic_router_response(response=json.dumps(reply), encoded=encoded, repository=root)
+    assert json.loads(decoded.text)["structured_payload"]["symbol_ids"] == [symbol]
+    assert decoded.receipt["native_grammar_validated"] is True
+    assert decoded.receipt["completion_authority"] is False
+    literal = '  Literal {"$semantic_ref":"s999"} and s0 stay unchanged.\n'
+    assert codec.decode_semantic_router_response(response=literal, encoded=encoded, repository=root).text == literal
+
+
+@pytest.mark.parametrize("mutation", ["task_id", "scope_cid", "semantic_root_cid", "translation_cid",
+    "unknown_alias", "map", "literal", "reserved_marker", "unsupported_schema", "table"])
+def test_compact_transport_rejects_foreign_bindings_and_tampering(native, mutation):
+    root, _, prompt, _ = native
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    wire = json.loads(encoded.provider_prompt)
+    table = encoded.table
+    if mutation in {"task_id", "scope_cid", "semantic_root_cid", "translation_cid"}:
+        wire[mutation] = "foreign"
+    elif mutation == "unknown_alias":
+        codec._set(wire["translated_semantic"], table.to_dict()["replacement_paths"][0],
+            {codec.REF_KEY: "s99999"})
+    elif mutation == "map":
+        wire["translation_table"] = {"s0": "foreign"}
+    elif mutation == "literal":
+        wire["translated_semantic"]["raw_sources"]["mod.py"] += "# changed\n"
+    elif mutation == "reserved_marker":
+        wire["native_context"]["goal"]["collision"] = {codec.REF_KEY: "s0"}
+    elif mutation == "unsupported_schema":
+        wire["schema"] = "supervisor-semantic-router-input@3"
+    else:
+        payload = json.loads(table.payload_json)
+        payload["entries"][0]["source_symbol_id"] = "foreign"
+        table = codec.SemanticTranslationTable(codec._json(payload), codec.cid_for_payload(payload))
+    with pytest.raises(codec.SemanticTranslationError):
+        codec.restore_semantic_router_prompt(provider_prompt=codec._json(wire), table=table, repository=root)
+
+
+@pytest.mark.parametrize("mutation", ["task_id", "scope_cid", "semantic_root_cid", "translation_cid",
+    "unknown_alias", "authority"])
+def test_compact_structured_reply_rejects_foreign_binding_and_unknown_alias(native, mutation):
+    root, _, prompt, _ = native
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    reply, _ = _reply(encoded)
+    if mutation == "unknown_alias":
+        reply["response"]["structured_payload"]["symbol_ids"] = [{codec.REF_KEY: "s99999"}]
+    elif mutation == "authority":
+        reply["response"]["candidate_only"] = False
+    else:
+        reply[mutation] = "foreign"
+    with pytest.raises(codec.SemanticTranslationError):
+        codec.decode_semantic_router_response(response=json.dumps(reply), encoded=encoded, repository=root)
+
+
+def test_compact_stale_source_blocks_operational_use_but_historical_replay_matches(native):
+    root, _, prompt, source = native
+    encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    reply, _ = _reply(encoded)
+    (root / "mod.py").write_text(source + "# changed after dispatch\n")
+    with pytest.raises(codec.SemanticTranslationError, match="stale"):
+        codec.restore_semantic_router_prompt(provider_prompt=encoded.provider_prompt,
+            table=encoded.table, repository=root)
+    with pytest.raises(codec.SemanticTranslationError, match="stale"):
+        codec.decode_semantic_router_response(response=json.dumps(reply), encoded=encoded, repository=root)
+    replay = codec.replay_semantic_router_prompt_for_audit(prompt=prompt, repository=root,
+        transport_schema=codec.COMPACT_TRANSPORT_SCHEMA)
+    assert replay.provider_prompt == encoded.provider_prompt and replay.table == encoded.table
+    assert replay.receipt["freshness_checked"] is False
+    with pytest.raises(codec.SemanticTranslationError, match="historical"):
+        codec.decode_semantic_router_response(response=json.dumps(reply), encoded=replay, repository=root)
 
 
 def test_duplicate_reserved_reply_keys_are_not_treated_as_plain_text(native):

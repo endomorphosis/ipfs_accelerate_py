@@ -27,6 +27,10 @@ from .native_codex_baseline import MODEL, CLI_VERSION
 from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
+from .terminal_semantic_transport_policy import (
+    DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema,
+    semantic_transport_selection, require_semantic_transport_archive,
+)
 
 
 def measured_usage(report: dict) -> dict:
@@ -257,11 +261,13 @@ class FullSupervisorAgent(BaseAgent):
                  model_revision="", disable_intent_autoencoder: bool = False,
                  intent_requirement_contract: dict | None = None, resource_profile=None,
                  setup_cache_selection: dict | None = None, task_profile: dict | None = None,
-                 provider_profile: str | None = None, **kwargs):
+                 provider_profile: str | None = None,
+                 semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+        self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
@@ -307,6 +313,8 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        require_semantic_transport_archive(manifest,
+            getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -336,6 +344,9 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        transport = validate_semantic_transport_schema(
+            getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=self.arm)
+        require_semantic_transport_archive(manifest, transport)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         public = self.logs_dir / "instruction.md"
@@ -354,6 +365,8 @@ class FullSupervisorAgent(BaseAgent):
         provider_profile = getattr(self, "provider_profile", None)
         if provider_profile is not None:
             argv += ["--provider-profile", provider_profile]
+        if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
+            argv += ["--semantic-transport-schema", transport]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -384,6 +397,7 @@ class FullSupervisorAgent(BaseAgent):
         argv += source384_arguments
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
                             "provider_profile": resolve_provider_profile(provider_profile),
+                            **semantic_transport_selection(transport),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,

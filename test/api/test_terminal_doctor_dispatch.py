@@ -114,9 +114,12 @@ def test_publication_refuses_unsafe_directory_or_rebound_handoff(tmp_path, kind)
     assert not (tmp_path / 'doctor-handoffs').exists()
 
 
-@pytest.mark.parametrize('arm,route,learned', [('full', 'doctor_candidate', False),
-    ('full', 'model_router', False), ('no-index', 'model_router', False), ('full', 'model_router', True)])
-def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path, monkeypatch, arm, route, learned):
+@pytest.mark.parametrize('arm,route,learned,transport', [('full', 'doctor_candidate', False, 'supervisor-semantic-router-input@1'),
+    ('full', 'model_router', False, 'supervisor-semantic-router-input@1'),
+    ('no-index', 'model_router', False, 'supervisor-semantic-router-input@1'),
+    ('full', 'model_router', True, 'supervisor-semantic-router-input@1'),
+    ('full', 'model_router', False, 'supervisor-semantic-router-input@2')])
+def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path, monkeypatch, arm, route, learned, transport):
     root = tmp_path / 'deployment'
     state = root / 'state/trial'
     model = root / 'models' / ('a' * 40)
@@ -151,7 +154,11 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         events.append('initial_context')
         return {'planning_context': 'owner-verified'}
     monkeypatch.setattr(driver.preparation, 'initial_context', initial_context)
-    monkeypatch.setattr(driver.preparation, 'plan', lambda **_: {'qualified': True})
+    def plan(**kwargs):
+        events.append('planning')
+        assert callable(kwargs['provider_callable'])
+        return {'qualified': True}
+    monkeypatch.setattr(driver.preparation, 'plan', plan)
     def context(**_):
         events.append('context')
         return {'context_bundle': authored_bundle}
@@ -190,6 +197,9 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         argv = shlex.split(kwargs['implementation_command'])
         assert ('--doctor-candidate-artifact' in argv) == (route == 'doctor_candidate')
         assert ('--semantic-repository' in argv) == (arm == 'full' and route == 'model_router')
+        assert ('--semantic-transport-schema' in argv) == (transport == 'supervisor-semantic-router-input@2')
+        if '--semantic-transport-schema' in argv:
+            assert argv[argv.index('--semantic-transport-schema') + 1] == transport
         assert kwargs['context_bundle'] is expected_bundle
         assert kwargs['published_retrieval_policy'] == expected_policy
         assert kwargs['published_learned_artifacts'] == expected_artifacts
@@ -200,12 +210,15 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
     monkeypatch.setattr(driver, '_native_diagnostics', lambda _: {})
     monkeypatch.setattr(driver, '_final_context_audit', lambda *_args, **_kwargs: None)
     result = driver.run(instruction=tmp_path / 'instruction', state=state, arm=arm,
-        model_snapshot=alias if learned else None, model_revision=model.name if learned else '')
+        model_snapshot=alias if learned else None, model_revision=model.name if learned else '',
+        semantic_transport_schema=transport)
     assert result['task_completed'], result
     assert result['implementation_route'] == route
     assert result['provider_invocations'] == []
     assert ('unreceipted_provider_attempt' in result) == (route == 'model_router')
     assert events.count('retrieval_options') == 1
+    assert events.count('planning') == 1
+    assert result.get('semantic_transport_schema', 'supervisor-semantic-router-input@1') == transport
     assert events.index('owner') < events.index('retrieval_options') < events.index('runtime')
     if arm == 'full':
         assert events.index('initial_context') < events.index('context')

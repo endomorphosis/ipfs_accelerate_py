@@ -175,9 +175,17 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     if translated:
         translation = result["semantic_translation"]
         if (not isinstance(translation, dict)
-                or translation.get("schema") != "supervisor-semantic-router-encoding@1"
+                or translation.get("schema") not in {"supervisor-semantic-router-encoding@1",
+                                                     "supervisor-semantic-router-encoding@2"}
                 or translation.get("freshness_checked") is not True):
             raise ValueError("invalid semantic translation receipt")
+        if (translation["schema"] == "supervisor-semantic-router-encoding@2"
+                and translation.get("transport_schema") != "supervisor-semantic-router-input@2"):
+            raise ValueError("invalid semantic transport version")
+        if (translation["schema"] == "supervisor-semantic-router-encoding@1"
+                and translation.get("transport_schema", "supervisor-semantic-router-input@1")
+                != "supervisor-semantic-router-input@1"):
+            raise ValueError("invalid semantic transport version")
         _identity(translation["translation_cid"])
     elif instruction is None and (router_bytes != result["native_prompt_bytes"]
           or result.get("router_prompt_sha256", result["native_prompt_sha256"]) != result["native_prompt_sha256"]):
@@ -235,10 +243,13 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
         if repository is None:
             raise ValueError("translated receipt requires canonical artifact repository")
-        encoded = replay_semantic_router_prompt_for_audit(prompt=rendered, repository=repository)
+        encoded = replay_semantic_router_prompt_for_audit(prompt=rendered, repository=repository,
+            transport_schema=receipt["semantic_translation"].get("transport_schema",
+                                                               "supervisor-semantic-router-input@1"))
         router_prompt = encoded.provider_prompt
         checks = {
             "semantic_translation_cid": encoded.table.translation_cid == receipt["semantic_translation"]["translation_cid"],
+            "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
         }
     residual = receipt.get("doctor_residual_context")
     if residual is not None:

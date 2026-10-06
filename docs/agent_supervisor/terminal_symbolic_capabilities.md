@@ -1256,3 +1256,21 @@ input/per-turn accounting, checked decision views, shared metadata tables,
 compact proof/status cards and progressive disclosure while preserving source,
 scope, unknown obligations and normal native validation. It claims no measured
 token saving for an unrun planning-preserved context experiment.
+
+## Opt-in coding transport with controller-held identifiers (2026-10-06)
+
+The [first context-reduction implementation](evidence/terminal-context-dictionary-20261006/README.md)
+adds `supervisor-semantic-router-input@2`. The controller retains the immutable
+identifier dictionary while the coding model receives short typed references,
+literal source and native constraints. Exact reconstruction, structured reply
+validation and freshness checks remain enforced. The selection is explicit and
+bound through benchmark preparation, configuration, container launch and
+receipts; old archives are rejected before model dispatch. Default `@1` bytes
+and historical replay remain qualified.
+
+The primary Terminal Bench comparison must retain LLM planning and coding on
+the same newly pinned archive. Public-task offline prompt/tokenizer sizing
+qualifies this representation experiment, while total provider-token savings
+and official reward require a fresh matched comparison. Catalog lookups,
+compact formal status and terminal context deltas remain the next integration
+steps; the initial coding-input transport does not control native CLI history.

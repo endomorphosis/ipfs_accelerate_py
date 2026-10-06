@@ -75,3 +75,34 @@ def test_worker_refuses_provider_change_before_dispatch(monkeypatch, deployed, r
     code, calls = dispatch(monkeypatch, ["--provider", requested, "--model", "pinned"], provider=deployed)
     assert code == "provider differs from deployed worker route"
     assert calls == []
+
+
+def test_opt_in_transport_reaches_only_semantic_coding_runner(monkeypatch):
+    schema = "supervisor-semantic-router-input@2"
+    code, calls = dispatch(monkeypatch, ["--semantic-repository", "/app",
+        "--semantic-transport-schema", schema, *PINS])
+    assert code == 0 and len(calls) == 1
+    assert calls[0].count("--semantic-transport-schema") == 1
+    assert calls[0][calls[0].index("--semantic-transport-schema") + 1] == schema
+    assert calls[0][calls[0].index("--purpose") + 1] == "coding"
+    code, calls = dispatch(monkeypatch, ["--purpose", "planning"])
+    assert code == 0 and len(calls) == 1
+    assert "--semantic-transport-schema" not in calls[0]
+
+
+@pytest.mark.parametrize("extra", [[], ["--semantic-repository", "/app", "--purpose", "planning"],
+    ["--semantic-repository", "/app", "--preflight"],
+    ["--semantic-repository", "/app", "--doctor-candidate-artifact", "/candidate.json"]])
+def test_opt_in_worker_rejects_nonsemantic_or_nonrouter_routes(monkeypatch, extra):
+    code, calls = dispatch(monkeypatch, ["--semantic-transport-schema", "supervisor-semantic-router-input@2", *extra])
+    assert code == "controller dictionary transport requires semantic router coding"
+    assert calls == []
+
+
+def test_worker_schema_values_are_closed_and_legacy_default_is_omitted(monkeypatch):
+    code, calls = dispatch(monkeypatch, ["--semantic-transport-schema", "supervisor-semantic-router-input@3"])
+    assert code == 2 and calls == []
+    code, calls = dispatch(monkeypatch, ["--semantic-repository", "/app",
+        "--semantic-transport-schema", "supervisor-semantic-router-input@1"])
+    assert code == 0 and len(calls) == 1
+    assert "--semantic-transport-schema" not in calls[0]

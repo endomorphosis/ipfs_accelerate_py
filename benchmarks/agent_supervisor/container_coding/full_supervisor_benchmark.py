@@ -20,6 +20,10 @@ from benchmarks.agent_supervisor.container_coding import benchmark_controls
 from .benchmark_resource_profile import PROFILES, validate_resource_profile
 from .benchmark_provider_profile import (prepared_provider_identity, require_runtime_provider_profile,
     resolve_provider_profile, PROVIDER_PROFILES)
+from .terminal_semantic_transport_policy import (
+    DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS,
+    validate_semantic_transport_schema, semantic_transport_selection, require_semantic_transport_archive,
+)
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -152,10 +156,12 @@ def _intent_selection(contract: dict | None) -> dict:
 def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                *, intent_requirement_contract: dict | None = None, resource_profile=None,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
-               task_profile: dict | None = None, provider_profile: str | None = None) -> dict:
+               task_profile: dict | None = None, provider_profile: str | None = None,
+               semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA) -> dict:
     selected_provider = resolve_provider_profile(provider_profile)
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
+    validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     from .benchmark_resource_profile import execution_budget
     budget = execution_budget(resource_profile)
     config = baseline_config(dataset, output, resource_profile=resource_profile, task_name=task_name)
@@ -165,7 +171,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "override_timeout_sec": float(budget["harbor_seconds"]), "max_timeout_sec": float(budget["harbor_seconds"]),
         "override_setup_timeout_sec": 1800.0,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
-                   "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"},
+                   "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+                   **semantic_transport_selection(semantic_transport_schema)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -208,7 +215,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             intent_action_384_config: Path | None = None,
             source384_config: Path | None = None, resource_profile=None,
             setup_cache_policy: str | None = None, task_name: str = TASK,
-            task_profile: Path | None = None, provider_profile: str | None = None) -> dict:
+            task_profile: Path | None = None, provider_profile: str | None = None,
+            semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA) -> dict:
+    validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
@@ -222,6 +231,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
     require_runtime_provider_profile(manifest, provider_profile)
+    require_semantic_transport_archive(manifest, semantic_transport_schema)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
         verify_grok_archive(archive / "runtime.tar.gz", manifest)
@@ -255,6 +265,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     declared_config = config_for(dataset, output, archive, arm,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
+        semantic_transport_schema=semantic_transport_schema,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
@@ -280,6 +291,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
                   reasoning_effort=selected_provider["reasoning_effort"], cli_version=selected_provider["cli_version"]),
               "command": command, **{key: selected_provider[key] for key in ("model", "reasoning_effort", "cli_version")},
               **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
+              **semantic_transport_selection(semantic_transport_schema),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
@@ -300,6 +312,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
+    transport = validate_semantic_transport_schema(
+        prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
+    configured_transport = validate_semantic_transport_schema(
+        config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+        arm=prepared["arm"])
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -323,12 +340,16 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
+              **semantic_transport_selection(transport),
+              **({"semantic_transport_config_unchanged": configured_transport == transport}
+                 if "semantic_transport_schema" in prepared or "semantic_transport_schema" in config["agents"][0].get("kwargs", {}) else {}),
               "original_task_inputs_unchanged": unchanged,
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "complete_single_trial_receipt": unchanged and len(trials) == 1
-                  and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file(),
+                  and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
+                  and configured_transport == transport,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -347,6 +368,10 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
+    transport = validate_semantic_transport_schema(
+        prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
+    if transport != config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
+        raise ValueError("prepared semantic transport selection changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -354,6 +379,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
     require_runtime_provider_profile(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), prepared.get("provider_profile"))
+    require_semantic_transport_archive(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), transport)
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
     with (output / "invocation.json").open("x") as stream:
@@ -378,6 +404,8 @@ def main():
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES, help="Explicit immutable router route; no cross-provider fallback")
+    parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
+        default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     from .terminal_setup_cache_advice import POLICIES
     parser.add_argument("--setup-cache-policy", choices=POLICIES,
@@ -388,6 +416,8 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
+    if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
+        parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -397,7 +427,8 @@ def main():
                          source384_config=args.source384_config, resource_profile=args.resource_profile,
                          setup_cache_policy=args.setup_cache_policy,
                          task_name=TASK if args.task is None else args.task,
-                         task_profile=args.task_profile, provider_profile=args.provider_profile)
+                         task_profile=args.task_profile, provider_profile=args.provider_profile,
+                         semantic_transport_schema=args.semantic_transport_schema)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))
