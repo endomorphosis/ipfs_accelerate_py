@@ -1,0 +1,164 @@
+{
+  "accounting_review_passed": true,
+  "archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+  "coding_initial_input_bytes": {
+    "baseline_complete_model": 59731,
+    "baseline_native": 62443,
+    "compact_complete_model": 57160,
+    "compact_minus_baseline_complete_model": -2571,
+    "compact_minus_baseline_native": -1271,
+    "compact_native": 61172,
+    "same_fixed_reply_suffix_each": 506,
+    "same_native_generation_schema_each": 215
+  },
+  "coding_token_count_records": {
+    "baseline": 6,
+    "compact": 8,
+    "records_are_not_api_call_counts": true
+  },
+  "frozen_source_head": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "gates": {
+    "baseline_passed": 74,
+    "compact_passed": 74,
+    "cross_arm_passed": 20,
+    "failed_gates": [],
+    "independent_review_passed": 46
+  },
+  "input_bindings": [
+    {
+      "bytes": 76719,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/comparison-01.json",
+      "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
+    },
+    {
+      "bytes": 28086,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/completed-pair-independent-review-01.json",
+      "sha256": "25206772a6c91c321273293bcc7a924aa017995c208ed6d8c61843cd84babb1d"
+    },
+    {
+      "bytes": 208268,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/receipt.json",
+      "sha256": "5203be5ab0f9a1ed2a271a2c6f6cc9767f85cad1ecc3074258ebb76ecd693829"
+    },
+    {
+      "bytes": 208773,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/receipt.json",
+      "sha256": "d17bb9052949a39cafee79a09dbaa0ed2bf913ad4726030707ba9bf44511ba43"
+    },
+    {
+      "bytes": 38713,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01-independent-precompact-gate.json",
+      "sha256": "225a9bc51ac1ccb0b6bfff41b97aa04470b98f43c65dd01a9e6a667f25342cfc"
+    }
+  ],
+  "limits": [
+    "Qualification establishes this pair met its source/control/input/usage/outcome gates; it does not establish a reliable causal saving.",
+    "The compact arm used 80,125 more total tokens despite a 2,571-byte smaller complete initial coding input.",
+    "The compact native coding input was also 1,271 bytes smaller, so cross-arm byte differences are not pure same-input transport savings.",
+    "Six versus eight coding token-count records are observations, not API-call counts or proof that transport caused different behavior.",
+    "No prior failed audit or unsuccessful outcome is reclassified by the corrected runtime results.",
+    "Campaign accounting covers these seven retained comparison attempts, not every historical project or training/model run."
+  ],
+  "matched_pair_qualified": true,
+  "native_benchmark_results": {
+    "baseline_native_task_completed": true,
+    "baseline_reward": 1.0,
+    "both_exact_native_and_complete_model_input_audits_verified": true,
+    "both_remaining_processes_zero_and_worker_cleanup_returncode_zero": true,
+    "compact_native_task_completed": true,
+    "compact_reward": 1.0
+  },
+  "native_receipts_preparations_frozen_source_or_comparator_modified": false,
+  "new_provider_calls_by_review": 0,
+  "observed_usage": {
+    "baseline": {
+      "cached_input_tokens": 176896,
+      "input_tokens": 242507,
+      "output_tokens": 4485,
+      "total_tokens": 246992
+    },
+    "baseline_uncached_input_tokens": 65611,
+    "cached_input_already_in_input_total": true,
+    "compact": {
+      "cached_input_tokens": 254592,
+      "input_tokens": 320808,
+      "output_tokens": 6309,
+      "total_tokens": 327117
+    },
+    "compact_minus_baseline": {
+      "cached_input_tokens": 77696,
+      "input_tokens": 78301,
+      "output_tokens": 1824,
+      "total_tokens": 80125
+    },
+    "compact_uncached_input_tokens": 66216,
+    "full_pair_tokens": 574109,
+    "retained_campaign_cli_sessions": 13,
+    "retained_prior_five_attempt_tokens": 1311238,
+    "retained_seven_attempt_campaign_tokens": 1885347
+  },
+  "raw_model_responses_or_thoughts_read": false,
+  "recorded_at_utc": "2026-10-07T04:45:26.235751+00:00",
+  "repeatable_or_causal_reduction_established": false,
+  "retained_prior_original_outcomes_and_audits": [
+    {
+      "original_all_observed_coding_inputs_verified": null,
+      "original_input_audit_status": "unknown",
+      "original_read_errors": [],
+      "original_records_unchanged": true,
+      "original_reward": 0.0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-01",
+      "trial": "largest-eigenval__RbydrUa"
+    },
+    {
+      "original_all_observed_coding_inputs_verified": true,
+      "original_input_audit_status": "verified_all_observed_model_inputs",
+      "original_read_errors": [],
+      "original_records_unchanged": true,
+      "original_reward": 1.0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02",
+      "trial": "largest-eigenval__4LQEkbK"
+    },
+    {
+      "original_all_observed_coding_inputs_verified": true,
+      "original_input_audit_status": "verified_all_observed_model_inputs",
+      "original_read_errors": [],
+      "original_records_unchanged": true,
+      "original_reward": 0.0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02",
+      "trial": "largest-eigenval__Tfd6HRP"
+    },
+    {
+      "original_all_observed_coding_inputs_verified": null,
+      "original_input_audit_status": "unknown",
+      "original_read_errors": [
+        {
+          "error_type": "InvalidReceipt",
+          "kind": "receipt"
+        }
+      ],
+      "original_records_unchanged": true,
+      "original_reward": 1.0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01",
+      "trial": "largest-eigenval__P6PDzeV"
+    },
+    {
+      "original_all_observed_coding_inputs_verified": null,
+      "original_input_audit_status": "unknown",
+      "original_read_errors": [
+        {
+          "error_type": "InvalidReceipt",
+          "kind": "receipt"
+        }
+      ],
+      "original_records_unchanged": true,
+      "original_reward": 1.0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01",
+      "trial": "largest-eigenval__qGEu93e"
+    }
+  ],
+  "reviewer": "/root/matched_transport_accounting",
+  "savings_supported_by_this_pair": false,
+  "schema": "corrected-runtime-qualified-pair-factual-result@1",
+  "task_solution_private_database_or_hidden_evaluation_bodies_read": false
+}

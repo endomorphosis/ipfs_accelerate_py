@@ -1,0 +1,680 @@
+{
+  "benchmark_failed_checks": {
+    "baseline": [
+      "complete_exact_coding_context_audit",
+      "coding_reply_full_input_audit_includes_contract_before_after",
+      "coding_hashes_match_reconstructed_inputs"
+    ],
+    "compact": [
+      "complete_exact_coding_context_audit",
+      "coding_reply_full_input_audit_includes_contract_before_after",
+      "coding_hashes_match_reconstructed_inputs"
+    ]
+  },
+  "benchmark_pair_qualified": false,
+  "cached_input_already_in_input_total": true,
+  "campaign_accounting": {
+    "known_token_subtotals": {
+      "cached_input_tokens": 1030400,
+      "input_tokens": 1284562,
+      "output_tokens": 26676,
+      "total_tokens": 1311238
+    },
+    "tokens": {
+      "cached_input_tokens": 1030400,
+      "input_tokens": 1284562,
+      "output_tokens": 26676,
+      "total_tokens": 1311238
+    }
+  },
+  "checks": [
+    {
+      "name": "comparison_schema_and_frozen_producer",
+      "passed": true
+    },
+    {
+      "name": "frozen_source_head_and_clean_checkout",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 receipt identity and independent native arithmetic",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 exact receipt bound",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 required planning and coding schema gates enabled",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 session gate faithfully reflects observed phases",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest receipt.json",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest preparation.json",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest config.json",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest manifest.json",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest result.json",
+      "passed": true
+    },
+    {
+      "name": "New baseline @1 input digest result.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 receipt identity and independent native arithmetic",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 exact receipt bound",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 required planning and coding schema gates enabled",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 session gate faithfully reflects observed phases",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest receipt.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest preparation.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest config.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest manifest.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest result.json",
+      "passed": true
+    },
+    {
+      "name": "New compact @2 input digest result.json",
+      "passed": true
+    },
+    {
+      "name": "complete coding and planning source binding inventories",
+      "passed": true
+    },
+    {
+      "name": "implementation digest benchmark_controls.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest benchmark_comparison.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest llm_router.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest codex_planning_schema.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest router_implementation_runner.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest grok_structured_output.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest prompt_goal_planner.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest terminal_coding_reply_policy.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest full_supervisor_benchmark.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest full_supervisor_harbor_agent.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest terminal_container_supervisor.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest terminal_doctor_dispatch.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest container_worker_deployment.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest terminal_context_audit.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest benchmark_controls.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest coding_reply_contract.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest router_implementation_runner.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest semantic_router_translation.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest cli_metadata.py",
+      "passed": true
+    },
+    {
+      "name": "implementation digest llm_router.py",
+      "passed": true
+    },
+    {
+      "name": "qualified result equals every recorded benchmark gate",
+      "passed": true
+    },
+    {
+      "name": "native total difference equals report",
+      "passed": true
+    },
+    {
+      "name": "no causal saving billing or benchmark superiority claim",
+      "passed": true
+    }
+  ],
+  "fresh_pair": [
+    {
+      "complete_native_usage_observed": true,
+      "known_token_subtotals": {
+        "cached_input_tokens": 219136,
+        "input_tokens": 285149,
+        "output_tokens": 5426,
+        "total_tokens": 290575
+      },
+      "label": "New baseline @1",
+      "native_sessions": 2,
+      "official_reward": 1.0,
+      "provider_session_results": [
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "planning",
+          "seconds": 34.27738560899161,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        },
+        {
+          "coding_reply_mode": "ordinary-completion@1",
+          "coding_reply_response_validated": true,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 58535,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "coding",
+          "seconds": 87.16207834996749,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        }
+      ],
+      "remaining_processes": 0,
+      "supervisor_error_phase": null,
+      "supervisor_error_type": null,
+      "supervisor_seconds": 192.67201287398348,
+      "task_completed": true,
+      "task_status": "completed",
+      "tokens": {
+        "cached_input_tokens": 219136,
+        "input_tokens": 285149,
+        "output_tokens": 5426,
+        "total_tokens": 290575
+      },
+      "trial": "largest-eigenval__P6PDzeV",
+      "worker_cleanup_returncode": 0
+    },
+    {
+      "complete_native_usage_observed": true,
+      "known_token_subtotals": {
+        "cached_input_tokens": 294656,
+        "input_tokens": 362131,
+        "output_tokens": 6655,
+        "total_tokens": 368786
+      },
+      "label": "New compact @2",
+      "native_sessions": 2,
+      "official_reward": 1.0,
+      "provider_session_results": [
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "planning",
+          "seconds": 31.85112713498529,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        },
+        {
+          "coding_reply_mode": "ordinary-completion@1",
+          "coding_reply_response_validated": true,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 58251,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "coding",
+          "seconds": 134.77387239900418,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        }
+      ],
+      "remaining_processes": 0,
+      "supervisor_error_phase": null,
+      "supervisor_error_type": null,
+      "supervisor_seconds": 244.32487986900378,
+      "task_completed": true,
+      "task_status": "completed",
+      "tokens": {
+        "cached_input_tokens": 294656,
+        "input_tokens": 362131,
+        "output_tokens": 6655,
+        "total_tokens": 368786
+      },
+      "trial": "largest-eigenval__qGEu93e",
+      "worker_cleanup_returncode": 0
+    }
+  ],
+  "frozen_source_or_preparations_modified": false,
+  "input_bindings": [
+    {
+      "bytes": 75890,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/comparison-01-20261007.json",
+      "sha256": "496f94617a0383562691711251d49c089eafa6a59b3617c3b53776fdea717b19"
+    },
+    {
+      "bytes": 201664,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/receipt.json",
+      "sha256": "55eaa198d87afef4a83f5dc006cff2170663c6f9ed2721054e166493e1c928c4"
+    },
+    {
+      "bytes": 201664,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/receipt.json",
+      "sha256": "55eaa198d87afef4a83f5dc006cff2170663c6f9ed2721054e166493e1c928c4"
+    },
+    {
+      "bytes": 65683,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/preparation.json",
+      "sha256": "1c1d6b2d9060b067670bfb350851af464dd54dcb46f20a30bc09f9ddb2e597e3"
+    },
+    {
+      "bytes": 3441,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/config.json",
+      "sha256": "54c8b6366f8d71cea6c1ec0aad9e037cbe98d25d4158409289941bff9e4fcaa5"
+    },
+    {
+      "bytes": 6238044,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/bundle-01/manifest.json",
+      "sha256": "55c6ae2a57ee5a9b0c8ce248fd8e68233c3f75f488d92b91590cedc0a36122e0"
+    },
+    {
+      "bytes": 91168,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__P6PDzeV/result.json",
+      "sha256": "95b4641a2793daf9fec24b95b9209417d2da9cad1768496dc72dc0f4694e48df"
+    },
+    {
+      "bytes": 1142,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/jobs/supervisor-full-largest-eigenval/result.json",
+      "sha256": "6ff3984c451127bb4ca53e293e2205783f74e919dbab22c5c562332871af2236"
+    },
+    {
+      "bytes": 202197,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/receipt.json",
+      "sha256": "c75f908ec055019241c925d1c67d709a6c6549fd493fd62a72f83033550c99d0"
+    },
+    {
+      "bytes": 202197,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/receipt.json",
+      "sha256": "c75f908ec055019241c925d1c67d709a6c6549fd493fd62a72f83033550c99d0"
+    },
+    {
+      "bytes": 65751,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/preparation.json",
+      "sha256": "bd61101520bf5064b69ff5d7216c96694475ce852a3299acdb8ca90b4899052e"
+    },
+    {
+      "bytes": 3515,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/config.json",
+      "sha256": "75f76131f720dc84d4fc48495d9aa5b1059e3d4c0d6907b35a921deda7993203"
+    },
+    {
+      "bytes": 6238044,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/bundle-01/manifest.json",
+      "sha256": "55c6ae2a57ee5a9b0c8ce248fd8e68233c3f75f488d92b91590cedc0a36122e0"
+    },
+    {
+      "bytes": 91324,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__qGEu93e/result.json",
+      "sha256": "10a645a9a8c406988efc88cc1fe3738553557fe34cfab9169422e9a167c64002"
+    },
+    {
+      "bytes": 1142,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/jobs/supervisor-full-largest-eigenval/result.json",
+      "sha256": "7c22b29cbd38f69cc9585467fe9683c1084737bc49428e4965ae787a52741135"
+    },
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 38444,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "0494f2c7bdf7f223dd7748582d517dc6725d093fdaad24d15fb36c06721c62c8"
+    },
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 6186,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 13799,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 115963,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    },
+    {
+      "bytes": 3057,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 30585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 65871,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 13283,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    {
+      "bytes": 27534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "874931cf177fbd0ad4f45d91909e74375a7053beb97796165d650e8336138a48"
+    },
+    {
+      "bytes": 33368,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a"
+    },
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 5423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 7870,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 113835,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-01/receipt.json",
+      "sha256": "43dbe4a81760a132331e4bac3d94d18492de0ef9240ea2aa92d64807f5e17361"
+    },
+    {
+      "bytes": 203394,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/baseline-02/receipt.json",
+      "sha256": "ac9f336fe5b312334fdec92a2b8f1095436fbd9b3522d4404579dd44753431a4"
+    },
+    {
+      "bytes": 172812,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-context-paired-trial-20261006/compact-02/receipt.json",
+      "sha256": "685e662ff09eb805f4036d6f57dc695c868f0cd568a2840449f545d53e70dc6f"
+    }
+  ],
+  "new_provider_calls_by_review": 0,
+  "observed_baseline_minus_compact_total_tokens": -78211,
+  "raw_provider_data_read": false,
+  "recorded_at_utc": "2026-10-07T04:19:56.600425+00:00",
+  "repeatable_or_causal_savings_established": false,
+  "retained_prior_attempts": [
+    {
+      "complete_native_usage_observed": true,
+      "known_token_subtotals": {
+        "cached_input_tokens": 12288,
+        "input_tokens": 22198,
+        "output_tokens": 1539,
+        "total_tokens": 23737
+      },
+      "label": "Prior baseline-01",
+      "native_sessions": 1,
+      "official_reward": 0.0,
+      "provider_session_results": [
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 23800,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "planning",
+          "seconds": 42.03547963604797,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        }
+      ],
+      "remaining_processes": null,
+      "supervisor_error_phase": "planning",
+      "supervisor_error_type": "RuntimeError",
+      "supervisor_seconds": 61.772948494006414,
+      "task_completed": false,
+      "task_status": null,
+      "tokens": {
+        "cached_input_tokens": 12288,
+        "input_tokens": 22198,
+        "output_tokens": 1539,
+        "total_tokens": 23737
+      },
+      "trial": "largest-eigenval__RbydrUa",
+      "worker_cleanup_returncode": 0
+    },
+    {
+      "complete_native_usage_observed": true,
+      "known_token_subtotals": {
+        "cached_input_tokens": 232192,
+        "input_tokens": 286482,
+        "output_tokens": 5896,
+        "total_tokens": 292378
+      },
+      "label": "Prior baseline-02",
+      "native_sessions": 2,
+      "official_reward": 1.0,
+      "provider_session_results": [
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "planning",
+          "seconds": 41.49101681797765,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        },
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 59128,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "coding",
+          "seconds": 157.6311978700105,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        }
+      ],
+      "remaining_processes": 0,
+      "supervisor_error_phase": null,
+      "supervisor_error_type": null,
+      "supervisor_seconds": 273.9478834159672,
+      "task_completed": true,
+      "task_status": "completed",
+      "tokens": {
+        "cached_input_tokens": 232192,
+        "input_tokens": 286482,
+        "output_tokens": 5896,
+        "total_tokens": 292378
+      },
+      "trial": "largest-eigenval__4LQEkbK",
+      "worker_cleanup_returncode": 0
+    },
+    {
+      "complete_native_usage_observed": true,
+      "known_token_subtotals": {
+        "cached_input_tokens": 272128,
+        "input_tokens": 328602,
+        "output_tokens": 7160,
+        "total_tokens": 335762
+      },
+      "label": "Prior compact-02",
+      "native_sessions": 2,
+      "official_reward": 0.0,
+      "provider_session_results": [
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": null,
+          "failure_phase": null,
+          "model_prompt_bytes": 25678,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "planning",
+          "seconds": 42.59893174096942,
+          "semantic_response_failure_reason": null,
+          "status": "provider_returned"
+        },
+        {
+          "coding_reply_mode": null,
+          "coding_reply_response_validated": null,
+          "error_type": "SemanticTranslationError",
+          "failure_phase": "semantic_response_decode",
+          "model_prompt_bytes": 57754,
+          "native_session_complete": true,
+          "observed_exit_code": 0,
+          "phase": "coding",
+          "seconds": 174.4419019940542,
+          "semantic_response_failure_reason": "response_envelope_binding_mismatch",
+          "status": "failed"
+        }
+      ],
+      "remaining_processes": 0,
+      "supervisor_error_phase": "native_execution",
+      "supervisor_error_type": "TimeoutError",
+      "supervisor_seconds": 844.6143916610163,
+      "task_completed": false,
+      "task_status": "in_progress",
+      "tokens": {
+        "cached_input_tokens": 272128,
+        "input_tokens": 328602,
+        "output_tokens": 7160,
+        "total_tokens": 335762
+      },
+      "trial": "largest-eigenval__Tfd6HRP",
+      "worker_cleanup_returncode": 0
+    }
+  ],
+  "review_passed": true,
+  "review_producer_sha256": "5807f6d5bc9f85c8acb3c564769c784eba4abb3d8e01c5c4e80e7917a552ee10",
+  "schema": "coding-reply-contract-pair-independent-accounting-review@1",
+  "source_head": "45803f0dca3365982b6058bf7e7c9c94a95aefcf",
+  "unknown_fields_are_zero": false
+}

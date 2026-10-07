@@ -1,0 +1,108 @@
+{
+  "auditor": "/root/matched_transport_preflight",
+  "author_qualification_binding": {
+    "bytes": 7527,
+    "evidence_limit": "Test execution is author-reported in a source-bound qualification receipt. Independent review checked source/test code and receipt metadata; no native test registry contents or raw execution transcripts were read.",
+    "independently_rerun": false,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit-provider-ipc-qualification-20261007-01.json",
+    "persistent_original_pytest_log_available": false,
+    "recorded_elapsed_seconds": 40.42,
+    "recorded_failed": 0,
+    "recorded_green_exit_code": 0,
+    "recorded_passed": 37,
+    "recorded_red_exit_code": 1,
+    "sha256": "46e15ff664679219cc5f406cbe820083c6b61385976596b61145263cd0b522ad"
+  },
+  "blocking_findings": [],
+  "checkout": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007",
+  "checks": [
+    {
+      "evidence": "The collector adds only provider when coding_reply_contract is not None and copies a key only if it exists in the recorded receipt. It never synthesizes codex_cli or changes a foreign value.",
+      "name": "conditional_recorded_provider_only",
+      "passed": true
+    },
+    {
+      "evidence": "Unchanged _receipt requires non-null reply mode ordinary-completion@1 and original item provider codex_cli; missing or foreign values remain invalid.",
+      "name": "native_provider_guard_preserved",
+      "passed": true
+    },
+    {
+      "evidence": "For absent/null contracts the same ordered RECEIPT_FIELDS+TRANSLATION_FIELDS comprehension is used, preserving legacy JSON field population and excluding provider, usage and unrelated metadata.",
+      "name": "legacy_ipc_preserved",
+      "passed": true
+    },
+    {
+      "evidence": "MAX_RECEIPTS/MAX_REQUEST_BYTES/MAX_RESULT_BYTES, timeout, actual child subprocess argv with -B/-P, module route, environment and error behavior are unchanged.",
+      "name": "bounded_ipc_and_trusted_child_unchanged",
+      "passed": true
+    },
+    {
+      "evidence": "The complete module AST excluding collect_terminal_context_audit is identical to base; strict receipt parsing, byte reconstruction, export bounds and false authority flags remain unchanged.",
+      "name": "all_other_source_ast_unchanged",
+      "passed": true
+    },
+    {
+      "evidence": "_capture_child_requests observes input and delegates to the original subprocess.run. _collect invokes the actual bounded child; success checks full final digest/bytes and the coding suffix hash.",
+      "name": "actual_child_test_not_mocked_result",
+      "passed": true
+    },
+    {
+      "evidence": "New actual-child tests reject missing and grok_cli provider, detect tampered pre-suffix digest while retaining native-only input observation, and preserve omitted/explicit-null legacy field sets.",
+      "name": "rejection_and_projection_tamper_tests",
+      "passed": true
+    },
+    {
+      "evidence": "Success keeps provider_calls zero, raw_prompts_exported false, completion_authority false and task_correctness_established false; authored usage metadata is excluded from IPC.",
+      "name": "authority_and_privacy_test_assertions",
+      "passed": true
+    },
+    {
+      "evidence": "Qualification receipt reports 37 passing tests across coding reply, base context and translation suites, whose source contains @1/@2 historical reconstruction, tampering, actual bounded subprocess and untrusted-cwd import coverage.",
+      "name": "reported_regression_suite_covers_both_transports_and_original_child_safety",
+      "passed": true
+    },
+    {
+      "evidence": "Frozen runtime HEAD remains 45803f0 and its auditor bytes retain the original SHA-256 22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a.",
+      "name": "old_runtime_source_preserved",
+      "passed": true
+    }
+  ],
+  "created_at_utc": "2026-10-07T04:21:28.320931+00:00",
+  "qualification_boundary": "Clear for publishing and freezing this minimal IPC fix into a future runtime. Does not retrofit the current frozen pair, independently establish unavailable historical full-input reconstruction, grant authority, or demonstrate token savings.",
+  "schema": "terminal-context-audit-provider-ipc-independent-review@1",
+  "scope": {
+    "container_or_benchmark_launches": 0,
+    "frozen_runtime_edits": 0,
+    "hidden_evaluation_or_solution_reads": 0,
+    "independent_test_reruns": 0,
+    "native_report_edits": 0,
+    "native_test_registry_content_reads": 0,
+    "prepared_input_edits": 0,
+    "private_database_reads": 0,
+    "provider_calls": 0,
+    "raw_model_or_transcript_reads": 0,
+    "source_edits": 0
+  },
+  "source_base_commit": "108931f98f9b270267ec7185850a835cad670513",
+  "source_bindings": [
+    {
+      "ast_parse_passed": true,
+      "base_bytes": 33368,
+      "base_sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a",
+      "bytes": 33713,
+      "matches_author_qualification": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab"
+    },
+    {
+      "ast_parse_passed": true,
+      "base_bytes": 3871,
+      "base_sha256": "ca4ff3754926d1c0a2150ec747faca4ca088407187d82663bb17de39ce6cef24",
+      "bytes": 8947,
+      "matches_author_qualification": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "sha256": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a"
+    }
+  ],
+  "status": "clear_no_blocking_findings"
+}

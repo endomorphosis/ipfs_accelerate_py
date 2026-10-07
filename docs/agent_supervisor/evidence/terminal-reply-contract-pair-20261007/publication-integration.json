@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/publication-integration-01.xml"
+  ],
+  "completed_at_utc": "2026-10-07T04:53:00.890699+00:00",
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/publication-integration-01.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "exit_code": 0,
+  "head": "b095b6d2c508fdba04954f57b66ff3e35ba951e9",
+  "new_real_provider_calls": 0,
+  "schema": "terminal-reply-contract-publication-integration@1",
+  "seconds": 43.60405713599175,
+  "test_suites": [
+    {
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "37",
+      "time": "43.103"
+    }
+  ]
+}

@@ -1,0 +1,332 @@
+{
+  "artifact_manifest": {
+    "bytes": 3580,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/artifact-manifest.json",
+    "sha256": "4966b6fa35527460fb646ba96e178db6ed894d9d0a43dba84da4c39523676ea8"
+  },
+  "blocking_findings": [],
+  "created_at_utc": "2026-10-07T04:50:13.773115+00:00",
+  "evidence_bindings": [
+    {
+      "bytes": 76719,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/qualified-pair-comparison.json",
+      "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
+    },
+    {
+      "bytes": 28086,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/qualified-pair-review.json",
+      "sha256": "25206772a6c91c321273293bcc7a924aa017995c208ed6d8c61843cd84babb1d"
+    },
+    {
+      "bytes": 6695,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/qualified-pair-result.json",
+      "sha256": "4de57315121fed04c5095817997a494897b6d4fd99dc0e1b0615eb3630c7d992"
+    },
+    {
+      "bytes": 4372,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/initial-pair-result.json",
+      "sha256": "daaf9fdcdc1096a1f5f14ab14bfaca2de3aaafbebba4366eae45aae9347a8e40"
+    },
+    {
+      "bytes": 41744,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/next-treatment-backlog.json",
+      "sha256": "e692b51f8dbaea22a7bae42999bfb93ee5780156381b71ec983d71d0d2e3105f"
+    },
+    {
+      "bytes": 10158,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/next-treatment-review.json",
+      "sha256": "5529ad48d94d4ffde1fcb54f518183faad9c3083e9907eaf3dfa388dd220876a"
+    }
+  ],
+  "factual_review": [
+    {
+      "assessment": "Copied qualified metadata records reward 1, admitted native completion and zero remaining processes/zero worker cleanup for each arm. README does not assign correctness or settlement authority to the acknowledgment.",
+      "claim": "Native outcomes and lifecycle",
+      "passed": true
+    },
+    {
+      "assessment": "One planning and one coding session per fresh arm, same ordinary reply contract/model/CLI/reasoning/resource/cache/task/source/archive controls and zero retries are consistent with qualification/preflight. Native cumulative usage includes complete sessions, not merely initial task-prompt bytes.",
+      "claim": "Preserved planning/coding and declared controls",
+      "passed": true
+    },
+    {
+      "assessment": "59,731 versus 57,160 complete coding bytes and 62,443 versus 61,172 native bytes match results. README explicitly attributes part of byte variation to different generated plans and declines single-pair causal/repeatable savings. Six/eight native counter records remain observations, not API calls.",
+      "claim": "Byte differences and stochastic plans",
+      "passed": true
+    },
+    {
+      "assessment": "Cached input and reasoning subcategories are included in input/output totals. All seven retained attempts and 13 sessions sum to the stated campaign cost; its scope excludes unrelated project/model/training runs.",
+      "claim": "Accounting interpretation",
+      "passed": true
+    },
+    {
+      "assessment": "Initial pair remains unqualified despite both rewards 1. Its 659,361-token cost and lost-provider InvalidReceipt are preserved; source fix/test qualification does not retroactively reconstruct deleted context or replace old native audits.",
+      "claim": "Historical audit failure retained",
+      "passed": true
+    },
+    {
+      "assessment": "Copied author qualification and independent review bind conditional provider propagation and 37 reported passing tests with actual subprocess coverage. Missing/foreign values and legacy/null IPC remain strict. Tests are authored offline evidence, not new benchmark/provider results.",
+      "claim": "IPC fix qualification",
+      "passed": true
+    },
+    {
+      "assessment": "README expressly includes worker/lifecycle/custody work in R4 and states paired arms use that same snapshot; it does not widen the scoped 29-file only-IPC rebase claim into whole-runtime equivalence.",
+      "claim": "Concurrent runtime scope",
+      "passed": true
+    },
+    {
+      "assessment": "P0 remains a proposed opt-in acceptance reference with exact reconstruction and new independent planning-input audit required; coding share 89.78% is prioritization, not savings. Generic owner gateway remains unqualified; embeddings only nominate. Six native verdicts, fresh completeness/closure and no metadata omission authority are retained.",
+      "claim": "Future improvement backlog",
+      "passed": true
+    },
+    {
+      "assessment": "The copied revision 3 backlog/review accurately label compact pending at their plan revision. Final README uses completed qualified result metadata and does not present the snapshot as a final arm result.",
+      "claim": "Dated backlog snapshot and final result",
+      "passed": true
+    }
+  ],
+  "manifest_bound_file_count": 20,
+  "manifest_files": [
+    {
+      "bytes": 4591,
+      "digest_and_bytes_match": true,
+      "path": "README.md",
+      "sha256": "d0539b8926f336910e02f9c13b4862591071b6104b47dfdfd911318e7aea2019"
+    },
+    {
+      "bytes": 2678,
+      "digest_and_bytes_match": true,
+      "path": "audit-defect-diagnosis.json",
+      "sha256": "41880b0c056741adbdb9a346dcf64c45679a13f84956dfa4c5cb4163f24ab857"
+    },
+    {
+      "bytes": 38713,
+      "digest_and_bytes_match": true,
+      "path": "baseline-precompact-gate.json",
+      "sha256": "225a9bc51ac1ccb0b6bfff41b97aa04470b98f43c65dd01a9e6a667f25342cfc"
+    },
+    {
+      "bytes": 63990,
+      "digest_and_bytes_match": true,
+      "path": "corrected-archive-review.json",
+      "sha256": "207ef9732c0c9792cb0a09485c985780452233da7cf47c7fa8d60581695ed66b"
+    },
+    {
+      "bytes": 14256,
+      "digest_and_bytes_match": true,
+      "path": "corrected-preparation-review.json",
+      "sha256": "cb62bec055263f37c8146031c99332cd703c175b2b587fd9496c8e00d9f6b797"
+    },
+    {
+      "bytes": 5054,
+      "digest_and_bytes_match": true,
+      "path": "corrected-runtime-preflight.json",
+      "sha256": "44e85c99630e5bc3c5e96f607d973980d701a2c069c7f468dd843dfa06fd2b5a"
+    },
+    {
+      "bytes": 31357,
+      "digest_and_bytes_match": true,
+      "path": "initial-next-treatment-backlog.json",
+      "sha256": "855b18799f471eb57ed2d883373de9b7f18b68c371b4ddb48d09d57feb0b49fd"
+    },
+    {
+      "bytes": 9395,
+      "digest_and_bytes_match": true,
+      "path": "initial-next-treatment-review.json",
+      "sha256": "2980a31c0dfc974ad338a2f4d321dcebc13aec4194d18a9663e5a9dd797024e9"
+    },
+    {
+      "bytes": 75890,
+      "digest_and_bytes_match": true,
+      "path": "initial-pair-comparison.json",
+      "sha256": "496f94617a0383562691711251d49c089eafa6a59b3617c3b53776fdea717b19"
+    },
+    {
+      "bytes": 4372,
+      "digest_and_bytes_match": true,
+      "path": "initial-pair-result.json",
+      "sha256": "daaf9fdcdc1096a1f5f14ab14bfaca2de3aaafbebba4366eae45aae9347a8e40"
+    },
+    {
+      "bytes": 24348,
+      "digest_and_bytes_match": true,
+      "path": "initial-pair-review.json",
+      "sha256": "9b9dc7b01a982e11ef5a18d00f0f5ee83c73c1c81a82d7fb95756c77c81d910f"
+    },
+    {
+      "bytes": 2416,
+      "digest_and_bytes_match": true,
+      "path": "initial-pair.md",
+      "sha256": "11effbcdd2a56c344f8e1368a8b1687d8c25d2c777e0fe7e37854dc2bf0402c1"
+    },
+    {
+      "bytes": 7527,
+      "digest_and_bytes_match": true,
+      "path": "ipc-fix-qualification.json",
+      "sha256": "46e15ff664679219cc5f406cbe820083c6b61385976596b61145263cd0b522ad"
+    },
+    {
+      "bytes": 5632,
+      "digest_and_bytes_match": true,
+      "path": "ipc-fix-review.json",
+      "sha256": "6eb8150b72e4b1a7e92d684738924f1b0efe15ae7e5a697d87ca611d1f951872"
+    },
+    {
+      "bytes": 41744,
+      "digest_and_bytes_match": true,
+      "path": "next-treatment-backlog.json",
+      "sha256": "e692b51f8dbaea22a7bae42999bfb93ee5780156381b71ec983d71d0d2e3105f"
+    },
+    {
+      "bytes": 10158,
+      "digest_and_bytes_match": true,
+      "path": "next-treatment-review.json",
+      "sha256": "5529ad48d94d4ffde1fcb54f518183faad9c3083e9907eaf3dfa388dd220876a"
+    },
+    {
+      "bytes": 76719,
+      "digest_and_bytes_match": true,
+      "path": "qualified-pair-comparison.json",
+      "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
+    },
+    {
+      "bytes": 6695,
+      "digest_and_bytes_match": true,
+      "path": "qualified-pair-result.json",
+      "sha256": "4de57315121fed04c5095817997a494897b6d4fd99dc0e1b0615eb3630c7d992"
+    },
+    {
+      "bytes": 28086,
+      "digest_and_bytes_match": true,
+      "path": "qualified-pair-review.json",
+      "sha256": "25206772a6c91c321273293bcc7a924aa017995c208ed6d8c61843cd84babb1d"
+    },
+    {
+      "bytes": 2150,
+      "digest_and_bytes_match": true,
+      "path": "qualified-pair.md",
+      "sha256": "318494546583bfd0bf1663ebc63f5fafd15187d6959f5d29367a8f4733ace381"
+    }
+  ],
+  "parsed_bound_json_count": 17,
+  "publication_directory": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007",
+  "qualification_limits": [
+    "This review verifies publication claims against copied bounded result/comparison/accounting/preflight evidence; it does not rerun native benchmark, evaluator, provider or offline tests.",
+    "Existing coding audits reconstruct complete coding task inputs. Existing planning schema/receipt consistency does not establish independent planning-input reconstruction; P0 explicitly requires that new audit.",
+    "One descriptive matched pair supports the reported cost difference and conservative default choice, not repeatable or causal effects.",
+    "Any further document change requires regenerating its publication manifest binding."
+  ],
+  "readme": {
+    "bytes": 4591,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007/docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/README.md",
+    "sha256": "d0539b8926f336910e02f9c13b4862591071b6104b47dfdfd911318e7aea2019"
+  },
+  "relative_link_count": 12,
+  "relative_markdown_links": [
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "qualified-pair-result.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "qualified-pair-comparison.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "qualified-pair-review.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "qualified-pair.md"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "corrected-runtime-preflight.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "initial-pair.md"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "audit-defect-diagnosis.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "ipc-fix-qualification.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "ipc-fix-review.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "next-treatment-backlog.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "next-treatment-review.json"
+    },
+    {
+      "document": "README.md",
+      "exists": true,
+      "resolved_inside_publication": true,
+      "target": "artifact-manifest.json"
+    }
+  ],
+  "reviewer": "/root/matched_transport_preflight",
+  "schema": "terminal-reply-contract-pair-independent-publication-review@1",
+  "scope": {
+    "code_or_document_edits": 0,
+    "container_or_benchmark_operations": 0,
+    "hidden_evaluation_or_solution_body_reads": 0,
+    "native_or_prepared_evidence_edits": 0,
+    "private_database_reads": 0,
+    "provider_calls": 0,
+    "raw_model_or_transcript_reads": 0,
+    "test_reruns": 0
+  },
+  "status": "clear_no_blocking_findings",
+  "verified_numbers": {
+    "baseline_coding_tokens": 221749,
+    "baseline_gate_count": 74,
+    "baseline_planning_tokens": 25243,
+    "baseline_total_tokens": 246992,
+    "compact_coding_tokens": 301925,
+    "compact_gate_count": 74,
+    "compact_more_percent": 32.44032195374749,
+    "compact_more_tokens": 80125,
+    "compact_planning_tokens": 25192,
+    "compact_total_tokens": 327117,
+    "comparison_gates_total": 168,
+    "corrected_pair_total_tokens": 574109,
+    "cross_arm_gate_count": 20,
+    "independent_accounting_checks": 46,
+    "initial_reply_contract_pair_tokens": 659361,
+    "retained_campaign_tokens": 1885347,
+    "retained_comparison_attempts": 7,
+    "retained_native_cli_sessions": 13
+  }
+}

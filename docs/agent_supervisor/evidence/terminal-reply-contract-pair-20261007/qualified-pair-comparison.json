@@ -1,0 +1,1804 @@
+{
+  "arms": [
+    {
+      "admission_environment_sha256": "86b6f582ed469e3a408226a179f1217abce4228562cfe29e9c22375523551e6d",
+      "archive_manifest_sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04",
+      "archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+      "coding_reply_contract_required": true,
+      "coding_reply_mode": "ordinary-completion@1",
+      "declared_controls": {
+        "configuration_unchanged": true,
+        "declared": {
+          "agent_controls_sha256": {
+            "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "max_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+            "override_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "configuration_sha256": "0b576506cfe09a5301335195c64110f102ce13d057d5d4a6540d39aeba0cb554",
+          "identity": {
+            "cli_version": "0.160.0",
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "task": "largest-eigenval"
+          },
+          "job_controls_sha256": {
+            "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "environment": "b363af0c7f21036235243e251d02203df8a4c5d8cca693c191f6d715d62b937b",
+            "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "retry": "e7aac3e26527d96bfa51b85bb79b812ebe2b91d58a66e9531b584df0ec567ea2",
+            "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+            "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+            "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "schema": "terminal-benchmark-declared-controls@1",
+          "sha256": "f6b223471a5052637a0c6f977332690522aac8508742caa743e2dc57095f6e02",
+          "task_input_sha256": {
+            "environment/Dockerfile": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+            "environment/src/eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+            "environment/src/eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+            "instruction.md": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "task.toml": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+            "tests/test.sh": "fc40868bee6cbcfd6e906b0522dda9a778064ea9876e64a40a377d66087a174b",
+            "tests/test_outputs.py": "cdc58e3aa0960dac2e12a12b1cfa4131237d697762a6a78ebf33f80d2eb168ce"
+          }
+        },
+        "reason": null,
+        "status": "observed"
+      },
+      "execution_budget_sha256": "98249b1060a58561fd7313ef8bf3db1f1d25a1f485ca21cbb2c58ca630777120",
+      "host_sources_sha256": "6adfb49271a20bb047ab0f097b282e8af6f7b2116a85326ba95455858f5ae1f9",
+      "inputs": [
+        {
+          "bytes": 208268,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/receipt.json",
+          "sha256": "5203be5ab0f9a1ed2a271a2c6f6cc9767f85cad1ecc3074258ebb76ecd693829"
+        },
+        {
+          "bytes": 65699,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/preparation.json",
+          "sha256": "d21f9266dd8a5b64129db2f682dc9e477e5cce621d16a401e03d0563d5dc663f"
+        },
+        {
+          "bytes": 3457,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/config.json",
+          "sha256": "907da352bb28b957087540dde8987a254fe1cce6e098219d6d5ee452300357e8"
+        },
+        {
+          "bytes": 6238517,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/bundle-01/manifest.json",
+          "sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04"
+        },
+        {
+          "bytes": 91190,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__haYWddT/result.json",
+          "sha256": "606573806843ce39c9ccf3406630b5b49f09c35823f7958f66714bd8bc2fd05e"
+        },
+        {
+          "bytes": 1142,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/jobs/supervisor-full-largest-eigenval/result.json",
+          "sha256": "689e71fe1049165da420a00d72f60a79d2bd734a8b63a678f00de2d858852bf8"
+        }
+      ],
+      "intent_action_binding_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "label": "baseline",
+      "normalized_configuration_sha256": "f615ca8d2724daae88bd31baec69c6162896dc64e846055bf9da62fd99213e84",
+      "normalized_native_trial_configuration_sha256": "0db5814491f5b09085b366fb6cbf54e272d322d3f4ae34699b237931e3fca1b4",
+      "observed_setup_cache_sha256": "2cb40a79ef80fc4956934449f9c264850b5212a93187637b5229b11fe8ff35b4",
+      "phases": [
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "b71a2e19bff84375a70642fad546ef5b",
+          "native_token_count_records": 1,
+          "phase": "planning",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 90
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 25678,
+            "model_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+            "native_prompt_bytes": 25678,
+            "native_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+            "planning_generation": {
+              "native_schema_projection": {
+                "bounds_annotation_omitted": true,
+                "canonical_schema_bytes": 4493,
+                "canonical_schema_sha256": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+                "canonical_validation_preserved": true,
+                "completion_authority": false,
+                "definitions_relocated": true,
+                "execution_authority": false,
+                "native_wire_schema_bytes": 4378,
+                "native_wire_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+                "projection_id": "canonical-prompt-goal-codex-generation-schema@1",
+                "proof_authority": false,
+                "publication_authority": false,
+                "scope_expansion_authority": false,
+                "shape_only": true,
+                "top_level_id_omitted": true
+              },
+              "observed_schema_bytes": 4378,
+              "observed_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+              "policy": {
+                "native_schema_requested": true,
+                "plan_admitted": false,
+                "response_schema_validated": true,
+                "schema": "codex-native-planning-json-schema@1"
+              }
+            },
+            "router_prompt_bytes": 25678,
+            "router_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+            "workspace_advisory_bytes": 0,
+            "workspace_advisory_sha256": null
+          },
+          "status": "provider_returned"
+        },
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "8889eaf869ab4929a455f2be8bfef0eb",
+          "native_token_count_records": 6,
+          "phase": "coding",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 300
+          },
+          "recorded_input": {
+            "coding_reply_contract": {
+              "automatic_retry_admitted": false,
+              "completion_authority": false,
+              "execution_authority": false,
+              "instruction_bytes": 506,
+              "instruction_sha256": "abd57dd0db7f134b7613479da5cc93ed9ebbbe79d40c1568c3d0d02eeba451e1",
+              "mode": "ordinary-completion@1",
+              "model_prompt_after_bytes": 59731,
+              "model_prompt_after_sha256": "4f34e3860bca82aa7c5801c23c6a780a1a6a2ebd454936bfa2dd3fd6463218f4",
+              "model_prompt_before_bytes": 59225,
+              "model_prompt_before_sha256": "c6f83e00dc773f5f5c4d1768ed19a78946912863f73a9e6085e2586afabd76d4",
+              "native_output_schema_bytes": 215,
+              "native_output_schema_requested": true,
+              "native_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76",
+              "owner_selected": true,
+              "residual_task_family_selected": false,
+              "response_validated": true,
+              "schema": "supervisor-coding-reply-contract@1",
+              "settlement_authority": false
+            },
+            "coding_reply_generation_policy": {
+              "completion_authority": false,
+              "execution_authority": false,
+              "native_schema_requested": true,
+              "response_schema_validated": true,
+              "schema": "codex-native-coding-completion-json-schema@1",
+              "settlement_authority": false
+            },
+            "model_prompt_bytes": 59731,
+            "model_prompt_sha256": "4f34e3860bca82aa7c5801c23c6a780a1a6a2ebd454936bfa2dd3fd6463218f4",
+            "native_prompt_bytes": 62443,
+            "native_prompt_sha256": "16efd7be20111c190ed73f284551429e13c7158add205609be4d08ed613e39ee",
+            "prompt_components_bytes": {
+              "coding_reply_contract": 506,
+              "doctor": 2109,
+              "public_instruction": 1226,
+              "semantic_transport": 55000,
+              "workspace": 890
+            },
+            "router_prompt_bytes": 58335,
+            "router_prompt_sha256": "a53cb39349bb94a8fd82789d4dec181338fe9ff65e04b2c9bebe213bf84d4fa4",
+            "transport_receipt": {
+              "freshness_checked": true,
+              "identifier_mappings": 19,
+              "identifier_occurrences": 50,
+              "provider_prompt_bytes": 55000,
+              "provider_prompt_sha256": "e862b459c226b6fc027fedbc6a6a255aa04db6a3b4609852b5e762441b8f1aa7",
+              "schema": "supervisor-semantic-router-encoding@1",
+              "translation_cid": "bafkreih2e3u52woa2stdyyitn23ktqdijnqkdgjkxckcr4p7x446jy6lsm",
+              "transport_schema": null
+            },
+            "workspace_advisory_bytes": 890,
+            "workspace_advisory_sha256": "52bc533c4f6f05a54aaf8dc06ce3ce965d7e9eac794961fe2f5b3204be8a44c9"
+          },
+          "status": "provider_returned"
+        }
+      ],
+      "planning_generation_schema_required": true,
+      "qualification_checks": [
+        {
+          "name": "supported_receipt_schema",
+          "passed": true
+        },
+        {
+          "name": "complete_single_trial_receipt",
+          "passed": true
+        },
+        {
+          "name": "one_full_supervisor_agent",
+          "passed": true
+        },
+        {
+          "name": "prepared_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "valid_frozen_controls",
+          "passed": true
+        },
+        {
+          "name": "observed_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "control_configuration_digest_matches",
+          "passed": true
+        },
+        {
+          "name": "preparation_controls_unchanged",
+          "passed": true
+        },
+        {
+          "name": "identity_matches_declaration_and_preparation",
+          "passed": true
+        },
+        {
+          "name": "original_task_inputs_unchanged",
+          "passed": true
+        },
+        {
+          "name": "intent_contract_not_selected",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_mode_consistent_in_owner_and_native_metadata",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_mode_explicitly_selected_in_both_owner_and_native_metadata",
+          "passed": true
+        },
+        {
+          "name": "direct_planning_retained",
+          "passed": true
+        },
+        {
+          "name": "explicit_expected_transport",
+          "passed": true
+        },
+        {
+          "name": "single_worker",
+          "passed": true
+        },
+        {
+          "name": "planning_and_indexing_inside_agent_time",
+          "passed": true
+        },
+        {
+          "name": "runtime_archive_bound",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_manifest_unchanged",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_source_binding_inventory_complete",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "setup_cache_advice_completed_and_bound",
+          "passed": true
+        },
+        {
+          "name": "exactly_one_planning_and_one_coding_router_cli_session",
+          "passed": true
+        },
+        {
+          "name": "provider_identity_matches",
+          "passed": true
+        },
+        {
+          "name": "native_result_hash_bound",
+          "passed": true
+        },
+        {
+          "name": "exact_native_task_binding",
+          "passed": true
+        },
+        {
+          "name": "native_trial_controls_match_frozen_config",
+          "passed": true
+        },
+        {
+          "name": "native_observations_unchanged",
+          "passed": true
+        },
+        {
+          "name": "one_finished_native_job_trial",
+          "passed": true
+        },
+        {
+          "name": "complete_exact_coding_context_audit",
+          "passed": true
+        },
+        {
+          "name": "planning_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "planning_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_not_applied_to_planning",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_unchanged_by_transport",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_requested_and_validated",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_projection_preserves_native_validation",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_digests_bounded_and_bound",
+          "passed": true
+        },
+        {
+          "name": "native_plan_independently_qualified_after_generation",
+          "passed": true
+        },
+        {
+          "name": "coding_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "coding_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "coding_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_exact_closed_static_shape",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_successful_response",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_native_generation_policy_closed",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_trusted_cli_schema_digest_and_size",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_complete_final_prompt_identity_and_overhead",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_full_input_audit_includes_contract_before_after",
+          "passed": true
+        },
+        {
+          "name": "correct_coding_transport_receipt",
+          "passed": true
+        },
+        {
+          "name": "complete_appended_prompt_byte_accounting",
+          "passed": true
+        },
+        {
+          "name": "coding_hashes_match_reconstructed_inputs",
+          "passed": true
+        },
+        {
+          "name": "all_provider_attempts_receipted",
+          "passed": true
+        },
+        {
+          "name": "native_total_equals_agent_summary",
+          "passed": true
+        },
+        {
+          "name": "original_verifier_passed",
+          "passed": true
+        },
+        {
+          "name": "native_task_completed",
+          "passed": true
+        },
+        {
+          "name": "worker_and_supervisor_cleaned_up",
+          "passed": true
+        },
+        {
+          "name": "harbor_completed",
+          "passed": true
+        }
+      ],
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "row": {
+        "arm": "full",
+        "cli_version": "0.160.0",
+        "code_learning_observation": null,
+        "context_input_audit": {
+          "all_observed_coding_inputs_verified": true,
+          "any_model_input_verified": true,
+          "any_native_input_verified": true,
+          "coding_receipts_seen": 1,
+          "error_type": null,
+          "invocations": [
+            {
+              "invocation_id": "8889eaf869ab4929a455f2be8bfef0eb",
+              "model_input_verified": true,
+              "native_input_verified": true,
+              "reason": "exact_context_and_input_digests_match",
+              "status": "verified_exact_model_input"
+            }
+          ],
+          "reason": "per_invocation_context_and_input_comparison",
+          "seconds": 2.3791405410156585,
+          "status": "verified_all_observed_model_inputs",
+          "task_correctness_established": false,
+          "usable_coding_receipts": 1
+        },
+        "context_seconds": 3.2400276950211264,
+        "doctor_observation": {
+          "candidate_materializations_observed": null,
+          "local_contract_proof_status": null,
+          "observed_worker_receipts": null,
+          "provider_calls": 0,
+          "residual_context_prepared": true,
+          "residual_successors": 1,
+          "residual_work_proposals": 0,
+          "route": "model_router",
+          "selection_is_publication_or_completion_evidence": false,
+          "status": "residual",
+          "whole_program_proved": false
+        },
+        "durations_seconds": {
+          "agent_execution": 210.15813,
+          "agent_setup": 221.512802,
+          "environment_setup": 2.98516,
+          "verifier": 3.277801
+        },
+        "exception_type": null,
+        "indexed_context_observation": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context_observation": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "120d6c9d844a7e2ac88b9c0a1d80b9253f6cc9fd8a8911a07df7b64d66f9e12b",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "invocations": [
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": null,
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 25678,
+              "model_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+              "native_prompt_bytes": 25678,
+              "native_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+              "router_prompt_bytes": 25678,
+              "router_prompt_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+              "semantic_translation": null,
+              "workspace_advisory_bytes": 0,
+              "workspace_advisory_sha256": null
+            },
+            "invocation_id": "b71a2e19bff84375a70642fad546ef5b",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23692,
+              "output_tokens": 1551,
+              "total_tokens": 25243
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "planning",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 31.19275969598675,
+            "status": "provider_returned",
+            "timeout_seconds": 90,
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23692,
+              "output_tokens": 1551,
+              "total_tokens": 25243
+            }
+          },
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": {
+                "advisory_bytes": 2109,
+                "advisory_sha256": "f274010eaaae820b9d7c49219f3c46dc1746259525c27669ab277fa7a86fdcf8",
+                "candidate_only": true,
+                "context_cid": "baguqeeraoxcpw4xc3ju4dindxrhqmsgfnjajvzjgynaa6hzhudu33css6ujq",
+                "derived_runtime_admitted": false,
+                "extra_provider_calls": 0,
+                "native_capsule_id": "baguqeerauanybtkzenowuh327cl7gznrnqppgpprj2tuxvgwa66rnlinov3a",
+                "schema": "doctor-residual-router-context@1",
+                "source_freshness_verified": true
+              },
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 59731,
+              "model_prompt_sha256": "4f34e3860bca82aa7c5801c23c6a780a1a6a2ebd454936bfa2dd3fd6463218f4",
+              "native_prompt_bytes": 62443,
+              "native_prompt_sha256": "16efd7be20111c190ed73f284551429e13c7158add205609be4d08ed613e39ee",
+              "router_prompt_bytes": 58335,
+              "router_prompt_sha256": "a53cb39349bb94a8fd82789d4dec181338fe9ff65e04b2c9bebe213bf84d4fa4",
+              "semantic_translation": {
+                "freshness_checked": true,
+                "identifier_mappings": 19,
+                "identifier_occurrences": 50,
+                "native_prompt_bytes": 62443,
+                "provider_prompt_bytes": 55000,
+                "schema": "supervisor-semantic-router-encoding@1",
+                "translation_cid": "bafkreih2e3u52woa2stdyyitn23ktqdijnqkdgjkxckcr4p7x446jy6lsm"
+              },
+              "workspace_advisory_bytes": 890,
+              "workspace_advisory_sha256": "52bc533c4f6f05a54aaf8dc06ce3ce965d7e9eac794961fe2f5b3204be8a44c9"
+            },
+            "invocation_id": "8889eaf869ab4929a455f2be8bfef0eb",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 176896,
+              "input_tokens": 218815,
+              "output_tokens": 2934,
+              "total_tokens": 221749
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "coding",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 94.95836524799233,
+            "status": "provider_returned",
+            "timeout_seconds": 300,
+            "tokens": {
+              "cached_input_tokens": 176896,
+              "input_tokens": 218815,
+              "output_tokens": 2934,
+              "total_tokens": 221749
+            }
+          }
+        ],
+        "known_reported_cost_subtotal_usd": null,
+        "known_token_subtotals": {
+          "cached_input_tokens": 176896,
+          "input_tokens": 242507,
+          "output_tokens": 4485,
+          "total_tokens": 246992
+        },
+        "label": "Supervisor: full indexed context",
+        "model": "gpt-6.1-sol",
+        "native_completion_applicable": true,
+        "native_result_sha256": "606573806843ce39c9ccf3406630b5b49f09c35823f7958f66714bd8bc2fd05e",
+        "native_task_completed": true,
+        "native_total_seconds": null,
+        "native_usage_complete_observed": true,
+        "observed_provider_invocations": 2,
+        "official_reward": 1.0,
+        "original_task_inputs_unchanged": true,
+        "outcome": "official_verifier_passed",
+        "post_publication_context": {
+          "budget_seconds": 647.1340151840122,
+          "embedding_accounting": {
+            "all_refreshes_receipted": false,
+            "known_subtotals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            },
+            "totals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            }
+          },
+          "embedding_calls": null,
+          "error_type": null,
+          "reason": null,
+          "refresh_seconds": 12.8796148399706,
+          "status": "incomplete",
+          "task_completion_is_context_refresh_evidence": false
+        },
+        "post_publication_proof_index": null,
+        "preparation_seconds": 0.7520512359915301,
+        "provider_calls": 2,
+        "reasoning_effort": "high",
+        "reported_cost_usd": null,
+        "retained_trial": true,
+        "runtime_archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+        "source_receipts": [
+          {
+            "bytes": 208268,
+            "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/receipt.json",
+            "sha256": "5203be5ab0f9a1ed2a271a2c6f6cc9767f85cad1ecc3074258ebb76ecd693829"
+          }
+        ],
+        "supervisor_error_type": null,
+        "supervisor_phases_seconds": {
+          "context_seconds": 3.2400276950211264,
+          "doctor_seconds": 1.5549518530024216,
+          "initial_context_seconds": 15.680997748975642,
+          "planning_seconds": 45.69830130698392,
+          "post_publication_refresh_seconds": 12.8796148399706,
+          "prepare_seconds": 0.7520512359915301
+        },
+        "supervisor_seconds": 208.90152327995747,
+        "task": "largest-eigenval",
+        "tokens": {
+          "cached_input_tokens": 176896,
+          "input_tokens": 242507,
+          "output_tokens": 4485,
+          "total_tokens": 246992
+        },
+        "trial": "largest-eigenval__haYWddT",
+        "uncached_input_tokens": 65611,
+        "unreceipted_provider_attempt": false
+      },
+      "setup_cache_selection": {
+        "manifest_sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04",
+        "policy": "source384-native-aarch64-dontneed@2",
+        "schema": "terminal-setup-cache-selection@1"
+      },
+      "source384_binding_sha256": "f61f4ed137abd66a26931bbcd1bc74421a5c1b8b2bb45a32d9783ebaa7c4198c",
+      "transport": "supervisor-semantic-router-input@1"
+    },
+    {
+      "admission_environment_sha256": "86b6f582ed469e3a408226a179f1217abce4228562cfe29e9c22375523551e6d",
+      "archive_manifest_sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04",
+      "archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+      "coding_reply_contract_required": true,
+      "coding_reply_mode": "ordinary-completion@1",
+      "declared_controls": {
+        "configuration_unchanged": true,
+        "declared": {
+          "agent_controls_sha256": {
+            "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "max_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+            "override_timeout_sec": "88098e39a7f6ba07fa5a4deb513eec156dabb72961234008e4235b16752361ed",
+            "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "configuration_sha256": "ab57751276089d48c1c6d95053d05a4781e198481e2c385829ba0a6d2451c22d",
+          "identity": {
+            "cli_version": "0.160.0",
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "task": "largest-eigenval"
+          },
+          "job_controls_sha256": {
+            "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "environment": "b363af0c7f21036235243e251d02203df8a4c5d8cca693c191f6d715d62b937b",
+            "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+            "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+            "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "retry": "e7aac3e26527d96bfa51b85bb79b812ebe2b91d58a66e9531b584df0ec567ea2",
+            "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+            "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+            "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "schema": "terminal-benchmark-declared-controls@1",
+          "sha256": "de745c6b1fbf321b8e12c3e33bb36f116a9e310537c307eac3efc3b8fd6b6b28",
+          "task_input_sha256": {
+            "environment/Dockerfile": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+            "environment/src/eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+            "environment/src/eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+            "instruction.md": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+            "task.toml": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+            "tests/test.sh": "fc40868bee6cbcfd6e906b0522dda9a778064ea9876e64a40a377d66087a174b",
+            "tests/test_outputs.py": "cdc58e3aa0960dac2e12a12b1cfa4131237d697762a6a78ebf33f80d2eb168ce"
+          }
+        },
+        "reason": null,
+        "status": "observed"
+      },
+      "execution_budget_sha256": "98249b1060a58561fd7313ef8bf3db1f1d25a1f485ca21cbb2c58ca630777120",
+      "host_sources_sha256": "6adfb49271a20bb047ab0f097b282e8af6f7b2116a85326ba95455858f5ae1f9",
+      "inputs": [
+        {
+          "bytes": 208773,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/receipt.json",
+          "sha256": "d17bb9052949a39cafee79a09dbaa0ed2bf913ad4726030707ba9bf44511ba43"
+        },
+        {
+          "bytes": 65767,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/preparation.json",
+          "sha256": "b4bfdc108aed83e4d5f2b91c16828f151569e02184b959c0ed5b912a3b44ff33"
+        },
+        {
+          "bytes": 3531,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/config.json",
+          "sha256": "1baa660e611ed86dcdae2bee91a0aa7ddd71a1f8fb203788d44f6faddd873d1d"
+        },
+        {
+          "bytes": 6238517,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/bundle-01/manifest.json",
+          "sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04"
+        },
+        {
+          "bytes": 91348,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__xVYNcvU/result.json",
+          "sha256": "4b28ba5675823834aea71c1e9b9ebed89ca9d6d8bbc62660d4a940363204bb40"
+        },
+        {
+          "bytes": 1142,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/jobs/supervisor-full-largest-eigenval/result.json",
+          "sha256": "2a6d41502d68eb0d5ade3cfeafb8661a39c64440faee99f2cc138a97471c0258"
+        }
+      ],
+      "intent_action_binding_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "label": "compact",
+      "normalized_configuration_sha256": "f615ca8d2724daae88bd31baec69c6162896dc64e846055bf9da62fd99213e84",
+      "normalized_native_trial_configuration_sha256": "0db5814491f5b09085b366fb6cbf54e272d322d3f4ae34699b237931e3fca1b4",
+      "observed_setup_cache_sha256": "2cb40a79ef80fc4956934449f9c264850b5212a93187637b5229b11fe8ff35b4",
+      "phases": [
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "ce8f4a916cc84a16813c989f843cda4f",
+          "native_token_count_records": 1,
+          "phase": "planning",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 90
+          },
+          "recorded_input": {
+            "model_prompt_bytes": 25678,
+            "model_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+            "native_prompt_bytes": 25678,
+            "native_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+            "planning_generation": {
+              "native_schema_projection": {
+                "bounds_annotation_omitted": true,
+                "canonical_schema_bytes": 4493,
+                "canonical_schema_sha256": "ecc5eb474f439394891392f89bd41cae86f2b9aaef4ebd2927d0c8b467a78b38",
+                "canonical_validation_preserved": true,
+                "completion_authority": false,
+                "definitions_relocated": true,
+                "execution_authority": false,
+                "native_wire_schema_bytes": 4378,
+                "native_wire_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+                "projection_id": "canonical-prompt-goal-codex-generation-schema@1",
+                "proof_authority": false,
+                "publication_authority": false,
+                "scope_expansion_authority": false,
+                "shape_only": true,
+                "top_level_id_omitted": true
+              },
+              "observed_schema_bytes": 4378,
+              "observed_schema_sha256": "2be832347465185e55f8e4f8202aaa9bab0eddbbae6fe5fc377cd330302612a5",
+              "policy": {
+                "native_schema_requested": true,
+                "plan_admitted": false,
+                "response_schema_validated": true,
+                "schema": "codex-native-planning-json-schema@1"
+              }
+            },
+            "router_prompt_bytes": 25678,
+            "router_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+            "workspace_advisory_bytes": 0,
+            "workspace_advisory_sha256": null
+          },
+          "status": "provider_returned"
+        },
+        {
+          "complete_usage_observed": true,
+          "invocation_id": "1a3365480a4c4e7c8a4214316c6c4f9b",
+          "native_token_count_records": 8,
+          "phase": "coding",
+          "provider_controls": {
+            "model": "gpt-6.1-sol",
+            "provider": "codex_cli",
+            "provider_output_token_cap_enforced": false,
+            "reasoning_effort": "high",
+            "requested_output_tokens": 4096,
+            "timeout_seconds": 300
+          },
+          "recorded_input": {
+            "coding_reply_contract": {
+              "automatic_retry_admitted": false,
+              "completion_authority": false,
+              "execution_authority": false,
+              "instruction_bytes": 506,
+              "instruction_sha256": "abd57dd0db7f134b7613479da5cc93ed9ebbbe79d40c1568c3d0d02eeba451e1",
+              "mode": "ordinary-completion@1",
+              "model_prompt_after_bytes": 57160,
+              "model_prompt_after_sha256": "602f3c21903e4aba12c3b94d1fcd07ba2a0f3cd5b0b3c28a6247fcef15bcb4d1",
+              "model_prompt_before_bytes": 56654,
+              "model_prompt_before_sha256": "c59a0e7a0228755a775368870bb62b4264516c62f6411d852d222d79f6892534",
+              "native_output_schema_bytes": 215,
+              "native_output_schema_requested": true,
+              "native_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76",
+              "owner_selected": true,
+              "residual_task_family_selected": false,
+              "response_validated": true,
+              "schema": "supervisor-coding-reply-contract@1",
+              "settlement_authority": false
+            },
+            "coding_reply_generation_policy": {
+              "completion_authority": false,
+              "execution_authority": false,
+              "native_schema_requested": true,
+              "response_schema_validated": true,
+              "schema": "codex-native-coding-completion-json-schema@1",
+              "settlement_authority": false
+            },
+            "model_prompt_bytes": 57160,
+            "model_prompt_sha256": "602f3c21903e4aba12c3b94d1fcd07ba2a0f3cd5b0b3c28a6247fcef15bcb4d1",
+            "native_prompt_bytes": 61172,
+            "native_prompt_sha256": "3ad7d247b80e9c9d53e01f51785e65c1caca326295d68202ef6b33523ca913c8",
+            "prompt_components_bytes": {
+              "coding_reply_contract": 506,
+              "doctor": 2109,
+              "public_instruction": 1226,
+              "semantic_transport": 52429,
+              "workspace": 890
+            },
+            "router_prompt_bytes": 55764,
+            "router_prompt_sha256": "e1c54998d3ee95d7b5148fbe8e00d1b3fba08b2cb8139dced7a63875b9f32a59",
+            "transport_receipt": {
+              "freshness_checked": true,
+              "identifier_mappings": 19,
+              "identifier_occurrences": 50,
+              "provider_prompt_bytes": 52429,
+              "provider_prompt_sha256": "9f7f5ec130bef2361d1ab7ca633a49159a7760405d0543fd8997c55f1ba22148",
+              "schema": "supervisor-semantic-router-encoding@2",
+              "translation_cid": "bafkreidqtzkm4rejghl3ucvxqj76dmeumitd45agwp3jm2xyetkz6ytqey",
+              "transport_schema": "supervisor-semantic-router-input@2"
+            },
+            "workspace_advisory_bytes": 890,
+            "workspace_advisory_sha256": "0899677a05d7be177ddee5e7dc0ed52cf60bfa469ede28ce2cdcb66424830d23"
+          },
+          "status": "provider_returned"
+        }
+      ],
+      "planning_generation_schema_required": true,
+      "qualification_checks": [
+        {
+          "name": "supported_receipt_schema",
+          "passed": true
+        },
+        {
+          "name": "complete_single_trial_receipt",
+          "passed": true
+        },
+        {
+          "name": "one_full_supervisor_agent",
+          "passed": true
+        },
+        {
+          "name": "prepared_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "valid_frozen_controls",
+          "passed": true
+        },
+        {
+          "name": "observed_configuration_unchanged",
+          "passed": true
+        },
+        {
+          "name": "control_configuration_digest_matches",
+          "passed": true
+        },
+        {
+          "name": "preparation_controls_unchanged",
+          "passed": true
+        },
+        {
+          "name": "identity_matches_declaration_and_preparation",
+          "passed": true
+        },
+        {
+          "name": "original_task_inputs_unchanged",
+          "passed": true
+        },
+        {
+          "name": "intent_contract_not_selected",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_mode_consistent_in_owner_and_native_metadata",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_mode_explicitly_selected_in_both_owner_and_native_metadata",
+          "passed": true
+        },
+        {
+          "name": "direct_planning_retained",
+          "passed": true
+        },
+        {
+          "name": "explicit_expected_transport",
+          "passed": true
+        },
+        {
+          "name": "single_worker",
+          "passed": true
+        },
+        {
+          "name": "planning_and_indexing_inside_agent_time",
+          "passed": true
+        },
+        {
+          "name": "runtime_archive_bound",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_manifest_unchanged",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_archive_source_ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_source_binding_inventory_complete",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_archive_source_ipfs_accelerate_py/llm_router.py",
+          "passed": true
+        },
+        {
+          "name": "setup_cache_advice_completed_and_bound",
+          "passed": true
+        },
+        {
+          "name": "exactly_one_planning_and_one_coding_router_cli_session",
+          "passed": true
+        },
+        {
+          "name": "provider_identity_matches",
+          "passed": true
+        },
+        {
+          "name": "native_result_hash_bound",
+          "passed": true
+        },
+        {
+          "name": "exact_native_task_binding",
+          "passed": true
+        },
+        {
+          "name": "native_trial_controls_match_frozen_config",
+          "passed": true
+        },
+        {
+          "name": "native_observations_unchanged",
+          "passed": true
+        },
+        {
+          "name": "one_finished_native_job_trial",
+          "passed": true
+        },
+        {
+          "name": "complete_exact_coding_context_audit",
+          "passed": true
+        },
+        {
+          "name": "planning_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "planning_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_not_applied_to_planning",
+          "passed": true
+        },
+        {
+          "name": "planning_prompt_unchanged_by_transport",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_requested_and_validated",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_projection_preserves_native_validation",
+          "passed": true
+        },
+        {
+          "name": "planning_generation_schema_digests_bounded_and_bound",
+          "passed": true
+        },
+        {
+          "name": "native_plan_independently_qualified_after_generation",
+          "passed": true
+        },
+        {
+          "name": "coding_native_usage_arithmetic",
+          "passed": true
+        },
+        {
+          "name": "coding_complete_native_session_usage",
+          "passed": true
+        },
+        {
+          "name": "coding_prompt_hashes_present",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_exact_closed_static_shape",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_contract_successful_response",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_native_generation_policy_closed",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_trusted_cli_schema_digest_and_size",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_complete_final_prompt_identity_and_overhead",
+          "passed": true
+        },
+        {
+          "name": "coding_reply_full_input_audit_includes_contract_before_after",
+          "passed": true
+        },
+        {
+          "name": "correct_coding_transport_receipt",
+          "passed": true
+        },
+        {
+          "name": "complete_appended_prompt_byte_accounting",
+          "passed": true
+        },
+        {
+          "name": "coding_hashes_match_reconstructed_inputs",
+          "passed": true
+        },
+        {
+          "name": "all_provider_attempts_receipted",
+          "passed": true
+        },
+        {
+          "name": "native_total_equals_agent_summary",
+          "passed": true
+        },
+        {
+          "name": "original_verifier_passed",
+          "passed": true
+        },
+        {
+          "name": "native_task_completed",
+          "passed": true
+        },
+        {
+          "name": "worker_and_supervisor_cleaned_up",
+          "passed": true
+        },
+        {
+          "name": "harbor_completed",
+          "passed": true
+        }
+      ],
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "row": {
+        "arm": "full",
+        "cli_version": "0.160.0",
+        "code_learning_observation": null,
+        "context_input_audit": {
+          "all_observed_coding_inputs_verified": true,
+          "any_model_input_verified": true,
+          "any_native_input_verified": true,
+          "coding_receipts_seen": 1,
+          "error_type": null,
+          "invocations": [
+            {
+              "invocation_id": "1a3365480a4c4e7c8a4214316c6c4f9b",
+              "model_input_verified": true,
+              "native_input_verified": true,
+              "reason": "exact_context_and_input_digests_match",
+              "status": "verified_exact_model_input"
+            }
+          ],
+          "reason": "per_invocation_context_and_input_comparison",
+          "seconds": 2.4288387810229324,
+          "status": "verified_all_observed_model_inputs",
+          "task_correctness_established": false,
+          "usable_coding_receipts": 1
+        },
+        "context_seconds": 3.277222595002968,
+        "doctor_observation": {
+          "candidate_materializations_observed": null,
+          "local_contract_proof_status": null,
+          "observed_worker_receipts": null,
+          "provider_calls": 0,
+          "residual_context_prepared": true,
+          "residual_successors": 1,
+          "residual_work_proposals": 0,
+          "route": "model_router",
+          "selection_is_publication_or_completion_evidence": false,
+          "status": "residual",
+          "whole_program_proved": false
+        },
+        "durations_seconds": {
+          "agent_execution": 222.679375,
+          "agent_setup": 232.763551,
+          "environment_setup": 3.056891,
+          "verifier": 3.111911
+        },
+        "exception_type": null,
+        "indexed_context_observation": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context_observation": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "2fd4f1da18842cfaad725d18e8a9de79d0183465afff941a687b3ef8827b7e52",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "invocations": [
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": null,
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 25678,
+              "model_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+              "native_prompt_bytes": 25678,
+              "native_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+              "router_prompt_bytes": 25678,
+              "router_prompt_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+              "semantic_translation": null,
+              "workspace_advisory_bytes": 0,
+              "workspace_advisory_sha256": null
+            },
+            "invocation_id": "ce8f4a916cc84a16813c989f843cda4f",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23686,
+              "output_tokens": 1506,
+              "total_tokens": 25192
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "planning",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 31.744027212960646,
+            "status": "provider_returned",
+            "timeout_seconds": 90,
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23686,
+              "output_tokens": 1506,
+              "total_tokens": 25192
+            }
+          },
+          {
+            "error_type": null,
+            "input_observation": {
+              "doctor_residual_context": {
+                "advisory_bytes": 2109,
+                "advisory_sha256": "3faf081986f4390e80d18ce525e39a168f297063829704d7414e27c797bf11d8",
+                "candidate_only": true,
+                "context_cid": "baguqeeral2ddoipb54ckddfeppchmiax4mk3ekkpcs2n6rsibxcnhxc6k3gq",
+                "derived_runtime_admitted": false,
+                "extra_provider_calls": 0,
+                "native_capsule_id": "baguqeera7lswfswizt63k2bmh2yjmjsmjjhoptwudex4wswdpqugcpjhi7fq",
+                "schema": "doctor-residual-router-context@1",
+                "source_freshness_verified": true
+              },
+              "input_reconstruction_verified_by_receipt_presence": false,
+              "measurements_are_token_savings": false,
+              "model_prompt_bytes": 57160,
+              "model_prompt_sha256": "602f3c21903e4aba12c3b94d1fcd07ba2a0f3cd5b0b3c28a6247fcef15bcb4d1",
+              "native_prompt_bytes": 61172,
+              "native_prompt_sha256": "3ad7d247b80e9c9d53e01f51785e65c1caca326295d68202ef6b33523ca913c8",
+              "router_prompt_bytes": 55764,
+              "router_prompt_sha256": "e1c54998d3ee95d7b5148fbe8e00d1b3fba08b2cb8139dced7a63875b9f32a59",
+              "semantic_translation": {
+                "freshness_checked": true,
+                "identifier_mappings": 19,
+                "identifier_occurrences": 50,
+                "native_prompt_bytes": 61172,
+                "provider_prompt_bytes": 52429,
+                "schema": "supervisor-semantic-router-encoding@2",
+                "translation_cid": "bafkreidqtzkm4rejghl3ucvxqj76dmeumitd45agwp3jm2xyetkz6ytqey"
+              },
+              "workspace_advisory_bytes": 890,
+              "workspace_advisory_sha256": "0899677a05d7be177ddee5e7dc0ed52cf60bfa469ede28ce2cdcb66424830d23"
+            },
+            "invocation_id": "1a3365480a4c4e7c8a4214316c6c4f9b",
+            "known_reported_cost_subtotal_usd": null,
+            "known_token_subtotals": {
+              "cached_input_tokens": 254592,
+              "input_tokens": 297122,
+              "output_tokens": 4803,
+              "total_tokens": 301925
+            },
+            "model": "gpt-6.1-sol",
+            "native_task_complete_observed": true,
+            "phase": "coding",
+            "provider": "codex_cli",
+            "reported_cost_usd": null,
+            "seconds": 114.61601997201797,
+            "status": "provider_returned",
+            "timeout_seconds": 300,
+            "tokens": {
+              "cached_input_tokens": 254592,
+              "input_tokens": 297122,
+              "output_tokens": 4803,
+              "total_tokens": 301925
+            }
+          }
+        ],
+        "known_reported_cost_subtotal_usd": null,
+        "known_token_subtotals": {
+          "cached_input_tokens": 254592,
+          "input_tokens": 320808,
+          "output_tokens": 6309,
+          "total_tokens": 327117
+        },
+        "label": "Supervisor: full indexed context",
+        "model": "gpt-6.1-sol",
+        "native_completion_applicable": true,
+        "native_result_sha256": "4b28ba5675823834aea71c1e9b9ebed89ca9d6d8bbc62660d4a940363204bb40",
+        "native_task_completed": true,
+        "native_total_seconds": null,
+        "native_usage_complete_observed": true,
+        "observed_provider_invocations": 2,
+        "official_reward": 1.0,
+        "original_task_inputs_unchanged": true,
+        "outcome": "official_verifier_passed",
+        "post_publication_context": {
+          "budget_seconds": 635.9936465530191,
+          "embedding_accounting": {
+            "all_refreshes_receipted": false,
+            "known_subtotals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            },
+            "totals": {
+              "local_embedding_calls": null,
+              "local_embedding_texts": null,
+              "remote_embedding_calls": null,
+              "text_generation_calls": null
+            }
+          },
+          "embedding_calls": null,
+          "error_type": null,
+          "reason": null,
+          "refresh_seconds": 13.75864846498007,
+          "status": "refreshed",
+          "task_completion_is_context_refresh_evidence": false
+        },
+        "post_publication_proof_index": null,
+        "preparation_seconds": 0.7408119780011475,
+        "provider_calls": 2,
+        "reasoning_effort": "high",
+        "reported_cost_usd": null,
+        "retained_trial": true,
+        "runtime_archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+        "source_receipts": [
+          {
+            "bytes": 208773,
+            "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/receipt.json",
+            "sha256": "d17bb9052949a39cafee79a09dbaa0ed2bf913ad4726030707ba9bf44511ba43"
+          }
+        ],
+        "supervisor_error_type": null,
+        "supervisor_phases_seconds": {
+          "context_seconds": 3.277222595002968,
+          "doctor_seconds": 1.545342811034061,
+          "initial_context_seconds": 14.64705456898082,
+          "planning_seconds": 38.09013482101727,
+          "post_publication_refresh_seconds": 13.75864846498007,
+          "prepare_seconds": 0.7408119780011475
+        },
+        "supervisor_seconds": 221.28263712499756,
+        "task": "largest-eigenval",
+        "tokens": {
+          "cached_input_tokens": 254592,
+          "input_tokens": 320808,
+          "output_tokens": 6309,
+          "total_tokens": 327117
+        },
+        "trial": "largest-eigenval__xVYNcvU",
+        "uncached_input_tokens": 66216,
+        "unreceipted_provider_attempt": false
+      },
+      "setup_cache_selection": {
+        "manifest_sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04",
+        "policy": "source384-native-aarch64-dontneed@2",
+        "schema": "terminal-setup-cache-selection@1"
+      },
+      "source384_binding_sha256": "f61f4ed137abd66a26931bbcd1bc74421a5c1b8b2bb45a32d9783ebaa7c4198c",
+      "transport": "supervisor-semantic-router-input@2"
+    }
+  ],
+  "benchmark_advantage_claimed": false,
+  "cached_input_already_in_input_total": true,
+  "coding_reply_source_bindings": [
+    {
+      "bytes": 3057,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 30585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 65871,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 13283,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    {
+      "bytes": 27661,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37"
+    },
+    {
+      "bytes": 33713,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab"
+    },
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "relative_path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 5423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 7870,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/llm_router.py",
+      "relative_path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    }
+  ],
+  "comparison": {
+    "declared_controls_comparison": {
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established",
+      "differences": [],
+      "matches": true,
+      "status": "matched"
+    },
+    "matched_pair_qualified": true,
+    "observed_baseline_minus_compact_tokens": {
+      "cached_input_tokens": -77696,
+      "input_tokens": -78301,
+      "output_tokens": -1824,
+      "total_tokens": -80125
+    },
+    "qualification_checks": [
+      {
+        "name": "same_declared_task_job_agent_controls",
+        "passed": true
+      },
+      {
+        "name": "same_normalized_configuration_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_normalized_native_trial_configuration_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_archive_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_archive_manifest_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_host_sources_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_resource_profile",
+        "passed": true
+      },
+      {
+        "name": "same_source384_binding_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_intent_action_binding_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_setup_cache_selection",
+        "passed": true
+      },
+      {
+        "name": "same_observed_setup_cache_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_execution_budget_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_admission_environment_sha256",
+        "passed": true
+      },
+      {
+        "name": "same_phase_provider_controls",
+        "passed": true
+      },
+      {
+        "name": "same_coding_reply_mode",
+        "passed": true
+      },
+      {
+        "name": "same_coding_reply_requirement",
+        "passed": true
+      },
+      {
+        "name": "same_coding_reply_schema_instruction_and_generation_policy",
+        "passed": true
+      },
+      {
+        "name": "same_planning_generation_requirement",
+        "passed": true
+      },
+      {
+        "name": "same_requested_and_observed_planning_generation_schema",
+        "passed": true
+      },
+      {
+        "name": "distinct_native_trials",
+        "passed": true
+      }
+    ],
+    "qualified_pair_observed_total_token_reduction_percent": -32.44032195374749,
+    "repeatable_or_causal_reduction_established": false
+  },
+  "limitations": [
+    "One matched pair is descriptive; it does not establish a repeatable or causal saving percentage.",
+    "Internal model turns, output length, tool usage and stochastic choices can differ despite matching declared controls.",
+    "Initial model input hashes exclude provider harness/system context and later internal history; native cumulative tokens include the observed complete sessions.",
+    "The existing context audit reconstructs coding inputs; planning prompt consistency is checked from receipts without an independent planning reconstruction.",
+    "Matching setup advice and selected asset inventories does not prove equal kernel or provider cache occupancy.",
+    "Recorded native controls are checked against frozen configurations; this producer does not independently prove runtime enforcement.",
+    "Cached input is already counted in input tokens; cache/reasoning subcategories are not added again.",
+    "The selected ordinary completion contract adds 506 initial-input bytes per coding arm and a 215-byte native generation schema; neither grants completion, settlement or retry authority.",
+    "Failed and interrupted attempts remain visible; incomplete totals are unknown and observed counters are retained as subtotals.",
+    "No transcript, model thought, task source body, solution or hidden verifier body is read; only bounded metadata and comparator/planning generation implementation sources are accessed."
+  ],
+  "new_provider_calls_by_accounting": 0,
+  "planning_generation_source_bindings": [
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/llm_router.py",
+      "relative_path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 6186,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 13799,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "relative_path": "ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 115963,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    }
+  ],
+  "producer_sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6",
+  "provider_cost_calculated": false,
+  "raw_model_data_read": false,
+  "recorded_at_utc": "2026-10-07T04:43:11.047464+00:00",
+  "reused_comparison_sources": [
+    {
+      "bytes": 12019,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 38444,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py",
+      "sha256": "0494f2c7bdf7f223dd7748582d517dc6725d093fdaad24d15fb36c06721c62c8"
+    }
+  ],
+  "schema": "terminal-coding-reply-contract-transport-pair-accounting@1",
+  "unknown_fields_are_zero": false
+}

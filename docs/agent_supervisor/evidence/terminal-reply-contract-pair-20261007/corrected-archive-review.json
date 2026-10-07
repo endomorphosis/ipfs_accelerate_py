@@ -1,0 +1,1953 @@
+{
+  "actual_native_wheel_members": [
+    {
+      "bytes": 262620152,
+      "path": "torch/lib/libtorch_cpu.so",
+      "sha256": "5750e23245c46c34120d6a11f8389bac3493d000ea93ebfbe129a94e61f2e784"
+    },
+    {
+      "bytes": 28237672,
+      "path": "torch/lib/libtorch_python.so",
+      "sha256": "2634c578f87e437467f899c655240aaca2f7756c94388dd47af908bd24d0bc8b"
+    },
+    {
+      "bytes": 24020337,
+      "path": "torch/lib/libopenblas.so.0",
+      "sha256": "7a6446210edb096b85c713c872f0dfd3b3e0c963a77d2629dfaf83380c441746"
+    },
+    {
+      "bytes": 17850377,
+      "path": "torch/lib/libarm_compute.so",
+      "sha256": "cd83d6783a1acd1b9c4a6291b2567beb1c4a4ca98f82e3ccb46cd347b048c35d"
+    },
+    {
+      "bytes": 13729768,
+      "path": "torch/bin/test_api",
+      "sha256": "c1b984e86af6eb145fbfd8f3e019e4569a8d07de2e03582f68dc60b447f84d6b"
+    },
+    {
+      "bytes": 12748704,
+      "path": "torch/bin/test_jit",
+      "sha256": "af3745862bbef73c646008b242fb1253378240a39acffc3dea7174e11b25d696"
+    },
+    {
+      "bytes": 4928560,
+      "path": "torch/bin/test_lazy",
+      "sha256": "e4ab2bf5469e3281a222f38d5d8efafeddee7586fbc9e40990f8f482ceea17b2"
+    },
+    {
+      "bytes": 4783752,
+      "path": "torch/bin/protoc",
+      "sha256": "148926f95652cb5eaf67be9e19403b0a8f010afecae17aebea80c1f3b5881144"
+    },
+    {
+      "bytes": 4783752,
+      "path": "torch/bin/protoc-3.13.0.0",
+      "sha256": "148926f95652cb5eaf67be9e19403b0a8f010afecae17aebea80c1f3b5881144"
+    },
+    {
+      "bytes": 4364680,
+      "path": "torch/test/op_registration_test",
+      "sha256": "34b479502c1b704cbc55cd4446b0e28459ded4ff9722150ef2d48e06a60b4b78"
+    },
+    {
+      "bytes": 2324304,
+      "path": "torch/test/c10_intrusive_ptr_test",
+      "sha256": "b4cff2abb814b5f2c9057ca221ab1bbd198b52e6932f21e3198c7565fd88f78b"
+    },
+    {
+      "bytes": 2195793,
+      "path": "torch/include/ATen/RedispatchFunctions.h",
+      "sha256": "512efc63cb2e6b2f9b69c45de2bef8bf26abff428d4dd7fd0d65d22dea122f96"
+    },
+    {
+      "bytes": 2103320,
+      "path": "torch/test/c10_small_vector_test",
+      "sha256": "51df0571e77e7eccbe8038050e35f904776a285c5037564018a2245f11a08bd1"
+    },
+    {
+      "bytes": 1796696,
+      "path": "torch/lib/libc10.so",
+      "sha256": "322122d803708b7078b7c754e4b044e6fcf9b607688ccc9be576d0a85274a8bf"
+    },
+    {
+      "bytes": 1732642,
+      "path": "torch/include/ATen/VmapGeneratedPlumbing.h",
+      "sha256": "453f463dc99ca3807e0e08422ccb7dbfc691fe5e016bbcdb86e0de8bf2fc1370"
+    },
+    {
+      "bytes": 1712376,
+      "path": "torch/test/kernel_lambda_legacy_test",
+      "sha256": "203f34112c6c621576d855ddb73988b6252b43bdb00b587dcdf71f4843f45e9b"
+    },
+    {
+      "bytes": 1655209,
+      "path": "torch/lib/libgomp.so.1",
+      "sha256": "7e2abc1b84b1470fa53a0b679e066c11adbc3a8d42aebf37687f6b1254421391"
+    },
+    {
+      "bytes": 1563592,
+      "path": "torch/test/kernel_function_legacy_test",
+      "sha256": "077080638be754dd634fb452dbf2b2ca1c6d7fe78a9578cf9fca2060d24f602a"
+    },
+    {
+      "bytes": 1553120,
+      "path": "torch/test/List_test",
+      "sha256": "22a950bf44751d6085f971043f5b545b85990d52169b175e6a0ec4fd7cbd3057"
+    },
+    {
+      "bytes": 1485025,
+      "path": "torch/lib/libgfortran.so.5",
+      "sha256": "36f49edf8de93b5ad7e3324598b921f0229e0841eea3902a4d6fc9f949c77e94"
+    },
+    {
+      "bytes": 1396680,
+      "path": "torch/test/kernel_lambda_test",
+      "sha256": "6bdc3ce9156762385a80baae94b747f3d0ea6639a76e7aba86731539717978c9"
+    },
+    {
+      "bytes": 1376254,
+      "path": "torch/testing/_internal/common_methods_invocations.py",
+      "sha256": "f195caae520c73e3744af853d48c6534589e867a5378f03e5df6ee700bac6c23"
+    },
+    {
+      "bytes": 1352632,
+      "path": "torch/bin/test_aoti_abi_check",
+      "sha256": "853d6819c5e1bb889d8d0b50fe21264b50a482fe2bf25d464ca6e2a8407076c7"
+    },
+    {
+      "bytes": 1310273,
+      "path": "torch/lib/libarm_compute_graph.so",
+      "sha256": "c13e3b7d7e9fba243b3f6e7c3df9e3ad62a9703ad1763a8f8402d99c04d980b0"
+    },
+    {
+      "bytes": 1236600,
+      "path": "torch/test/make_boxed_from_unboxed_functor_test",
+      "sha256": "ee5b254fd4e5fd41b6aecd65bc29f1851af2c7fd06f508bbf41e18bd9a8f0892"
+    },
+    {
+      "bytes": 1227864,
+      "path": "torch/test/ivalue_test",
+      "sha256": "6dc3c79ae220cc8f200d33f259f9921d728005b3fcc03e3e469a3baec314d416"
+    },
+    {
+      "bytes": 1207952,
+      "path": "torch/test/kernel_function_test",
+      "sha256": "d27174b7598e3b783f0444c298817bb7bf5596350b50a53515073119b1b1011f"
+    },
+    {
+      "bytes": 1172128,
+      "path": "torch/test/cpu_rng_test",
+      "sha256": "fd4aafc3faed39ff16470e75afecc1e0ee206a8ccff09e8515a0952f86415ef1"
+    },
+    {
+      "bytes": 1170736,
+      "path": "torch/test/tensor_iterator_test",
+      "sha256": "25343b8e84327f775c7ee03add9a9ad81cd57fe410b781369969f5a6f514e647"
+    },
+    {
+      "bytes": 1099761,
+      "path": "torch/_C/_VariableFunctions.pyi",
+      "sha256": "c2ed2e8b08879452ca2dd1cf7571afd213f5cd1bcee4d398beb29e6980ad578c"
+    },
+    {
+      "bytes": 1099761,
+      "path": "torch/_VF.pyi",
+      "sha256": "c2ed2e8b08879452ca2dd1cf7571afd213f5cd1bcee4d398beb29e6980ad578c"
+    },
+    {
+      "bytes": 1072392,
+      "path": "torch/test/Dict_test",
+      "sha256": "b9f19b143bbdc901fc7249061308d64f87ec50098b3997962ca8de908eeadad1"
+    },
+    {
+      "bytes": 1018440,
+      "path": "torch/bin/test_profiler_collection",
+      "sha256": "33fa7290bc696a39055b3ccf53a749caa0ef3c3e9145d3313dca0f727ddc87b1"
+    },
+    {
+      "bytes": 944264,
+      "path": "torch/test/legacy_vmap_test",
+      "sha256": "620e52119ea7f60b07d86b4caa1b2705f8dff21b5f516e76204e5d0cc9425b4e"
+    },
+    {
+      "bytes": 922808,
+      "path": "torch/test/KernelFunction_test",
+      "sha256": "18c349c0b2da30b772cc6839ccfbfa19a48fd0823a7ef4b239d23e4b5b678c30"
+    },
+    {
+      "bytes": 912992,
+      "path": "torch/test/c10_optional_test",
+      "sha256": "613b748b7e9815bbd9f448f735823f045f3c0415effc484e7a57d2923c24f0c2"
+    },
+    {
+      "bytes": 912720,
+      "path": "torch/lib/libtorchbind_test.so",
+      "sha256": "f9f50bdbd43596954258d75e9eb30e6c6d97e23a4b83ef2c4018ff50e4dc76fa"
+    },
+    {
+      "bytes": 903819,
+      "path": "torch/include/ATen/RegistrationDeclarations.h",
+      "sha256": "63bf47f95b482eb912722bb3ec2f7e4c0b12e9958796debbdfd57250555f898f"
+    },
+    {
+      "bytes": 902704,
+      "path": "torch/test/c10_cow_test",
+      "sha256": "579bc64fa4bfb1428f38fc33bf68b9cbe72096e085c10922485c51886a8fdd35"
+    },
+    {
+      "bytes": 890912,
+      "path": "torch/test/inline_container_test",
+      "sha256": "f1e4944c748e1dc6c57742af04cfec16668669e39e757de4a264bc2e34c98324"
+    },
+    {
+      "bytes": 865352,
+      "path": "torch/test/pow_test",
+      "sha256": "09621af0de18ad108331f50492113814980c9ccf693777249f973734fe62528f"
+    },
+    {
+      "bytes": 857912,
+      "path": "torch/test/basic",
+      "sha256": "ffd412e158be8975785a04fd987d24c84d71dd8201d3b4e1183954bb2238dc77"
+    },
+    {
+      "bytes": 855536,
+      "path": "torch/test/MaybeOwned_test",
+      "sha256": "27ded6f75172c38c1bc98fd9129cd37ff1f3ecc203b998f6b16281ee97dccaf1"
+    },
+    {
+      "bytes": 807032,
+      "path": "torch/bin/test_cpp_rpc",
+      "sha256": "88ea46b70292f70a9286c40bd7155f972736c50b5a6a81baa05e6123d3b76b86"
+    },
+    {
+      "bytes": 806560,
+      "path": "torch/test/kernel_stackbased_test",
+      "sha256": "c4e13e4b8aeacaa65188449c2fa2abc07cade564c59575fe2660258502d68f31"
+    },
+    {
+      "bytes": 805880,
+      "path": "torch/test/IListRef_test",
+      "sha256": "7a7718f3ecf0337d939670409323bc6acfbeff6319b0ed37c3840c10a043d89f"
+    },
+    {
+      "bytes": 801144,
+      "path": "torch/test/c10_ordered_preserving_dict_test",
+      "sha256": "6c357bf135fe768afc7094d46b6f96d0288d98df355eaff707e3b5f11d25204d"
+    },
+    {
+      "bytes": 798200,
+      "path": "torch/test/type_test",
+      "sha256": "b7dba5cc38feb94f143b22abb8db24a5ca009c8b1a0b7dd4bdabc11568d725e1"
+    },
+    {
+      "bytes": 797344,
+      "path": "torch/test/atest",
+      "sha256": "68d8b3c3d21901649fd9558903677446455dca1b33dec9cad6560d10ed522e2e"
+    },
+    {
+      "bytes": 795840,
+      "path": "torch/test/extension_backend_test",
+      "sha256": "75514f932a4079ad0013973def73d9b57ddb7d42c681b9c1e3cc5867c74f95d5"
+    },
+    {
+      "bytes": 795032,
+      "path": "torch/test/cpu_generator_test",
+      "sha256": "acb9fa192245137627be209b2377f2cdd1dc9f70d92a109ecd9c5c39d38110e2"
+    },
+    {
+      "bytes": 787520,
+      "path": "torch/test/quantized_test",
+      "sha256": "177cf3e2389bf297536c1ab16199e8d1cf42c5e0be41016b4aad7512b0981cb6"
+    },
+    {
+      "bytes": 782856,
+      "path": "torch/test/c10_ThreadLocal_test",
+      "sha256": "da244d80172c04c6447f36d5fe28765a9fc952d2fe0ee0ef9e13cabfd7001d3c"
+    },
+    {
+      "bytes": 781088,
+      "path": "torch/test/test_parallel",
+      "sha256": "4b9fcbea75e688bb55d41084a1cf09972977cb2f351d6b38a8aa8ab0bfe807ca"
+    },
+    {
+      "bytes": 780552,
+      "path": "torch/test/apply_utils_test",
+      "sha256": "9b8520f3a2b11bae87b631a506c2aee2d7e92a7fdd11668d60c6f369a95f22a2"
+    },
+    {
+      "bytes": 779576,
+      "path": "torch/test/c10_WaitCounter_test",
+      "sha256": "b15a6219d36a88d488cbc465cb6c239789b6359db933e12e88d2d551102f8680"
+    },
+    {
+      "bytes": 778312,
+      "path": "torch/test/backend_fallback_test",
+      "sha256": "6167c420b29432ec560ac065ec066a25ac7fa30848d2cacdb28d66c7580e7bcc"
+    },
+    {
+      "bytes": 777944,
+      "path": "torch/test/c10_DispatchKeySet_test",
+      "sha256": "476dd04eb71a83ab9506ad2b48b47d2e8af65c322fbb4cdc4009db1c2abd7b96"
+    },
+    {
+      "bytes": 777888,
+      "path": "torch/test/scalar_test",
+      "sha256": "c056a9e4b67867b0b5d345a2e2ff8202f9bc003f192c0221b84c74f172428e17"
+    },
+    {
+      "bytes": 777552,
+      "path": "torch/bin/TCPStoreTest",
+      "sha256": "45e8349796950711ec76d9eaa07ab102e6a68da0d07b560f6e80b3e9de2e6d01"
+    },
+    {
+      "bytes": 776880,
+      "path": "torch/test/scalar_tensor_test",
+      "sha256": "f4a1ec4a4da649ebfd8b960283c30448efe9ed0be0430d2ac1ffb164b817b3f4"
+    },
+    {
+      "bytes": 776856,
+      "path": "torch/test/c10_SymInt_test",
+      "sha256": "194d0bc3a1ec0a63c0a1ec8e3ee2e1f4423026dd7b303b2629a5b62844bbcf5a"
+    },
+    {
+      "bytes": 775136,
+      "path": "torch/test/c10_logging_test",
+      "sha256": "c0452173af73c120ec070302b5cc4ce372096fc43b26efcc1a34c2e689494ac4"
+    },
+    {
+      "bytes": 774488,
+      "path": "torch/test/math_kernel_test",
+      "sha256": "3315e3ccdf93ebecbd547a187e3b951c5d65c7b7c0989dbdbaaf2896628e6d21"
+    },
+    {
+      "bytes": 772800,
+      "path": "torch/test/c10_bfloat16_test",
+      "sha256": "3be2fc2d3b32a9fb64c246a9742072b32836605193b09757b5e8bf2b1ef61355"
+    },
+    {
+      "bytes": 772480,
+      "path": "torch/test/memory_overlapping_test",
+      "sha256": "467a62fa0bb5e6570e2fe534092f760c0be690c36f541d3d0941f523e5d0d894"
+    },
+    {
+      "bytes": 772368,
+      "path": "torch/test/half_test",
+      "sha256": "038aaad87dadc896983cd966352008efd9db80da17a97b91e7957ade87e103fb"
+    },
+    {
+      "bytes": 772280,
+      "path": "torch/test/c10_Enumerate_test",
+      "sha256": "11e664870049b574b4f188c6e98c759e12f17b40c3166b43006278fe0c81aab8"
+    },
+    {
+      "bytes": 772216,
+      "path": "torch/test/native_test",
+      "sha256": "75a3c5957a7cb8e1cf57d7818a2191d390193dc4f79301c9f8f1533eb0325ac8"
+    },
+    {
+      "bytes": 771816,
+      "path": "torch/test/CppSignature_test",
+      "sha256": "95d31568092d5e15d6ad953f59f16b6911814987891dea8dfd08e897f1a10f16"
+    },
+    {
+      "bytes": 770984,
+      "path": "torch/test/type_ptr_test",
+      "sha256": "6e2ba953fbb21f10ca24f8a621dd53ed62ce5832852eb535b871e981f402fc20"
+    },
+    {
+      "bytes": 770912,
+      "path": "torch/test/stride_properties_test",
+      "sha256": "011844096e4342bd334d32814d4f31dc151b7c348519ea07a9f6c073ee7932be"
+    },
+    {
+      "bytes": 770824,
+      "path": "torch/test/accelerator_graph_test",
+      "sha256": "52c094b6631b5390e59e05ce0878563fcc25dc3a4acbf8ff9a4321692a845426"
+    },
+    {
+      "bytes": 770176,
+      "path": "torch/test/cpu_profiling_allocator_test",
+      "sha256": "530c200785320d3072f73b4f83c2c75456593aa2c6ec826bcece7116c9c7ac67"
+    },
+    {
+      "bytes": 769408,
+      "path": "torch/test/memory_format_test",
+      "sha256": "8e88794276de37497bab24592e42d5f935a71cf33bab5a5b0c0d533a488b17a0"
+    },
+    {
+      "bytes": 769376,
+      "path": "torch/test/dlconvertor_test",
+      "sha256": "285b43cef5bb55dd572b35a59a3c661f8c17983def5af1379067d55fcac8344c"
+    },
+    {
+      "bytes": 769120,
+      "path": "torch/test/c10_string_util_test",
+      "sha256": "bcf80c86bb77e5eee9c9fc2fb90ea219f74d88c8cb0961242a7ec83b76311f5e"
+    },
+    {
+      "bytes": 767744,
+      "path": "torch/test/xla_tensor_test",
+      "sha256": "17a1a0e3587b909378d14fd5d8844cfc95a00c074e204aa2af41efab8ba7f1ea"
+    },
+    {
+      "bytes": 767392,
+      "path": "torch/test/broadcast_test",
+      "sha256": "98e724e9a8ce9f4b3f930906ff04c093b2683d11e74fa180385f0252afae7d0f"
+    },
+    {
+      "bytes": 767248,
+      "path": "torch/test/undefined_tensor_test",
+      "sha256": "fab173ece4ee77e3b9ab6f5c4dd16398585d2545a58d36faab3f0be9cff2facb"
+    },
+    {
+      "bytes": 767176,
+      "path": "torch/test/c10_complex_math_test",
+      "sha256": "7ac1c73f8078212031504e925e24914e2237ad060be273cb004753b678f1f052"
+    },
+    {
+      "bytes": 766664,
+      "path": "torch/test/weakref_test",
+      "sha256": "c3de570409e86ff28642e58370c78cca0541b0bcaa1a9ec6321729537f379b9d"
+    },
+    {
+      "bytes": 766416,
+      "path": "torch/test/packedtensoraccessor_test",
+      "sha256": "190831ddfbdac2eb264d51ea6f8ee8d10e258a184130cfaf38e9f0e9f612c977"
+    },
+    {
+      "bytes": 765448,
+      "path": "torch/bin/test_comms_id",
+      "sha256": "5889e29cf7e166fa0ed76a66a3f8aaea0fc32a6547866ccc1596e9d58261286e"
+    },
+    {
+      "bytes": 764688,
+      "path": "torch/test/wrapdim_test",
+      "sha256": "8ccbd5f5eba7c56e240cbd96401f1d79eb0dd4fb940af9bc1770ed054c472571"
+    },
+    {
+      "bytes": 764608,
+      "path": "torch/test/c10_InlineStreamGuard_test",
+      "sha256": "10d3668ef8265649eaa3128cebcb53ecf205bae3bd65dfffcc3c2cfc599b5ca0"
+    },
+    {
+      "bytes": 764448,
+      "path": "torch/test/thread_init_test",
+      "sha256": "a28961f5be4fc05134c4f4f7642379352eec6a44a3554cfdeab30efa0590578d"
+    },
+    {
+      "bytes": 764344,
+      "path": "torch/test/StorageUtils_test",
+      "sha256": "be3e9c403507d84ebe6441acd6f8ad690282e500eb2c703c0462eea0e835b80a"
+    },
+    {
+      "bytes": 764264,
+      "path": "torch/test/reportMemoryUsage_test",
+      "sha256": "343f077563228dbbb11a9396e550c92ec732a5568aa436c6e9c97c5e4131568e"
+    },
+    {
+      "bytes": 764080,
+      "path": "torch/test/operator_name_test",
+      "sha256": "2f7b9b605e84c7007d1201967febc6f5a7a14dd1ce3dd6a8b3eede098d41dd76"
+    },
+    {
+      "bytes": 759016,
+      "path": "torch/test/c10_typeid_test",
+      "sha256": "3eb38cd4d799f4330975e3466eca790435ce0cf3cb62eae17c67a5c6afa91f35"
+    },
+    {
+      "bytes": 755776,
+      "path": "torch/test/c10_complex_test",
+      "sha256": "f37be8bf3ed74bcc3c7b603dec3cd0bb153b84b19127df1c021ea65d43b0a90a"
+    },
+    {
+      "bytes": 752504,
+      "path": "torch/test/c10_Scalar_test",
+      "sha256": "91fbfc7d6cad4eb07064d0c9225ef787e6851d5532f2228769b4a589fde954da"
+    },
+    {
+      "bytes": 751120,
+      "path": "torch/test/c10_AllocatorConfig_test",
+      "sha256": "615c1b14cce0807d6dc12f146348221a61fdd60744f9da8ed7f125839261ed47"
+    },
+    {
+      "bytes": 716440,
+      "path": "torch/test/c10_LeftRight_test",
+      "sha256": "ee06e0ab0150794b4a90039ae883c6cf3171aaec29c543f45003cb8beb76ec1d"
+    },
+    {
+      "bytes": 710040,
+      "path": "torch/test/c10_SizesAndStrides_test",
+      "sha256": "29a01c42af1ed0ac14cf3738d214b17701e24ef83df2a8e3f7edf33dc6e27c04"
+    },
+    {
+      "bytes": 702880,
+      "path": "torch/test/c10_Bitset_test",
+      "sha256": "3a74e3bade8766b3393348b242783cf04f2d8e714550b94d8459fbef7a58275d"
+    },
+    {
+      "bytes": 702592,
+      "path": "torch/bin/test_dist_autograd",
+      "sha256": "e24b7ee393c5c9677519e2954d08b1c03b2df334b135800482905e843bc6b013"
+    },
+    {
+      "bytes": 702128,
+      "path": "torch/test/operators_test",
+      "sha256": "9ba379133acecc2160766ad079ce7e37656e0bc0fe721771fbcc459c5fd82d9c"
+    },
+    {
+      "bytes": 699144,
+      "path": "torch/test/c10_ThreadLocalDebugInfo_test",
+      "sha256": "c3a2932bf7b6d9059cb760065c2958636cbb2dad45ae2e47bf066236588c01dc"
+    },
+    {
+      "bytes": 698920,
+      "path": "torch/test/cpu_allocator_test",
+      "sha256": "4fa71fd19db150c8f63a5710c1d14bedd949cfc41b8d111768856b2b65f1048b"
+    },
+    {
+      "bytes": 698264,
+      "path": "torch/test/c10_DeviceGuard_test",
+      "sha256": "6bdf2efae77515ae72ba65d2a17929f9f67215efdcbc0b1ed3386fef3ae9b121"
+    },
+    {
+      "bytes": 698064,
+      "path": "torch/test/c10_InlineDeviceGuard_test",
+      "sha256": "4dce19391518521c0285d67f56181017af1d93a6d986e9345824590a93071f3b"
+    },
+    {
+      "bytes": 697680,
+      "path": "torch/test/lazy_tensor_test",
+      "sha256": "5fbc6e58fe18b94330c936d371d905e745eac3e0492444a4f84d011807d83471"
+    },
+    {
+      "bytes": 696424,
+      "path": "torch/test/reduce_ops_test",
+      "sha256": "33be624259286bfea9780b1d0d6c43aa957a0e7c76b17a7898beb1f25e27028c"
+    },
+    {
+      "bytes": 695424,
+      "path": "torch/bin/test_privateuse1_profiler",
+      "sha256": "a72e36341cd235ff3a25428eedc8faa366b5bc3c6a65811dd677beec8ff27d06"
+    },
+    {
+      "bytes": 695016,
+      "path": "torch/test/verify_api_visibility",
+      "sha256": "987595daad3a2bf005deffe0d098e2cd5a1e97aafae054b54d0b0883c263abad"
+    },
+    {
+      "bytes": 693920,
+      "path": "torch/test/c10_exception_test",
+      "sha256": "aa8d7b752add43a2e089d79118462b913f0289f53c3bb0180285fd4ae637ff8e"
+    },
+    {
+      "bytes": 693352,
+      "path": "torch/test/c10_TypeIndex_test",
+      "sha256": "8a526304ead9876634f106b024208a371cf7f33ff94ede6c58e2b965fd6a3f6a"
+    },
+    {
+      "bytes": 692976,
+      "path": "torch/test/c10_lazy_test",
+      "sha256": "3adcfa01ab6841bc33d9cb3ebae7bba6a5b6d90bbf518ef428d49bd51b40077d"
+    },
+    {
+      "bytes": 692944,
+      "path": "torch/test/mobile_memory_cleanup",
+      "sha256": "b21d0189e1322b7529007c6bc6dd9e8ba994dd0ad387d88a4347acb25b5b9f56"
+    },
+    {
+      "bytes": 692936,
+      "path": "torch/test/op_allowlist_test",
+      "sha256": "8538893ca72159a6a52f4f15a2ce2d8d3aba9efcd3297ab8c2bfa85044568930"
+    },
+    {
+      "bytes": 692600,
+      "path": "torch/test/c10_registry_test",
+      "sha256": "63037a68ab812fd25decbad4bbc3a1eadde89fd0e1ae92779dd563d73e1499fa"
+    },
+    {
+      "bytes": 692464,
+      "path": "torch/bin/HashStoreTest",
+      "sha256": "3eb40007dc43ba85739d6c2960be5a676834bff6e709d5861b0e2146db8cc3db"
+    },
+    {
+      "bytes": 691992,
+      "path": "torch/test/c10_NetworkFlow_test",
+      "sha256": "b3acffeba12f500107b674898efb7d1e691113d66223764ee1047ff95b88b973"
+    },
+    {
+      "bytes": 690504,
+      "path": "torch/bin/FileStoreTest",
+      "sha256": "f6b69e92b48cf48991d8cadda14d15803f56bb0fecb0de17125be6d6e72e161f"
+    },
+    {
+      "bytes": 689840,
+      "path": "torch/test/c10_IntrusiveList_test",
+      "sha256": "0df0e230438e3111580c2aee76815564cc6438819260dd2553d85c74ed71243f"
+    },
+    {
+      "bytes": 688752,
+      "path": "torch/test/c10_ssize_test",
+      "sha256": "2e88e2ea5296ee4812460a6b6a00b2b51f5d516575274dd1fa9f70008052b206"
+    },
+    {
+      "bytes": 686840,
+      "path": "torch/test/c10_irange_test",
+      "sha256": "6799d731c6b917bc14b74f9f425173c4c5e2bf0aeb801132a9bf2a1c245c59d4"
+    },
+    {
+      "bytes": 684792,
+      "path": "torch/test/c10_accumulate_test",
+      "sha256": "92b60ec389a8f92b5692a07768e1d8f2b05dc22540033831be27729ae0fa901d"
+    },
+    {
+      "bytes": 684144,
+      "path": "torch/test/c10_Device_test",
+      "sha256": "f9668fe15ec23e705fcd16c713c467e37bea07cd7af7429171f11603840e9818"
+    },
+    {
+      "bytes": 683520,
+      "path": "torch/test/c10_flags_test",
+      "sha256": "86bafabde05777f412828aab4512c9da1e1b31bc91c20d276c042aa1c832b763"
+    },
+    {
+      "bytes": 683232,
+      "path": "torch/test/c10_Half_test",
+      "sha256": "462b31e54e667b531ee79b91bd926eb52021a8856419a8e15dd1cade6ac1245c"
+    },
+    {
+      "bytes": 683080,
+      "path": "torch/test/c10_Synchronized_test",
+      "sha256": "d033ddb051eb57c627333bdad52e5e74cb786e0a63a1e62072a61e232b8820ae"
+    },
+    {
+      "bytes": 682008,
+      "path": "torch/test/c10_CompileTimeFunctionPointer_test",
+      "sha256": "6a664a464e4b309edb7d4ae8bc4aab8828428affbc3fec270726210b0555f829"
+    },
+    {
+      "bytes": 681608,
+      "path": "torch/test/c10_bit_cast_test",
+      "sha256": "30d2a84ee7eca0b99fc19a69f3937f65552b2006fe46e982263ddfe0a4a6b396"
+    },
+    {
+      "bytes": 681200,
+      "path": "torch/test/c10_tempfile_test",
+      "sha256": "3d9421d088e86cdea19ccb4b0b66f6cc34f8fbb499a56f3b46bf04dc5439c061"
+    },
+    {
+      "bytes": 681120,
+      "path": "torch/bin/test_shim",
+      "sha256": "d177a48c49536e8b8645c45702c7cd311abfbaa629df112a5e247624d6d4fff8"
+    }
+  ],
+  "actual_selected_members": [
+    {
+      "bytes": 6186,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 5423,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 34785,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 10417,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "sha256": "3d6bf9ba8b0f5009aa7084b2bbb84c1717b122b835b951bccb54fe6764089cfa"
+    },
+    {
+      "bytes": 15292,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "sha256": "2ac4fee719780e4b1192988552007b67718bea1c9aabaabc98c874f634c04c71"
+    },
+    {
+      "bytes": 491002,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "8a2e9e2567d81df1b6f96eea4787b1a4b75f8c6d3a33df50aaf4b613264898a7"
+    },
+    {
+      "bytes": 3247779,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "89a224bd632586fdb534f108abf14199da6898c71b6ca0586834f1ec13f1c246"
+    },
+    {
+      "bytes": 7602,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "sha256": "5fef9befe240eaa0678675afbda3e542c5e364c25d224ed0ae4c9f151f66e6a4"
+    },
+    {
+      "bytes": 24587,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0"
+    },
+    {
+      "bytes": 7870,
+      "path": "source/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    {
+      "bytes": 10914,
+      "path": "source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "sha256": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021"
+    },
+    {
+      "bytes": 13799,
+      "path": "source/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    },
+    {
+      "bytes": 553806,
+      "path": "source/ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    {
+      "bytes": 12019,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 4009,
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "sha256": "e880781b9d3e342b1959493163662804e2e8c2d6e61a5f99fd75b18017bc8edb"
+    },
+    {
+      "bytes": 27661,
+      "path": "source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37"
+    },
+    {
+      "bytes": 30585,
+      "path": "source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "path": "source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 3057,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 65871,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 33713,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab"
+    },
+    {
+      "bytes": 80607,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "1707be47142ec38097ad366c3353402236e2959998dbbdd1e1b961cf29f26933"
+    },
+    {
+      "bytes": 13283,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "dc52d0318a20864cc3511355a2483a6f2b0fb30c99788496722982c47d48458d"
+    },
+    {
+      "bytes": 7160,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py",
+      "sha256": "197e4a6672483cc254de58488614eb20cf2898c197e1f11db6209ff3b549a45e"
+    },
+    {
+      "bytes": 5242,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "sha256": "725fd66f66e20f744d85043f53e55f5c427a73e4153c2988f11c127d160034a6"
+    },
+    {
+      "bytes": 3257,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    {
+      "bytes": 19435,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "sha256": "a58784ee64b5910511a6a4f0698c834e2965b6f6744d5dbaa76b952ed481cf3a"
+    },
+    {
+      "bytes": 13468,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "sha256": "2d56d853ae03a7fc80e774ae85b9c0deb3c46c1546f4b00ead688d235857ec8c"
+    },
+    {
+      "bytes": 9360,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "sha256": "d49ffb33340c18b2167e060ad82e455e797eb1e7ee4ecf024d5e1ad4d7e7b93e"
+    },
+    {
+      "bytes": 41857,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "sha256": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e"
+    },
+    {
+      "bytes": 32143862,
+      "path": "extensions/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "path": "extensions/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "path": "extensions/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    {
+      "bytes": 19192,
+      "path": "toolchains/lean/bin/lake",
+      "sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf"
+    },
+    {
+      "bytes": 13824,
+      "path": "toolchains/lean/bin/lean",
+      "sha256": "79fb1d26fa5a39385d59fdc48a711a14b0710ca6480271acce99b4d177cea085"
+    },
+    {
+      "bytes": 47000,
+      "path": "toolchains/lean/bin/leanc",
+      "sha256": "a09d913361f0d4ca189488446c63b2644ed686f6bbfe9ff28db8e06b2c228a92"
+    },
+    {
+      "bytes": 493355,
+      "path": "models/source384/checkpoint.json",
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    {
+      "bytes": 190,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 1550,
+      "path": "models/source384/config.json",
+      "sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7"
+    },
+    {
+      "bytes": 155005253,
+      "path": "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    }
+  ],
+  "archive": {
+    "bytes": 1341138962,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/bundle-01/runtime.tar.gz",
+    "sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797"
+  },
+  "archive_inventory_members": 27361,
+  "base_requirement_changes_from_previous_pair": {
+    "added": [],
+    "removed": []
+  },
+  "benchmark_executed": false,
+  "checks": [
+    {
+      "check": "unique_manifest_paths",
+      "passed": true
+    },
+    {
+      "check": "archive_sha256",
+      "passed": true
+    },
+    {
+      "check": "runtime_source_head",
+      "passed": true
+    },
+    {
+      "check": "runtime_clean",
+      "passed": true
+    },
+    {
+      "check": "corrected_auditor_runtime_body",
+      "passed": true
+    },
+    {
+      "check": "corrected_auditor_inventory_binding",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:source384",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:source384_requirements",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:learned_requirements",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:codex_version",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:runtime_python_version",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:setup_cache",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_identity:torch_cpu_wheel",
+      "passed": true
+    },
+    {
+      "check": "base_requirements_current_source",
+      "passed": true
+    },
+    {
+      "check": "native_schema_dependencies",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_inventory:models/source384/",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_inventory:extensions/",
+      "passed": true
+    },
+    {
+      "check": "historical_asset_inventory:toolchains/",
+      "passed": true
+    },
+    {
+      "check": "ordinary_reply_13_source_guard",
+      "passed": true
+    },
+    {
+      "check": "strict_semantic_decoder_unchanged_from_original_reply_contract_pair",
+      "passed": true
+    },
+    {
+      "check": "strict_reserved_decode_precedes_ordinary_ack_validation",
+      "passed": true
+    },
+    {
+      "check": "generic_source384_config",
+      "passed": true
+    },
+    {
+      "check": "no_source_training_data",
+      "passed": true
+    },
+    {
+      "check": "no_task_inputs",
+      "passed": true
+    },
+    {
+      "check": "no_credentials",
+      "passed": true
+    },
+    {
+      "check": "cache_131_rows",
+      "passed": true
+    },
+    {
+      "check": "cache_native_architecture",
+      "passed": true
+    },
+    {
+      "check": "cache_extension_rows",
+      "passed": true
+    },
+    {
+      "check": "cache_wheel_rows",
+      "passed": true
+    },
+    {
+      "check": "grok_native_asset_not_implicitly_selected",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/ipfs_accelerate_py/llm_router.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/ipfs_accelerate_py/llm_router.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/benchmark_provider_profile.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_failure_observation.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "passed": true
+    },
+    {
+      "check": "source_body_current:source/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "passed": true
+    },
+    {
+      "check": "actual_member:extensions/ducklake.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "actual_member:extensions/httpfs.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "actual_member:extensions/quack.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "actual_member:toolchains/lean/bin/lake",
+      "passed": true
+    },
+    {
+      "check": "actual_member:toolchains/lean/bin/lean",
+      "passed": true
+    },
+    {
+      "check": "actual_member:toolchains/lean/bin/leanc",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/checkpoint.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "passed": true
+    },
+    {
+      "check": "actual_member:models/source384/config.json",
+      "passed": true
+    },
+    {
+      "check": "actual_member:runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "passed": true
+    },
+    {
+      "check": "complete_archive_inventory",
+      "passed": true
+    },
+    {
+      "check": "archive_metadata_matches",
+      "passed": true
+    },
+    {
+      "check": "selected_members_complete",
+      "passed": true
+    },
+    {
+      "check": "actual_corrected_auditor_body",
+      "passed": true
+    },
+    {
+      "check": "cache_archive_binding:extensions/ducklake.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "cache_archive_binding:extensions/httpfs.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "cache_archive_binding:extensions/quack.duckdb_extension",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libtorch_cpu.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libtorch_python.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libopenblas.so.0",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libarm_compute.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_api",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_jit",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_lazy",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/protoc",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/protoc-3.13.0.0",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/op_registration_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_intrusive_ptr_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/include/ATen/RedispatchFunctions.h",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_small_vector_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libc10.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/include/ATen/VmapGeneratedPlumbing.h",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/kernel_lambda_legacy_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libgomp.so.1",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/kernel_function_legacy_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/List_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libgfortran.so.5",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/kernel_lambda_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/testing/_internal/common_methods_invocations.py",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_aoti_abi_check",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libarm_compute_graph.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/make_boxed_from_unboxed_functor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/ivalue_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/kernel_function_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/cpu_rng_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/tensor_iterator_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/_C/_VariableFunctions.pyi",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/_VF.pyi",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/Dict_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_profiler_collection",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/legacy_vmap_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/KernelFunction_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_optional_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/lib/libtorchbind_test.so",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/include/ATen/RegistrationDeclarations.h",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_cow_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/inline_container_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/pow_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/basic",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/MaybeOwned_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_cpp_rpc",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/kernel_stackbased_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/IListRef_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_ordered_preserving_dict_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/type_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/atest",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/extension_backend_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/cpu_generator_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/quantized_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_ThreadLocal_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/test_parallel",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/apply_utils_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_WaitCounter_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/backend_fallback_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_DispatchKeySet_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/scalar_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/TCPStoreTest",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/scalar_tensor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_SymInt_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_logging_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/math_kernel_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_bfloat16_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/memory_overlapping_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/half_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Enumerate_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/native_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/CppSignature_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/type_ptr_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/stride_properties_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/accelerator_graph_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/cpu_profiling_allocator_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/memory_format_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/dlconvertor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_string_util_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/xla_tensor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/broadcast_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/undefined_tensor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_complex_math_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/weakref_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/packedtensoraccessor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_comms_id",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/wrapdim_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_InlineStreamGuard_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/thread_init_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/StorageUtils_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/reportMemoryUsage_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/operator_name_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_typeid_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_complex_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Scalar_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_AllocatorConfig_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_LeftRight_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_SizesAndStrides_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Bitset_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_dist_autograd",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/operators_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_ThreadLocalDebugInfo_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/cpu_allocator_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_DeviceGuard_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_InlineDeviceGuard_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/lazy_tensor_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/reduce_ops_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_privateuse1_profiler",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/verify_api_visibility",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_exception_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_TypeIndex_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_lazy_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/mobile_memory_cleanup",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/op_allowlist_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_registry_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/HashStoreTest",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_NetworkFlow_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/FileStoreTest",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_IntrusiveList_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_ssize_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_irange_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_accumulate_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Device_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_flags_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Half_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_Synchronized_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_CompileTimeFunctionPointer_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_bit_cast_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/test/c10_tempfile_test",
+      "passed": true
+    },
+    {
+      "check": "actual_wheel_member:torch/bin/test_shim",
+      "passed": true
+    }
+  ],
+  "common_coding_reply_mode": "ordinary-completion@1",
+  "container_executed": false,
+  "corrected_auditor_source": {
+    "actual_body_verified": true,
+    "bytes": 33713,
+    "expected_sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab",
+    "path": "source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+  },
+  "created_at_utc": "2026-10-07T04:24:36.771911+00:00",
+  "expected_source_head": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "failure_count": 0,
+  "historical_manifest": {
+    "bytes": 6238044,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/bundle-01/manifest.json",
+    "sha256": "55c6ae2a57ee5a9b0c8ce248fd8e68233c3f75f488d92b91590cedc0a36122e0"
+  },
+  "limits": [
+    "This audit verifies complete tar metadata and selected source/model/native bodies without extracting the archive.",
+    "It does not independently hash every datasets/kit/Lean support source body; their declared inventories and archive identity remain bound.",
+    "Installation success, active resource enforcement, retained provider sessions and cleanup require runtime receipts.",
+    "No public task bodies, hidden evaluation, model thoughts, provider calls, training or downloads are used."
+  ],
+  "manifest": {
+    "bytes": 6238517,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/bundle-01/manifest.json",
+    "sha256": "26749cd0acb3a56157f97df9d0cdd7726b6227b6fb71c1fa77de7001c31b7c04"
+  },
+  "metadata_errors": [],
+  "native_codex_binary_bodies": "Not packaged in archive; installation and strict cache readbacks must validate pinned native binaries.",
+  "native_routes": {
+    "grok_binary_packaged": false,
+    "grok_route_executed": false,
+    "selected": "codex_cli gpt-6.1-sol/high/0.160.0"
+  },
+  "new_provider_calls": 0,
+  "ordinary_reply_source_guard_paths": [
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+    "ipfs_accelerate_py/llm_router.py"
+  ],
+  "passed": true,
+  "producer": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit_archive_preflight.py",
+    "sha256": "a1c6f8334bb502b5113aae8b30ed9d3e4f4c717939af53e07611e7bbd5622a5b"
+  },
+  "reviewer": "/root/matched_transport_preflight",
+  "schema": "terminal-ordinary-completion-runtime-archive-independent-audit@1",
+  "schema_transport_helpers": {
+    "cli_metadata": "source/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+    "codex": "source/ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+    "coding_reply": "source/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+    "grok": "source/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+    "provider": "source/ipfs_accelerate_py/llm_router.py",
+    "reply_selection_policy": "source/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+    "runner": "source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+  },
+  "seconds": 10.144178081012797,
+  "source_head": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "strict_reserved_semantic_decoder_preserved": true
+}
