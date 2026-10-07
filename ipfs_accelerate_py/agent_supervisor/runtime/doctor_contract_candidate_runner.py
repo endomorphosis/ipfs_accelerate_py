@@ -31,6 +31,41 @@ _EDIT_FIELDS = {"path", "effect", "before_sha256", "after_sha256", "after_bytes_
 _META = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_nlink")
 
 
+def publish_doctor_contract_candidate(repository: Path, payload: dict):
+    """Expose exact candidate bytes at a pinned, owner-controlled locator.
+
+    Evidence referenced by the artifact remains a scoped operator claim. In
+    schema @1 the legacy ``proof_receipt_id`` may identify a finite native
+    check; ``proof_scope`` must describe its actual evidence, not claim a
+    kernel proof. The ordinary validation and publication gates still apply.
+    """
+    current = repository
+    for name in (".runtime", "doctor-contract-candidates"):
+        current = current / name
+        current.mkdir(mode=0o755, exist_ok=True)
+        info = current.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) & 0o022 or stat.S_IMODE(info.st_mode) & 0o005 != 0o005):
+            raise ValueError("candidate artifact directory is not owner-controlled and worker-readable")
+    payload = {**payload, "artifact_cid": content_identity(payload)}
+    raw = json.dumps(payload, sort_keys=True, indent=2).encode() + b"\n"
+    if len(raw) > MAX_BYTES:
+        raise ValueError("contract candidate artifact exceeds byte bound")
+    digest = _sha(raw)
+    artifact = current / (digest + ".json")
+    with artifact.open("xb") as stream:
+        stream.write(raw)
+        os.fchmod(stream.fileno(), 0o444)
+        stream.flush()
+        os.fsync(stream.fileno())
+    fd = os.open(current, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return artifact, digest, payload["artifact_cid"]
+
+
 def _path(value):
     if not isinstance(value, str) or not value or len(value.encode()) > 4096 or "\0" in value:
         raise ValueError("bounded relative candidate output path required")

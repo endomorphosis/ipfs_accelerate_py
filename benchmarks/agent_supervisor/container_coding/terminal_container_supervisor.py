@@ -29,7 +29,9 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 )
 from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
 from benchmarks.agent_supervisor.container_coding.terminal_shutdown_observation import record as _record_shutdown_failure
-from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
+from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import (
+    decode_intent_requirement_contract, verify_local_benchmark_admission,
+)
 
 ROOT = Path("/opt/ipfs-supervisor")
 ROUTER = ROOT / "bin/router-worker"
@@ -801,9 +803,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 # lifetime. Their loading remains inside the work deadline and
                 # the phase that needs them, including on import failure.
                 from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import prepare_terminal_doctor_dispatch
+                contract_profile = "wsgi-header-controls@1" if generic_profile is None else None
+                if contract_profile is not None and "intent_requirements" in verified.get("manifest", {}):
+                    # Admission has already verified these immutable reviewed
+                    # requirements. A signed data selector must not inherit the
+                    # legacy header fixture's implicit contract nomination.
+                    requirements = decode_intent_requirement_contract(verified["manifest"])
+                    if requirements["schema"] == "intent-plan-requirement-contract@4":
+                        contract_profile = None
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
                     admission=admission, task_cid=task.task_cid,
-                    contract_profile="wsgi-header-controls@1" if generic_profile is None else None)
+                    contract_profile=contract_profile)
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor

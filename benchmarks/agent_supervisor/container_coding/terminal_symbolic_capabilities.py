@@ -36,6 +36,8 @@ _REASONS = frozenset({
     "local_operator_does_not_cover_declared_outputs",
     "operator_proof_bounds_exceeded",
     "doctor_task_data_contract_unavailable",
+    "finite_data_source_outside_reviewed_profile",
+    "finite_data_output_parent_unavailable",
 })
 _SUPPORT = {
     ".supervisor-instruction.md": "instruction",
@@ -191,12 +193,16 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
     _require(contract_profile in {None, "wsgi-header-controls@1"}
              and doctor_result.get("task_cid") == task_cid)
     header = doctor_result.get("schema") == "supervisor-header-contract-workflow@1"
-    _require(header or doctor_result.get("schema") == "supervisor-doctor-task-preparation@1")
-    analysis = doctor_result.get("analysis", {}) if header else doctor_result
+    data = doctor_result.get("schema") == "supervisor-finite-data-contract-workflow@1"
+    _require(header or data or doctor_result.get("schema") == "supervisor-doctor-task-preparation@1")
+    analysis = doctor_result.get("analysis", {}) if header or data else doctor_result
     _bounded_mapping(analysis, 64)
     _require(analysis.get("manifest_cid") == manifest_cid)
     if header:
         _require(contract_profile == "wsgi-header-controls@1")
+    if data:
+        _require(contract_profile is None and doctor_result.get("kernel_proved") is False
+                 and doctor_result.get("evidence_kind") == "finite_record_check")
     status = doctor_result.get("status")
     _require(status in {"residual", "prepared", "candidate_ready"})
     reasons = doctor_result.get("reason_codes", [])
@@ -225,8 +231,16 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
     _require(type(prover_paths) is dict and set(prover_paths) == {"lean", "z3"})
     provers = {key: _prover(prover_paths[key]) for key in sorted(prover_paths)}
     proof = _proof_observation(doctor_result, header=header)
+    finite_checked = data and doctor_result.get("status") == "candidate_ready"
+    if finite_checked:
+        check = _bounded_mapping(doctor_result.get("check"), 32)
+        _identity(check.get("check_receipt_id"))
+        _require(check.get("manifest_cid") == manifest_cid
+                 and check.get("task_cid") == task_cid
+                 and all(check.get(key) is False for key in (
+                     "proof_authority", "publication_authority", "completion_authority")))
     operator = doctor_result.get("operator")
-    selected_workflow = ("reviewed_header_guard" if header else
+    selected_workflow = ("reviewed_header_guard" if header else "reviewed_finite_record_projection" if data else
         "not_reported" if operator is None else
         _GENERIC_WORKFLOWS.get(operator, "unrecognized") if type(operator) is str else "unrecognized")
     named_structural = all(type(row) is dict and row.get("validation_key") in {
@@ -238,15 +252,15 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
         gaps.append("empty_program_context_required")
     if "unsupported_or_incomplete_source_inventory" in reasons:
         gaps.append("semantic_source_coverage_incomplete")
-    if partition is not None and partition.get("task_data_input_count", 0):
+    if not data and partition is not None and partition.get("task_data_input_count", 0):
         gaps.append("task_data_semantic_contract_unavailable")
-    if not header:
+    if not header and not data:
         gaps.append("task_behavior_contract_not_selected")
-    if not header and (effects.get("create", 0) or nonpython or set(effects) != {"modify"}):
+    if not header and not data and (effects.get("create", 0) or nonpython or set(effects) != {"modify"}):
         gaps.append("generic_operator_output_coverage_missing")
     if len(tasks) == 1:
         gaps.append("single_declared_task_no_parallel_decomposition")
-    if any(value != "executable_present" for value in provers.values()):
+    if not data and any(value != "executable_present" for value in provers.values()):
         gaps.append("local_prover_unavailable")
     if not proof["local_contract_proof_reported"]:
         gaps.append("local_contract_proof_not_reported")
@@ -262,12 +276,14 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
             "semantic_coverage": "incomplete" if "unsupported_or_incomplete_source_inventory" in reasons
                 else "not_established_by_this_observation"},
         "contracts": {"requested_profile": contract_profile,
-            "selected_profile": "wsgi-header-controls@1" if header else None,
+            "selected_profile": "wsgi-header-controls@1" if header else
+                "finite-ndjson-field-projection@1" if data else None,
             "named_structural_check": named_structural, "validation_semantics_verified": False,
             "validation_scope": "named_structural_check_not_verified" if named_structural else "not_classified",
             "validation_count": len(validations), "checks_executed_by_assessment": False,
             "task_behavior_contract": "reviewed_local_header_contract" if header
-                else "not_selected", "whole_task_behavior_verified": False},
+                else "reviewed_finite_data_contract" if data else "not_selected",
+            "whole_task_behavior_verified": False},
         "operators": {"selected_workflow": selected_workflow,
             "supported_generic_workflows": sorted(_GENERIC_WORKFLOWS.values()),
             "generic_operator_effects": ["modify"], "generic_operator_languages": ["python"],
@@ -289,6 +305,10 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
         "benchmark_solvability": "not_established", "proof_authority": False,
         "execution_authority": False, "publication_authority": False, "completion_authority": False,
     }
+    if data:
+        result["finite_data_check"] = {"reported": finite_checked,
+            "scope": "exact_signed_finite_record_correspondence",
+            "kernel_proof": False, "independently_reverified_by_assessment": False}
     result["observation_sha256"] = hashlib.sha256(_wire(result)).hexdigest()
     _require(len(_wire(result)) <= MAX_REPORT_BYTES)
     return result

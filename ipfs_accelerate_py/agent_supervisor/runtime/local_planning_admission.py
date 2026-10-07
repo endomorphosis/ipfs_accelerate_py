@@ -834,7 +834,12 @@ def _verify_intent_requirement_text(manifest: Mapping, source_text: str) -> dict
             or hashlib.sha256(raw).hexdigest() != manifest["sources"][name]["sha256"]):
         raise LocalPlanningError("intent requirement source differs from signed immutable input")
     try:
-        return validate_intent_requirement_contract(contract, source_text=source_text)
+        checked = validate_intent_requirement_contract(contract, source_text=source_text)
+        if checked["schema"] == "intent-plan-requirement-contract@4":
+            from ..planning.intent_data_transform import validate_reviewed_data_transform
+            validate_reviewed_data_transform(checked["reviewed_data_transform"],
+                operations=checked["symbolic_operations"]["operations"], manifest=manifest)
+        return checked
     except (ValueError, TypeError, KeyError) as exc:
         raise LocalPlanningError("invalid source-bound intent requirement contract: " + str(exc)) from exc
 
@@ -1171,7 +1176,7 @@ def _planning_payload(graph, manifest, declared, profile, sources, requirement_b
             error.requirement_coverage = coverage
             raise error
         payload.update(schema=INTENT_PLANNING_RECEIPT_SCHEMA, requirement_coverage=coverage)
-        if requirements["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}:
+        if requirements["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4"}:
             planned = _replay_intent_symbolic_plan(requirements, manifest,
                 applicability_timeout_seconds=applicability_timeout_seconds,
                 source_applicability_nomination=source_applicability_nomination)
@@ -1413,7 +1418,7 @@ def load_local_planning_receipt(reference: Mapping, *, manifest: Mapping) -> dic
         raise LocalPlanningError("planning receipt successor selection or source transition differs")
     if declared["schema"] == INTENT_MANIFEST_SCHEMA:
         requirements = _verify_intent_requirements(declared)
-        if requirements["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}:
+        if requirements["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4"}:
             planned = _replay_intent_symbolic_plan(requirements, manifest,
                 source_applicability_nomination=_header_nomination(payload))
             if (payload.get("intent_symbolic_planning") != planned["receipt"]
@@ -1501,7 +1506,7 @@ def _contract(task_body: Mapping, task_cid: str, *, source_transition=None) -> t
         raise LocalPlanningError("manifest binding changed")
     if manifest["schema"] == INTENT_MANIFEST_SCHEMA:
         intent_plan = payload["intent_plan"]
-        symbolic = decode_intent_requirement_contract(manifest)["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}
+        symbolic = decode_intent_requirement_contract(manifest)["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4"}
         plan_fields = {"schema", "graph", "requirement_bindings", "coverage"}
         if symbolic:
             plan_fields.add("symbolic_planning")

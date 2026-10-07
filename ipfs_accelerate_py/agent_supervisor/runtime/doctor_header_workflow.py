@@ -12,16 +12,14 @@ import base64
 from dataclasses import dataclass
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
-import stat
 
 from ..analysis.doctor_header_contracts import (
     WsgiHeaderProtocolContract, analyze_http_header_contracts, verify_header_candidate,
 )
 from ..proof.formal_verification_contracts import content_identity
 from . import local_planning_admission as local
-from .doctor_contract_candidate_runner import SCHEMA
+from .doctor_contract_candidate_runner import SCHEMA, publish_doctor_contract_candidate as _publish
 from .doctor_contract_proof import PROOF_SCOPE, persist_contract_world, prove_header_contract
 from .doctor_scoped_analysis import build_scoped_doctor_analysis
 from .doctor_security_ir import compile_header_security_ir
@@ -44,33 +42,6 @@ class CweReportOutput:
 
 def _sha(raw):
     return hashlib.sha256(raw).hexdigest()
-
-
-def _publish(repository, payload):
-    """Publish only exact public candidate bytes to an owner-controlled locator."""
-    current = repository
-    for name in (".runtime", "doctor-contract-candidates"):
-        current = current / name
-        current.mkdir(mode=0o755, exist_ok=True)
-        info = current.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
-                or stat.S_IMODE(info.st_mode) & 0o022 or stat.S_IMODE(info.st_mode) & 0o005 != 0o005):
-            raise ValueError("candidate artifact directory is not owner-controlled and worker-readable")
-    payload = {**payload, "artifact_cid": content_identity(payload)}
-    raw = json.dumps(payload, sort_keys=True, indent=2).encode() + b"\n"
-    digest = _sha(raw)
-    artifact = current / (digest + ".json")
-    with artifact.open("xb") as stream:
-        stream.write(raw)
-        os.fchmod(stream.fileno(), 0o444)
-        stream.flush()
-        os.fsync(stream.fileno())
-    fd = os.open(current, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    return artifact, digest, payload["artifact_cid"]
 
 
 def prepare_header_contract_repair(*, repository: Path, admission: dict, intent,

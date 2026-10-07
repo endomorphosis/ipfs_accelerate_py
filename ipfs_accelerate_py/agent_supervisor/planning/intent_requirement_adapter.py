@@ -366,6 +366,10 @@ def build_intent_planning_materials(contract, *, manifest, applicability_timeout
             raise IntentRequirementAdapterError("duplicate manifest task key")
         specs[key] = spec
     operations = symbolic["operations"]
+    if canonical["schema"] == "intent-plan-requirement-contract@4":
+        from .intent_data_transform import validate_reviewed_data_transform
+        validate_reviewed_data_transform(canonical["reviewed_data_transform"],
+            operations=operations, manifest=manifest)
     if set(specs) != {item["task_key"] for item in operations}:
         raise IntentRequirementAdapterError("operation task population differs from signed manifest")
     op_by_id = {item["operation_id"]: item for item in operations}

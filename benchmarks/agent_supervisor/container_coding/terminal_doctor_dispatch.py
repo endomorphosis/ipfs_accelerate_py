@@ -106,8 +106,35 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
         raise ValueError("Doctor dispatch requires the single admitted benchmark task")
     if contract_profile not in {None, "wsgi-header-controls@1"}:
         raise ValueError("unknown reviewed local contract profile")
-    solver, kernel = _installed_provers()
     contract_result = None
+    from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import decode_intent_requirement_contract
+    requirements = (decode_intent_requirement_contract(verified["manifest"])
+                    if "intent_requirements" in verified["manifest"] else None)
+    if requirements is not None and requirements.get("schema") == "intent-plan-requirement-contract@4":
+        if contract_profile is not None:
+            raise ValueError("signed finite data selector conflicts with a header contract profile")
+        from ipfs_accelerate_py.agent_supervisor.runtime.doctor_data_contract import prepare_ndjson_contract_candidate
+        with IntentRepository(state / "intent.duckdb", install_schema=False) as intent:
+            contract_result = prepare_ndjson_contract_candidate(repository=repository, admission=admission,
+                intent=intent, task_cid=task_cid, state=state / "doctor-data-workflow")
+        # The exact data checker can supply a candidate or a bounded residual;
+        # the Python-only transaction adds no coverage for this signed contract.
+        dispatch = {"schema": "terminal-doctor-dispatch@1", "status": contract_result["status"],
+            "task_cid": task_cid, "route": "model_router", "provider_calls": 0,
+            "analysis_status": "available", "completion_authority": False,
+            "publication_authority": False, "reason_codes": contract_result["reason_codes"],
+            "residual_successors": 0, "residual_work_proposals": 0,
+            "contract_workflow": contract_result,
+            "result_artifact": str(state / "doctor-data-workflow/result.json")}
+        if contract_result["status"] == "candidate_ready":
+            dispatch.update(route="doctor_contract_candidate", artifact=contract_result["artifact"],
+                            sha256=contract_result["sha256"])
+        dispatch["symbolic_capabilities"] = assess_terminal_symbolic_capabilities(
+            manifest=admission["manifest"], task_cid=task_cid,
+            task_spec=verified["manifest"]["tasks"][0], doctor_result=contract_result,
+            prover_paths={"lean": None, "z3": None})
+        return dispatch
+    solver, kernel = _installed_provers()
     if contract_profile is not None:
         from ipfs_accelerate_py.agent_supervisor.analysis.doctor_header_contracts import WsgiHeaderProtocolContract
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_header_workflow import (
@@ -192,7 +219,7 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
         raise ValueError("controller dictionary transport requires a semantic model-router coding route")
     if doctor is not None and doctor.get("route") == "doctor_contract_candidate":
         if doctor.get("status") != "candidate_ready" or doctor.get("provider_calls") != 0:
-            raise ValueError("proved local contract candidate required")
+            raise ValueError("checked local contract candidate required")
         return [str(router), "--doctor-contract-artifact", doctor["artifact"],
                 "--doctor-contract-sha256", doctor["sha256"], "--doctor-contract-task-cid", doctor["task_cid"]]
     if doctor is not None and doctor.get("route") == "doctor_candidate":

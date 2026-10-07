@@ -1,0 +1,125 @@
+{
+  "benchmark_result": false,
+  "completion_authority": false,
+  "date": "2026-10-07",
+  "dependency_note": {
+    "datasets_precommit_fast_forward_to": "90c58048afd20b695af134f14e5af6a100d7ee50",
+    "datasets_qualification_base": "497362d8aa117a210769423ec6a14d8010d4588c",
+    "kit_pin_claimed": false,
+    "optional_kit_head": "3133d4fdc85a885ba7d776465bdee48f7a867e01",
+    "optional_kit_import_observed": "/home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py",
+    "upstream_change_scope": "Two training documentation files and one unrelated test; no production source changed. All recorded source bytes match committed blobs."
+  },
+  "documentation_gate": {
+    "command": "python -B scripts/docs/run_documentation_gates.py",
+    "exit_code": 0
+  },
+  "implementation_commits": {
+    "ipfs_accelerate_py": "8ea8bc7b3b807c53dd5220aac4a5fbd12f6558d6",
+    "ipfs_datasets_py": "bba717589d7b6ed4b9bd8dd541431e215a4bf523"
+  },
+  "limits": [
+    "Authored finite copy/rename data only; no new Terminal-Bench score.",
+    "Exact finite record checking is not a Lean/kernel theorem or proof of prose alignment.",
+    "No matched Codex/no-index/indexed efficiency comparison was run.",
+    "Native local lifecycle and existing route regressions were tested; no new Docker archive or paid live benchmark run."
+  ],
+  "native_lifecycle": {
+    "active_kernel_receipts": [],
+    "evidence_kind": "finite_record_check",
+    "finite_check_receipt_id": "baguqeera4pcqlbzpobc3vqsqlufdsczvr2h2yzsjfrejqb2n3epnli56br4a",
+    "fixture_record_count": 2,
+    "metadata_projection": {
+      "authoritative": false,
+      "completion_authority": false,
+      "status": "projected",
+      "stored_bindings": 0,
+      "stored_catalogs": 1,
+      "stored_links": 1
+    },
+    "passed": true,
+    "provider_calls": 0,
+    "provider_invocation_forbidden_in_parent_and_worker": true,
+    "start_validation_publication_completion_stop_checked": true,
+    "test": "test_signed_native_data_projection_validates_publishes_completes_and_stops",
+    "test_seconds": 15.028,
+    "workflow_result_sha256": "4a0975b2e7955afa1e42f158d151c506cf36c1d7fda2e66f9aabb8c6e1a40982",
+    "world_hydrated": true,
+    "world_projection": {
+      "authoritative": false,
+      "completion_authority": false,
+      "status": "projected",
+      "stored_records": 1
+    }
+  },
+  "proof_authority": false,
+  "schema": "finite-data-contract-qualification@1",
+  "setup_failure_retained": {
+    "log_sha256": "7ef3dda31d280a109030f2f06e8557a235c67bdf24e7b7f302b2d3b83403276e",
+    "reason": "Datasets conftest requires cacheprovider. No tests were collected; corrected command passed in final-shared-02.",
+    "run": "final-shared-01"
+  },
+  "shared": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 101
+    },
+    "log_sha256": "5e2b459af6ed409b9e0fc6c171743cd3028606e6230a9451621451ef327d329e",
+    "source_sha256": {
+      "ipfs_datasets_py/logic/software_contracts/content.py": "c27c4e3cd4a5ee12ff5c3967a7f57e421ea1bb26ff36b66c7547e9d1e3cde2df",
+      "ipfs_datasets_py/logic/software_contracts/finite_record_projection.py": "bbe1aad97ec589e31969bae6f94daa248b6861ec8bc87caff96f9b38c4e2eb6d",
+      "tests/unit/logic/software_contracts/test_finite_record_projection.py": "515d723e5b46df759befbc82cbbf6a97d108f19de1c7397dee7bebb10d791fa0"
+    },
+    "source_unchanged_during_run": true,
+    "wall_seconds": 0.5467155139776878,
+    "xml_sha256": "1eefc2c07e297653494ae18c56495ab462d36d3e0bcd77672b42637b4af00a31"
+  },
+  "supervisor": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 409
+    },
+    "datasets_source_sha256": {
+      "ipfs_datasets_py/logic/software_contracts/finite_record_projection.py": "bbe1aad97ec589e31969bae6f94daa248b6861ec8bc87caff96f9b38c4e2eb6d",
+      "tests/unit/logic/software_contracts/test_finite_record_projection.py": "515d723e5b46df759befbc82cbbf6a97d108f19de1c7397dee7bebb10d791fa0"
+    },
+    "log_sha256": "f7f7a105858bedf449cb333caadb016a1ec760fd804934d4beed61f837c12d9a",
+    "source_sha256": {
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "f7876f0693c17f87453ab5b0613c7891259f30d12bf261ce78f55149e773f91a",
+      "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "8c5f01d3e9cee55a263f6da0ce1d5e6bd3e62c41d5a433e2aa9d4c6d0d3aecdc",
+      "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "1c29711c0832158243a25ea9e4014ec519df0e2c3b938e65520415df6a080e3e",
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "bc00440d0617f8b4425bc137f6d4155b6db29d648a9bcc8c669c86579dc9542a",
+      "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "2f1d769f15238499dce41d27e7779d3ec561cc69f28678ea6ecf91702496cc03",
+      "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "99e57a82866832fc4961a5b8daf240ddd45a0e74e196bd1e5f66fa60dcca9578",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py": "9aea7596c85b1b56e1e19b7c3908a0e06ad8848ccf952e6b8d33a5416879bafc",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": "083061c4823e8f8ab64b560d70c93ae4bbada46c4dc1c1723e6c1a2310d9510c",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py": "fa303d7ad549f5e9369bf1b0e0fcf8a68588c1b3f944b8f6004f96814078dba4",
+      "ipfs_accelerate_py/agent_supervisor/planning/intent_data_transform.py": "8a3e72b62577dbf588e01d62660cb72212f3a96dc6671b3260a8a6391990e5d7",
+      "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "988f80180a354be63f2c7e2175800c8f8648125bb31bd214f95ee7699d12933e",
+      "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "b14de5609b0b097d640ea274a291f487e1b5da9adcf2f3a557cacb1cc053efc5",
+      "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py": "f61314562aebe18bbb358b70ad9fe07eee6b7e04bb38165ae7f78381bce96c77",
+      "ipfs_accelerate_py/agent_supervisor/runtime/doctor_data_contract.py": "34dddd1bfc7a756787363d7a382b4d5f6e1b37f6d2cd44eb5ef0c6d3dac159ab",
+      "ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_workflow.py": "042d239b5e9b1b6841c48fb525acfcec56cef1e9e6c1b8db2890e06bbeed2c35",
+      "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "d90aac6900610a8a6742c00473c9a6af1f703bf26dc05faf45ccfbbb2b0d9eb1",
+      "test/api/test_doctor_contract_candidate_runner.py": "dae9bc9013246e485c498858236317d5dd425846b389e632aa6e4f5e04404146",
+      "test/api/test_doctor_data_contract.py": "bb114069cf838ef08b012b5262b56e6a461fbe1dea155bb99d9f1ae5968513de",
+      "test/api/test_doctor_data_dispatch.py": "5c15ed20b89ba162b46d2717aa1c9d3370ae9252ea518a58c73fd6abd34f2afa",
+      "test/api/test_doctor_header_workflow.py": "0b6a3a05012f4e2d22f45216244fb5f4b889d24e5f0577d67c4e124270dd70ba",
+      "test/api/test_intent_data_transform.py": "972ea4246e446fecc17081cb6ad6b37e13335fc7ec803add223181a6f3602540",
+      "test/api/test_intent_plan_coverage.py": "a9eea8dc16fd524afc7056f5bbde26dfb6a71fbcf02bc95ffa45307d1baeab7c",
+      "test/api/test_intent_requirement_adapter.py": "4c3aee5701181ecdebe0d4ac2ee729dc20ec8c86b1be146d26d4d6dd6029b030",
+      "test/api/test_intent_requirement_admission.py": "69d95e2c306c451897b0502535ea821bfe6a067776a1a12c3b66bb6593d859cf",
+      "test/api/test_intent_requirement_worker_context.py": "daf124413aec7380b325ef52f165f911e38d1e3bec4537f025172f45571e201e",
+      "test/api/test_intent_symbolic_planning.py": "a6383c7153cc96a9340e1082888429d3b05954ce051047d9aca8659a09762939",
+      "test/integration/test_native_data_contract_repair.py": "f2341b5b86cc34f00907ebded8c55bcfdc686e96f9cf4831b81b5b66f4b8a975"
+    },
+    "source_unchanged_during_run": true,
+    "wall_seconds": 322.23555378604215,
+    "xml_sha256": "cb5413cc9ea28d1e1208f1b327a5bd8fbc4563e164bf7740521dba2d2f0fa7f9"
+  },
+  "tested_sources_equal_committed_bytes": true
+}

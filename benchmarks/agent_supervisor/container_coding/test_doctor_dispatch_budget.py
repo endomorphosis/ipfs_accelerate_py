@@ -24,7 +24,7 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 ])
 def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         tmp_path, monkeypatch, route, remaining_work_seconds, budget_kwargs,total,cleanup_seconds,source_seconds,
-        native_failure=False):
+        native_failure=False, verified_manifest=None, expected_contract_profile='wsgi-header-controls@1'):
     cutoff=total-cleanup_seconds
     used_work_seconds=0 if remaining_work_seconds is None else cutoff-remaining_work_seconds
     now=[1000.];alarms=[];entered=[];cleanup=[];native_options=[];context_options=[];native_cleanup=[]
@@ -54,10 +54,12 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     monkeypatch.setattr(driver,'_published_retrieval_options',retrieval_options)
     monkeypatch.setattr(driver,'verify_local_benchmark_admission',lambda *args,**kwargs:
         {'graph':SimpleNamespace(tasks=[SimpleNamespace(task_cid='fixture-task',task_key='fixture-key')]),
-         'manifest':{'repository_cid':'fixture-repository',
-                     'sources':{driver.preparation.INSTRUCTION:{'sha256':'b'*64}}}})
+         'manifest':verified_manifest if verified_manifest is not None else
+             {'repository_cid':'fixture-repository',
+              'sources':{driver.preparation.INSTRUCTION:{'sha256':'b'*64}}}})
 
     def candidate(**kwargs):
+        assert kwargs['contract_profile'] == expected_contract_profile
         now[0]+=used_work_seconds
         return dict(route=route,status='residual' if route=='model_router' else 'candidate_ready',
             provider_calls=0,artifact='fixture-candidate.json',sha256='a'*64,task_cid='fixture-task')
@@ -143,6 +145,20 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
             {'attempted':True,'succeeded':False,'error_type':'RuntimeError'}
             if native_failure == 'close' else {'attempted':True,'succeeded':True})
         assert 'PRIVATE' not in json.dumps(report)
+
+
+def test_signed_data_selector_does_not_inherit_legacy_header_profile(tmp_path,monkeypatch):
+    from test.api.test_intent_data_transform import _data_case
+    from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+    # Obtain a real independently signed and verified data manifest first.
+    # The rest is the existing driver-budget fixture, not a native execution.
+    case = _data_case(tmp_path / 'reviewed-data')
+    admission = local.admit_local_benchmark_plan(graph=case['proposed']['graph'],
+        manifest=case['manifest'], requirement_bindings=case['proposed']['requirement_bindings'])
+    verified = local.verify_local_benchmark_admission(admission)
+    test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+        tmp_path,monkeypatch,'doctor_contract_candidate',None,{},285,40,90,
+        verified_manifest=verified['manifest'],expected_contract_profile=None)
 
 
 @pytest.mark.parametrize('route',['doctor_candidate','doctor_contract_candidate','model_router'])
