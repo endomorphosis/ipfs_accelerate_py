@@ -1,0 +1,117 @@
+{
+  "concurrent_main_commit": "6665f0a172b6cea6f94ab9c62bc269241bba374d",
+  "created_utc": "2026-10-07T14:33:35.351162+00:00",
+  "documentation_gates": [
+    {
+      "actual_command": "/home/barberb/.local/bin/python scripts/docs/check_agent_supervisor_docs.py",
+      "exit_code": 0,
+      "name": "Supervisor primary-doc vocabulary",
+      "stderr": "",
+      "stdout": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n"
+    },
+    {
+      "actual_command": "/home/barberb/.local/bin/python scripts/docs/check_current_docs_links.py",
+      "exit_code": 0,
+      "name": "Maintained-surface relative links",
+      "stderr": "",
+      "stdout": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n"
+    },
+    {
+      "actual_command": "/home/barberb/.local/bin/python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY",
+      "exit_code": 0,
+      "name": "Packaging version pin alignment",
+      "stderr": "",
+      "stdout": "OK: packaging pins aligned at 0.0.45\n"
+    },
+    {
+      "actual_command": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"",
+      "exit_code": 0,
+      "name": "Closeout navigation markers",
+      "stderr": "",
+      "stdout": "OK: closeout navigation markers present\n"
+    }
+  ],
+  "feature_commit": "40c9479b58f64e53d04523064ce534965bd3b274",
+  "independent_review": {
+    "bytes": 46292,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/docs/agent_supervisor/evidence/terminal-token-metadata-20261007/measurement-plan-and-review-01.json",
+    "sha256": "3a28c33c4e36f77c8bb3009cb5d69ef37b720f94edd0b7e78a1b04e117dd9dbd"
+  },
+  "live_benchmark_launches": 0,
+  "live_provider_calls": 0,
+  "llm_router_retained": true,
+  "merged_runtime_changes": [
+    {
+      "bytes": 600256,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "sha256": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61"
+    },
+    {
+      "bytes": 27510,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py",
+      "sha256": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526"
+    },
+    {
+      "bytes": 78798,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+      "sha256": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767"
+    }
+  ],
+  "planning_retained": true,
+  "reviewed_source_test_and_all_19_policy_helpers_unchanged": true,
+  "schema": "terminal-semantic-metadata-postmerge-qualification@1",
+  "scope": "Focused rerun after lifecycle merge; overlaps the 354-test qualification, not additive independent coverage. All four local workflow documentation gates rerun successfully. No native benchmark/provider outcome claimed.",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "tested_merge_commit": "9aa3d4f08b66901ce4530d0f753b00d403a028e3",
+  "tests": {
+    "command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "log_cli=false",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-tests-01.xml",
+      "test/api/test_semantic_metadata_dispatch.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ],
+    "environment": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-seal-01.duckdb",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    },
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-seal-01.duckdb",
+    "junit_elapsed_seconds": 75.118,
+    "junit_xml": {
+      "bytes": 10568,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-tests-01.xml",
+      "sha256": "81e0f134c8a1383b3a6d70518c1ed60fddd8ead79dcb1d6cc80eb22105768557"
+    },
+    "modules": [
+      "test/api/test_semantic_metadata_dispatch.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ],
+    "pytest_plugin_autoload_disabled": true,
+    "skipped": 0,
+    "stdout_log": {
+      "bytes": 2960,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-tests-01.log",
+      "sha256": "c702bee635ab7875ec4fa60f93891dc1bfd8a7c46acfea0f2d75cd4b2983ccbb"
+    },
+    "tests": 56
+  },
+  "total_token_savings_measured": false,
+  "workflow_source": {
+    "bytes": 3479,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/.github/workflows/documentation-gates.yml",
+    "sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+  }
+}

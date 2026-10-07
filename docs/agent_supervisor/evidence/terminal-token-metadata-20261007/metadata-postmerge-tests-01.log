@@ -1,0 +1,26 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007
+configfile: pytest.ini
+collected 56 items
+
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                    [ 16%][0m
+test/api/test_terminal_doctor_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                   [ 37%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py [32m.[0m[32m [ 39%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                       [ 71%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py [32m.[0m[32m [ 73%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                          [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-postmerge-tests-01.xml -
+============================= slowest 10 durations =============================
+3.83s call     test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+1.22s call     test/api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+0.99s call     test/api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+0.89s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.88s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.83s setup    test/api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+0.65s setup    test/api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+0.63s setup    test/api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[foreign-supervisor-semantic-router-input@1-coding]
+0.62s setup    test/api/test_semantic_metadata_dispatch.py::test_boolean_integer_receipt_tampering_is_rejected[metadata]
+0.62s setup    test/api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+[32m======================== [32m[1m56 passed[0m[32m in 75.16s (0:01:15)[0m[32m =========================[0m

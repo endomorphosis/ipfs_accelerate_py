@@ -1,0 +1,164 @@
+{
+  "created_utc": "2026-10-07T14:34:10.703309+00:00",
+  "files": [
+    {
+      "bytes": 4230,
+      "path": "README.md",
+      "sha256": "9a8331c7bb4d55c6f45d60f849caae26c0bae6d38b848d6538b89cacda189b04"
+    },
+    {
+      "bytes": 4773,
+      "path": "artifact-manifest-01.json",
+      "sha256": "ee937921245dab36d4c9fec48457a670cfc991cf1977609a9a0310660ded4d1c"
+    },
+    {
+      "bytes": 26974,
+      "path": "authored-metadata-census-01.json",
+      "sha256": "ad8640c76e78ae412a7bd11b48906fce374fdfe3111e5a1a47faf4db497f3c43"
+    },
+    {
+      "bytes": 5565,
+      "path": "authored_metadata_census.py",
+      "sha256": "7e32918e329ecca9a8380daa894638589d8c51ef9b7fddda509001c5115ef0dc"
+    },
+    {
+      "bytes": 7525,
+      "path": "documentation-gates-01.json",
+      "sha256": "42a742173aa190538c22d0c29e9fe22f46156ef80e04684144875bf9b5f4c339"
+    },
+    {
+      "bytes": 1159,
+      "path": "integration-note-01.md",
+      "sha256": "564fa6eed05ceaa30542051b02cb1c05cb49840ede8f338b0e3df36abe0eab88"
+    },
+    {
+      "bytes": 46292,
+      "path": "measurement-plan-and-review-01.json",
+      "sha256": "3a28c33c4e36f77c8bb3009cb5d69ef37b720f94edd0b7e78a1b04e117dd9dbd"
+    },
+    {
+      "bytes": 10864,
+      "path": "metadata-integration-qualification-01.json",
+      "sha256": "c49f7f693abbb70ad128a91fc0b264f73e0bf681116e6d0be8e1278958a843b8"
+    },
+    {
+      "bytes": 6997,
+      "path": "metadata-integration-tests-01.log",
+      "sha256": "ff1f2354daa879b3613601964bda5769e6918cb66410210b0efb78db80c23e9a"
+    },
+    {
+      "bytes": 64549,
+      "path": "metadata-integration-tests-01.xml",
+      "sha256": "627ffb9b02007d3cd56708b8f06ddb0c0d37f5dc096c0bff86f96311a4787141"
+    },
+    {
+      "bytes": 7276,
+      "path": "metadata-postmerge-qualification-01.json",
+      "sha256": "b0b936ff570d1410a4025cc2d0fdd08a1279919ef6544f5fd63094879ed5ac54"
+    },
+    {
+      "bytes": 2960,
+      "path": "metadata-postmerge-tests-01.log",
+      "sha256": "c702bee635ab7875ec4fa60f93891dc1bfd8a7c46acfea0f2d75cd4b2983ccbb"
+    },
+    {
+      "bytes": 10568,
+      "path": "metadata-postmerge-tests-01.xml",
+      "sha256": "81e0f134c8a1383b3a6d70518c1ed60fddd8ead79dcb1d6cc80eb22105768557"
+    },
+    {
+      "bytes": 1559,
+      "path": "metadata-view-test-execution-01.json",
+      "sha256": "f13c55d935eb26bc3a9f9795aca771801903cac1858fbd6a8e46d7677a5386f6"
+    },
+    {
+      "bytes": 1576,
+      "path": "metadata-view-test-execution-final-02.json",
+      "sha256": "46f76bba45f11514511b7f5f277ee67e5809e1ff2efc7a194505455499f023d1"
+    },
+    {
+      "bytes": 8525,
+      "path": "metadata-view-tests-01.log",
+      "sha256": "05999c74b8e06fc5f0871478143b2b4d94761c4bded908097688591dc7957dfe"
+    },
+    {
+      "bytes": 8659,
+      "path": "metadata-view-tests-01.xml",
+      "sha256": "1d45ec2dc9f67b7dcde98b2f701ec2341831a4d31f6dc1bcbb9ed24376fa5f20"
+    },
+    {
+      "bytes": 7665,
+      "path": "metadata-view-tests-final-02.log",
+      "sha256": "a35b9120507ddad71abeed4f9973b589ca0b882ea5d577ea35b85f2c292c23fa"
+    },
+    {
+      "bytes": 8037,
+      "path": "metadata-view-tests-final-02.xml",
+      "sha256": "52ed43e6364394ca51b1ad9dd45b0ff32d914265292191c99cbbd8a227ccc76e"
+    },
+    {
+      "bytes": 14105,
+      "path": "native-owner-api-inventory-01.json",
+      "sha256": "e1c98eac65c6c1763a9b11a6350e97990d75a61497877c02698a4e78e33def4a"
+    },
+    {
+      "bytes": 6089,
+      "path": "semantic-metadata-catalog-qualification-02.json",
+      "sha256": "915d593f8afabe10a00a49d1cf8eefc00d213581060b36d87df93068c64f1ea3"
+    },
+    {
+      "bytes": 7721,
+      "path": "semantic-metadata-catalog-tests-01.log",
+      "sha256": "d2d723845772468baa2270006abe9053b3d4a27f1284c93c7b26cc1ecc2ec7c6"
+    },
+    {
+      "bytes": 8660,
+      "path": "semantic-metadata-catalog-tests-02.log",
+      "sha256": "103472bd8d93655b6d37c5f10ec18041e7755046cbfea00eab4a4940b90fd10c"
+    },
+    {
+      "bytes": 30922,
+      "path": "semantic-metadata-dispatch-tests-01.log",
+      "sha256": "cb7f9b27e891040fd2537412b903def58693dd7f11af5d77284851a0ffe1eb9c"
+    },
+    {
+      "bytes": 1980,
+      "path": "semantic-metadata-dispatch-tests-02.log",
+      "sha256": "b7f2efe28f618c29092fc577db7b2ab31ba16065a530f78392fdc0d7cc47a22c"
+    },
+    {
+      "bytes": 17667,
+      "path": "semantic-metadata-dispatch-tests-03.log",
+      "sha256": "6d6d607cc4973f659a998b4ab239f94d84f296bb32881cc6fc295fe1e2082040"
+    },
+    {
+      "bytes": 20527,
+      "path": "semantic-metadata-dispatch-tests-04.log",
+      "sha256": "13d53fdadb6b2e1884c1885a8e27ffd0094b5b3a3b660fb2ada6c88bd76d6375"
+    },
+    {
+      "bytes": 882,
+      "path": "semantic-metadata-dispatch-tests-05.log",
+      "sha256": "47e577393ca04d7c9dcb9e34599528a0129bed8c59a249dd85ed216196be077e"
+    },
+    {
+      "bytes": 5837,
+      "path": "semantic-metadata-policy-qualification-01.json",
+      "sha256": "0d40f65c6cfb8296ae1c9c2172fa415de6aa699560fb926884ebca31a97c43d7"
+    },
+    {
+      "bytes": 15963,
+      "path": "semantic-metadata-policy-tests-01.log",
+      "sha256": "f0d41f51ae196e453c223b621a5c9d2dc214af79915eb45a11bfe1cc3db670e3"
+    },
+    {
+      "bytes": 9963,
+      "path": "semantic-metadata-view-qualification-01.json",
+      "sha256": "58d4661d3b54d9f28c876a953faa0cc7afa42c09ea9b89653360d6b2238fc770"
+    }
+  ],
+  "schema": "terminal-semantic-metadata-artifact-manifest@1",
+  "scope": "Extended evidence after concurrent main integration; original manifest and all its bound bodies unchanged. Raw evidence whitespace remains byte-exact.",
+  "total_bytes": 376069,
+  "total_provider_token_savings_measured": false
+}
