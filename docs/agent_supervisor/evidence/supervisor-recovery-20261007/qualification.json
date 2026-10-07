@@ -1,0 +1,443 @@
+{
+  "checks": {
+    "native-start-frozen-03": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 9,
+      "xml": {
+        "artifact": "native-start-frozen-03.xml",
+        "bytes": 2104,
+        "sha256": "3daf27398ba0c9e2b95f46cf385cd2b0c3c50918152eca412616a04aea421fc0"
+      }
+    },
+    "preflight-frozen-02": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 249,
+      "xml": {
+        "artifact": "preflight-frozen-02.xml",
+        "bytes": 48310,
+        "sha256": "40b7f7d16e01911639bfffd86d113c60891cb8d03750d745f18ab227aa092e1d"
+      }
+    },
+    "recovery-final-01": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 254,
+      "xml": {
+        "artifact": "recovery-final-01.xml",
+        "bytes": 48588,
+        "sha256": "92d3058de10b78fd90014a841e359a86fed08dee0cc36609b087a6bf349cfbef"
+      }
+    },
+    "scheduler-merged-01": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 188,
+      "xml": {
+        "artifact": "scheduler-merged-01.xml",
+        "bytes": 35804,
+        "sha256": "7e5d3c4fabe55ec59c3a3a24000e79182dce7c1032fdfdf164adc901aa0be8b0"
+      }
+    }
+  },
+  "current_blocker": "Restore local Grok sign-in, then qualify the real catalog output and prepare new immutable matched trials. No credentials or native provider output are included here.",
+  "date": "2026-10-07",
+  "final_checks_frozen": {
+    "exit_code": 0,
+    "log_sha256": "254f0e1aba79b26b941f6ff5c175ba1c2e6a513f7149fc6444e156ffbe10d175",
+    "seconds": 170.56531761796214,
+    "source_unchanged": true,
+    "xml_sha256": "92d3058de10b78fd90014a841e359a86fed08dee0cc36609b087a6bf349cfbef"
+  },
+  "final_host_source_head": "b6b62171c4b458856dc1c712b16d8ff7faed0c04",
+  "formalization_coverage": {
+    "limitation": "Checkpoint consumption and decoded candidates do not establish correct NumPy/loop semantics or proved repairs.",
+    "reasons": {
+      "source_encoding_unsupported": 1,
+      "two_distinct_parameters_required": 3
+    },
+    "source_functions": 4,
+    "training_steps": 0,
+    "unsupported": 4,
+    "verified_source_semantics": 0
+  },
+  "independent_container_review": {
+    "artifact": "container-03-independent-review.json",
+    "bytes": 13354,
+    "sha256": "20ba993e2a6a6375dbbac797fca02089be2544eb2ea6498d72ff84b1a0df4b88"
+  },
+  "new_guards": {
+    "credential_readiness": "Full Harbor Grok setup probes the isolated worker credential copy with bounded models command before indexing/planning; provider-free preflights remain unchanged.",
+    "native_preflight_diagnostics": "Retain primary admission/trace evidence before cleanup and keep STOP/close/fallback failures separate.",
+    "retry_filters": "Sort only include_exceptions/exclude_exceptions before sealing new configurations; existing v1 replay unchanged."
+  },
+  "pilot": {
+    "frozen_control_review": {
+      "artifact": "grok-pilot-frozen-review-02.json",
+      "bytes": 1931,
+      "sha256": "1670c1a0fa4b7e246c5a5d35a24e803ccde505033d6fd7715180d4d3d0a746bd"
+    },
+    "full": {
+      "complete_single_trial_receipt": true,
+      "executed": true,
+      "failure_phase": "planning",
+      "intent_preplanning_status": "fail_open_no_checkpoint",
+      "official_reward": 0.0,
+      "original_task_inputs_unchanged": true,
+      "phase_seconds": {
+        "initial_context_seconds": 14.225571609975304,
+        "planning_seconds": 4.78288876201259,
+        "prepare_seconds": 0.7192282890318893
+      },
+      "provider_failure": {
+        "phase": "provider_invocation",
+        "reason_code": "authentication"
+      },
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "receipt": {
+        "artifact": "grok-full-pilot-02/receipt.json",
+        "bytes": 44155,
+        "sha256": "1214eb4a5763902b060e86f85d11a9a0f5a0b81fda50a9ceb174a7ef1ff553ce"
+      },
+      "resource_profile": "source384-5cpu-20gib-planner180@1",
+      "source384_coverage": {
+        "candidate_statuses": {
+          "fail_open_source_contract_unsupported": 4
+        },
+        "file_dispositions": {
+          "inventoried": 2
+        },
+        "files": 2,
+        "functions": 4,
+        "selected_units": 4,
+        "unit_dispositions": {
+          "decoded_unverified_candidate": 4
+        }
+      },
+      "supervisor_seconds": 20.32899816497229,
+      "task": "largest-eigenval",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": null,
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "dollar_cost": null,
+        "input_tokens": null,
+        "observed_complete_sessions": false,
+        "output_tokens": null,
+        "provider_calls": 1,
+        "source": "observed_native_final_totals",
+        "total_tokens": null,
+        "usage_complete_observed": null
+      },
+      "worker_cleanup_returncode": 0
+    },
+    "matched_performance_comparison_available": false,
+    "no_index": {
+      "arm": "no-index",
+      "executed": false,
+      "provider_calls": 0,
+      "reason": "Matching full arm was rejected at Grok authentication; host native CLI also reported not authenticated. Do not repeat known authentication failure. Original preparation retained unmodified.",
+      "reward": null,
+      "schema": "terminal-unexecuted-arm@1",
+      "token_usage": null
+    }
+  },
+  "preflight_runs": [
+    {
+      "absence_samples": 2,
+      "error_phase": null,
+      "error_type": "LeaseTimeoutError",
+      "healthy_worker_observations": 0,
+      "native_receipt": {
+        "artifact": "container-01/native-start-stop-result.json",
+        "bytes": 26773,
+        "sha256": "f1eb0dec09f1ff03b33693e549882843aef897db3548894b1986e57fe058f9a8"
+      },
+      "native_seconds": 111.40790093800751,
+      "official_verifier_executed": false,
+      "owned_container_removed": true,
+      "qualified": false,
+      "receipt": {
+        "artifact": "container-01/result.json",
+        "bytes": 15652,
+        "sha256": "8fbfe3335d16fd11a3e99da43ca4f23bd3503531afb9ff43f7794a5288f78e05"
+      },
+      "remaining_native_processes": 0,
+      "remaining_workers": 0,
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "run": "container-01",
+      "source384_inference_observation": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "completion_authority": false,
+        "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+        "execution_authority": false,
+        "formalization_authority": false,
+        "inference_bytes": 119717,
+        "inference_executed": true,
+        "inference_sha256": "c904900e7e6bdc550e7fcaa3b17f47f6d066cf5e93e3b944c64ba4156b663f37",
+        "model_loads": 1,
+        "native_worker_executed": true,
+        "neural_inference_replayed": false,
+        "proof_authority": false,
+        "schema": "local-preflight-source384-inference-observation@1",
+        "source_head": {
+          "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeerazbmulam4snqzjiktk2zyhii5necr7ilgfg3mw4aqbtcy323fswdq",
+          "generation": 1,
+          "manifest_cid": "baguqeerasi2mjeucr6cp6wixspdeq644z3u3zrbtciif7crlcbio2aqwlzlq",
+          "receipt_cid": "baguqeerahhf4nnedn2q3fdel5ust52piiz5f2j43dzhcjbe7ghhudqu7fxjq",
+          "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+          "schema": "codebase-head@1",
+          "snapshot_cid": "baguqeerazbmulam4snqzjiktk2zyhii5necr7ilgfg3mw4aqbtcy323fswdq"
+        },
+        "training_steps": 0,
+        "version_id": "sha256:65603504d2ac09f3b491296466248d87ab1119a0b15c36ec1325928cda37dab2"
+      },
+      "source_binding_unchanged": true,
+      "start": "succeeded",
+      "stop": "succeeded",
+      "text_generation_calls": 0
+    },
+    {
+      "absence_samples": 2,
+      "error_phase": "observe",
+      "error_type": "LeaseTimeoutError",
+      "failure_admission": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "last_sample": {
+          "additional_request_memory_mb": 6144,
+          "host": {
+            "available_memory_mb": 9400,
+            "cpu_stall_percent": 44.38,
+            "io_stall_percent": 0.0,
+            "memory_stall_percent": 0.0
+          },
+          "observed_at": 1791388047.6168294,
+          "pressure_sources": {
+            "omitted_cgroup_scopes": 0,
+            "omitted_maxima": {
+              "cpu": null,
+              "io": null,
+              "memory": null
+            },
+            "samples": [
+              {
+                "cpu": {
+                  "avg10": 44.38,
+                  "status": "observed"
+                },
+                "depth": null,
+                "io": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "memory": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "scope": "host"
+              },
+              {
+                "cpu": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "depth": 0,
+                "io": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "memory": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "scope": "cgroup"
+              }
+            ],
+            "schema": "proof-pressure-sources@1"
+          },
+          "reason": "proof_memory_headroom",
+          "reserved_root_memory_mb": 0,
+          "thresholds": {
+            "cpu_stall_percent": 50.0,
+            "io_stall_percent": 10.0,
+            "memory_headroom_mb": 3277,
+            "memory_stall_percent": 10.0
+          }
+        },
+        "observation_boundary": "request_primary_gate",
+        "primary_gate": {
+          "backoff_until": 1791388049.6168294,
+          "observed_at": 1791388049.5873253,
+          "reason": "proof_memory_headroom",
+          "status": "backoff"
+        },
+        "schema": "terminal-admission-failure-observation@1",
+        "status": "observed",
+        "terminal": "timeout"
+      },
+      "healthy_worker_observations": 0,
+      "native_receipt": {
+        "artifact": "container-02/native-start-stop-result.json",
+        "bytes": 32787,
+        "sha256": "321f2133553e2bc03e8572c97c98bf96cd6740f3e99dc0a4e905111398601a50"
+      },
+      "native_seconds": 114.64244362298632,
+      "official_verifier_executed": false,
+      "owned_container_removed": true,
+      "qualified": false,
+      "receipt": {
+        "artifact": "container-02/result.json",
+        "bytes": 15653,
+        "sha256": "c413e4abd1cc0a550961ccd01c65551e539a2ef2233339a995d41757a141e542"
+      },
+      "remaining_native_processes": 0,
+      "remaining_workers": 0,
+      "resource_profile": "source384-5cpu-16gib-extended@1",
+      "run": "container-02",
+      "source384_inference_observation": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "completion_authority": false,
+        "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+        "execution_authority": false,
+        "formalization_authority": false,
+        "inference_bytes": 119717,
+        "inference_executed": true,
+        "inference_sha256": "3f170b15c2ded0e0f5c5194f9ee7630b037480b1f97098b274a13aeea41e50ab",
+        "model_loads": 1,
+        "native_worker_executed": true,
+        "neural_inference_replayed": false,
+        "proof_authority": false,
+        "schema": "local-preflight-source384-inference-observation@1",
+        "source_head": {
+          "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeeraomixf2pfelvvaw35xwf5s2scmcwncxjs5q6qqqbz5viymwq6mf5q",
+          "generation": 1,
+          "manifest_cid": "baguqeeraw5pdb4gxa557a7t3jaukso4vytylxxv3jhzihqjrgfud5hblmr4a",
+          "receipt_cid": "baguqeerapg2rpo5nnapfmhqqebxa3jk3w5lysg3zxyteypox5g4dmzyg6rbq",
+          "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+          "schema": "codebase-head@1",
+          "snapshot_cid": "baguqeeraomixf2pfelvvaw35xwf5s2scmcwncxjs5q6qqqbz5viymwq6mf5q"
+        },
+        "training_steps": 0,
+        "version_id": "sha256:65603504d2ac09f3b491296466248d87ab1119a0b15c36ec1325928cda37dab2"
+      },
+      "source_binding_unchanged": true,
+      "start": "succeeded",
+      "stop": "succeeded",
+      "text_generation_calls": 0
+    },
+    {
+      "absence_samples": 2,
+      "error_phase": null,
+      "error_type": null,
+      "healthy_worker_observations": 2,
+      "native_receipt": {
+        "artifact": "container-03/native-start-stop-result.json",
+        "bytes": 51382,
+        "sha256": "819f8a7fe5f81f45e07669a385f8312d41fe07a852f9d2f8e58ffba9c0a5ff01"
+      },
+      "native_seconds": 28.072472492000088,
+      "official_verifier_executed": false,
+      "owned_container_removed": true,
+      "owner_read_sequences": [
+        24,
+        32
+      ],
+      "qualified": true,
+      "receipt": {
+        "artifact": "container-03/result.json",
+        "bytes": 15622,
+        "sha256": "73ff3f771df72c27738cf27828c3a15d259c10681efc476539e5cdd7525e764f"
+      },
+      "remaining_native_processes": 0,
+      "remaining_workers": 0,
+      "resource_profile": "source384-5cpu-20gib-planner180@1",
+      "run": "container-03",
+      "source384_inference_observation": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "completion_authority": false,
+        "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+        "execution_authority": false,
+        "formalization_authority": false,
+        "inference_bytes": 119717,
+        "inference_executed": true,
+        "inference_sha256": "66971424d879f4a02aea5c0225a51f195cd5517bc30e061e51e387aae8ca1ec9",
+        "model_loads": 1,
+        "native_worker_executed": true,
+        "neural_inference_replayed": false,
+        "proof_authority": false,
+        "schema": "local-preflight-source384-inference-observation@1",
+        "source_head": {
+          "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeeramgt3hf23eddqdnn4k47pibxpd2nyhd4s73i2ododrhc7cvji3qvq",
+          "generation": 1,
+          "manifest_cid": "baguqeeraediukacpeywsgwhqblcnlbxi2sc5hpd3y5xhinloq6lsmjgbed5a",
+          "receipt_cid": "baguqeera25tcdhvbfxbwzvwxkcpcbimbzzoagzawruhonzxlklw3shbictkq",
+          "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+          "schema": "codebase-head@1",
+          "snapshot_cid": "baguqeeramgt3hf23eddqdnn4k47pibxpd2nyhd4s73i2ododrhc7cvji3qvq"
+        },
+        "training_steps": 0,
+        "version_id": "sha256:65603504d2ac09f3b491296466248d87ab1119a0b15c36ec1325928cda37dab2"
+      },
+      "source_binding_unchanged": true,
+      "start": "succeeded",
+      "stop": "succeeded",
+      "text_generation_calls": 0,
+      "worker_context": {
+        "prompt_bytes": 60012,
+        "prompt_sha256": "a768d3a5745047ea6bc2d13d600eb8282e911f1c4bb7860a816919109016043f",
+        "required_context_kinds": [
+          "code-retrieval-context",
+          "intent-world-context",
+          "semantic-context"
+        ]
+      }
+    }
+  ],
+  "publication_limits": [
+    "Runtime qualification used P89d1c4d5a; later host-only guard/control changes have local test qualification, not a successful live Grok catalog observation.",
+    "No new token savings, matched no-index score, native Codex comparison, complete suite score, or formal proof advantage is established."
+  ],
+  "qualified_archive_sha256": "fdd8511b4b7619592fd2cb9ba720adc022139bd88a344a760250e0b69b9d04a6",
+  "qualified_runtime_sources": {
+    "datasets": {
+      "head": "5c69724316a3365bdb22023ba5608fced96d568a",
+      "status": ""
+    },
+    "kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "status": ""
+    },
+    "source": {
+      "head": "89d1c4d5a4670b91dd3bbe6248fd6e97107c0afc",
+      "status": ""
+    }
+  },
+  "scheduler_fix": {
+    "behavior": "Refuse oversized queued roots without applying their additional-memory-only cooldown to sufficiently reserved admitted work. Preserve actual pressure and descendant capacity guards.",
+    "fix_commit": "0852c66b5",
+    "merged_datasets_commit": "5c69724316a3365bdb22023ba5608fced96d568a",
+    "original_container_cause_established": false,
+    "reproduction": {
+      "artifact": "scheduler-fix-review.json",
+      "bytes": 5913,
+      "sha256": "9b0fce11261ccaff27e83f9350603f2612cc6e689f29e940409280406a84f860"
+    }
+  },
+  "schema": "supervisor-recovery-qualification@1",
+  "scope": {
+    "benchmark_advantage_claimed": false,
+    "cold_owner_recovery_qualified": false,
+    "formalization_authority": false,
+    "harbor_task_container_preflight": true,
+    "live_new_readiness_positive_qualified": false,
+    "protected_nested_docker_enabled": false
+  }
+}

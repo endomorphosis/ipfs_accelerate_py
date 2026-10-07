@@ -3,6 +3,62 @@
 Audit date: 2026-10-07. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Task-container qualification and live pilot, 2026-10-07
+
+The separate Harbor task-container route passed a real provider-free preflight on
+`largest-eigenval`. The admitted supervisor started, delivered code-retrieval,
+semantic and world-model context to the isolated UID 1001 worker, observed two
+advancing healthy heartbeats, and stopped with no residual native or worker
+processes. The owned container was independently observed absent twice. The
+native phase took 28.07 seconds. This used the existing
+`source384-5cpu-20gib-planner180@1` profile and archive
+`fdd8511b4b7619592fd2cb9ba720adc022139bd88a344a760250e0b69b9d04a6`,
+bound to supervisor `89d1c4d5a`, datasets `5c69724316`, and kit `8ac00bb197`.
+The public task graph was authored for qualification; no model-generated plan or
+benchmark success is established by that preflight.
+
+Two earlier preflights remain recorded as failures. A controlled scheduler
+reproduction exposed an oversized waiting root imposing a shared cooldown on
+already admitted child work. The fix preserves the root refusal, actual pressure
+checks and child capacity limits while allowing sufficiently reserved work to
+progress. The next container run retained its actual admission diagnostic:
+with no active root reservation, 9,400 MiB available could not cover the
+6,144 MiB request plus 3,277 MiB required headroom. Selecting the existing 20 GiB
+profile resolved the subsequent qualification; no safety threshold was lowered.
+The first container's exact failed gate was not retained and remains unknown.
+
+Source384 loaded the pinned checkpoint once in the qualified preflight and ran
+inference over four functions. All four candidates remained unsupported: three
+required two distinct parameters, and one failed the source-encoding guard.
+These observations establish checkpoint consumption, not correct NumPy/loop
+formalization, verified source semantics, or a symbolic repair.
+
+The live full indexed Grok trial then reached `llm_router` planning, but the native
+provider refused authentication. The original verifier recorded reward **0**;
+token and cost totals remain **unknown**. The matching no-index arm was prepared
+with identical comparison controls but was not executed after that refusal.
+There is no new matched performance result, token-savings claim, native Codex
+comparison, or complete-suite score. The local pinned CLI also reported
+unauthenticated; a refreshed Grok sign-in is required before new live trials.
+
+Subsequent host harness changes sort only Harbor's two set-valued retry filters
+before sealing new configurations, preserve historical control replay, and check
+the isolated Grok credential copy before indexing or planning. The bounded
+`models` probe emits only a closed status receipt, rejects exit-zero negative
+authentication and unknown output formats, and can run against retained archives
+through its reviewed standalone script. It may refresh or invalidate the
+container's copied credential. Its positive catalog parser has fixture coverage;
+successful live authentication through this new guard has not been qualified.
+Provider-free preflight defaults remain unchanged.
+
+Final merged-source harness qualification passed **254 tests with no skips**;
+the scheduler change passed **188 tests** after its datasets merge. Frozen runtime
+qualification and later host changes are identified separately in the
+[bounded recovery evidence](evidence/supervisor-recovery-20261007/qualification.json).
+Raw runtime databases, signing keys, credential contents and native provider text
+are excluded from that publication. The protected nested-Docker and cold-owner
+limits below remain in effect.
+
 ## Working scope
 
 The native provider-attempt CAS can record terminal cleanup intent and completion.
