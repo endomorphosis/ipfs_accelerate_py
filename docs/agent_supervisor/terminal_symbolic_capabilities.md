@@ -1475,3 +1475,15 @@ path recovery expects a different retry protocol, and Docker candidate cleanup
 has missing producer/consumer interfaces. These remain unqualified; the focused
 passes do not establish whole-repository correctness. General numerical and
 structured-data symbolic repair coverage also remains incomplete.
+
+
+## Reviewed finite scheduling (2026-10-07)
+
+The [integer scheduling contract](FINITE_SCHEDULE_CONTRACTS.md) adds an opt-in
+signed @5 route for one JSON output. Shared datasets code compiles explicit
+constraints to bounded QF_LIA and independently replays each SAT witness.
+The supervisor hydrates its finite-check index and retains staged native
+validation and publication. UNSAT and indeterminate solver outcomes remain
+residuals. The [qualification record](evidence/finite-schedule-20261007/README.md)
+distinguishes authored public indexing, native semantic validation and cleanup
+from unsupported calendar semantics, kernel proofs and benchmark rewards.
