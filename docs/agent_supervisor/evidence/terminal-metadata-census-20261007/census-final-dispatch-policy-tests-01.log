@@ -1,0 +1,23 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007
+configfile: pytest.ini
+collected 63 items
+
+test/api/test_semantic_metadata_census_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m          [ 19%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py [32m.[0m[32m [ 20%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                       [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.xml -
+============================= slowest 10 durations =============================
+1.19s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_binds_actual_model_input_and_never_allocates_provider
+1.08s call     test/api/test_semantic_metadata_census_dispatch.py::test_census_retains_exact_wrapper_binding_checks
+0.70s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options1]
+0.67s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options0]
+0.67s setup    test/api/test_semantic_metadata_census_dispatch.py::test_cli_census_emits_one_closed_observation
+0.65s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options3]
+0.65s setup    test/api/test_semantic_metadata_census_dispatch.py::test_cli_drift_failure_exports_only_closed_diagnostic
+0.64s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options2]
+0.63s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_refuses_current_source_drift
+0.63s setup    test/api/test_semantic_metadata_census_dispatch.py::test_census_requires_explicit_original_semantic_coding_view[options4]
+[32m============================= [32m[1m63 passed[0m[32m in 34.60s[0m[32m ==============================[0m

@@ -21,6 +21,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",

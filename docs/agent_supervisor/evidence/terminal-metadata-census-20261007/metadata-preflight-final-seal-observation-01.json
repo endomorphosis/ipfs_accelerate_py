@@ -1,0 +1,9 @@
+{
+  "completion_authority": false,
+  "oracle_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+  "passing_seals_written": true,
+  "pytest_exitstatus": 0,
+  "schema": "authored-preflight-pytest-seal-observation@1",
+  "sealing_enabled": true,
+  "source_seal_count": 19
+}

@@ -1,0 +1,48 @@
+{
+  "actual_residual_preparation_without_execution_tested": true,
+  "completion_authority": false,
+  "created_utc": "2026-10-07T15:30:36.519775+00:00",
+  "detached_same_common_dir_used": true,
+  "execution_authority": false,
+  "existing_private_database_reads": 0,
+  "fixture_scope": "authored-public-Python-task-native-DuckDB-DuckLake-owner-context-only",
+  "foreign_git_and_fresh_owned_copy_negatives": true,
+  "hidden_evaluator_reads": false,
+  "learned_embedding_inference_performed": false,
+  "native_admission_materialization_context_used": true,
+  "native_implementation_executed": false,
+  "native_lexical_vectorizer_fitting_performed": true,
+  "official_reward": null,
+  "planning_performed": false,
+  "post_yield_task_source_drift_and_cleanup_negatives": true,
+  "prepared_repair_candidate_refused_before_execution": true,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "provider_response_reads": false,
+  "restrictive_private_umask_tested": true,
+  "schema": "terminal-public-metadata-preflight-qualification@1",
+  "source384_asset_access_performed": false,
+  "source_bindings": [
+    {
+      "bytes": 20169,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    }
+  ],
+  "status": "passed",
+  "task_validation_executed": false,
+  "tests": {
+    "failed": 0,
+    "log_bytes": 100,
+    "log_sha256": "b6d754ce762cda3e71f4e99595d526f6c469a408d1d00854a7c5e9e86949b64b",
+    "passed": 19,
+    "seconds": 38.68,
+    "skipped": 0
+  },
+  "total_token_savings_measured": false
+}

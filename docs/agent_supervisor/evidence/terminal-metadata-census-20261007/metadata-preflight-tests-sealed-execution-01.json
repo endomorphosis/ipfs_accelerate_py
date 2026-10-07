@@ -1,0 +1,96 @@
+{
+  "actual_benchmark_or_evaluator_executed": false,
+  "command_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import json,pathlib,sys,tests\nassert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\")\nimport pytest\nclass ObserveSeal:\n    def pytest_sessionfinish(self,session,exitstatus):\n        state=getattr(session.config,\"_pytest_ast_seal_state\",None)\n        assert type(state) is dict and state.get(\"enabled\") is True\n        payload={\"schema\":\"authored-preflight-pytest-seal-observation@1\",\"sealing_enabled\":True,\"oracle_path\":str(state[\"oracle\"].path),\"source_seal_count\":len(state[\"seals\"]),\"passing_seals_written\":state[\"wrote\"],\"pytest_exitstatus\":int(exitstatus),\"completion_authority\":False}\n        with pathlib.Path('/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-observation-01.json').open(\"x\") as stream:json.dump(payload,stream,sort_keys=True,indent=2);stream.write(\"\\n\")\nraise SystemExit(pytest.main(sys.argv[1:],plugins=[ObserveSeal()]))\n",
+    "-q",
+    "-o",
+    "addopts=",
+    "-o",
+    "log_cli=false",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--tb=short",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py"
+  ],
+  "completion_authority": false,
+  "created_utc": "2026-10-07T15:41:15.709505+00:00",
+  "cwd": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007",
+  "environment_overrides": {
+    "IPFS_ACCELERATE_META_INDEX_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-meta-01.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "errors": 0,
+  "existing_private_database_reads": 0,
+  "exit_code": 0,
+  "failures": 0,
+  "fresh_mirror_metadata_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-meta-01.duckdb",
+  "fresh_seal_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+  "junit_seconds": 297.366,
+  "junit_xml": {
+    "bytes": 3775,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.xml",
+    "sha256": "4a89fb35dfa70477de664571879bdb1ffce963c3cac717bf534f99ead5bf409d"
+  },
+  "provider_calls": 0,
+  "publication_authority": false,
+  "python_version": "Python 3.12.3",
+  "schema": "authored-preflight-sealed-test-execution@1",
+  "seal_observation_artifact": {
+    "bytes": 339,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-observation-01.json",
+    "sha256": "9ff704f79f95c2ed7249c431da0dd5ef63c3e147f9d5f394f8d034b3afec0efc"
+  },
+  "sealing_observation": {
+    "completion_authority": false,
+    "oracle_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+    "passing_seals_written": true,
+    "pytest_exitstatus": 0,
+    "schema": "authored-preflight-pytest-seal-observation@1",
+    "sealing_enabled": true,
+    "source_seal_count": 19
+  },
+  "skipped": 0,
+  "source_bindings_after": [
+    {
+      "bytes": 20169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    }
+  ],
+  "source_bindings_before": [
+    {
+      "bytes": 20169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    }
+  ],
+  "source_bindings_unchanged": true,
+  "stdout_log": {
+    "bytes": 111,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.log",
+    "sha256": "1902ff65e1526d5ede9167eb07aae8b3bcd195ea919d6ca2500c30272591a330"
+  },
+  "tests": 19,
+  "wrapper_seconds": 298.16375332599273
+}

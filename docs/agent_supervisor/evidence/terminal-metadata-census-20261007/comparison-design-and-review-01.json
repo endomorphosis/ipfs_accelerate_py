@@ -1,0 +1,1218 @@
+{
+  "schema": "terminal-semantic-metadata-comparison-design-review@1",
+  "treatment_definition": {
+    "source_transport_schema_both_arms": "supervisor-semantic-router-input@1",
+    "baseline_requested_mode": "legacy",
+    "treatment_requested_mode": "common-bindings@1",
+    "planning_strategy": "direct",
+    "planning_retained": true,
+    "coding_reply_mode": "ordinary-completion@1",
+    "coding_reply_suffix_bytes": 506,
+    "generation_schema_bytes": 215,
+    "previous_transport_comparator_reusable_unchanged": false,
+    "proposed_separate_comparator_schema": "terminal-semantic-metadata-paired-comparison@1",
+    "rationale": "Original and factored metadata representations of the same transport require separate arm labels, controls normalization, complete-input accounting and selected-view audit."
+  },
+  "required_gate_groups": [
+    {
+      "name": "immutable_fresh_pair_custody",
+      "requirements": [
+        "Canonical bounded single-trial receipt and native task/job identity; config and preparation bytes bind exact selected frozen archive.",
+        "Same frozen runtime/archive/manifest and all metadata helper, runner, independent auditor, CLI provider/generation-policy, benchmark-controls and native owner-context implementations bound.",
+        "Prepared task inputs, resource/setup/cache/provider/model/reasoning/CLI controls observed unchanged in native configuration; no historical replay used to certify current preparation.",
+        "Distinct native trials retained; no overwrite of old receipts, comparators, audits or prior failure costs."
+      ]
+    },
+    {
+      "name": "requested_and_observed_mode",
+      "requirements": [
+        "Both arms original @1; direct planning and ordinary reply retained in preparation, frozen config, supervisor and native agent metadata.",
+        "Only baseline legacy versus treatment common-bindings request may differ under a closed named normalization; transport remains a compared control.",
+        "Treatment selection receipt binds source/view/selection and complete native/candidate/selected prompt layers with strict field types and canonical equality.",
+        "Treatment must actually select common-bindings@1 for observed-treatment qualification; legacy fallback is retained as an attempted treatment and its full cost is reported."
+      ]
+    },
+    {
+      "name": "native_input_owner_and_restoration",
+      "requirements": [
+        "Existing semantic owner verifies complete current producer inventory, source manifest and admitted context before factoring.",
+        "Reconstructed original @1 equals exact pre-transform bytes; fixed projector candidate equals recorded view.",
+        "Literal task requirements, source bodies/paths/signatures, native core, verdicts/statuses, unknown fields and prefix/suffix unchanged by representation.",
+        "Do not grant currentness, proof, omission, execution, settlement or completion authority to catalog nominations, dry-run census or pure restoration.",
+        "Cross-arm counterfactual native coding core, literal suffix, source manifest/populations and complete-input observations are preserved; strict only-metadata-changed verdict requires substantive input equality or a separately named owner-validated normalization."
+      ]
+    },
+    {
+      "name": "complete_initial_input_and_reply_layers",
+      "requirements": [
+        "Independently audit both the undelivered original complete input and actual selected complete input after Doctor/public/workspace/reply layers.",
+        "Baseline original transport+Doctor+public+workspace+506 arithmetic binds actual model bytes; treatment selected view+same wrappers+same506 suffix binds actual selected input.",
+        "Actual coding_reply_contract binds selected provider input; separate native counterfactual contract binds undelivered baseline.",
+        "Both reply layers have identical fixed closed contract fields and generation schema/suffix; native CLI schema hash/bytes and request/validation policy bind actual contract.",
+        "Complete byte count and named UTF-8 ceil-div4 proxy must strictly improve for selection; full inputs both within256000B; independent current context auditor verifies actual model SHA/bytes.",
+        "Initial model input digest scope is limited; native cumulative usage accounts full session including later tool/model conversation."
+      ]
+    },
+    {
+      "name": "retained_planning_and_native_provider_accounting",
+      "requirements": [
+        "Exactly one admitted planning and one coding llm_router CLI session expected per arm; detect and retain any additional or failed attempts.",
+        "Planning generation schema, schema/tempfile/CLI custody, canonical plan scope/evidence/admission and observed direct strategy qualified separately.",
+        "Native cumulative input, cached input, output and total integers checked; total=input+output, cache<=input.",
+        "Cached input is already included in native input and never added twice; cumulative counters are not summed across snapshots.",
+        "Unknown or partial failed usage remains null with observed lower bounds and explicit completeness flags; never zero-filled or silently excluded.",
+        "Complete per-phase and total usage covers all attempts, independent of reward/output validation, plus retained campaign cost."
+      ]
+    },
+    {
+      "name": "native_effects_and_interpretation",
+      "requirements": [
+        "Original official verifier reward and native task completion, settlement/STOP and cleanup checked independently.",
+        "Report all native effects and failure reasons even if gates fail; do not treat a smaller initial prompt or proxy as total-token efficacy.",
+        "A lower complete total on one qualified pair is an observed pair result, not causal or repeatable savings.",
+        "Predeclare balanced repeated pair order, outcomes, budget/failure handling and aggregation for repeatability; retain adverse/fallback/cost results."
+      ]
+    }
+  ],
+  "offline_census_boundary": {
+    "may_support": "Representation and active-owner preparation viability under its exact declared source/index/plan/wrapper scope.",
+    "cannot_support": [
+      "Current preparation certified from historical replay.",
+      "An actual retained LLM planning session executed or avoided when the context uses an owner-authored synthetic plan.",
+      "Prior Source384 or live-planned context replicated by a deterministic administrative index.",
+      "Actual provider token savings, correctness, verifier reward or benchmark performance."
+    ],
+    "native_provider_usage": null,
+    "measured_total_token_savings": null
+  },
+  "proposed_result_qualification": {
+    "fixed_control_pair_qualified": "All per-arm actual-current preparation, contract, final-input audit, complete usage, native effect/cleanup and matched frozen controls pass; requested treatment actually selected.",
+    "strict_only_metadata_changed_input_qualified": "Additionally the substantive pre-transform inputs match exactly or through a separately closed owner-validated administrative normalization. Fixed configs or matching task names alone do not establish this.",
+    "exact_causal_or_repeatable_savings_qualified": false,
+    "failures_and_fallbacks_remain_reported": true,
+    "observed_full_token_difference_requires_complete_usage": true,
+    "unknown_usage_difference": null,
+    "proxy_based_total_token_difference_forbidden": true
+  },
+  "negative_controls_required_for_future_producer": [
+    "Missing/foreign/extra metadata receipt fields, source/view/selection/reply digests and archive/helper bindings.",
+    "Boolean versus integer confusion, unknown usage null versus zero, invalid native cumulative input/cache/output arithmetic.",
+    "Requested mode drift across preparation/config/supervisor/native metadata and actual selected-mode fallback/drift.",
+    "Original @1 changed to @2, direct planning changed/removed, reply schema/suffix/model/provider/resource/setup/profile drift.",
+    "Different literal/source/core/native suffix/verdict/world facts hidden by overbroad normalization.",
+    "Complete prefix/suffix changes, original baseline contract substituted for delivered selected reply, selected bytes/hash do not match independent auditor.",
+    "More or fewer provider sessions, coding unsuccessful, plan admission failure, official verifier failure, settlement/cleanup failure.",
+    "All unsuccessful/fallback attempts keep observed native usage, incomplete/unknown flags and campaign cost; no dropping attempts or resetting prior failed audit status."
+  ],
+  "recorded_at_utc": "2026-10-07 15:44:51 UTC",
+  "reviewer": "/root/matched_transport_accounting",
+  "review_passed": true,
+  "blockers": [],
+  "review_scope": "Implementation, authored offline qualification and bounded closed metadata review; no live metadata benchmark or efficacy evaluation.",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007",
+  "source_base_head": "1f818293ff7561f1c6de49e89ac87806f7812d19",
+  "reviewed_source_and_test_bindings": [
+    {
+      "bytes": 20169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    },
+    {
+      "bytes": 70526,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+    },
+    {
+      "bytes": 7970,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+    },
+    {
+      "bytes": 18783,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+    },
+    {
+      "bytes": 100481,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+    },
+    {
+      "bytes": 34345,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+    },
+    {
+      "bytes": 14744,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 25515,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 41350,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+    },
+    {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 9585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 5423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 53490,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 19245,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "695cfe4056bc571ce7629b4f6eb7b3eab5c1f801fb84faefb3bedd27c457e8eb"
+    },
+    {
+      "bytes": 7220,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census_dispatch.py",
+      "recorded_bytes_match": true,
+      "recorded_sha256_matches": true,
+      "sha256": "3026c3fdf9a60085947c329d4d021cfd02667aeb7ba6e24c81e8f945971125c5"
+    },
+    {
+      "bytes": 4549,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "08eaa9e6d90b23cd627804ab5f663e8338bdc29a1eb763e50ade62a219b135b2"
+    },
+    {
+      "bytes": 33772,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "a0b1f23fba45c855b981d194ca7a49b14f44f7c39b3ca6b87d5f0c2f0c9042f2"
+    },
+    {
+      "bytes": 33791,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "b68a14266c49930784e33393697ad759e380b7b63d03bb535927e82f7499290f"
+    },
+    {
+      "bytes": 12534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "2ba8df2097a67fdeef389145bf230c09c93b69fa39a40d0044764c0e3e37193a"
+    },
+    {
+      "bytes": 67514,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "2eed4714c87f8f05c214afa96b0874ef30c644a7a4ebb2e4b5515db736a64139"
+    },
+    {
+      "bytes": 18839,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+    },
+    {
+      "bytes": 27661,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37"
+    },
+    {
+      "bytes": 38248,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+    },
+    {
+      "bytes": 3057,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    {
+      "bytes": 3257,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    {
+      "bytes": 10581,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    {
+      "bytes": 48931,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+    },
+    {
+      "bytes": 7870,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    }
+  ],
+  "explicit_source_review_scope": [
+    "Pure census helper and authored tests.",
+    "Runner census-only dispatch additions and authored dispatch tests.",
+    "New administrative public-task preparation and authored native tests.",
+    "Metadata archive policy census helper addition; prior view/catalog/owner semantics retained and reused.",
+    "Necessary existing Doctor preparation/execution boundary source was read to identify and review closure of pre-execution refusal."
+  ],
+  "source_binding_review_limit": "Supporting unchanged source files are digest-bound, with selected necessary owner/dependency code inspected; this review does not claim a new line-by-line review of every bound module.",
+  "archive_helper_count": 20,
+  "source_and_artifact_hashes_match": true,
+  "actual_census": {
+    "binding": {
+      "bytes": 14928,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-02.json",
+      "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+    },
+    "representation": {
+      "admission_count": 4,
+      "admission_source_group_count": 2,
+      "candidate_complete_bytes": 54846,
+      "candidate_complete_proxy_tokens": 13712,
+      "candidate_complete_sha256": "8f66546de2e75630ff431c247bc3210e7656a853c7a498c0bd130e09eb4ca022",
+      "capsule_count": 4,
+      "capsule_source_group_count": 2,
+      "captured_source_count": 5,
+      "captured_source_group_count": 5,
+      "eligible_for_matched_input_comparison": true,
+      "exact_restoration_verified": true,
+      "fallback_reason": null,
+      "native_complete_bytes": 55728,
+      "native_complete_proxy_tokens": 13932,
+      "native_complete_sha256": "674d9e9469254e923d2ab196e2b9ed689bf38ebf9fea29b7af371cf08bc2c22a",
+      "selected_complete_bytes": 54846,
+      "selected_complete_proxy_tokens": 13712,
+      "selected_complete_sha256": "8f66546de2e75630ff431c247bc3210e7656a853c7a498c0bd130e09eb4ca022",
+      "selected_mode": "common-bindings@1",
+      "selection_receipt_sha256": "dfd191f64953d1e353bd2160281d1b0bf00097a69d3a8430fc9893f513801927",
+      "shared_field_count": 10,
+      "shared_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema"
+        ]
+      },
+      "view_receipt_sha256": "ba2901022bedc969fc47a21987a061f946a3774bb3544abd99dee684eefedbcc"
+    },
+    "byte_reduction": 882,
+    "byte_reduction_percentage": 1.5826873385012918,
+    "named_proxy_reduction": 220,
+    "actual_provider_token_usage": null,
+    "total_native_tokens": null,
+    "measured_total_token_savings": null,
+    "scope": {
+      "container_launched": false,
+      "ducklake_observation": {
+        "ducklake_projection_receipt_sha256": "0c94e0dacab502e83d9527ff8b86633f8282f7a9d20f0b40529cac584ee06f5b",
+        "execution_authority": false,
+        "freshness_authority": false,
+        "native_vector_receipt_sha256": "fda050d09b322e1611f5225c809a53d3fe00ff865e24e01556cc86461289d5a3",
+        "observational_only": true,
+        "status": "projected"
+      },
+      "live_quack_gateway_qualified": false,
+      "native_metadata_transport": "fresh-exclusive-DuckDB-owner",
+      "official_benchmark_population_equivalence_claimed": false,
+      "official_reward": null,
+      "planning_performed": false,
+      "resource_allocation_performed": false,
+      "resource_profile": null,
+      "scope": "public-task-administrative-deterministic-context-only",
+      "source384_live_context_equivalence_claimed": false,
+      "task_completed": false
+    },
+    "source_inventory_distinction": "Five captured signed manifest bindings include two declared public inputs; four capsule/admission rows reference two public-code source groups.",
+    "upstream_owner_checks_and_cleanup_reported": true,
+    "reviewer_reconstructed_private_input_bodies": false,
+    "independent_metadata_checks": [
+      {
+        "name": "closed_actual_schema",
+        "passed": true
+      },
+      {
+        "name": "original_at1_view_common",
+        "passed": true
+      },
+      {
+        "name": "exact_restore_and_representation_eligibility",
+        "passed": true
+      },
+      {
+        "name": "complete_byte_arithmetic",
+        "passed": true
+      },
+      {
+        "name": "named_proxy_arithmetic",
+        "passed": true
+      },
+      {
+        "name": "selected_sha_equals_candidate",
+        "passed": true
+      },
+      {
+        "name": "fixed_bounds",
+        "passed": true
+      },
+      {
+        "name": "source_group_population",
+        "passed": true
+      },
+      {
+        "name": "native_worker_population",
+        "passed": true
+      },
+      {
+        "name": "strict_shared_field_population",
+        "passed": true
+      },
+      {
+        "name": "current_semantic_owner_checks",
+        "passed": true
+      },
+      {
+        "name": "native_prompt_matches_preparation",
+        "passed": true
+      },
+      {
+        "name": "actual_wrappers_and_reply",
+        "passed": true
+      },
+      {
+        "name": "post_yield_owner_and_source_recheck",
+        "passed": true
+      },
+      {
+        "name": "allocated_cleanup",
+        "passed": true
+      },
+      {
+        "name": "no_actual_llm_or_router_dispatch",
+        "passed": true
+      },
+      {
+        "name": "actual_provider_usage_unknown_unmeasured",
+        "passed": true
+      },
+      {
+        "name": "explicit_admin_planning_provenance",
+        "passed": true
+      },
+      {
+        "name": "deterministic_vectorizer_scope",
+        "passed": true
+      },
+      {
+        "name": "no_source384_equivalence",
+        "passed": true
+      },
+      {
+        "name": "no_native_effect_reward",
+        "passed": true
+      },
+      {
+        "name": "host_only_no_resource_container_qualification",
+        "passed": true
+      },
+      {
+        "name": "ducklake_observation_only",
+        "passed": true
+      },
+      {
+        "name": "no_private_or_response_body_review",
+        "passed": true
+      },
+      {
+        "name": "all_census_authorities_false",
+        "passed": true
+      },
+      {
+        "name": "all_actual_authorities_false",
+        "passed": true
+      },
+      {
+        "name": "all_15_actual_source_hashes_match_current",
+        "passed": true
+      },
+      {
+        "name": "all_root_qualification_source_hashes_match_current",
+        "passed": true
+      },
+      {
+        "name": "all_preflight_qualification_source_hashes_match_current",
+        "passed": true
+      },
+      {
+        "name": "junit_counts_all_zero_fail_skip",
+        "passed": true
+      },
+      {
+        "name": "preflight_final_log_19_passed",
+        "passed": true
+      },
+      {
+        "name": "metadata_archive_20_helpers_include_census_and_doctor",
+        "passed": true
+      }
+    ],
+    "independent_metadata_check_count": 32,
+    "source_custody_followup": {
+      "binding": {
+        "bytes": 10312,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-02-source-custody-01.json",
+        "sha256": "371315c43c456a93e2abe2c8dcc2c55b5e04ccd0aa7356e209b5f17c85f47a48"
+      },
+      "current_readback_matches_original": true,
+      "source_binding_count": 15,
+      "exported_before_and_after_inventory_equal": true,
+      "custody_basis": "Successful script exit and public export require its second exact bindings()==before_bindings assertion; export inventory is derived from that enforced equality, not a separately persisted second inventory.",
+      "reviewer_read_private_experiment_recipe": false
+    }
+  },
+  "authored_pure_fixture_observations": {
+    "observations": {
+      "heterogeneous": {
+        "admission_count": 4,
+        "admission_source_group_count": 2,
+        "candidate_complete_bytes": 19822,
+        "candidate_complete_proxy_tokens": 4956,
+        "capsule_count": 4,
+        "capsule_source_group_count": 2,
+        "captured_source_count": 2,
+        "captured_source_group_count": 2,
+        "eligible_for_matched_input_comparison": true,
+        "exact_restoration_verified": true,
+        "fallback_reason": null,
+        "native_complete_bytes": 20704,
+        "native_complete_proxy_tokens": 5176,
+        "selected_complete_bytes": 19822,
+        "selected_complete_proxy_tokens": 4956,
+        "selected_mode": "common-bindings@1",
+        "shared_field_count": 10,
+        "shared_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema"
+          ]
+        }
+      },
+      "many": {
+        "admission_count": 7,
+        "admission_source_group_count": 1,
+        "candidate_complete_bytes": 29493,
+        "candidate_complete_proxy_tokens": 7374,
+        "capsule_count": 7,
+        "capsule_source_group_count": 1,
+        "captured_source_count": 1,
+        "captured_source_group_count": 1,
+        "eligible_for_matched_input_comparison": true,
+        "exact_restoration_verified": true,
+        "fallback_reason": null,
+        "native_complete_bytes": 32178,
+        "native_complete_proxy_tokens": 8045,
+        "selected_complete_bytes": 29493,
+        "selected_complete_proxy_tokens": 7374,
+        "selected_mode": "common-bindings@1",
+        "shared_field_count": 12,
+        "shared_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid",
+            "source_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema",
+            "source_cid"
+          ]
+        }
+      },
+      "one_row": {
+        "admission_count": 1,
+        "admission_source_group_count": 1,
+        "candidate_complete_bytes": 10393,
+        "candidate_complete_proxy_tokens": 2599,
+        "capsule_count": 1,
+        "capsule_source_group_count": 1,
+        "captured_source_count": 1,
+        "captured_source_group_count": 1,
+        "eligible_for_matched_input_comparison": false,
+        "exact_restoration_verified": true,
+        "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+        "native_complete_bytes": 9895,
+        "native_complete_proxy_tokens": 2474,
+        "selected_complete_bytes": 9895,
+        "selected_complete_proxy_tokens": 2474,
+        "selected_mode": "legacy",
+        "shared_field_count": 0,
+        "shared_field_names": {
+          "admission_refs": [],
+          "admissions": [],
+          "capsules": []
+        }
+      },
+      "same_content": {
+        "admission_count": 4,
+        "admission_source_group_count": 1,
+        "candidate_complete_bytes": 19538,
+        "candidate_complete_proxy_tokens": 4885,
+        "capsule_count": 4,
+        "capsule_source_group_count": 1,
+        "captured_source_count": 2,
+        "captured_source_group_count": 1,
+        "eligible_for_matched_input_comparison": true,
+        "exact_restoration_verified": true,
+        "fallback_reason": null,
+        "native_complete_bytes": 20636,
+        "native_complete_proxy_tokens": 5159,
+        "selected_complete_bytes": 19538,
+        "selected_complete_proxy_tokens": 4885,
+        "selected_mode": "common-bindings@1",
+        "shared_field_count": 12,
+        "shared_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid",
+            "source_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema",
+            "source_cid"
+          ]
+        }
+      },
+      "zero_rows": {
+        "admission_count": 0,
+        "admission_source_group_count": 0,
+        "candidate_complete_bytes": 7921,
+        "candidate_complete_proxy_tokens": 1981,
+        "capsule_count": 0,
+        "capsule_source_group_count": 0,
+        "captured_source_count": 1,
+        "captured_source_group_count": 1,
+        "eligible_for_matched_input_comparison": false,
+        "exact_restoration_verified": true,
+        "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+        "native_complete_bytes": 7423,
+        "native_complete_proxy_tokens": 1856,
+        "selected_complete_bytes": 7423,
+        "selected_complete_proxy_tokens": 1856,
+        "selected_mode": "legacy",
+        "shared_field_count": 0,
+        "shared_field_names": {
+          "admission_refs": [],
+          "admissions": [],
+          "capsules": []
+        }
+      }
+    },
+    "observations_binding": {
+      "bytes": 20289,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/authored-pure-census-observations-02.json",
+      "sha256": "82b00a34b745e8b082b4fec371df9105bcd62214a733a60a51f1a5f7b2ed2517"
+    },
+    "pure_qualification_binding": {
+      "bytes": 10864,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-qualification-01.json",
+      "sha256": "9e058ffa0a2f246463680b53e322f67ed9c936a42fe6f3e31295f4605ed65580"
+    },
+    "pytest": {
+      "errors": 0,
+      "execution_receipt": {
+        "bytes": 1577,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-test-execution-final-02.json",
+        "sha256": "9445ade6acc13f1addf3ead172d1d7ed9409ab53f83b2a09bdefe3682291fa00"
+      },
+      "exit_code": 0,
+      "failures": 0,
+      "junit_xml": {
+        "bytes": 4436,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml",
+        "sha256": "d18e35bece686aece1d827028f7c2cc788f444c1e8151a17c43cc1612f090374"
+      },
+      "pytest_reported_elapsed_seconds": 18.93,
+      "stdout_log": {
+        "bytes": 4606,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.log",
+        "sha256": "728016af860aab22f28a85fc8e53ea9085186d5c466523c2d85e305278792c92"
+      },
+      "tests": 30
+    },
+    "sources": [
+      {
+        "bytes": 9585,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      {
+        "bytes": 19245,
+        "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census.py",
+        "sha256": "695cfe4056bc571ce7629b4f6eb7b3eab5c1f801fb84faefb3bedd27c457e8eb"
+      }
+    ],
+    "upstream_view_binding": {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    }
+  },
+  "independent_authored_shape_controls": {
+    "actual_native_token_usage": null,
+    "authored_shape_fixture_only": true,
+    "controls": [
+      {
+        "name": "authored_multirow_selects_and_restores",
+        "passed": true
+      },
+      {
+        "name": "closed_output_contains_no_literal_or_identity",
+        "passed": true
+      },
+      {
+        "name": "all_authorities_and_native_efficacy_denied",
+        "passed": true
+      },
+      {
+        "name": "single_row_fallback_retained_exact",
+        "passed": true
+      },
+      {
+        "name": "oversized_counterfactual_not_pair_eligible",
+        "passed": true
+      },
+      {
+        "name": "bool_and_float_fixed_bound_refused",
+        "passed": true
+      },
+      {
+        "name": "foreign_source_group_refused",
+        "passed": true
+      },
+      {
+        "name": "literal_wrapper_change_refused",
+        "passed": true
+      }
+    ],
+    "current_source_or_admission_verified": false,
+    "passed": 8,
+    "provider_calls": 0,
+    "schema": "independent-semantic-metadata-census-controls@1",
+    "source_text_exported": false,
+    "total": 8
+  },
+  "historical_qualified_transport_pair": {
+    "accounting_review_passed": true,
+    "available_original_arm_metadata": [
+      {
+        "arm": "baseline-01",
+        "bytes": 208268,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/receipt.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "5203be5ab0f9a1ed2a271a2c6f6cc9767f85cad1ecc3074258ebb76ecd693829"
+      },
+      {
+        "arm": "baseline-01",
+        "bytes": 65699,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/preparation.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "d21f9266dd8a5b64129db2f682dc9e477e5cce621d16a401e03d0563d5dc663f"
+      },
+      {
+        "arm": "baseline-01",
+        "bytes": 3457,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01/config.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "907da352bb28b957087540dde8987a254fe1cce6e098219d6d5ee452300357e8"
+      },
+      {
+        "arm": "compact-01",
+        "bytes": 208773,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/receipt.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "d17bb9052949a39cafee79a09dbaa0ed2bf913ad4726030707ba9bf44511ba43"
+      },
+      {
+        "arm": "compact-01",
+        "bytes": 65767,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/preparation.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "b4bfdc108aed83e4d5f2b91c16828f151569e02184b959c0ed5b912a3b44ff33"
+      },
+      {
+        "arm": "compact-01",
+        "bytes": 3531,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01/config.json",
+        "permitted_content_scope": "bounded structured metadata only",
+        "sha256": "1baa660e611ed86dcdae2bee91a0aa7ddd71a1f8fb203788d44f6faddd873d1d"
+      }
+    ],
+    "baseline_coding_fraction": 0.89779830925698,
+    "baseline_coding_tokens": 221749,
+    "baseline_planning_tokens": 25243,
+    "binding": {
+      "bytes": 6695,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/qualified-pair-factual-result-01.json",
+      "sha256": "4de57315121fed04c5095817997a494897b6d4fd99dc0e1b0615eb3630c7d992"
+    },
+    "coding_initial_input_bytes": {
+      "baseline_complete_model": 59731,
+      "baseline_native": 62443,
+      "compact_complete_model": 57160,
+      "compact_minus_baseline_complete_model": -2571,
+      "compact_minus_baseline_native": -1271,
+      "compact_native": 61172,
+      "same_fixed_reply_suffix_each": 506,
+      "same_native_generation_schema_each": 215
+    },
+    "compact_coding_tokens": 301925,
+    "compact_minus_baseline_total_percentage": 32.44032195374749,
+    "compact_planning_tokens": 25192,
+    "gates": {
+      "baseline_passed": 74,
+      "compact_passed": 74,
+      "cross_arm_passed": 20,
+      "failed_gates": [],
+      "independent_review_passed": 46
+    },
+    "historical_comparison_binding": {
+      "bytes": 76719,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/comparison-01.json",
+      "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
+    },
+    "historical_producer_binding": {
+      "bytes": 43357,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compare_reply_contract_receipts.py",
+      "sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6"
+    },
+    "interpretation": "The historical @2 pair had a smaller initial model input but higher complete native tokens. It is not the new metadata-only @1 treatment, and its generated native inputs were not identical.",
+    "limits": "No exported original semantic/Doctor body was found in the inspected permitted historical A2 arm artifacts. This review did not search/read private transcripts or databases. Structured receipts support recorded historical observations, not fresh current preparation; native session counter records are not API-call counts.",
+    "matched_pair_qualified": true,
+    "native_benchmark_results": {
+      "baseline_native_task_completed": true,
+      "baseline_reward": 1,
+      "both_exact_native_and_complete_model_input_audits_verified": true,
+      "both_remaining_processes_zero_and_worker_cleanup_returncode_zero": true,
+      "compact_native_task_completed": true,
+      "compact_reward": 1
+    },
+    "observed_usage": {
+      "baseline": {
+        "cached_input_tokens": 176896,
+        "input_tokens": 242507,
+        "output_tokens": 4485,
+        "total_tokens": 246992
+      },
+      "baseline_uncached_input_tokens": 65611,
+      "cached_input_already_in_input_total": true,
+      "compact": {
+        "cached_input_tokens": 254592,
+        "input_tokens": 320808,
+        "output_tokens": 6309,
+        "total_tokens": 327117
+      },
+      "compact_minus_baseline": {
+        "cached_input_tokens": 77696,
+        "input_tokens": 78301,
+        "output_tokens": 1824,
+        "total_tokens": 80125
+      },
+      "compact_uncached_input_tokens": 66216,
+      "full_pair_tokens": 574109,
+      "retained_campaign_cli_sessions": 13,
+      "retained_prior_five_attempt_tokens": 1311238,
+      "retained_seven_attempt_campaign_tokens": 1885347
+    },
+    "original_capsule_doctor_bodies_available_for_current_preparation": false,
+    "repeatable_or_causal_reduction_established": false,
+    "savings_supported_by_this_pair": false
+  },
+  "artifact_bindings": [
+    {
+      "bytes": 514,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-01-failure.json",
+      "sha256": "2e94afd1ce6f5f807d1e0edc63a6dad4c239c81a22ae84bfa0829579e698ed24"
+    },
+    {
+      "bytes": 14928,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-02.json",
+      "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+    },
+    {
+      "bytes": 20289,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/authored-pure-census-observations-02.json",
+      "sha256": "82b00a34b745e8b082b4fec371df9105bcd62214a733a60a51f1a5f7b2ed2517"
+    },
+    {
+      "bytes": 13381,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.xml",
+      "sha256": "87f48ae602e4bbf199639f595dc18ef8a57194ee536793957239d3111dcc516d"
+    },
+    {
+      "bytes": 54778,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-tests-01.xml",
+      "sha256": "ac88598afc42305d84caa9264e1f30ba50f8920cb2098d861b1badfd883cf42d"
+    },
+    {
+      "bytes": 9950,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-runner-qualification-01.json",
+      "sha256": "a3127ffd2bedb987ac0488192cf03c0eaea1597395a22eda087d3ccdb2cac92f"
+    },
+    {
+      "bytes": 1830,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-qualification-01.json",
+      "sha256": "fa9eaede0dc275b800e3c6c1e37002a2520c79d6dfec8e5cb834d96dfbeefdb5"
+    },
+    {
+      "bytes": 100,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-05.log",
+      "sha256": "b6d754ce762cda3e71f4e99595d526f6c469a408d1d00854a7c5e9e86949b64b"
+    },
+    {
+      "bytes": 10864,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-qualification-01.json",
+      "sha256": "9e058ffa0a2f246463680b53e322f67ed9c936a42fe6f3e31295f4605ed65580"
+    },
+    {
+      "bytes": 25287,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-qualification-02.json",
+      "sha256": "d521820a875899fa195ab90958b76a3b295bec0df21ff5a6afe8b3ab14c6b6e8"
+    },
+    {
+      "bytes": 10312,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-02-source-custody-01.json",
+      "sha256": "371315c43c456a93e2abe2c8dcc2c55b5e04ccd0aa7356e209b5f17c85f47a48"
+    },
+    {
+      "bytes": 5507,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-execution-01.json",
+      "sha256": "94c26901d66a2565cbef3612336db5619417cf8987290885bc73e22a734b0a57"
+    },
+    {
+      "bytes": 3775,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.xml",
+      "sha256": "4a89fb35dfa70477de664571879bdb1ffce963c3cac717bf534f99ead5bf409d"
+    },
+    {
+      "bytes": 339,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-observation-01.json",
+      "sha256": "9ff704f79f95c2ed7249c431da0dd5ef63c3e147f9d5f394f8d034b3afec0efc"
+    },
+    {
+      "bytes": 111,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.log",
+      "sha256": "1902ff65e1526d5ede9167eb07aae8b3bcd195ea919d6ca2500c30272591a330"
+    }
+  ],
+  "tests": {
+    "combined_regression": {
+      "tests": 300,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "binding": {
+        "bytes": 54778,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-tests-01.xml",
+        "sha256": "ac88598afc42305d84caa9264e1f30ba50f8920cb2098d861b1badfd883cf42d"
+      }
+    },
+    "exact_final_dispatch_archive": {
+      "tests": 63,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "binding": {
+        "bytes": 13381,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.xml",
+        "sha256": "87f48ae602e4bbf199639f595dc18ef8a57194ee536793957239d3111dcc516d"
+      }
+    },
+    "exact_final_pure_census": {
+      "tests": 30,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "binding": {
+        "bytes": 4436,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml",
+        "sha256": "d18e35bece686aece1d827028f7c2cc788f444c1e8151a17c43cc1612f090374"
+      }
+    },
+    "sealed_final_administrative_preflight": {
+      "all_checks_passed": true,
+      "before_after_source_bindings": [
+        {
+          "bytes": 20169,
+          "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+          "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+        },
+        {
+          "bytes": 11797,
+          "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+          "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+        }
+      ],
+      "checks": [
+        {
+          "name": "nineteen_sealed_cases_zero_fail_skip",
+          "passed": true
+        },
+        {
+          "name": "explicit_fresh_seal_plugin_observed",
+          "passed": true
+        },
+        {
+          "name": "same_exact_before_after_source_bodies",
+          "passed": true
+        },
+        {
+          "name": "sealed_leaf_artifacts_match",
+          "passed": true
+        },
+        {
+          "name": "exact_old_helper_eof_history_reconstructed",
+          "passed": true
+        },
+        {
+          "name": "no_new_models_or_benchmark_effects",
+          "passed": true
+        }
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 19
+      },
+      "environment_overrides": {
+        "IPFS_ACCELERATE_META_INDEX_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-meta-01.duckdb",
+        "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "execution_binding": {
+        "bytes": 5507,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-execution-01.json",
+        "sha256": "94c26901d66a2565cbef3612336db5619417cf8987290885bc73e22a734b0a57"
+      },
+      "junit_binding": {
+        "bytes": 3775,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.xml",
+        "sha256": "4a89fb35dfa70477de664571879bdb1ffce963c3cac717bf534f99ead5bf409d"
+      },
+      "log_binding": {
+        "bytes": 111,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.log",
+        "sha256": "1902ff65e1526d5ede9167eb07aae8b3bcd195ea919d6ca2500c30272591a330"
+      },
+      "seal_observation_binding": {
+        "bytes": 339,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-observation-01.json",
+        "sha256": "9ff704f79f95c2ed7249c431da0dd5ef63c3e147f9d5f394f8d034b3afec0efc"
+      },
+      "sealing_observation": {
+        "completion_authority": false,
+        "oracle_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+        "passing_seals_written": true,
+        "pytest_exitstatus": 0,
+        "schema": "authored-preflight-pytest-seal-observation@1",
+        "sealing_enabled": true,
+        "source_seal_count": 19
+      },
+      "seconds": 297.366,
+      "test_driver_binding": {
+        "bytes": 4869,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/run_metadata_preflight_sealed_tests_01.py",
+        "sha256": "56c3f69360e2c9b9138d5cdccf500821ffa22234b779308136872bb6a4b44687"
+      },
+      "wrapper_seconds": 298.16375332599273
+    },
+    "count_interpretation": "Focused 63/30 counts overlap combined 300 and are not additive. The new preparation's 19 cases are separately qualified with an explicitly observed fresh seal; the prior unsealed 19 remain development history.",
+    "combined_source_limit": "Pure helper lost one extra EOF newline during the combined suite. The retained before/after hashes reconstruct this exact difference; no AST/executable change. Final30 and63 were rerun against exact final bytes.",
+    "prior_unsealed_preflight19_preserved": true,
+    "first_pure_observations_preserved": true,
+    "final_preflight_provenance_binding": {
+      "bytes": 25287,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-qualification-02.json",
+      "sha256": "d521820a875899fa195ab90958b76a3b295bec0df21ff5a6afe8b3ab14c6b6e8"
+    },
+    "preceding_unsealed_preflight19": {
+      "binding": {
+        "bytes": 1830,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-qualification-01.json",
+        "sha256": "fa9eaede0dc275b800e3c6c1e37002a2520c79d6dfec8e5cb834d96dfbeefdb5"
+      },
+      "tests": 19,
+      "failed": 0,
+      "skipped": 0,
+      "sealing_observed": false,
+      "final_required_seal_qualification": false,
+      "retained_unchanged": true
+    }
+  },
+  "findings_resolved": [
+    {
+      "finding": "Initial administrative helper called generic Doctor dispatch and checked residual status afterward, allowing a repair candidate to execute before refusal.",
+      "resolution": "Preparation-only native Doctor workflow, REPORT_ONLY policy, non-null inputs/non-residual refusal before plan/execute, exact native residual generation, and guarded deletion of dedicated ref.",
+      "verified_by": "Source review and authored negative prepared-candidate control with plan/execute spies.",
+      "existing_generic_doctor_defaults_modified": false
+    },
+    {
+      "finding": "An in-with exported preparation could precede final task/source revalidation and worktree cleanup.",
+      "resolution": "Explicit post-yield task/revision/readiness/contract, admission, canonical/allocated source and common-dir/head checks; cleanup checked before successful final metadata export.",
+      "verified_by": "Current source, three native post-yield drift negatives, caller failure cleanup control, and actual02 final flags."
+    },
+    {
+      "finding": "Zero model/training counts could hide lexical vectorizer work.",
+      "resolution": "Provider/pretrained neural-only zero scopes explicitly declared; native lexical TF-IDF fitting and fact replay recorded.",
+      "verified_by": "Current source and actual02 index metadata."
+    },
+    {
+      "finding": "Actual preparation01 refused native advisory artifact directories under restrictive private umask.",
+      "resolution": "Fresh owner/no-follow descriptor checks and per-directory mode fix under private setup/state; caller umask preserved.",
+      "verified_by": "Retained closed failure receipt and authored real Doctor residual under077; fresh02 succeeds."
+    },
+    {
+      "finding": "The first final-looking 19-case preparation run omitted the required AST plugin under disabled plugin autoload.",
+      "resolution": "Retained that genuine unsealed pass as development history; reran unchanged exact sources with explicit plugin/fresh seal and a session observer recording enabled status, 19 passing seals, exit status, JUnit and before/after hashes.",
+      "verified_by": "Sealed execution 94c26901, JUnit 4a89fb35, observation 9ff704f7 and extended provenance d521820a."
+    }
+  ],
+  "retained_failed_actual_preparation": {
+    "binding": {
+      "bytes": 514,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-01-failure.json",
+      "sha256": "2e94afd1ce6f5f807d1e0edc63a6dad4c239c81a22ae84bfa0829579e698ed24"
+    },
+    "attempt": "01",
+    "declared_stage": "native-doctor-residual-artifact-preparation",
+    "declared_reason": "fresh-advisory-directory-mode-incompatible-with-private-umask",
+    "runner_census_invoked": false,
+    "provider_calls": 0,
+    "native_implementation_executed": false,
+    "task_validation_executed": false,
+    "official_reward": null,
+    "provider_token_usage": null,
+    "original_receipt_and_private_attempt_preserved": true,
+    "failure_does_not_become_success_after_fix": true
+  },
+  "practical_pilot_decision": {
+    "representation_eligible_for_exact_prepared_context": true,
+    "current_live_planned_source384_equivalence_qualified": false,
+    "live_metadata_matched_pair_performed": false,
+    "recommend_full_live_pair_from_this_observation_alone": false,
+    "rationale": "An 882-byte (1.58%) gain on an administrative host context is small relative to the previous 574,109-token full pair and does not predict session total. The earlier qualified @2 pair used 32.44% more total tokens despite a smaller initial model input.",
+    "next_gate": "A genuine current owner census under the intended Source384/index/resource profile and retained live planning; charge that planning and all failures. If eligibility remains worthwhile, freeze both original @1 arms and implement the separately versioned receipt comparator above.",
+    "next_comparison_producer_implemented_in_this_review": false,
+    "no_automatic_dispatch_or_publication_authority": true
+  },
+  "limitations": [
+    "Exact restoration proves representation equality. It does not prove task semantics, numerical IEEE behavior, correctness, benchmark reward, performance or formal completeness.",
+    "Actual02 is a fresh authored administrative plan with native lexical TF-IDF indexing. It did not run LLM planning, Source384 inference/asset verification, task implementation/validation or the official verifier.",
+    "Actual02 is a host-only allocated worktree census: no container, resource allocation or production provider invocation was qualified.",
+    "The reviewer inspected only closed metadata and implementation/authored test sources. Actual private prompts/source/evaluator bodies and fresh/private databases were not read or reconstructed.",
+    "The observed DuckLake projection is inert metadata under the fresh native owner. Live Quack gateway and broad storage/backend operation remain unqualified.",
+    "Byte-derived proxy counts are not native token counts. Initial-input reductions cannot be converted into complete native-session savings.",
+    "The historical adverse@2 result is a different treatment and preserves native input variation, failed audits and full campaign cost. It does not establish the new metadata treatment's effect.",
+    "Fixed profiles do not guarantee identical fresh generated plans or native world inputs. Strict one-factor input matching has a separate qualification gate.",
+    "One completed future pair, even with lower full usage and both rewards passing, cannot establish reliable causal or repeatable savings.",
+    "All extra, unsuccessful, fallback, partial and unknown native provider usage must survive future accounting; unknown is not zero and cache is already part of input.",
+    "Actual runtime source export inventory is derived from the private recipe's required before/after equality assertion and independently checked current readback; a separate second raw source inventory was not persisted. Private recipes remain unread in this review."
+  ],
+  "reviewer_activity": {
+    "source_edits": false,
+    "old_record_mutations": false,
+    "provider_calls": 0,
+    "live_benchmark_launches": 0,
+    "container_launches": 0,
+    "existing_private_database_reads": 0,
+    "native_provider_response_or_thought_reads": false,
+    "evaluator_hidden_test_or_solution_body_reads": false,
+    "actual_preparation_private_artifact_reads": false,
+    "artifact_only_output": true
+  }
+}

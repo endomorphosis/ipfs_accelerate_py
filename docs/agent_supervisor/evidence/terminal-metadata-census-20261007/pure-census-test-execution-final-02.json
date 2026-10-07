@@ -1,0 +1,25 @@
+{
+  "benchmark_launches": 0,
+  "command_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml",
+    "test/api/test_semantic_metadata_census.py"
+  ],
+  "command_shell": "/home/barberb/.local/bin/python -B -c 'import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))' -q -o addopts= -p no:cacheprovider -p ipfs_accelerate_py.testing.pytest_ast_seal --junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml test/api/test_semantic_metadata_census.py",
+  "elapsed_seconds": 20.45760797103867,
+  "exit_code": 0,
+  "log": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.log",
+  "provider_calls": 0,
+  "source_sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef",
+  "test_sha256": "695cfe4056bc571ce7629b4f6eb7b3eab5c1f801fb84faefb3bedd27c457e8eb"
+}

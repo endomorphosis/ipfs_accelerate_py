@@ -1,0 +1,43 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-07 15:06:19 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-07 15:06:19 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-07 15:06:19 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-07 15:06:19 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-07 15:06:19 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-07 15:06:19 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-07 15:06:19 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+test/api/test_semantic_metadata_census.py::test_real_native_positive_round_trip_closed_export_and_original_inputs PASSED [  3%]
+test/api/test_semantic_metadata_census.py::test_explicit_false_authority_is_strict_boolean_and_no_provider_calls PASSED [  6%]
+test/api/test_semantic_metadata_census.py::test_real_one_row_fallback_with_measured_counts PASSED [ 10%]
+test/api/test_semantic_metadata_census.py::test_real_empty_capsule_projection_falls_back_with_raw_sources_preserved PASSED [ 13%]
+test/api/test_semantic_metadata_census.py::test_real_source_group_counts_distinguish_paths_from_content[heterogeneous-2] PASSED [ 16%]
+test/api/test_semantic_metadata_census.py::test_real_source_group_counts_distinguish_paths_from_content[same_content-1] PASSED [ 20%]
+test/api/test_semantic_metadata_census.py::test_unknown_secret_bearing_fields_never_expand_the_export PASSED [ 23%]
+test/api/test_semantic_metadata_census.py::test_tampered_view_or_receipt_is_refused_without_text_export[view] PASSED [ 26%]
+test/api/test_semantic_metadata_census.py::test_tampered_view_or_receipt_is_refused_without_text_export[native] PASSED [ 30%]
+test/api/test_semantic_metadata_census.py::test_tampered_view_or_receipt_is_refused_without_text_export[receipt] PASSED [ 33%]
+test/api/test_semantic_metadata_census.py::test_tampered_view_or_receipt_is_refused_without_text_export[unknown_receipt] PASSED [ 36%]
+test/api/test_semantic_metadata_census.py::test_tampered_view_or_receipt_is_refused_without_text_export[authority_zero] PASSED [ 40%]
+test/api/test_semantic_metadata_census.py::test_complete_boundary_tampering_is_refused[prefix] PASSED [ 43%]
+test/api/test_semantic_metadata_census.py::test_complete_boundary_tampering_is_refused[suffix] PASSED [ 46%]
+test/api/test_semantic_metadata_census.py::test_complete_boundary_tampering_is_refused[duplicate] PASSED [ 50%]
+test/api/test_semantic_metadata_census.py::test_complete_boundary_tampering_is_refused[missing] PASSED [ 53%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[True] PASSED [ 56%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[False] PASSED [ 60%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[0] PASSED [ 63%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[255999] PASSED [ 66%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[256001] PASSED [ 70%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[256000.0] PASSED [ 73%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[256000] PASSED [ 76%]
+test/api/test_semantic_metadata_census.py::test_bound_is_a_fixed_typed_runtime_observation[None] PASSED [ 80%]
+test/api/test_semantic_metadata_census.py::test_native_over_bound_candidate_within_is_not_eligible PASSED [ 83%]
+test/api/test_semantic_metadata_census.py::test_expanding_candidate_exceeding_bound_keeps_original_and_is_not_eligible PASSED [ 86%]
+test/api/test_semantic_metadata_census.py::test_foreign_source_group_cannot_be_nominated_as_captured PASSED [ 90%]
+test/api/test_semantic_metadata_census.py::test_unknown_alias_source_group_is_refused PASSED [ 93%]
+test/api/test_semantic_metadata_census.py::test_rehashed_lossless_alternate_factoring_is_not_the_fixed_view PASSED [ 96%]
+test/api/test_semantic_metadata_census.py::test_untyped_view_and_nonstring_complete_prompts_are_refused PASSED [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-01.xml -
+============================= 30 passed in 18.31s ==============================

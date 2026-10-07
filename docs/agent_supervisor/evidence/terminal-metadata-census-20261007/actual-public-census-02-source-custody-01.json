@@ -1,0 +1,250 @@
+{
+  "actual_result": {
+    "bytes": 14928,
+    "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+  },
+  "actual_script": {
+    "bytes": 9338,
+    "sha256": "ba4c3686601cfd0dba5bb8193b64c3899ad8ac4c1b482524e132f83b3e5a9591"
+  },
+  "binding_count": 15,
+  "completion_authority": false,
+  "created_utc": "2026-10-07T15:37:59.007257+00:00",
+  "current_readback_matches_original": true,
+  "observational_only": true,
+  "original_script_explicitly_checks_before_run_and_after_context_exit": true,
+  "provider_calls": 0,
+  "schema": "terminal-public-census-source-custody-followup@1",
+  "source_bindings_at_export": [
+    {
+      "bytes": 20169,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    },
+    {
+      "bytes": 70526,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+    },
+    {
+      "bytes": 7970,
+      "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+      "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+    },
+    {
+      "bytes": 18783,
+      "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+      "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+    },
+    {
+      "bytes": 100481,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+    },
+    {
+      "bytes": 34345,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+    },
+    {
+      "bytes": 14744,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 41350,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 18633,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 9585,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 5423,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 53490,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    }
+  ],
+  "source_bindings_at_export_basis": "Successful script exit and public export require its second exact bindings()==before_bindings assertion; export inventory is derived from that enforced equality, not a separately persisted second inventory.",
+  "source_bindings_before_actual_census": [
+    {
+      "bytes": 20169,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    },
+    {
+      "bytes": 70526,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+    },
+    {
+      "bytes": 7970,
+      "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+      "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+    },
+    {
+      "bytes": 18783,
+      "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+      "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+    },
+    {
+      "bytes": 100481,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+    },
+    {
+      "bytes": 34345,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+    },
+    {
+      "bytes": 14744,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 41350,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 18633,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 9585,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 5423,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 53490,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    }
+  ],
+  "source_bindings_current_readback": [
+    {
+      "bytes": 20169,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    },
+    {
+      "bytes": 70526,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+    },
+    {
+      "bytes": 7970,
+      "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+      "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+    },
+    {
+      "bytes": 18783,
+      "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+      "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+    },
+    {
+      "bytes": 100481,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+    },
+    {
+      "bytes": 34345,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+      "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+    },
+    {
+      "bytes": 14744,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 25515,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    },
+    {
+      "bytes": 41350,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+    },
+    {
+      "bytes": 37780,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 18633,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 9585,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 5423,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    {
+      "bytes": 53490,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    }
+  ]
+}
