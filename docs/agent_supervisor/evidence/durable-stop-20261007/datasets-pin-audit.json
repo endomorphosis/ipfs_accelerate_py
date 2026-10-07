@@ -1,0 +1,163 @@
+{
+  "actions": {
+    "artifact_write_only": true,
+    "docker_operations": false,
+    "source_or_pin_mutations": false,
+    "test_execution": false
+  },
+  "audit_kind": "read_only_source_dependency_review",
+  "changed_path_count": 27,
+  "changed_paths": [
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/dual_bank_replay_results_20261007.md",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/comparison-protocol.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/development-error-census.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/evidence-index.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/phase-audits-compact.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/postfit-comparison.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/dual-bank-replay-20261007/sampled-model-formulas.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/checkpoint-availability.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/model-manager-registration-result-independent-check.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/parallel-support-action-survey.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/parent-reconciliation.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/parent-replay-independent-check.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/evidence/retained-wording-20261007/publication-result-independent-check.json",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/progress_integration.md",
+      "status": "M"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/autoencoders/retained_wording_checkpoint_availability_20261007.md",
+      "status": "A"
+    },
+    {
+      "classification": "documentation_or_retained_evidence",
+      "path": "docs/implementation/legal_scope_support_action_pilot_20261007.md",
+      "status": "A"
+    },
+    {
+      "classification": "opt_in_added_autoencoder_module",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/legal_scope_support_action.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_checkpoint_release/prepare_dual_bank_release.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_checkpoint_release/prepare_retained_parallel_release.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_checkpoint_release/publication_common.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_checkpoint_release/publish_dual_bank_release.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_checkpoint_release/register_dual_bank_release.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_parent_reconciliation/build_retained_parent_reconciliation_manifest.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_parent_reconciliation/evaluate_dual_bank_wording_continuation.py",
+      "status": "A"
+    },
+    {
+      "classification": "standalone_release_or_reconciliation_driver",
+      "path": "scripts/ops/autoencoder/retained_parent_reconciliation/reconcile_retained_dual_bank_outputs.py",
+      "status": "A"
+    },
+    {
+      "classification": "new_standalone_tests",
+      "path": "tests/manual/autoencoder/retained_checkpoint_release_controls.py",
+      "status": "A"
+    },
+    {
+      "classification": "new_standalone_tests",
+      "path": "tests/unit/logic/test_legal_scope_support_action.py",
+      "status": "A"
+    }
+  ],
+  "finding": "The only installed-package delta is a new opt-in legal support/action residual module. Existing runtime files, package initializers, packaging, router, scheduler, storage and test configuration are unchanged. No reviewed STOP path imports the new module.",
+  "new_concurrent_datasets_commit": "75f57f9eeff052a5718fd1f2c6a4b73de3784af8",
+  "new_parent_commit": "01cac3bff51e51f0d6b36d5b39be8f951bb85712",
+  "old_tested_datasets_commit": "271ad796288e17039f036af6a0d003a4628da6ed",
+  "preserve_concurrent_datasets_pin": true,
+  "qualification_binding": "Existing STOP/lifecycle results remain bound to old_tested_datasets_commit; this audit does not constitute or claim exact-new-datasets test qualification.",
+  "rerun_warranted_by_dependency_change": false,
+  "reviewed_accelerate_paths": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+    "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+  ],
+  "schema": "supervisor-stop-datasets-pin-audit@1",
+  "stop_runtime_dependency_changed": false
+}

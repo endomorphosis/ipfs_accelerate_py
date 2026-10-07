@@ -1,7 +1,7 @@
 # Durable provider cleanup: current status and remaining integration
 
-Audit date: 2026-10-07. Starting supervisor revision:
-`c733fa1240e3e31c5172ebc35e53f65da4b93891`.
+Audit date: 2026-10-07. STOP integration starts from supervisor revision
+`07eed982c7150406480eefdf0c57cdd2f772b671`.
 
 ## Working scope
 
@@ -24,17 +24,36 @@ worker counts. Duplicate identical `.git` mounts in standalone workspaces are
 removed before command validation. Defaults remain Grok 4.7 and GPT-6.1-sol,
 with route selection owned by `llm_router`.
 
+The multi-supervisor process owner now retains a private cleanup directory before
+launch and reuses its observer across STOP retries. It protects exactly bound
+native watchdog and removal-issuer process births, fences ordinary descendants,
+and requires retained completion authority, matching signed terminal CAS where
+applicable, resource retirement, and independent Docker/kernel absence before
+reporting cleanup complete. Missing or changed previously observed authority
+keeps STOP unresolved. Observation does not issue container removal.
+
+The lifecycle orchestrator has a separate process-only implementation. It now
+refuses START, STOP, RESTART, and interrupted-START repair when cleanup custody is
+present or unavailable, before signals or success publication. A nonterminal
+refusal is persisted in its saga journal and survives record deletion and owner
+recreation. This guard does not authorize cleanup. Plan-bound observations and
+manager paths without a retained Popen also refuse visible cleanup custody.
+
 ## Disabled paths and benchmark blockers
 
 Native lease creation and native internal watchdog/removal CLI entrypoints are
-disabled before effects until the process owner implements durable STOP. There
+disabled before effects until all owners and signed launch contracts agree. There
 is no environment override. Existing private protocol functions are exercised by
 offline fixtures; their presence does not establish live lifecycle qualification.
 
-1. **STOP owner:** `runtime/multi_supervisor_runner.py` does not yet join durable
-   cleanup records with detached watchdogs and independently observed Docker
-   absence. Process-tree absence alone cannot certify cleanup. Its current
-   termination loop can signal the cleanup watchdog together with the provider.
+1. **Owner recovery and admission:** cleanup observation is implemented for the
+   same retained Popen owner. Cold-owner recovery does not yet prove historical
+   custody after records disappear, and the lifecycle orchestrator has only a
+   refusal guard, not an admitted cleanup owner. Plan-bound and no-Popen guards
+   are conservative current-state observations, not durable recovery proofs.
+   Existing historical namespaces also block successor launch until explicit
+   recovery/retention handling is admitted. Unsigned compatibility watchdogs
+   retain their previous behavior and are not upgraded to the native protocol.
 2. **Signed launch agreement:** the current Codex builder and authority validator
    use a direct `/usr/bin/env` suffix. The native adapter expects a different
    gated launch, and its own positive command grammar is incompatible with that
@@ -51,12 +70,13 @@ offline fixtures; their presence does not establish live lifecycle qualification
 
 ## Required migration order
 
-1. Implement exact durable binding observation in the process owner. STOP must
-   retain watchdog custody until independently verified container and kernel
-   absence; failed or unavailable observation keeps STOP incomplete. Cover
-   runner/watchdog death, PID reuse, record replacement, delayed removal and
-   interrupted persistence. Then qualify the authored disposable `/bin/sleep`
-   container probe using the approved local image, with no provider calls.
+1. Extend the retained process-owner observation into admitted lifecycle and
+   cold-owner recovery, including durable namespace history, successor admission,
+   and retention. Preserve the new refusal latches and exact watchdog custody.
+   Qualify runner/watchdog death, PID reuse, record replacement, delayed removal,
+   and interrupted persistence across owner restart. Then qualify a reviewed
+   disposable `/bin/sleep` container probe using the approved local image, with
+   no provider calls. The historical probe needs migration before execution.
 2. Version the signed native launch contract explicitly. Preserve the old command
    receipt's meaning; bind the exact start gate, image, environment, mounts and
    network policy in the new version. Acquire stdin custody, record the running
@@ -91,6 +111,25 @@ live Docker STOP, a successful protected provider launch, callback settlement,
 or a new Terminal Bench score. Historical helper tests using retired model
 profiles or missing fixture exports require migration and are not counted as
 passing current qualification.
+
+STOP integration tests additionally use actual private binding/completion files,
+the current cleanup producer, persisted lifecycle saga journals, and real local
+process shutdown/startup repair. They cover repeated STOP, deleted/replaced
+records, detached removal issuers, exact signed CAS joins, and unchanged file
+contents/inodes during read-only observation. Eighteen tests in the older
+`test_agent_supervisor_multi_supervisor_shutdown.py` suite fail identically on
+the starting revision because they reference missing or retired contracts;
+they are recorded separately and are not included in passing totals.
+The older generation-status module also cannot collect on that revision because
+`_SupervisorStatusGenerationBinding` is absent. The current health suite's stale
+two-attempt status-reader assertion was updated to the four-attempt contract
+introduced in September; production retry behavior was not changed.
+
+The frozen STOP qualification reports **222 passing tests, no skips**: 70 cleanup
+and disabled-dispatch checks, 76 lifecycle/startup-repair checks, and 76 current
+runner health checks. Commands, source hashes, baseline failure classifications,
+and the independent review are retained in
+[`evidence/durable-stop-20261007/`](evidence/durable-stop-20261007/README.md).
 
 The detailed migration audit and donor provenance are retained with this change's
 qualification artifacts. No live task board, accepted source pin, existing claim,

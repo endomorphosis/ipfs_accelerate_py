@@ -1,0 +1,29 @@
+{
+  "baseline_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "baseline_checkout": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b",
+  "existing_shutdown_failed": 18,
+  "existing_shutdown_failed_cases": [
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_capture_owned_popen_birth_uses_stable_direct_child_stat",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_legacy_start_track_attaches_birth_when_environ_is_unreadable",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_legacy_start_track_reaps_unadmitted_birth_before_pid_publication",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_runner_preserves_unreaped_unadmitted_wrapper_as_incomplete",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_capture_owned_popen_birth_rejects_unstable_or_foreign_child[first0-second0-exact direct dedicated-session child]",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_capture_owned_popen_birth_rejects_unstable_or_foreign_child[first1-second1-exact direct dedicated-session child]",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_capture_owned_popen_birth_rejects_unstable_or_foreign_child[first2-second2-changed during capture]",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminate_managed_process_recovers_marker_hidden_exact_wrapper[False]",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminate_managed_process_recovers_marker_hidden_exact_wrapper[True]",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminate_managed_process_empty_snapshot_without_birth_fails_closed",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminate_managed_process_rejects_mismatched_birth_before_scan",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_stop_tracks_does_not_retire_a_still_live_wrapper_marker",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_stop_tracks_retains_markers_for_a_still_live_managed_daemon",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminal_checkpoint_runs_after_fencing_before_master_retirement",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminal_checkpoint_failure_downgrades_terminal_success",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminal_checkpoint_is_not_run_for_duration_shutdown",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_terminal_checkpoint_requires_master_marker_retirement",
+    "api.test_agent_supervisor_multi_supervisor_shutdown::test_non_plan_runner_exit_code_propagates_fail_closed_result"
+  ],
+  "current_health_baseline_passed": 4,
+  "baseline_log": "ordinary-stop-baseline-01.log",
+  "baseline_xml": "ordinary-stop-baseline-01.xml",
+  "note": "The 18 existing shutdown tests fail before this change. They are not counted as passing qualification. No old tests were changed."
+}

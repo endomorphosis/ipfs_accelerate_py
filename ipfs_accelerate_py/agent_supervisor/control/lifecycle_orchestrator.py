@@ -1360,11 +1360,49 @@ class LifecycleOrchestrator:
         profile: LifecycleProfile,
         old_tree: ProcessTreeSnapshot,
     ) -> tuple[bool, ProcessTreeSnapshot]:
+        self._require_process_only_cleanup(profile)
         exact_alive = tuple(
             member for member in old_tree.members if self._process.identity_alive(member)
         )
         observed = self._process.snapshot(profile)
+        self._require_process_only_cleanup(profile)
         return not exact_alive and not observed.members, observed
+
+    def _require_process_only_cleanup(self, profile: LifecycleProfile) -> None:
+        """Refuse container custody until this owner has a durable cleanup grant.
+
+        This is a negative guard, never Docker absence evidence. Persist a
+        nonterminal refusal so deleting a visible record cannot let replay
+        reinterpret previously observed custody as a process-only transition.
+        """
+        from ..runtime.durable_cleanup_observer import has_cleanup_custody
+
+        state = self.store.latest().get(profile.target_id)
+        failure_code = "provider_cleanup_owner_required"
+        latched = bool(state is not None and state.failure_code == failure_code)
+        pending = latched
+        if not latched:
+            try:
+                pending = has_cleanup_custody(Path(profile.run_root))
+            except (OSError, ValueError):
+                pending = True
+        if not pending and not latched:
+            return
+        if state is not None and not state.phase.terminal and not latched:
+            self._advance(
+                state,
+                LifecycleSagaPhase.PARTIAL_FAILURE,
+                failure_code=failure_code,
+                compensation=tuple(sorted(set(state.compensation) | {
+                    "retain_durable_provider_cleanup_custody",
+                })),
+            )
+        raise ProcessTreeNotFenced(
+            "durable provider cleanup requires an admitted cleanup owner; "
+            "process absence cannot settle this lifecycle transition",
+            applied_effect_ids=(),
+            recovery="repair",
+        )
 
     def _stop_old(
         self,
@@ -1374,6 +1412,7 @@ class LifecycleOrchestrator:
         *,
         require_running: bool,
     ) -> _SagaState:
+        self._require_process_only_cleanup(profile)
         tree = state.old_tree or self._process.snapshot(profile)
         self._assert_single_tree(tree, allow_empty=not require_running)
         if any(member.fencing_epoch > state.intent.fencing_epoch for member in tree.members):
@@ -1384,6 +1423,7 @@ class LifecycleOrchestrator:
             old_tree=tree,
         )
         if tree.members:
+            self._require_process_only_cleanup(profile)
             self._process.terminate(
                 tree,
                 grace_seconds=min(
@@ -1433,6 +1473,7 @@ class LifecycleOrchestrator:
         profile: LifecycleProfile,
         deadline: float,
     ) -> _SagaState:
+        self._require_process_only_cleanup(profile)
         current = self._process.snapshot(profile)
         if current.members:
             self._assert_single_tree(current, allow_empty=False)
@@ -1452,6 +1493,7 @@ class LifecycleOrchestrator:
             )
         if state.new_tree is None:
             state = self._advance(state, LifecycleSagaPhase.STARTING_NEW)
+            self._require_process_only_cleanup(profile)
             try:
                 launched = self._process.launch(profile, fencing_epoch=state.intent.fencing_epoch)
             except Exception as exc:
@@ -1558,6 +1600,7 @@ class LifecycleOrchestrator:
 
         compensation: list[str] = ["terminate_unhealthy_new_process_tree"]
         current = self._process.snapshot(profile)
+        self._require_process_only_cleanup(profile)
         if current.members:
             self._process.terminate(
                 current,
@@ -1628,6 +1671,7 @@ class LifecycleOrchestrator:
         profile = self._profile(request)
         intent = self._intent(request, profile, action)
         state = self._reserve(intent)
+        self._require_process_only_cleanup(profile)
         if state.receipt is not None:
             return state.receipt
         deadline = self._monotonic() + intent.deadline_ms / 1000.0
@@ -1662,6 +1706,7 @@ class LifecycleOrchestrator:
                     recovery="repair",
                 )
             state = self._start_new(state, profile, deadline)
+        self._require_process_only_cleanup(profile)
         return self._commit(state)
 
     def repair_start_cleanup(self, request, transaction, *, timeout_ms: int):
@@ -1700,6 +1745,7 @@ class LifecycleOrchestrator:
         if remaining <= 0:
             raise StaleLeaseError("cleanup repair authorization has expired")
         deadline = self._monotonic() + remaining / 1000
+        self._require_process_only_cleanup(profile)
         current = self._process.snapshot(profile)
         if current.members:
             if repaired:
@@ -1710,6 +1756,7 @@ class LifecycleOrchestrator:
         elif any(self._process.identity_alive(item) for item in state.new_tree.members):
             raise ProcessIdentityMismatch("launched START identity is alive but not observable")
         if current.members:
+            self._require_process_only_cleanup(profile)
             self._process.terminate(current,
                 grace_seconds=min(self._stop_grace_ms, self._remaining_ms(deadline)) / 1000,
                 deadline_ms=self._remaining_ms(deadline))
@@ -1717,9 +1764,11 @@ class LifecycleOrchestrator:
         # fencing; a later empty discovery must not erase either witness.
         witnesses = {item.identity_id: item for item in state.new_tree.members + current.members}
         while self._remaining_ms(deadline) > 0:
+            self._require_process_only_cleanup(profile)
             observed = self._process.snapshot(profile)
             if not observed.members and not any(
                     self._process.identity_alive(item) for item in witnesses.values()):
+                self._require_process_only_cleanup(profile)
                 if not repaired:
                     state = self._advance(state, LifecycleSagaPhase.FAILED,
                         failure_code="interrupted_start_cleanup_fenced",

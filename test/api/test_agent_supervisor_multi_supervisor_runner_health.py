@@ -958,7 +958,7 @@ def test_status_reader_does_not_retry_structural_unsafe_artifact(
     assert fields["restart_supervisor"] is True
 
 
-def test_status_reader_retries_two_persistent_atomic_replacements_then_fails_closed(
+def test_status_reader_fails_closed_after_four_persistent_atomic_replacements(
     tmp_path,
     monkeypatch,
 ):
@@ -984,9 +984,9 @@ def test_status_reader_retries_two_persistent_atomic_replacements_then_fails_clo
         supervisor_status_startup_grace_seconds=0.1,
     )
 
-    assert calls == 2
+    assert calls == 4
     assert fields["supervisor_status"] == "unsafe"
-    assert fields["supervisor_status_read_failures"] == 2
+    assert fields["supervisor_status_read_failures"] == 4
     assert fields["restart_supervisor"] is True
 
 

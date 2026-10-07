@@ -1,0 +1,16 @@
+{
+  "baseline_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "baseline_checkout": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b",
+  "operation": "pytest --collect-only",
+  "test_file": "test/api/test_agent_supervisor_multi_supervisor_generation_status.py",
+  "status": "collection_failed",
+  "exit_code": 2,
+  "collected_tests": 0,
+  "error_type": "ImportError",
+  "missing_export": "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner._SupervisorStatusGenerationBinding",
+  "source_sha256": "520eede032ac8adc454e26c124e44d866b6b8508bc40d31b7a74cd5f01e5640f",
+  "test_sha256": "a5bd008a5ff13efa6960ecc21cb79b2fee183b591aa396d10e091832d608341b",
+  "log": "generation-baseline-01.log",
+  "log_sha256": "e5d8a79b4ad36b48bd2223718e2f2dc0673406041dcccbb832a744aca6487349",
+  "note": "Collection fails on the clean published baseline. This module is excluded from passing qualification. No source or test edits were made."
+}
