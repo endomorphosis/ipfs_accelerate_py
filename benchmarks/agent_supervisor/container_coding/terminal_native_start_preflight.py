@@ -15,7 +15,7 @@ import subprocess
 import time
 
 from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
-from benchmarks.agent_supervisor.container_coding.terminal_container_supervisor import _native_diagnostics
+from benchmarks.agent_supervisor.container_coding.terminal_container_supervisor import _failure_diagnostics, _native_diagnostics
 from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import (
     materialize_local_benchmark_plan,
@@ -88,17 +88,30 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
     def save():
         (output / 'result.json').write_text(json.dumps(report, sort_keys=True, indent=2) + '\n')
 
+    def record_failure(error, phase):
+        report['qualified'] = False
+        diagnostic = _failure_diagnostics(error, phase=phase)
+        detail = {'type': type(error).__name__, 'message': str(error)[:1024]}
+        if 'error' not in report:
+            report['error'] = detail
+            report.update(diagnostic)
+        else:
+            report.setdefault('cleanup_errors', []).append({**detail, **diagnostic})
+
     started = time.monotonic()
+    phase = 'owner_open'
     try:
         with open_existing_native_owner(database=database, checkout=Path(verified['manifest']['repository']),
                 state_dir=output / 'owner', repository_id=verified['manifest']['repository_cid'],
                 execution_routes={task.task_key: GROK_CODEX_EXECUTION_MODE}) as owner:
             rebound = None
             if full_context:
+                phase = 'context_rebind'
                 from .terminal_context_rebind import rebind_full_context
                 rebound = rebind_full_context(prepared_state=prepared_state, admission=admission,
                     server=owner.server, output=Path(verified['manifest']['repository']) / '.runtime' / output.name)
                 report['full_context'] = rebound
+            phase = 'runtime_create'
             runtime = AdmittedBenchmarkRuntime.create(output / 'launch', admission=admission,
                 server=owner.server, source=owner.source, implement=True,
                 implementation_command=str(ROOT / 'bin/router-worker') + ' --preflight --preflight-sleep 20',
@@ -107,6 +120,7 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                 context_bundle=rebound['context_bundle'] if rebound else None,
                 candidate_runner_argv=(str(ROOT / 'bin/validation-worker'),))
             try:
+                phase = 'runtime_git'
                 git = subprocess.run(['git', '-C', str(ROOT / 'source'), 'rev-parse', '--verify', 'HEAD'],
                     env={**os.environ, **dict(runtime.manifest['environment'])},
                     text=True, capture_output=True, timeout=10)
@@ -115,6 +129,7 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                     'git_dubious_ownership': 'detected dubious ownership' in git.stderr}
                 if git.returncode:
                     raise RuntimeError('signed isolated Git environment cannot observe installed runtime')
+                phase = 'start'
                 report['start'] = runtime.start().to_dict()
                 report['bootstrap_receipts'] = runtime.bootstrap_receipts
                 report['bootstrap_errors'] = runtime.bootstrap_errors
@@ -123,7 +138,9 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                     raise RuntimeError('native START did not prove sustained health')
                 deadline = time.monotonic() + 30
                 while time.monotonic() < deadline:
+                    phase = 'observe'
                     observation = runtime.observe()
+                    phase = 'worker_observation'
                     workers = _workers()
                     receipt = _preflight_receipt(runtime.state)
                     coding_workers = [worker for worker in workers if worker['coding_preflight']]
@@ -152,10 +169,17 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                             report['observations'] = [report['observations'][0], report['observations'][-1]]
                             break
                     time.sleep(.75)
+                phase = 'task_state'
                 state = owner.source.get_task(task.task_cid)
                 report['task_state'] = {'status': state.status, 'revision': state.revision}
+            except Exception as error:
+                # Preserve the request's admission sample before cleanup changes
+                # the ledger; post-unwind samples remain labelled separately.
+                record_failure(error, phase)
+                raise
             finally:
                 try:
+                    phase = 'stop'
                     report['stop'] = runtime.stop().to_dict()
                     report['remaining_native_processes'] = len(runtime.process.snapshot(runtime.profile).members)
                     deadline = time.monotonic() + 3
@@ -164,10 +188,21 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
                     report['remaining_worker_processes'] = _workers()
                     report['native_diagnostics'] = _native_diagnostics(runtime.state)
                     save()
+                except Exception as error:
+                    had_primary_failure = 'error' in report
+                    record_failure(error, phase)
+                    if not had_primary_failure:
+                        raise
                 finally:
-                    runtime.close()
+                    try:
+                        runtime.close()
+                    except Exception as error:
+                        had_primary_failure = 'error' in report
+                        record_failure(error, 'close')
+                        if not had_primary_failure:
+                            raise
         observations = report['observations']
-        report['qualified'] = bool(len(observations) == 2
+        report['qualified'] = bool('error' not in report and len(observations) == 2
             and all(row['healthy'] and row['workers'] for row in observations)
             and observations[1]['native_heartbeat']['owner_read_sequence'] > observations[0]['native_heartbeat']['owner_read_sequence']
             and report['stop']['status'] == 'succeeded'
@@ -175,14 +210,24 @@ def qualify(*, prepared_state: Path, output: Path, full_context: bool = False) -
             and (not full_context or bool(report.get('worker_context_observation')))
             and report['task_state']['status'] != 'completed')
     except Exception as error:
-        report['error'] = {'type': type(error).__name__, 'message': str(error)[:1024]}
+        if 'error' not in report:
+            record_failure(error, phase)
     finally:
         # Record fallback separately; it cannot turn a failed STOP into success.
-        if _workers():
-            cleanup = subprocess.run(['sudo', '-n', '-u', 'benchmarkworker', '--',
-                str(ROOT / 'bin/worker-entry'), '--cleanup'], cwd='/', capture_output=True, timeout=15)
-            report['fallback_cleanup_returncode'] = cleanup.returncode
-        report['workers_after_finally'] = _workers()
+        try:
+            if _workers():
+                report['qualified'] = False
+                cleanup = subprocess.run(['sudo', '-n', '-u', 'benchmarkworker', '--',
+                    str(ROOT / 'bin/worker-entry'), '--cleanup'], cwd='/', capture_output=True, timeout=15)
+                report['fallback_cleanup_returncode'] = cleanup.returncode
+        except Exception as error:
+            record_failure(error, 'fallback_cleanup')
+        try:
+            report['workers_after_finally'] = _workers()
+            if report['workers_after_finally']:
+                report['qualified'] = False
+        except Exception as error:
+            record_failure(error, 'final_worker_observation')
         report['seconds'] = time.monotonic() - started
         save()
     return report
