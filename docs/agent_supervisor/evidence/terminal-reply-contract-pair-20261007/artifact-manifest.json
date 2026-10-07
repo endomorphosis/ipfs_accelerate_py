@@ -82,6 +82,16 @@
       "sha256": "5529ad48d94d4ffde1fcb54f518183faad9c3083e9907eaf3dfa388dd220876a"
     },
     {
+      "bytes": 1870,
+      "path": "publication-integration.json",
+      "sha256": "05942775948574292ddf4af318b342d25c282cc2f37e30089b2f90c6ed3292c4"
+    },
+    {
+      "bytes": 13872,
+      "path": "publication-review.json",
+      "sha256": "a9dc019dcb81a2536f33c66ad7dd6707b64a3f6239e1879741459f09ac42adac"
+    },
+    {
       "bytes": 76719,
       "path": "qualified-pair-comparison.json",
       "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
