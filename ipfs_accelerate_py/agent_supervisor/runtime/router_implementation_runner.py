@@ -3,6 +3,8 @@
 The supervisor owns worktree allocation, credentials isolation, validation and
 completion. This runner performs one pinned coding-provider invocation in the
 current worktree and retains native usage; it grants no task completion.
+The explicit census mode stops before provider discovery and emits only closed
+input metadata after the same current source and workspace checks.
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "container_boundary", "workspace_identity", "semantic_context",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "semantic_metadata_view",
+    "semantic_metadata_census",
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
     "semantic_response_decode", "coding_reply_validation", "unclassified",
@@ -41,6 +44,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py",
+    "semantic_metadata_census.py",
 })
 
 
@@ -181,6 +185,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_repository: Path | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
@@ -214,6 +219,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
+    if type(census_only) is not bool:
+        raise ValueError("explicit Boolean census selection required")
+    if census_only and semantic_metadata_view != "common-bindings@1":
+        raise ValueError("metadata census requires the explicit common-bindings coding view")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
     failure_phase = "planning_contract"
@@ -331,6 +340,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             metadata_native_reply = dict(coding_reply_receipt)
         selection = select_semantic_metadata_view(view=view, native_complete_prompt=model_prompt,
             candidate_complete_prompt=candidate_model)
+        metadata_native_complete = model_prompt
         model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
@@ -343,6 +353,47 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if any(name in os.environ for name in (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,
                                            "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN")):
         raise ValueError("implementation inherited database authority")
+    if census_only:
+        failure_phase = "semantic_metadata_census"
+        from .semantic_metadata_census import census_semantic_metadata_view
+        census = census_semantic_metadata_view(view=view,
+            native_complete_prompt=metadata_native_complete, candidate_complete_prompt=candidate_model)
+        def digest_json(value):
+            if value is None:
+                return None
+            raw = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False, allow_nan=False).encode("utf-8")
+            return hashlib.sha256(raw).hexdigest()
+        receipt = {
+            "schema": "router-semantic-metadata-census@1", "purpose": "coding",
+            "observation_only": True, "provider": provider,
+            "model_sha256": hashlib.sha256(model.encode("utf-8")).hexdigest(),
+            "reasoning_effort": reasoning_effort,
+            "native_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "native_prompt_bytes": len(prompt.encode("utf-8")),
+            "workspace_identity_sha256": hashlib.sha256(str(root).encode("utf-8")).hexdigest(),
+            "repository_common_dir_checked": True,
+            "current_semantic_encoder_used": True, "source_freshness_authority": False,
+            "credential_isolation_checked": True,
+            "container_boundary_checked": boundary is not None,
+            "container_boundary_artifact_sha256": container_boundary_sha256 if boundary else None,
+            "doctor_residual_included": residual_receipt is not None,
+            "doctor_residual_receipt_sha256": digest_json(residual_receipt),
+            "public_instruction_included": instruction_receipt is not None,
+            "public_instruction_receipt_sha256": digest_json(instruction_receipt),
+            "workspace_advisory_sha256": hashlib.sha256(advisory.encode("utf-8")).hexdigest(),
+            "workspace_advisory_bytes": len(advisory.encode("utf-8")),
+            "coding_reply_mode": coding_reply_mode,
+            "selected_reply_contract_sha256": digest_json(coding_reply_receipt),
+            "native_reply_contract_sha256": digest_json(metadata_native_reply),
+            "census": census, "provider_calls": 0, "router_calls": 0,
+            "provider_dispatch_observed": False, "planning_performed_by_census": False,
+            "provider_token_usage": None, "total_token_savings_measured": False,
+            "proof_authority": False, "execution_authority": False,
+            "completion_authority": False, "settlement_authority": False,
+            "publication_authority": False, "required_fact_omission_authority": False,
+        }
+        return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
     if provider not in available:
@@ -569,6 +620,8 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    parser.add_argument("--semantic-metadata-census-only", action="store_true",
+                        help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
@@ -588,6 +641,7 @@ def main():
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
+                        census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,

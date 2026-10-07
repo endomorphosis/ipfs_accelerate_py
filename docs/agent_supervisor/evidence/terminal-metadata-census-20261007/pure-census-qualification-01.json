@@ -1,0 +1,202 @@
+{
+  "actual_provider_tokens_measured": false,
+  "api": "census_semantic_metadata_view(*, view: SemanticMetadataView, native_complete_prompt: str, candidate_complete_prompt: str, fixed_max_input_bytes: int=256000) -> dict",
+  "authored_observations_final": {
+    "bytes": 20289,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/authored-pure-census-observations-02.json",
+    "sha256": "82b00a34b745e8b082b4fec371df9105bcd62214a733a60a51f1a5f7b2ed2517"
+  },
+  "authored_observations_previous": {
+    "bytes": 20181,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/authored-pure-census-observations-01.json",
+    "sha256": "abbaf84c859c394c196680d0fbb79c1f5c061bfd973d2a8d361dfa0be4dc0596"
+  },
+  "authority_fields_all_strict_false": [
+    "source_freshness_verified",
+    "program_semantics_proved",
+    "proof_authority",
+    "omission_authority",
+    "execution_authority",
+    "dispatch_authority",
+    "completion_authority",
+    "publication_authority"
+  ],
+  "base_commit": "1f818293ff7561f1c6de49e89ac87806f7812d19",
+  "benchmark_launches": 0,
+  "bound": "Require strict integer fixed_max_input_bytes==256000. Matched-input comparison eligibility is True only when original and candidate both fit that runtime bound and the actual selected mode is common-bindings@1. Eligibility is a representation observation, not dispatch authority.",
+  "commits": 0,
+  "coverage": [
+    "Authored real native producer and native transport round trip; original inputs/source files unchanged.",
+    "Zero-row explicit capsule projection and one-row legacy fallback, with raw source availability preserved.",
+    "Two source paths with different content give two source groups; same content gives one group while retaining two captured paths.",
+    "Unknown secret-bearing fields and free-form identity text stay absent from the closed report.",
+    "Tampered prompt/receipt, numeric zero instead of Boolean false, unknown receipt fields and complete boundary changes refuse export.",
+    "Exact-restoring self-rehashed alternate factoring refuses deterministic candidate identity.",
+    "Uncaptured source IDs and unknown source aliases refuse source group counting.",
+    "Bool/float/string/custom bounds refuse; original over256000 with candidate within stays ineligible; expanding over-bound candidate falls back and stays ineligible."
+  ],
+  "environment": {
+    "bytecode_disabled": true,
+    "datasets_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "optional_ipfs_kit_import": "Existing HACC bootstrap appears in logs; no IPFS Kit/deployment readiness claimed.",
+    "pytest_plugin_autoload_disabled": true,
+    "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "first_pass_history": {
+    "execution_receipt": {
+      "bytes": 1559,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-test-execution-01.json",
+      "sha256": "bebe49f3644cd5cefc6486a8da7e6ad9c960298c6e68adb75c80486c1027f646"
+    },
+    "junit_xml": {
+      "bytes": 4436,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-01.xml",
+      "sha256": "eeb94793a81619555547ecd2fd752e4d37d183fd2a155d347ee5d7f0f1f8a2f9"
+    },
+    "result": "30 passed in 18.31 seconds before removal of one extraneous EOF blank line.",
+    "stdout_log": {
+      "bytes": 4600,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-01.log",
+      "sha256": "01b3a23b696e962eafe6fb642cfccbf1984b61944b56afa237400956716cf744"
+    }
+  },
+  "hidden_evaluation_or_solution_reads": 0,
+  "identity_export": "Only SHA256 digests of task/translation/scope/semantic-root identities. Fixed source-manifest/core/context/suffix/transport/semantic/candidate/common/receipt SHA256 bindings are separately retained.",
+  "observational_examples": [
+    {
+      "candidate_complete_bytes": 19822,
+      "capsules": 4,
+      "captured_source_count": 2,
+      "eligible_for_matched_input_comparison": true,
+      "fixture_id": "heterogeneous",
+      "native_complete_bytes": 20704,
+      "selected_mode": "common-bindings@1",
+      "source_group_count": 2
+    },
+    {
+      "candidate_complete_bytes": 29493,
+      "capsules": 7,
+      "captured_source_count": 1,
+      "eligible_for_matched_input_comparison": true,
+      "fixture_id": "many",
+      "native_complete_bytes": 32178,
+      "selected_mode": "common-bindings@1",
+      "source_group_count": 1
+    },
+    {
+      "candidate_complete_bytes": 10393,
+      "capsules": 1,
+      "captured_source_count": 1,
+      "eligible_for_matched_input_comparison": false,
+      "fixture_id": "one_row",
+      "native_complete_bytes": 9895,
+      "selected_mode": "legacy",
+      "source_group_count": 1
+    },
+    {
+      "candidate_complete_bytes": 19538,
+      "capsules": 4,
+      "captured_source_count": 2,
+      "eligible_for_matched_input_comparison": true,
+      "fixture_id": "same_content",
+      "native_complete_bytes": 20636,
+      "selected_mode": "common-bindings@1",
+      "source_group_count": 1
+    },
+    {
+      "candidate_complete_bytes": 7921,
+      "capsules": 0,
+      "captured_source_count": 1,
+      "eligible_for_matched_input_comparison": false,
+      "fixture_id": "zero_rows",
+      "native_complete_bytes": 7423,
+      "selected_mode": "legacy",
+      "source_group_count": 0
+    }
+  ],
+  "output_schema": "supervisor-semantic-metadata-census@1",
+  "owned_source_files": [
+    {
+      "bytes": 9585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 19245,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census.py",
+      "sha256": "695cfe4056bc571ce7629b4f6eb7b3eab5c1f801fb84faefb3bedd27c457e8eb"
+    }
+  ],
+  "population_export": "Capsule/admission counts, captured source-path population COUNT, distinct resolved source-CID group COUNT, fixed common-binding FIELD NAME lists/counts, complete-input byte/proxy counts and selection/fallback. No source/path/signature/plan/evaluator/provider text, raw rows, binding values or unknown field names are copied.",
+  "private_database_reads": 0,
+  "provider_calls": 0,
+  "schema": "pure-semantic-metadata-census-qualification@1",
+  "scope": "Pure closed metadata observations over an upstream owner-verified view. Exact restoration, deterministic reprojection and complete-prefix/suffix selection checks precede export. No file/database/model operation occurs in the helper.",
+  "strict_final_source_freeze": true,
+  "tests": {
+    "command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-c",
+      "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml",
+      "test/api/test_semantic_metadata_census.py"
+    ],
+    "command_shell": "/home/barberb/.local/bin/python -B -c 'import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))' -q -o addopts= -p no:cacheprovider -p ipfs_accelerate_py.testing.pytest_ast_seal --junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml test/api/test_semantic_metadata_census.py",
+    "errors": 0,
+    "execution_receipt": {
+      "bytes": 1577,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-test-execution-final-02.json",
+      "sha256": "9445ade6acc13f1addf3ead172d1d7ed9409ab53f83b2a09bdefe3682291fa00"
+    },
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.duckdb",
+    "junit_elapsed_seconds": 18.906,
+    "junit_xml": {
+      "bytes": 4436,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.xml",
+      "sha256": "d18e35bece686aece1d827028f7c2cc788f444c1e8151a17c43cc1612f090374"
+    },
+    "pytest_reported_elapsed_seconds": 18.93,
+    "stdout_log": {
+      "bytes": 4606,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-tests-final-02.log",
+      "sha256": "728016af860aab22f28a85fc8e53ea9085186d5c466523c2d85e305278792c92"
+    },
+    "tests": 30,
+    "wrapper_elapsed_seconds": 20.45760797103867
+  },
+  "token_proxy": "utf8-bytes-ceil-div4@1",
+  "total_token_savings_qualified": false,
+  "upstream_custody_limit": "The helper does not establish producer admission, task/source currentness or trusted owner custody; operational upstream checks remain mandatory.",
+  "upstream_view_source": {
+    "bytes": 18633,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+    "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+  },
+  "whitespace_correction": {
+    "after_bytes": 9585,
+    "after_source_sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef",
+    "ast_equal": true,
+    "ast_sha256": "67711b1e774068a05d7da37a0b47db5184e98e7a27970963fcdb4b18d37791b6",
+    "before_bytes": 9586,
+    "before_source_sha256": "176eefc8a2c9b9d44a8fad0576b530e6325d998e2d26497f5b839bc2a97f9f40",
+    "correction": "Remove one extraneous trailing EOF blank line. No API, executable statements or AST change.",
+    "exact_before_reconstructed_by_appending_one_newline": true,
+    "receipt": {
+      "bytes": 516,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-whitespace-correction-01.json",
+      "sha256": "f9dc73814be72462bc08f9848469d6533050d48bdf05bd6018fa6e834ab84258"
+    }
+  }
+}

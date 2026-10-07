@@ -1,0 +1,195 @@
+{
+  "authority": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "required_fact_omission_authority": false,
+    "source_freshness_authority": false
+  },
+  "combined_regression": {
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-seal-01.duckdb",
+    "junit_elapsed_seconds": 231.938,
+    "junit_xml": {
+      "bytes": 54778,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-tests-01.xml",
+      "sha256": "ac88598afc42305d84caa9264e1f30ba50f8920cb2098d861b1badfd883cf42d"
+    },
+    "known_command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "log_cli=false",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-tests-01.xml",
+      "test/api/test_semantic_metadata_census.py",
+      "test/api/test_semantic_metadata_census_dispatch.py",
+      "test/api/test_semantic_metadata_dispatch.py",
+      "test/api/test_semantic_metadata_view.py",
+      "test/api/test_semantic_router_translation.py",
+      "test/api/test_coding_reply_contract.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ],
+    "modules": [
+      "test/api/test_semantic_metadata_census.py",
+      "test/api/test_semantic_metadata_census_dispatch.py",
+      "test/api/test_semantic_metadata_dispatch.py",
+      "test/api/test_semantic_metadata_view.py",
+      "test/api/test_semantic_router_translation.py",
+      "test/api/test_coding_reply_contract.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ],
+    "pytest_plugin_autoload_disabled": true,
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "skipped": 0,
+    "stdout_log": {
+      "bytes": 6185,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-regression-tests-01.log",
+      "sha256": "def254746a9fb939949c490d54293fbacf9d81564688328f4dbd6aaa9a64cede"
+    },
+    "tests": 300
+  },
+  "coverage_note": "The 12/63/30 focused counts overlap the combined 300 and are not additive independent coverage.",
+  "created_utc": "2026-10-07T15:18:35.899919+00:00",
+  "environment": {
+    "bytecode_disabled": true,
+    "datasets_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "python": "/home/barberb/.local/bin/python",
+    "python_version": "3.12.3"
+  },
+  "final_dispatch_and_archive_policy": {
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-seal-01.duckdb",
+    "junit_elapsed_seconds": 34.155,
+    "junit_xml": {
+      "bytes": 13381,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.xml",
+      "sha256": "87f48ae602e4bbf199639f595dc18ef8a57194ee536793957239d3111dcc516d"
+    },
+    "known_command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "log_cli=false",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.xml",
+      "test/api/test_semantic_metadata_census_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py"
+    ],
+    "modules": [
+      "test/api/test_semantic_metadata_census_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py"
+    ],
+    "pytest_plugin_autoload_disabled": true,
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "skipped": 0,
+    "stdout_log": {
+      "bytes": 2731,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-final-dispatch-policy-tests-01.log",
+      "sha256": "3eedec251712f902eb425cd3426da28a6ee30e5bc49ae77e1dfc724dd798de95"
+    },
+    "tests": 63
+  },
+  "initial_dispatch": {
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-dispatch-seal-01.duckdb",
+    "junit_elapsed_seconds": 25.892,
+    "junit_xml": {
+      "bytes": 2001,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-dispatch-tests-01.xml",
+      "sha256": "0b37dda98e8021b10463b1013899ddb1910032bda9abbe0db0d37da0e2bb5d3d"
+    },
+    "known_command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "log_cli=false",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-dispatch-tests-01.xml",
+      "test/api/test_semantic_metadata_census_dispatch.py"
+    ],
+    "modules": [
+      "test/api/test_semantic_metadata_census_dispatch.py"
+    ],
+    "pytest_plugin_autoload_disabled": true,
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "skipped": 0,
+    "stdout_log": {
+      "bytes": 1979,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/census-dispatch-tests-01.log",
+      "sha256": "7da3228a78784d42c05408ef4cf99473cd76b6f1d8f33816d794b54220f41117"
+    },
+    "tests": 12
+  },
+  "live_benchmark_launches": 0,
+  "live_provider_calls": 0,
+  "llm_router_retained": true,
+  "planning_retained": true,
+  "pure_final_qualification": {
+    "bytes": 10864,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/pure-census-qualification-01.json",
+    "sha256": "9e058ffa0a2f246463680b53e322f67ed9c936a42fe6f3e31295f4605ed65580"
+  },
+  "qualified_behaviors": [
+    "Explicit observational-only census on semantic@1 common-bindings coding route.",
+    "Current native encoder, same Git owner, workspace and credential-isolation checks retained.",
+    "Complete native/candidate/selected input and ordinary-reply wrappers constructed through the existing runner.",
+    "Census selected digest and byte count match normal runner actual fake-provider input.",
+    "Provider discovery/allocation/get-provider/generation all forbidden during census.",
+    "Invalid selection, stale current source, foreign Git owner, inherited database credentials and untrusted Doctor/public wrappers refused.",
+    "CLI emits one closed census record on success and a closed diagnostic without private source text on failure.",
+    "Opt-in archive now pins all 20 helpers, including the census codec; old defaults preserved."
+  ],
+  "schema": "semantic-metadata-census-runner-qualification@1",
+  "scope": "Authored native fixtures and runner/archive integration; actual public-task preparation is qualified in a separate receipt.",
+  "source_base_commit": "1f818293ff7561f1c6de49e89ac87806f7812d19",
+  "source_freeze_note": "The pure helper lost one extra EOF newline during the combined suite, with identical AST and behavior. The pure owner retained both hashes and reran all 30 tests on the final body; root reran 63 dispatch/archive controls against that final frozen body. Other bound runner/policy/test sources were unchanged during these runs.",
+  "sources_and_tests": [
+    {
+      "bytes": 41350,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+    },
+    {
+      "bytes": 9585,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    {
+      "bytes": 19245,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census.py",
+      "sha256": "695cfe4056bc571ce7629b4f6eb7b3eab5c1f801fb84faefb3bedd27c457e8eb"
+    },
+    {
+      "bytes": 7220,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/test/api/test_semantic_metadata_census_dispatch.py",
+      "sha256": "3026c3fdf9a60085947c329d4d021cfd02667aeb7ba6e24c81e8f945971125c5"
+    },
+    {
+      "bytes": 4549,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "08eaa9e6d90b23cd627804ab5f663e8338bdc29a1eb763e50ade62a219b135b2"
+    }
+  ],
+  "total_provider_token_savings_measured": false
+}

@@ -94,11 +94,17 @@ benchmark input size, behavior, rewards or cumulative tokens.
    row counts, shared-field populations, complete input digests/bytes/proxy and
    selected/fallback status. Preserve original source bodies privately; do not
    export them in diagnostic metadata. Do this before spending on a live pilot.
+   The [runner census stop point](terminal_metadata_census.md) now constructs both
+   complete inputs after current owner checks and stops before provider
+   allocation. Administrative source preparation retains explicit authored-plan
+   provenance; live planned input remains a separate scope.
 2. **Run a separately versioned matched trial.** Keep one planning session and
    one coding session, model/reasoning/resource/setup budgets, original public
    inputs, reply schema and coding transport fixed. Vary this metadata view
    alone. A fallback run does not count as an observed treatment. Preserve both
    native administrative identities and compare reviewed semantic populations.
+   Identical controls can still produce different plans. Report that distinction
+   and require substantive native input matching for an exact one-factor claim.
 3. **Use current formal status capsules to prevent redundant reasoning.** Resolve
    an accepted native receipt through the supported proof-cache gate, including
    render/commit revalidation. Present property, verdict, assumptions, dependency

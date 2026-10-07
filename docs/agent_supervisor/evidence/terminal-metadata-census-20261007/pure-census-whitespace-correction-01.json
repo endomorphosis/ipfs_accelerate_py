@@ -1,0 +1,10 @@
+{
+  "after_bytes": 9585,
+  "after_source_sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef",
+  "ast_equal": true,
+  "ast_sha256": "67711b1e774068a05d7da37a0b47db5184e98e7a27970963fcdb4b18d37791b6",
+  "before_bytes": 9586,
+  "before_source_sha256": "176eefc8a2c9b9d44a8fad0576b530e6325d998e2d26497f5b839bc2a97f9f40",
+  "correction": "Remove one extraneous trailing EOF blank line. No API, executable statements or AST change.",
+  "exact_before_reconstructed_by_appending_one_newline": true
+}

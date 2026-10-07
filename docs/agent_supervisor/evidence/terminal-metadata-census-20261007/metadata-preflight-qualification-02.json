@@ -1,0 +1,542 @@
+{
+  "actual_attempt_01": {
+    "closed_failure_receipt": {
+      "artifact": "actual-public-census-01-failure.json",
+      "bytes": 514,
+      "sha256": "2e94afd1ce6f5f807d1e0edc63a6dad4c239c81a22ae84bfa0829579e698ed24"
+    },
+    "implementation_executed": false,
+    "private_log": {
+      "artifact": "actual-public-census-01-private.log",
+      "bytes": 7047,
+      "sha256": "de7ca0785f375083fb29417fb9535b74f5bc3ad0adae5078b002b86f65cded79"
+    },
+    "private_original_attempt_preserved": true,
+    "private_script": {
+      "artifact": "run_actual_public_census_01.py",
+      "bytes": 9300,
+      "sha256": "9648b774c9401df5300afa6ce1a860a137419abc9c4002579fe43212efa8e0a3"
+    },
+    "provider_calls": 0,
+    "reason": "private umask077 yielded newly created residual directory0700; native worker-readable artifact gate refused",
+    "runner_census_invoked": false,
+    "status": "preparation-refused-before-census",
+    "validation_executed": false
+  },
+  "actual_attempt_02": {
+    "actual_census_cwd": "fresh native detached same-common-dir allocated worktree inside private setup",
+    "agent_evaluator_body_inspection": false,
+    "caller_umask": "077",
+    "command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/run_actual_public_census_02.py"
+    ],
+    "command_shell": "umask 077\nPYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages /home/barberb/.local/bin/python -B /home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/run_actual_public_census_02.py > /home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/actual-public-census-02-private.log 2>&1",
+    "environment_overrides": {
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONHASHSEED": "0",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    },
+    "hidden_evaluator_reads": false,
+    "launch_cwd": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007",
+    "official_reward": null,
+    "parent_evaluator_body_inspection": false,
+    "private_recipe": {
+      "artifact": "run_actual_public_census_02.py",
+      "bytes": 9338,
+      "sha256": "ba4c3686601cfd0dba5bb8193b64c3899ad8ac4c1b482524e132f83b3e5a9591"
+    },
+    "private_stdout_log": {
+      "artifact": "actual-public-census-02-private.log",
+      "bytes": 8239,
+      "sha256": "ded360f4981e1ebf908f8e5bb7e4f62544732ee73d2c7847103072ce0693af8d"
+    },
+    "provider_calls": 0,
+    "provider_response_reads": false,
+    "public_input_bodies_processed_by_native_owner": true,
+    "public_result": {
+      "artifact": "actual-public-census-02.json",
+      "bytes": 14928,
+      "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+    },
+    "router_calls": 0,
+    "saved_only_after_post_yield_owner_admission_source_checks_and_worktree_cleanup": true,
+    "source384_or_live_planned_population_equivalence_claimed": false,
+    "source_bindings_at_export": [
+      {
+        "bytes": 20169,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+        "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+      },
+      {
+        "bytes": 11797,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+        "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+      },
+      {
+        "bytes": 70526,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+      },
+      {
+        "bytes": 7970,
+        "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+        "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+      },
+      {
+        "bytes": 18783,
+        "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+        "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+      },
+      {
+        "bytes": 100481,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+      },
+      {
+        "bytes": 34345,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+        "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+      },
+      {
+        "bytes": 14744,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+        "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+      },
+      {
+        "bytes": 25515,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+        "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+      },
+      {
+        "bytes": 41350,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+      },
+      {
+        "bytes": 37780,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+        "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+      },
+      {
+        "bytes": 18633,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+      },
+      {
+        "bytes": 9585,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      {
+        "bytes": 5423,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+      },
+      {
+        "bytes": 53490,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+      }
+    ],
+    "source_bindings_at_export_basis": "Successful script exit and public export require its second exact bindings()==before_bindings assertion; export inventory is derived from that enforced equality, not a separately persisted second inventory.",
+    "source_bindings_before": [
+      {
+        "bytes": 20169,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+        "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+      },
+      {
+        "bytes": 11797,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+        "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+      },
+      {
+        "bytes": 70526,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+      },
+      {
+        "bytes": 7970,
+        "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+        "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+      },
+      {
+        "bytes": 18783,
+        "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+        "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+      },
+      {
+        "bytes": 100481,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+      },
+      {
+        "bytes": 34345,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+        "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+      },
+      {
+        "bytes": 14744,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+        "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+      },
+      {
+        "bytes": 25515,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+        "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+      },
+      {
+        "bytes": 41350,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+      },
+      {
+        "bytes": 37780,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+        "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+      },
+      {
+        "bytes": 18633,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+      },
+      {
+        "bytes": 9585,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      {
+        "bytes": 5423,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+      },
+      {
+        "bytes": 53490,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+      }
+    ],
+    "source_bindings_current_readback": [
+      {
+        "bytes": 20169,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+        "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+      },
+      {
+        "bytes": 11797,
+        "path": "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+        "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+      },
+      {
+        "bytes": 70526,
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "sha256": "51e8d0b35aac53ec36b6773a57005adeee599cabfe5d7b821b619609bec6bb53"
+      },
+      {
+        "bytes": 7970,
+        "path": "benchmarks/agent_supervisor/container_coding/vector_index_preflight.py",
+        "sha256": "aa57f8dff8d7433f0d9b73db802981da1e0dbd88939eb285f7d835cb4b1b20d9"
+      },
+      {
+        "bytes": 18783,
+        "path": "benchmarks/agent_supervisor/container_coding/local_live_planner.py",
+        "sha256": "ad93741985d3fa2bdbfdcdcd24454e17f7e450559cb46502f6577107c1b04eca"
+      },
+      {
+        "bytes": 100481,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "fbc5005341cd244bd97cbd63270a10f74dbeb7acc392f596df4b9b1dd5751e05"
+      },
+      {
+        "bytes": 34345,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py",
+        "sha256": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12"
+      },
+      {
+        "bytes": 14744,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+        "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+      },
+      {
+        "bytes": 25515,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+        "sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+      },
+      {
+        "bytes": 41350,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "9d4dbac5af55ac8740df4dd6363f1fc65e940194e0f636e8b3674be964a46ea5"
+      },
+      {
+        "bytes": 37780,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+        "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+      },
+      {
+        "bytes": 18633,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+      },
+      {
+        "bytes": 9585,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py",
+        "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+      },
+      {
+        "bytes": 5423,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+      },
+      {
+        "bytes": 53490,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+      }
+    ],
+    "source_bindings_unchanged": true,
+    "source_custody_receipt": {
+      "artifact": "actual-public-census-02-source-custody-01.json",
+      "bytes": 10312,
+      "sha256": "371315c43c456a93e2abe2c8dcc2c55b5e04ccd0aa7356e209b5f17c85f47a48"
+    },
+    "status": "completed-model-free-census"
+  },
+  "completion_authority": false,
+  "counts_are_overlapping_not_additive": true,
+  "created_utc": "2026-10-07T15:42:43.845301+00:00",
+  "datasets_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+  "datasets_source_head": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "development_history": [
+    {
+      "evidence": "tool-reported result; no complete log file was persisted",
+      "failed": 6,
+      "failure": "fresh .runtime inherited host group-writable mode0775; native worker-readable advisory gate refused",
+      "final_source_qualification": false,
+      "passed": 10,
+      "phase": "initial native fixture development",
+      "seconds": 27.77
+    },
+    {
+      "evidence": "tool-reported result; no complete log file was persisted",
+      "failed": 0,
+      "final_source_qualification": false,
+      "passed": 16,
+      "phase": "owner-checked runtime directory mode correction",
+      "seconds": 31.93
+    },
+    {
+      "failed": 0,
+      "final_source_qualification": false,
+      "log": {
+        "artifact": "metadata-preflight-tests-03.log",
+        "bytes": 100,
+        "sha256": "75be5f33268299544ecabe46ae79e9d821232369154d54aa4af1b4333fffc403"
+      },
+      "passed": 17,
+      "phase": "explicit neural-only scope and metadata-only Source384 controls",
+      "seconds": 31.92
+    },
+    {
+      "failed": 0,
+      "final_source_qualification": false,
+      "log": {
+        "artifact": "metadata-preflight-tests-04.log",
+        "bytes": 100,
+        "sha256": "c8e5a0ee077eb3a288186f6903545e6e51b4b762d686f70825d7732201cc27eb"
+      },
+      "note": "The additional independent Git common-directory guard and negative fixture were edited during this transitional run; it does not bind the final source.",
+      "passed": 18,
+      "phase": "restrictive umask regression and fresh advisory directory setup",
+      "seconds": 37.98
+    },
+    {
+      "ast_sealing_enabled": false,
+      "failed": 0,
+      "final_source_qualification": false,
+      "log": {
+        "artifact": "metadata-preflight-tests-05.log",
+        "bytes": 100,
+        "sha256": "b6d754ce762cda3e71f4e99595d526f6c469a408d1d00854a7c5e9e86949b64b"
+      },
+      "note": "Explicit addopts override and plugin autoload suppression omitted the configured AST plugin on this benchmark-only test path. Functional passes were real; this run does not qualify AST sealing.",
+      "passed": 19,
+      "phase": "final current source with foreign-Git refusal",
+      "seconds": 38.68
+    },
+    {
+      "ast_sealing_enabled": true,
+      "errors": 0,
+      "execution_receipt": {
+        "artifact": "metadata-preflight-tests-sealed-execution-01.json",
+        "bytes": 5507,
+        "sha256": "94c26901d66a2565cbef3612336db5619417cf8987290885bc73e22a734b0a57"
+      },
+      "failed": 0,
+      "final_source_qualification": true,
+      "fresh_ast_seal_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+      "passed": 19,
+      "passing_ast_seals": 19,
+      "phase": "unchanged final source with explicit required fresh AST seal",
+      "seconds": 297.366,
+      "skipped": 0,
+      "wrapper_seconds": 298.16375332599273
+    }
+  ],
+  "execution_authority": false,
+  "final_test_ast_sealing": {
+    "completion_authority": false,
+    "oracle_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+    "passing_seals_written": true,
+    "pytest_exitstatus": 0,
+    "schema": "authored-preflight-pytest-seal-observation@1",
+    "sealing_enabled": true,
+    "source_seal_count": 19
+  },
+  "final_test_command_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import json,pathlib,sys,tests\nassert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\")\nimport pytest\nclass ObserveSeal:\n    def pytest_sessionfinish(self,session,exitstatus):\n        state=getattr(session.config,\"_pytest_ast_seal_state\",None)\n        assert type(state) is dict and state.get(\"enabled\") is True\n        payload={\"schema\":\"authored-preflight-pytest-seal-observation@1\",\"sealing_enabled\":True,\"oracle_path\":str(state[\"oracle\"].path),\"source_seal_count\":len(state[\"seals\"]),\"passing_seals_written\":state[\"wrote\"],\"pytest_exitstatus\":int(exitstatus),\"completion_authority\":False}\n        with pathlib.Path('/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-observation-01.json').open(\"x\") as stream:json.dump(payload,stream,sort_keys=True,indent=2);stream.write(\"\\n\")\nraise SystemExit(pytest.main(sys.argv[1:],plugins=[ObserveSeal()]))\n",
+    "-q",
+    "-o",
+    "addopts=",
+    "-o",
+    "log_cli=false",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--tb=short",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-tests-sealed-01.xml",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py"
+  ],
+  "final_test_cwd": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007",
+  "final_test_environment": {
+    "IPFS_ACCELERATE_META_INDEX_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-meta-01.duckdb",
+    "IPFS_ACCELERATE_PYTEST_SEAL": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "final_test_fresh_mirror_metadata_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-meta-01.duckdb",
+  "final_test_fresh_seal_path": "/home/barberb/lift_coding/artifacts/terminal-metadata-census-20261007/metadata-preflight-final-seal-01.duckdb",
+  "final_test_source_bindings_after": [
+    {
+      "bytes": 20169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    }
+  ],
+  "final_test_source_bindings_before": [
+    {
+      "bytes": 20169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py",
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    {
+      "bytes": 11797,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-metadata-census-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+      "sha256": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d"
+    }
+  ],
+  "final_test_source_bindings_unchanged": true,
+  "live_provider_tokens_measured": false,
+  "official_reward": null,
+  "official_task_execution_performed": false,
+  "official_validation_performed": false,
+  "original_qualification_preserved": {
+    "artifact": "metadata-preflight-qualification-01.json",
+    "bytes": 1830,
+    "sha256": "fa9eaede0dc275b800e3c6c1e37002a2520c79d6dfec8e5cb834d96dfbeefdb5"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_custody": {
+    "keep_private": [
+      "actual-public-census-01-private/",
+      "actual-public-census-02-private/",
+      "actual-public-census-01-private.log",
+      "actual-public-census-02-private.log",
+      "run_actual_public_census_01.py",
+      "run_actual_public_census_02.py",
+      "run_metadata_preflight_sealed_tests_01.py",
+      "metadata-preflight-final-seal-01.duckdb",
+      "metadata-preflight-final-seal-meta-01.duckdb"
+    ],
+    "note": "Operational scripts include local private setup paths and are not metadata-only artifacts. Public provenance retains exact structured command/environment and script digests, without copying public evaluator or source bodies, raw native prompts, task graphs, private state/database rows, or provider output.",
+    "safe_authored_fixture_metadata_logs": [
+      {
+        "artifact": "metadata-preflight-tests-03.log",
+        "bytes": 100,
+        "sha256": "75be5f33268299544ecabe46ae79e9d821232369154d54aa4af1b4333fffc403"
+      },
+      {
+        "artifact": "metadata-preflight-tests-04.log",
+        "bytes": 100,
+        "sha256": "c8e5a0ee077eb3a288186f6903545e6e51b4b762d686f70825d7732201cc27eb"
+      },
+      {
+        "artifact": "metadata-preflight-tests-05.log",
+        "bytes": 100,
+        "sha256": "b6d754ce762cda3e71f4e99595d526f6c469a408d1d00854a7c5e9e86949b64b"
+      },
+      {
+        "artifact": "metadata-preflight-tests-sealed-01.log",
+        "bytes": 111,
+        "sha256": "1902ff65e1526d5ede9167eb07aae8b3bcd195ea919d6ca2500c30272591a330"
+      },
+      {
+        "artifact": "metadata-preflight-tests-sealed-01.xml",
+        "bytes": 3775,
+        "sha256": "4a89fb35dfa70477de664571879bdb1ffce963c3cac717bf534f99ead5bf409d"
+      }
+    ],
+    "safe_closed_metadata_artifacts": [
+      {
+        "artifact": "metadata-preflight-qualification-01.json",
+        "bytes": 1830,
+        "sha256": "fa9eaede0dc275b800e3c6c1e37002a2520c79d6dfec8e5cb834d96dfbeefdb5"
+      },
+      {
+        "artifact": "metadata-preflight-tests-sealed-execution-01.json",
+        "bytes": 5507,
+        "sha256": "94c26901d66a2565cbef3612336db5619417cf8987290885bc73e22a734b0a57"
+      },
+      {
+        "artifact": "metadata-preflight-final-seal-observation-01.json",
+        "bytes": 339,
+        "sha256": "9ff704f79f95c2ed7249c431da0dd5ef63c3e147f9d5f394f8d034b3afec0efc"
+      },
+      {
+        "artifact": "actual-public-census-01-failure.json",
+        "bytes": 514,
+        "sha256": "2e94afd1ce6f5f807d1e0edc63a6dad4c239c81a22ae84bfa0829579e698ed24"
+      },
+      {
+        "artifact": "actual-public-census-02.json",
+        "bytes": 14928,
+        "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+      },
+      {
+        "artifact": "actual-public-census-02-source-custody-01.json",
+        "bytes": 10312,
+        "sha256": "371315c43c456a93e2abe2c8dcc2c55b5e04ccd0aa7356e209b5f17c85f47a48"
+      }
+    ]
+  },
+  "python_version": "Python 3.12.3",
+  "required_fact_omission_authority": false,
+  "schema": "terminal-public-metadata-preflight-provenance-qualification@1",
+  "scope": "Authored native owner fixtures plus one real public-input administrative/deterministic coding-context census. Live LLM planning remains enabled; Source384 controls are shape/pins metadata only, never inferred assets/inference equivalence.",
+  "status": "qualified-with-explicit-limits",
+  "total_token_savings_qualified": false
+}

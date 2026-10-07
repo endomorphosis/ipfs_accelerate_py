@@ -1,0 +1,169 @@
+{
+  "created_utc": "2026-10-07T15:46:40.841992+00:00",
+  "files": [
+    {
+      "bytes": 4829,
+      "path": "README.md",
+      "sha256": "4f1fe070c9f370951cf4cdf7b33e37d47b36b997c395a1d256f433c631b6efbc"
+    },
+    {
+      "bytes": 514,
+      "path": "actual-public-census-01-failure.json",
+      "sha256": "2e94afd1ce6f5f807d1e0edc63a6dad4c239c81a22ae84bfa0829579e698ed24"
+    },
+    {
+      "bytes": 10312,
+      "path": "actual-public-census-02-source-custody-01.json",
+      "sha256": "371315c43c456a93e2abe2c8dcc2c55b5e04ccd0aa7356e209b5f17c85f47a48"
+    },
+    {
+      "bytes": 14928,
+      "path": "actual-public-census-02.json",
+      "sha256": "b5809c4f2d854ba2acfb5573ff111949c3329957fa3c7b31031f05d7ce9a55f4"
+    },
+    {
+      "bytes": 20181,
+      "path": "authored-pure-census-observations-01.json",
+      "sha256": "abbaf84c859c394c196680d0fbb79c1f5c061bfd973d2a8d361dfa0be4dc0596"
+    },
+    {
+      "bytes": 20289,
+      "path": "authored-pure-census-observations-02.json",
+      "sha256": "82b00a34b745e8b082b4fec371df9105bcd62214a733a60a51f1a5f7b2ed2517"
+    },
+    {
+      "bytes": 1979,
+      "path": "census-dispatch-tests-01.log",
+      "sha256": "7da3228a78784d42c05408ef4cf99473cd76b6f1d8f33816d794b54220f41117"
+    },
+    {
+      "bytes": 2001,
+      "path": "census-dispatch-tests-01.xml",
+      "sha256": "0b37dda98e8021b10463b1013899ddb1910032bda9abbe0db0d37da0e2bb5d3d"
+    },
+    {
+      "bytes": 13413,
+      "path": "census-documentation-gates-01.json",
+      "sha256": "6fce7f8c8198406a14a5c8cb5714240dd49cea8eaec20f0890bb7c31c302d7ec"
+    },
+    {
+      "bytes": 2731,
+      "path": "census-final-dispatch-policy-tests-01.log",
+      "sha256": "3eedec251712f902eb425cd3426da28a6ee30e5bc49ae77e1dfc724dd798de95"
+    },
+    {
+      "bytes": 13381,
+      "path": "census-final-dispatch-policy-tests-01.xml",
+      "sha256": "87f48ae602e4bbf199639f595dc18ef8a57194ee536793957239d3111dcc516d"
+    },
+    {
+      "bytes": 6185,
+      "path": "census-regression-tests-01.log",
+      "sha256": "def254746a9fb939949c490d54293fbacf9d81564688328f4dbd6aaa9a64cede"
+    },
+    {
+      "bytes": 54778,
+      "path": "census-regression-tests-01.xml",
+      "sha256": "ac88598afc42305d84caa9264e1f30ba50f8920cb2098d861b1badfd883cf42d"
+    },
+    {
+      "bytes": 9950,
+      "path": "census-runner-qualification-01.json",
+      "sha256": "a3127ffd2bedb987ac0488192cf03c0eaea1597395a22eda087d3ccdb2cac92f"
+    },
+    {
+      "bytes": 58044,
+      "path": "comparison-design-and-review-01.json",
+      "sha256": "d335a40c426415e267fc4af7f5059d29d66340ef00a7a654028b4033c5fea67f"
+    },
+    {
+      "bytes": 339,
+      "path": "metadata-preflight-final-seal-observation-01.json",
+      "sha256": "9ff704f79f95c2ed7249c431da0dd5ef63c3e147f9d5f394f8d034b3afec0efc"
+    },
+    {
+      "bytes": 1830,
+      "path": "metadata-preflight-qualification-01.json",
+      "sha256": "fa9eaede0dc275b800e3c6c1e37002a2520c79d6dfec8e5cb834d96dfbeefdb5"
+    },
+    {
+      "bytes": 25287,
+      "path": "metadata-preflight-qualification-02.json",
+      "sha256": "d521820a875899fa195ab90958b76a3b295bec0df21ff5a6afe8b3ab14c6b6e8"
+    },
+    {
+      "bytes": 100,
+      "path": "metadata-preflight-tests-03.log",
+      "sha256": "75be5f33268299544ecabe46ae79e9d821232369154d54aa4af1b4333fffc403"
+    },
+    {
+      "bytes": 100,
+      "path": "metadata-preflight-tests-04.log",
+      "sha256": "c8e5a0ee077eb3a288186f6903545e6e51b4b762d686f70825d7732201cc27eb"
+    },
+    {
+      "bytes": 100,
+      "path": "metadata-preflight-tests-05.log",
+      "sha256": "b6d754ce762cda3e71f4e99595d526f6c469a408d1d00854a7c5e9e86949b64b"
+    },
+    {
+      "bytes": 111,
+      "path": "metadata-preflight-tests-sealed-01.log",
+      "sha256": "1902ff65e1526d5ede9167eb07aae8b3bcd195ea919d6ca2500c30272591a330"
+    },
+    {
+      "bytes": 3775,
+      "path": "metadata-preflight-tests-sealed-01.xml",
+      "sha256": "4a89fb35dfa70477de664571879bdb1ffce963c3cac717bf534f99ead5bf409d"
+    },
+    {
+      "bytes": 5507,
+      "path": "metadata-preflight-tests-sealed-execution-01.json",
+      "sha256": "94c26901d66a2565cbef3612336db5619417cf8987290885bc73e22a734b0a57"
+    },
+    {
+      "bytes": 10864,
+      "path": "pure-census-qualification-01.json",
+      "sha256": "9e058ffa0a2f246463680b53e322f67ed9c936a42fe6f3e31295f4605ed65580"
+    },
+    {
+      "bytes": 1559,
+      "path": "pure-census-test-execution-01.json",
+      "sha256": "bebe49f3644cd5cefc6486a8da7e6ad9c960298c6e68adb75c80486c1027f646"
+    },
+    {
+      "bytes": 1577,
+      "path": "pure-census-test-execution-final-02.json",
+      "sha256": "9445ade6acc13f1addf3ead172d1d7ed9409ab53f83b2a09bdefe3682291fa00"
+    },
+    {
+      "bytes": 4600,
+      "path": "pure-census-tests-01.log",
+      "sha256": "01b3a23b696e962eafe6fb642cfccbf1984b61944b56afa237400956716cf744"
+    },
+    {
+      "bytes": 4436,
+      "path": "pure-census-tests-01.xml",
+      "sha256": "eeb94793a81619555547ecd2fd752e4d37d183fd2a155d347ee5d7f0f1f8a2f9"
+    },
+    {
+      "bytes": 4606,
+      "path": "pure-census-tests-final-02.log",
+      "sha256": "728016af860aab22f28a85fc8e53ea9085186d5c466523c2d85e305278792c92"
+    },
+    {
+      "bytes": 4436,
+      "path": "pure-census-tests-final-02.xml",
+      "sha256": "d18e35bece686aece1d827028f7c2cc788f444c1e8151a17c43cc1612f090374"
+    },
+    {
+      "bytes": 516,
+      "path": "pure-census-whitespace-correction-01.json",
+      "sha256": "f9dc73814be72462bc08f9848469d6533050d48bdf05bd6018fa6e834ab84258"
+    }
+  ],
+  "schema": "terminal-metadata-census-artifact-manifest@1",
+  "scope": "Curated closed census/review/source-provenance and authored test evidence. Actual private preparation trees, prompts, logs, scripts and databases excluded.",
+  "total_bytes": 303258,
+  "total_provider_token_savings_measured": false
+}

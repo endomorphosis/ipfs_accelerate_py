@@ -1,0 +1,14 @@
+{
+  "attempt": "01",
+  "native_implementation_executed": false,
+  "official_reward": null,
+  "original_inputs_or_existing_databases_modified": false,
+  "private_attempt_retained": true,
+  "provider_calls": 0,
+  "public_success_receipt_created": false,
+  "reason": "fresh-advisory-directory-mode-incompatible-with-private-umask",
+  "runner_census_invoked": false,
+  "schema": "terminal-public-census-preparation-failure@1",
+  "stage": "native-doctor-residual-artifact-preparation",
+  "validation_executed": false
+}
