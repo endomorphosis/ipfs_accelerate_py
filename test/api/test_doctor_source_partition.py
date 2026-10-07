@@ -184,6 +184,16 @@ def test_signing_arbitrary_support_bytes_cannot_grant_harness_roles(scenario, tm
                 value['outputs'][0]['path'] = 'new.py'
                 value['outputs'][0]['effect'] = 'create'
                 path.write_bytes(profiles.task_profile_bytes(value))
+    if kind == 'duplicate_profile_key':
+        # The owner rejects ambiguous JSON while authoring the manifest, before
+        # a signed admission or Doctor source partition can be constructed.
+        with pytest.raises(local.LocalPlanningError,
+                           match='^reserved public task profile must be unambiguous JSON$') as refusal:
+            harness_inputs(scenario, tmp_path, tamper=tamper)
+        assert str(refusal.value.__cause__) == 'duplicate task profile key'
+        assert not (tmp_path / 'partition-workflow').exists()
+        assert not (tmp_path / 'partition-index').exists()
+        return
     inputs = harness_inputs(scenario, tmp_path, tamper=tamper)
     with pytest.raises((DoctorSourcePartitionError, local.LocalPlanningError)):
         prepare_doctor_task_repair(**inputs)

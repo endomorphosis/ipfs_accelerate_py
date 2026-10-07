@@ -23,6 +23,7 @@ MAX_REPORT_BYTES = 16384
 _GENERIC_WORKFLOWS = {
     "closed-local-keyword-rename@1": "closed_local_keyword_rename",
     "closed-imported-alias-call@1": "closed_imported_alias_call",
+    "closed-package-imported-alias-call@1": "closed_package_imported_alias_call",
 }
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _REASONS = frozenset({

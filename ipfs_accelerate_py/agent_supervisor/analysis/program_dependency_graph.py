@@ -158,6 +158,36 @@ def _module_name(path: str) -> str:
     return ".".join(parts)
 
 
+def _parse_import(statement: str) -> ast.Import | ast.ImportFrom | None:
+    """Parse an extractor's import statement without importing target code."""
+    try:
+        body = ast.parse(statement).body
+    except (SyntaxError, ValueError):
+        return None
+    return body[0] if len(body) == 1 and isinstance(body[0], (ast.Import, ast.ImportFrom)) else None
+
+
+def _from_import_module(path: str, node: ast.ImportFrom) -> str | None:
+    """Resolve relative syntax in the caller's package, not the checkout root.
+
+    This establishes a source-module name only. Normal import machinery,
+    module execution, and exported value bindings remain separate concerns.
+    """
+    if not node.level:
+        return node.module or None
+    parts = _module_name(path).split(".")
+    if PurePosixPath(path).name != "__init__.py":
+        parts = parts[:-1]
+    # A root __init__.py has no named package under this checkout-root model.
+    parts = [part for part in parts if part]
+    if node.level > len(parts):
+        return None
+    base = parts[:len(parts) - node.level + 1]
+    if node.module:
+        base.extend(node.module.split("."))
+    return ".".join(base)
+
+
 def _node_id(*parts: str) -> str:
     cleaned = [str(part).strip() for part in parts if str(part).strip()]
     return "node:" + _identity("program-node-id", cleaned)
@@ -706,7 +736,7 @@ class ProgramDependencyGraph:
             )
 
         record = source.ast_record
-        if record is None and source.source and source.language.startswith("python"):
+        if record is None and source.language.startswith("python"):
             record = build_python_ast_blob_record(
                 source.source,
                 blob_identity=source.blob_identity,
@@ -1015,21 +1045,24 @@ class ProgramDependencyGraph:
             add_edge(module_id, import_id, ProgramEdgeKind.IMPORTS)
             alias_name = ""
             target_name = ""
-            if " as " in imported:
-                head, alias_name = imported.rsplit(" as ", 1)
-                alias_name = alias_name.strip()
-                target_name = head.strip()
-            elif imported.startswith("from "):
-                # from module import name
-                match = re.match(
-                    r"from\s+(\S+)\s+import\s+(\S+)", imported
-                )
-                if match:
-                    target_name = f"{match.group(1)}.{match.group(2)}"
-                    alias_name = match.group(2)
-            elif imported.startswith("import "):
-                target_name = imported[len("import ") :].strip()
-                alias_name = target_name.split(".", 1)[0]
+            parsed_import = _parse_import(imported)
+            # ASTBlobRecord normalizes one imported name per statement. Do
+            # not guess bindings if another producer supplies a different shape.
+            if parsed_import is not None and len(parsed_import.names) == 1:
+                imported_name = parsed_import.names[0]
+                if isinstance(parsed_import, ast.ImportFrom):
+                    base = _from_import_module(path, parsed_import)
+                    if base is None:
+                        base = "." * parsed_import.level + (parsed_import.module or "")
+                    target_name = f"{base}.{imported_name.name}"
+                    alias_name = imported_name.asname or imported_name.name
+                else:
+                    # ``import pkg.child`` binds pkg; an explicit ``as``
+                    # binds the leaf module. Dependency edges still retain
+                    # the full imported module and every package initializer.
+                    target_name = (imported_name.name if imported_name.asname
+                                   else imported_name.name.split(".", 1)[0])
+                    alias_name = imported_name.asname or target_name
             if alias_name:
                 alias_id = add_node(
                     ProgramNodeKind.ALIAS,
@@ -1547,30 +1580,111 @@ class ProgramDependencyGraph:
                     attributes=dict(attributes),
                 )
 
-        # Cross-path import resolution: link import targets to local modules.
-        module_nodes = {
-            node.qualified_name: node.node_id
-            for node in state.nodes.values()
-            if node.kind is ProgramNodeKind.MODULE
-        }
+        # Cross-path source dependencies, never runtime exported-value proofs.
+        # Keep collisions instead of silently choosing the last file (for
+        # example pkg.py and pkg/__init__.py describe the same module name).
+        module_nodes: dict[str, list[ProgramNode]] = {}
+        for node in state.nodes.values():
+            if node.kind is ProgramNodeKind.MODULE:
+                module_nodes.setdefault(node.qualified_name, []).append(node)
+
+        def module_chain(import_node: ProgramNode, module_name: str) -> tuple[ProgramNode, ...]:
+            parts = module_name.split(".")
+            resolved: list[ProgramNode] = []
+            for index in range(1, len(parts) + 1):
+                name = ".".join(parts[:index])
+                candidates = module_nodes.get(name, ())
+                if len(candidates) != 1:
+                    reason = "ambiguous" if candidates else "missing"
+                    state.frontier.add(f"{reason}_import_module:{import_node.path}:{name}")
+                    return ()
+                candidate = candidates[0]
+                if index < len(parts) and PurePosixPath(candidate.path).name != "__init__.py":
+                    state.frontier.add(f"nonpackage_import_parent:{import_node.path}:{name}")
+                    return ()
+                resolved.append(candidate)
+            return tuple(resolved)
+
+        # Importing a regular package module executes its own ancestor
+        # initializers even when its body has no imports, or only absolute
+        # imports into another package. These are source-module dependencies,
+        # not a claim that arbitrary initializer execution is safe or inert.
+        for module_group in module_nodes.values():
+            for module_node in module_group:
+                if not module_node.language.startswith("python"):
+                    continue
+                path = PurePosixPath(module_node.path)
+                context_parts = path.parts[:-1]
+                if path.name == "__init__.py":
+                    context_parts = context_parts[:-1]
+                if not context_parts:
+                    continue
+                context_name = ".".join(context_parts)
+                context_chain = module_chain(module_node, context_name)
+                if not context_chain:
+                    continue
+                if PurePosixPath(context_chain[-1].path).name != "__init__.py":
+                    state.frontier.add(f"nonpackage_import_context:{module_node.path}:{context_name}")
+                    continue
+                for parent in context_chain:
+                    state.add_edge(module_node.node_id, parent.node_id, ProgramEdgeKind.DEPENDS_ON,
+                        attributes={"implicit_package_context": True,
+                            "resolution_scope": "source_module_dependency",
+                            "package_initializer": True})
+
         for node in list(state.nodes.values()):
             if node.kind is not ProgramNodeKind.IMPORT:
                 continue
             statement = str(node.attributes.get("statement") or node.name)
-            module_name = ""
-            if statement.startswith("import "):
-                module_name = statement[len("import ") :].split(" as ", 1)[0].strip()
-            elif statement.startswith("from "):
-                match = re.match(r"from\s+(\S+)\s+import\s+", statement)
-                if match:
-                    module_name = match.group(1).lstrip(".")
-            if module_name and module_name in module_nodes:
-                state.add_edge(
-                    node.node_id,
-                    module_nodes[module_name],
-                    ProgramEdgeKind.DEPENDS_ON,
-                    attributes={"resolved_import": True},
-                )
+            parsed = _parse_import(statement)
+            if parsed is None:
+                state.frontier.add(f"unsupported_import_statement:{node.path}:{statement}")
+                continue
+            if isinstance(parsed, ast.ImportFrom):
+                module_name = _from_import_module(node.path, parsed)
+                if module_name is None:
+                    state.frontier.add(f"invalid_relative_import:{node.path}:{statement}")
+                    continue
+                if parsed.level:
+                    caller_module = _module_name(node.path)
+                    caller_package = (caller_module if PurePosixPath(node.path).name == "__init__.py"
+                                      else caller_module.rpartition(".")[0])
+                    caller_chain = module_chain(node, caller_package)
+                    if not caller_chain:
+                        continue
+                    if PurePosixPath(caller_chain[-1].path).name != "__init__.py":
+                        state.frontier.add(f"nonpackage_import_context:{node.path}:{caller_package}")
+                        continue
+                    for parent in caller_chain:
+                        state.add_edge(node.node_id, parent.node_id, ProgramEdgeKind.DEPENDS_ON,
+                            attributes={"resolved_import": True,
+                                "resolution_scope": "source_module_dependency",
+                                "package_initializer": True})
+                names = (module_name,)
+            else:
+                names = tuple(alias.name for alias in parsed.names)
+            for module_name in names:
+                chain = module_chain(node, module_name)
+                for target in chain:
+                    state.add_edge(node.node_id, target.node_id, ProgramEdgeKind.DEPENDS_ON,
+                        attributes={"resolved_import": True,
+                            "resolution_scope": "source_module_dependency",
+                            "package_initializer": PurePosixPath(target.path).name == "__init__.py"})
+                if isinstance(parsed, ast.ImportFrom):
+                    for alias in parsed.names:
+                        if alias.name == "*":
+                            state.frontier.add(f"wildcard_import:{node.path}:{module_name}")
+                        child_name = module_name + "." + alias.name
+                        if chain and child_name in module_nodes:
+                            # A package attribute may already provide this
+                            # name; from-import's submodule fallback is not an
+                            # exact value binding without execution evidence.
+                            state.frontier.add(f"possible_submodule_import:{node.path}:{child_name}")
+                            for child in module_nodes[child_name]:
+                                state.add_edge(node.node_id, child.node_id, ProgramEdgeKind.DEPENDS_ON,
+                                    completeness=Completeness.PARTIAL,
+                                    attributes={"possible_submodule_import": True,
+                                        "resolution_scope": "source_module_dependency"})
 
         # Impact-index dependency edges (authoritative when provided as reviewed).
         for dependent, providers in sorted((impact_edges or {}).items()):

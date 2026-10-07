@@ -349,7 +349,7 @@ def prepare_doctor_task_repair(
             "plan_refill": _refill(prepared, tuple(sorted(set(reasons))))})
     choice = selected[0]
     alias_contract = aliases.get(choice["path"])
-    operator = alias_owner.OPERATOR if alias_contract is not None else OPERATOR
+    operator = alias_contract.operator if alias_contract is not None else OPERATOR
     proof_scope = alias_owner.PROOF_SCOPE if alias_contract is not None else PROOF_SCOPE
     report = {**report, "operator": operator}
     prepared = replace(prepared, report=report)

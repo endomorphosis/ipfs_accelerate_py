@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import hashlib
 import inspect
 import json
+import keyword
 import os
 from pathlib import Path
 import re
@@ -22,12 +23,16 @@ import sys
 from ..proof.formal_verification_contracts import content_identity
 
 OPERATOR = "closed-imported-alias-call@1"
+PACKAGE_OPERATOR = "closed-package-imported-alias-call@1"
 PROOF_SCOPE = (
     "Under closed local-module resolution, the existing explicit import alias resolves to its signed donor export; "
     "changing only the direct callee identifier preserves the argument expressions "
     "and order, and the projected supplied parameters satisfy the declared signature. "
     "Independent AST/signature replay binds the edit under the closed "
-    "local-module import assumptions. Not whole-program correctness or equivalence "
+    "local-module import assumptions. Regular packages require captured inert "
+    "initializers and ordinary source-based import resolution without external "
+    "shadowing, substituted bytecode, preloaded replacements or import hooks. "
+    "Not whole-program correctness or equivalence "
     "to the original unresolved call."
 )
 MAX_IDENTIFIER_CHARACTERS = 64
@@ -39,7 +44,7 @@ _RETURN_EXPRESSIONS = (*_PURE_EXPRESSIONS, ast.BinOp, ast.UnaryOp, ast.BoolOp,
 MAX_PARAMETERS = 32
 _RESERVED_MODULES = frozenset(sys.stdlib_module_names) | frozenset(sys.builtin_module_names)
 _IMPLICIT_GLOBALS = frozenset({"__name__", "__doc__", "__package__", "__loader__", "__spec__",
-                               "__builtins__", "__file__", "__cached__", "__annotations__"})
+                               "__builtins__", "__file__", "__cached__", "__annotations__", "__path__"})
 
 
 class ImportedAliasContractError(ValueError):
@@ -64,30 +69,80 @@ def _read_current_source(path, digest, *, maximum, expected_size=None):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
-        _require(stat.S_ISREG(before.st_mode) and before.st_size <= maximum
+        _require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and before.st_size <= maximum
                  and (expected_size is None or before.st_size == expected_size))
         with os.fdopen(fd, "rb", closefd=False) as stream:
             raw = stream.read(before.st_size + 1)
         after = os.fstat(fd)
         _require(len(raw) == before.st_size and hashlib.sha256(raw).hexdigest() == digest
                  and all(getattr(before, key) == getattr(after, key) for key in
-                         ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")))
+                         ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_nlink")))
+        current = path.lstat()
+        _require(path.resolve(strict=True) == path and all(
+            getattr(before, key) == getattr(current, key) for key in
+            ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_nlink")))
         return raw
     finally:
         os.close(fd)
 
 
 def read_imported_alias_sources(*, repository, source_hashes):
-    """Read a complete flat population within bounds before allocating source."""
-    _require(type(source_hashes) is dict and 1 <= len(source_hashes) <= 256
-             and all(type(name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name)
-                     for name in source_hashes))
+    """Read a complete regular module/package population within finite bounds."""
+    _module_inventory(source_hashes)
+    _require(all(type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest)
+                 for digest in source_hashes.values()))
     sources, remaining = {}, 4_000_000
     for name, digest in sorted(source_hashes.items()):
         raw = _read_current_source(Path(repository) / name, digest, maximum=min(1_000_000, remaining))
         sources[name] = raw.decode("utf-8")
         remaining -= len(raw)
     return sources
+
+
+def _module_inventory(sources):
+    """Resolve only explicit regular packages; source code is never imported."""
+    _require(type(sources) is dict and 1 <= len(sources) <= 256)
+    _require(all(type(name) is str for name in sources))
+    module_paths, package_paths = {}, []
+    for name in sorted(sources):
+        _require(type(name) is str and name.endswith(".py") and len(name) <= 600)
+        parts = name[:-3].split("/")
+        _require(1 <= len(parts) <= 9 and all(
+            _IDENTIFIER.fullmatch(part) and not keyword.iskeyword(part) for part in parts))
+        package = parts[-1] == "__init__"
+        _require(not package or len(parts) > 1)
+        # Importing special module names can address an initializer twice or
+        # overwrite package metadata (including read-only __dict__/__class__).
+        _require(all(not (part.startswith("__") and part.endswith("__"))
+                     for part in (parts[:-1] if package else parts)))
+        module = ".".join(parts[:-1] if package else parts)
+        _require(parts[0] not in _RESERVED_MODULES and module not in module_paths)
+        module_paths[module] = name
+        if package:
+            package_paths.append(name)
+    packages = set(package_paths)
+    for name in sources:
+        parts = name.split("/")[:-1]
+        for length in range(1, len(parts) + 1):
+            _require("/".join(parts[:length]) + "/__init__.py" in packages)
+    return module_paths, tuple(sorted(package_paths))
+
+
+def _resolve_import(node, *, caller, module_paths):
+    """Use Python's explicit relative level without probing sys.path or disk."""
+    _require(isinstance(node, ast.ImportFrom) and node.module is not None)
+    parts = node.module.split(".")
+    _require(all(_IDENTIFIER.fullmatch(part) and not keyword.iskeyword(part)
+                 and not (part.startswith("__") and part.endswith("__")) for part in parts))
+    if node.level:
+        package = caller.split("/")[:-1]
+        _require(node.level <= len(package))
+        parts = package[:len(package) - node.level + 1] + parts
+    module = ".".join(parts)
+    _require(parts[0] not in _RESERVED_MODULES and module in module_paths)
+    donor = module_paths[module]
+    _require(donor != caller and not donor.endswith("/__init__.py"))
+    return module, donor
 
 
 def _literal_default(node):
@@ -150,17 +205,24 @@ def _call_binding(signature, call):
 
 
 def _population(sources):
-    _require(type(sources) is dict and 1 <= len(sources) <= 256)
-    _require(all(type(name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name)
-                 and type(text) is str and len(text.encode()) <= 1_000_000
-                 for name, text in sources.items())
+    module_paths, package_paths = _module_inventory(sources)
+    _require(all(type(text) is str and len(text.encode()) <= 1_000_000
+                 for text in sources.values())
              and sum(len(text.encode()) for text in sources.values()) <= 4_000_000)
-    modules = {}
+    modules, edges = {}, []
     for name, text in sources.items():
         try:
             tree = ast.parse(text)
-        except (SyntaxError, ValueError) as error:
+        except (SyntaxError, ValueError, RecursionError) as error:
             raise ImportedAliasContractError("closed alias source does not parse") from error
+        if name in package_paths:
+            # Empty/docstring/pass initializers have no user binding or import
+            # effects. Reexports, annotations, __getattr__ and path mutation
+            # require a different reviewed profile.
+            _require(all(isinstance(node, ast.Pass) or index == 0 and _docstring(node)
+                         for index, node in enumerate(tree.body)))
+            modules[name] = ({}, {})
+            continue
         functions, imports = {}, {}
         for index, node in enumerate(tree.body):
             if index == 0 and _docstring(node):
@@ -170,29 +232,33 @@ def _population(sources):
                 _return_expression(node)
                 functions[node.name] = (node, _signature(node))
             else:
-                _require(isinstance(node, ast.ImportFrom) and node.level == 0
-                         and node.module is not None and _IDENTIFIER.fullmatch(node.module)
-                         and node.module not in _RESERVED_MODULES
-                         and node.module + ".py" in sources and node.module + ".py" != name)
+                module, donor = _resolve_import(node, caller=name, module_paths=module_paths)
+                edges.append({"caller_path": name, "module": module, "donor_path": donor,
+                              "level": node.level})
                 for alias in node.names:
                     local = alias.asname or alias.name
                     _require(_IDENTIFIER.fullmatch(alias.name) and _IDENTIFIER.fullmatch(local)
-                             and local not in imports and local not in functions)
-                    imports[local] = (node.module + ".py", alias.name, alias.asname, node)
+                             and local not in imports and local not in functions
+                             and local not in _IMPLICIT_GLOBALS
+                             and not (local.startswith("__") and local.endswith("__")))
+                    imports[local] = (donor, alias.name, alias.asname, node)
             _require(len(functions) + len(imports) <= MAX_MODULE_BINDINGS)
         _require(functions and not (set(functions) & set(imports)))
         modules[name] = (functions, imports)
     # Every imported export must be an exact function in a function-only donor.
-    # This excludes chains, cycles, __getattr__, packages and import-time effects.
+    # This excludes chains, cycles, __getattr__ and import-time user effects.
     for functions, imports in modules.values():
         for donor, exported, _, _ in imports.values():
             donor_functions, donor_imports = modules[donor]
             _require(not donor_imports and exported in donor_functions)
-    return modules
+    resolution = {"schema": "closed-python-package-resolution@1",
+        "module_paths": dict(sorted(module_paths.items())), "package_paths": list(package_paths),
+        "import_edges": sorted(edges, key=lambda row: (row["caller_path"], row["module"], row["level"]))}
+    return modules, resolution if package_paths else None
 
 
 def _contracts(sources, path):
-    modules = _population(sources)
+    modules, resolution = _population(sources)
     _require(path in modules)
     source_hashes = {name: _sha(text) for name, text in sorted(sources.items())}
     contracts = []
@@ -249,7 +315,8 @@ def _contracts(sources, path):
                 start = len("".join(lines[:call.func.lineno - 1])) + len(
                     lines[call.func.lineno - 1].encode()[:call.func.col_offset].decode())
                 candidate = {
-                    "schema": OPERATOR, "path": module_path, "donor_path": donor,
+                    "schema": PACKAGE_OPERATOR if resolution is not None else OPERATOR,
+                    "path": module_path, "donor_path": donor,
                     "subject": owner, "previous": callee, "replacement": local,
                     "offset": start, "end_offset": start + len(callee),
                     "source_hashes": source_hashes, "bindings": dict(sorted(bindings.items())),
@@ -260,6 +327,8 @@ def _contracts(sources, path):
                         "keywords": [ast.dump(keyword) for keyword in call.keywords]}),
                     "call_binding": _call_binding(target_signature, call),
                 }
+                if resolution is not None:
+                    candidate["module_resolution"] = resolution
             call_edges[(module_path, owner)] = (target_module, target_name)
             try:
                 target_signature.bind(*([None] * len(call.args)), **{kw.arg: None for kw in call.keywords})
@@ -299,6 +368,10 @@ class ImportedAliasRepair:
     def contract_id(self):
         return content_identity(self.to_dict())
 
+    @property
+    def operator(self):
+        return self.to_dict()["schema"]
+
     def formal_projection(self, consequence):
         """Project the exact finite source environment, never target execution.
 
@@ -314,7 +387,7 @@ class ImportedAliasRepair:
         binding = contract["call_binding"]
         literal = lambda values: "[" + ", ".join(quote(value) for value in values) + "]"
         lean = (
-            f"-- theorem:{OPERATOR} property:source-alias-argument-preservation "
+            f"-- theorem:{self.operator} property:source-alias-argument-preservation "
             f"claim:closed-local-alias-binding contract:{self.contract_id} consequence:{consequence}\n"
             "def lookupBinding (key : String) : List (String × String) → Option String\n"
             "  | [] => none\n"
