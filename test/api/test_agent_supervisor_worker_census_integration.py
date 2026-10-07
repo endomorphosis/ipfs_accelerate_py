@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor as worker
 
 GROK_MODULE = "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
 CLEANUP = "--internal-docker-cleanup-watchdog"
+LEGACY_CLEANUP = "--internal-legacy-docker-cleanup-watchdog"
 
 
 @pytest.mark.parametrize("caller", ["active", "phase"])
@@ -18,6 +19,8 @@ CLEANUP = "--internal-docker-cleanup-watchdog"
     (("grok", "--prompt", ""), f"echo {CLEANUP}", True),
     (("python3", "-m", GROK_MODULE, "--prompt", CLEANUP), "", True),
     (("python3", "-m", GROK_MODULE, CLEANUP), "grok", False),
+    (("python3", "-m", GROK_MODULE, LEGACY_CLEANUP), "grok", False),
+    (("python3", "-m", GROK_MODULE, "--prompt", LEGACY_CLEANUP), "", True),
     (("python3", "-c", f"-m {GROK_MODULE}"), "grok", False),
 ])
 def test_worker_census_uses_exact_arguments_before_display(monkeypatch, caller, argv, display, expected):
@@ -38,6 +41,12 @@ def test_worker_census_uses_exact_arguments_before_display(monkeypatch, caller, 
     (("python3", "-uB", "-m", GROK_MODULE, CLEANUP), True),
     (("python3", "-W", "ignore", "/opt/grok_cli_runner.py", CLEANUP), True),
     (("python3", "--", "/opt/grok_cli_runner.py", CLEANUP), True),
+    (("python3", "-m", GROK_MODULE, LEGACY_CLEANUP), True),
+    (("python3", "-m", "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner", LEGACY_CLEANUP), True),
+    (("python3", "-uB", "/opt/grok_cli_runner.py", LEGACY_CLEANUP), True),
+    (("python3", "-m", GROK_MODULE, "--prompt", LEGACY_CLEANUP), False),
+    (("python3", "-c", GROK_MODULE, LEGACY_CLEANUP), False),
+    (("grok", "--prompt", LEGACY_CLEANUP), False),
     (("python3", "-m", GROK_MODULE, "--prompt", CLEANUP), False),
     (("python3", "-c", GROK_MODULE, CLEANUP), False),
     (("grok", "--prompt", CLEANUP), False),

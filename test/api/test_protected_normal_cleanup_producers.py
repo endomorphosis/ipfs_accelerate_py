@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,6 +46,14 @@ def _closure(name, namespace):
 
 @pytest.fixture
 def producer(tmp_path, monkeypatch):
+    from test.api.test_terminal_cleanup_observer import _current_launch_context
+
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    monkeypatch.setattr(tempfile, "tempdir", str(private))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    launch, paths = _current_launch_context(tmp_path, workspace)
     store = cas.DurableProviderAttemptCAS(tmp_path / "attempts")
     started = store.reserve_or_adopt(
         logical_attempt_id="attempt:producer",
@@ -53,7 +62,7 @@ def producer(tmp_path, monkeypatch):
         task_id="task:producer",
         worktree_id="worktree:producer",
         authorized=True,
-        launch_context=_protected_effect_launch_context(workspace=str(tmp_path)),
+        launch_context=launch,
     )
     ns = dict(vars(runner))
     ns.update(
@@ -125,7 +134,10 @@ def producer(tmp_path, monkeypatch):
             launch, at, status="exited", returncode=78
         ),
     )
-    return store, started, ns, events
+    try:
+        yield store, started, ns, events
+    finally:
+        _discard_live_cleanup_inputs(paths)
 
 
 @pytest.mark.parametrize("returncode", [0, 78])
@@ -336,7 +348,14 @@ def test_actual_run_early_terminal_replay_forwards_exact_store(
 def test_failed_terminal_proof_preserves_actual_private_cleanup_inputs(
     tmp_path, monkeypatch
 ):
-    launch, paths = _live_cleanup_launch_context()
+    from test.api.test_terminal_cleanup_observer import _current_launch_context
+
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    monkeypatch.setattr(tempfile, "tempdir", str(private))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    launch, paths = _current_launch_context(tmp_path, workspace)
     store = cas.DurableProviderAttemptCAS(tmp_path / "attempts")
     started = store.reserve_or_adopt(
         logical_attempt_id="attempt:preserved",
@@ -398,3 +417,68 @@ def test_failed_terminal_proof_preserves_actual_private_cleanup_inputs(
         } == identities
     finally:
         _discard_live_cleanup_inputs(paths)
+
+
+@pytest.mark.parametrize("cleanup_error", [False, True])
+def test_concurrent_terminal_after_preflight_replays_exact_cleanup(producer, tmp_path, cleanup_error):
+    """The last pre-dispatch CAS read can observe another owner's terminal."""
+    store, started, ns, events = producer
+    terminal = _terminal_fixture(store, started, ns)
+    prompt = "bounded cleanup replay"
+    invocation = SimpleNamespace(
+        prompt_cid=runner._agent_prompt_cid(prompt),
+        workspace_path=str(tmp_path),
+        baseline_commit="accepted-head",
+        logical_attempt_id=terminal.logical_attempt_id,
+        provider_attempt_store=str(store.directory),
+        provider_attempt_store_identity=store.directory_identity,
+        signed_payload=lambda: {},
+    )
+    route = SimpleNamespace(
+        invocation_binding=invocation,
+        fallback_reasoning_effort="high",
+        as_binding_dict=lambda: {},
+    )
+    decision = SimpleNamespace(
+        authorized=True, content_id=terminal.decision_id,
+        verifier_status="confirmed_quota",
+    )
+    original_cleanup = ns["_release_recorded_codex_effect_cleanup"]
+
+    def cleanup(*args, **kwargs):
+        original_cleanup(*args, **kwargs)
+        if cleanup_error:
+            raise ValueError("cleanup proof unavailable")
+
+    ns.update(
+        route_plan=route,
+        preflight_verifier_status="confirmed_quota",
+        preflight_returncode=78,
+        preflight_decision_id=terminal.decision_id,
+        preflight_nonce="fixture-nonce",
+        protected_recovery_reservation=None,
+        route_repository_head="accepted-head",
+        workspace_baseline="accepted-workspace",
+        model=runner.DEFAULT_GROK_MODEL,
+        codex_fallback_command=[],
+        DurableProviderAttemptCAS=lambda path, **kw: store,
+        _repository_head=lambda path: "accepted-head",
+        _workspace_content_fingerprint=lambda path: "accepted-workspace",
+        _workspace_regular_file_hardlinks=lambda path: (),
+        _workspace_descendant_mountpoints=lambda path: (),
+        resolve_agent_implementation_route_binding=lambda *a, **kw: route,
+        decide_agent_implementation_fallback=lambda *a, **kw: decision,
+        _validate_codex_quota_fallback_command=lambda *a, **kw: None,
+        _mirror_grok_effect_boundary=lambda value: None,
+        _release_recorded_codex_effect_cleanup=cleanup,
+        _run_codex_quota_fallback_in_docker=lambda *a, **kw: pytest.fail("terminal attempt redispatched"),
+        _run_legacy_codex_quota_fallback_in_docker=lambda *a, **kw: pytest.fail("terminal attempt downgraded"),
+    )
+    run = _closure("run_authorized_preflight_fallback", ns)
+    if cleanup_error:
+        with pytest.raises(ValueError, match="cleanup proof unavailable"):
+            run(prompt=prompt, prompt_file=tmp_path / "prompt")
+    else:
+        assert run(prompt=prompt, prompt_file=tmp_path / "prompt") == 0
+    assert events == ["cleanup"]
+    assert store.read(terminal.logical_attempt_id) == terminal

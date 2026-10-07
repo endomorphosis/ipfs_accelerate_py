@@ -13,89 +13,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner as runne
 from ipfs_accelerate_py.agent_supervisor.runtime import process_security
 
 
-@pytest.fixture
-def factory_case(tmp_path, monkeypatch):
-    home = tmp_path / "provider-home"
-    home.mkdir(mode=0o700)
-    prompt = tmp_path / "prompt.txt"
-    prompt.write_text("test prompt")
-    prompt.chmod(0o600)
-    captured = {"spawns": [], "waits": []}
-    class Launcher:
-        def wait(self, timeout=None):
-            return 0
-        def poll(self):
-            return 0
-        def kill(self):
-            pytest.fail("successful launcher was killed")
-    class Watchdog:
-        pid = 424242
-        start_ticks = 123
-        def wait(self, timeout=None):
-            captured["waits"].append(timeout)
-            return 0
-        def poll(self):
-            return 0
-        def kill(self):
-            pytest.fail("prepared watchdog was killed")
-        def terminate(self):
-            pytest.fail("prepared watchdog was terminated")
-    def popen(argv, **kwargs):
-        captured["spawns"].append((list(argv), kwargs))
-        return Launcher()
-    real_resolve, real_stat = Path.resolve, Path.stat
-    monkeypatch.setattr(Path, "resolve", lambda p, **kw: p if str(p) == "/usr/bin/docker" else real_resolve(p, **kw))
-    monkeypatch.setattr(Path, "stat", lambda p, **kw: SimpleNamespace(st_uid=0, st_mode=stat.S_IFREG | 0o755) if str(p) == "/usr/bin/docker" else real_stat(p, **kw))
-    monkeypatch.setattr(runner.tempfile, "gettempdir", lambda: str(tmp_path))
-    monkeypatch.setattr(runner.subprocess, "Popen", popen)
-    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **kw: pytest.fail("unqualified Docker effect"))
-    monkeypatch.setattr(runner, "_docker_cleanup_binding_path", lambda name: None)
-    monkeypatch.setattr(runner, "_docker_cleanup_watchdog_env", lambda: {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"})
-    monkeypatch.setattr(runner, "_read_detached_docker_cleanup_watchdog", lambda *a, **kw: Watchdog())
-    monkeypatch.setattr(process_security, "require_state_authority_handoff_ptrace_protection", lambda: None)
-    return home, prompt, captured
 
 
-def test_factory_preserves_signed_coordinates_with_private_watchdog(tmp_path, factory_case):
-    home, prompt, captured = factory_case
-    lease_root = tmp_path / "asref-codex-container-signed"
-    name = "ipfs-accelerate-codex-123-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    lease = runner._DockerContainerLease.create(
-        "/usr/bin/docker", provider="codex", provider_home=home, prompt_path=prompt,
-        authorized_container_name=name, authorized_lease_root=lease_root,
-    )
-    try:
-        assert len(captured["spawns"]) == 1
-        argv, options = captured["spawns"][0]
-        assert argv[4] == runner._DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG
-        assert argv[argv.index("--container-name") + 1] == name
-        assert argv[argv.index("--lease-root") + 1] == str(lease_root)
-        assert argv[argv.index("--engine-endpoint") + 1] == lease.engine_endpoint
-        control_fd = int(argv[argv.index("--control-fd") + 1])
-        assert control_fd in options["pass_fds"]
-        assert options["stdin"] == subprocess.DEVNULL
-        assert not hasattr(lease, "_write_fd")
-        assert lease._watchdog.start_ticks == 123
-        assert lease._control_socket.fileno() >= 0
-    finally:
-        lease._control_socket.close()
-        lease._abort_provider_start()
 
 
-def test_constructor_denial_closes_socket_but_preserves_watchdog(factory_case, monkeypatch):
-    home, prompt, captured = factory_case
-    sockets = []
-    def deny(self, **kwargs):
-        sockets.append(kwargs["control_socket"])
-        raise ValueError("prepared binding denied")
-    monkeypatch.setattr(runner._DockerContainerLease, "__init__", deny)
-    with pytest.raises(ValueError, match="prepared binding denied"):
-        runner._DockerContainerLease.create(
-            "/usr/bin/docker", provider="codex", provider_home=home, prompt_path=prompt,
-        )
-    assert len(captured["spawns"]) == 1
-    assert sockets[0].fileno() == -1
-    assert captured["waits"]
 
 
 @pytest.mark.parametrize("observation", [None, {}, {"logical_attempt_id": "attempt"}])
@@ -239,3 +160,101 @@ def test_incompatible_signed_profile_denies_before_effect_claim_in_actual_caller
             effect_terminal=lambda code: pytest.fail("unstarted effect received a terminal callback"),
         )
     assert events == ["image_validated", ("closed", False)]
+
+
+def test_native_lease_rejects_unbound_rootless_engine_before_dispatch(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **kw: pytest.fail("foreign engine queried"))
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **kw: pytest.fail("watchdog dispatched"))
+    with pytest.raises(ValueError, match="engine endpoint is not locally admitted"):
+        runner._validated_local_docker_engine_endpoint(
+            f"unix:///run/user/{os.geteuid()}/docker.sock"
+        )
+
+
+def test_ordinary_compatibility_route_cannot_complete_protected_effect(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "_docker_isolation_binary", lambda: pytest.fail("Docker lookup before authority"))
+    with pytest.raises(ValueError, match="protected Codex effect requires native cleanup custody"):
+        runner._run_legacy_codex_quota_fallback_in_docker(
+            ["codex", "exec"], workspace=tmp_path, prompt="test",
+            prompt_path=tmp_path / "prompt", base_env={},
+            effect_claim=lambda value: pytest.fail("unqualified effect claim"),
+            effect_terminal=lambda value: pytest.fail("unqualified completion"),
+        )
+
+
+def test_current_codex_builder_mounts_repository_git_directory_once(tmp_path, monkeypatch):
+    from test.api.test_terminal_cleanup_observer import _current_launch_context
+    from test.api.test_llm_router_agent_supervisor_fallback_route import _discard_live_cleanup_inputs
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+    subprocess.run(["git", "-C", str(workspace), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "fixture"], check=True)
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    monkeypatch.setattr(runner.tempfile, "tempdir", str(private))
+    context, paths = _current_launch_context(tmp_path, workspace)
+    try:
+        mounts = context["mount_receipt"]
+        expected = f"type=bind,src={workspace / '.git'},dst={workspace / '.git'},readonly"
+        assert mounts.count(expected) == 1
+        assert len(mounts) == len(set(mounts))
+    finally:
+        _discard_live_cleanup_inputs(paths)
+
+
+@pytest.mark.parametrize("prompt", ["ordinary prompt", "ASEH_PROVIDER_START_FENCE_V2\nrun task"])
+def test_created_recovery_cannot_reinterpret_prompt_as_start_authority(tmp_path, monkeypatch, prompt):
+    monkeypatch.setattr(runner, "_docker_isolation_binary", lambda: pytest.fail("recovery reached Docker"))
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **kw: pytest.fail("recovery started provider"))
+    with pytest.raises(ValueError, match="lacks qualified native adoption custody"):
+        runner._start_recorded_codex_effect({"container_id": "sha256:" + "a" * 64}, prompt=prompt)
+
+
+@pytest.mark.parametrize("provider", ["codex", "grok"])
+def test_native_factory_is_disabled_before_paths_sockets_or_processes(tmp_path, monkeypatch, provider):
+    monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda *a, **kw: pytest.fail("lease directory created"))
+    monkeypatch.setattr(runner.socket, "socketpair", lambda *a, **kw: pytest.fail("native socket created"))
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **kw: pytest.fail("watchdog dispatched"))
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **kw: pytest.fail("Docker dispatched"))
+    for name in runner._DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES:
+        monkeypatch.setenv(name, "syntactically-present-but-not-owner-authority")
+    with pytest.raises(RuntimeError, match="disabled until supervisor owner STOP"):
+        runner._DockerContainerLease.create(
+            "/usr/bin/docker", provider=provider,
+            provider_home=tmp_path / "home", prompt_path=tmp_path / "prompt",
+            authorized_lease_root=tmp_path / "lease",
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", [
+    runner._DOCKER_REMOVAL_ISSUER_LAUNCHER_ARG,
+    runner._DOCKER_REMOVAL_ISSUER_ARG,
+    runner._DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG,
+    runner._DOCKER_CLEANUP_WATCHDOG_ARG,
+])
+def test_native_cli_modes_are_disabled_before_parsing_or_dispatch(tmp_path, mode):
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", str(Path(runner.__file__).resolve()), mode,
+         "--lease-root", str(tmp_path / "lease"), "--container-name", "never-dispatch"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+    assert result.returncode == 125
+    assert "disabled until supervisor owner STOP" in result.stderr
+    assert result.stdout == ""
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_native_inert_create_rejects_unbound_lease_before_any_effect(tmp_path, monkeypatch):
+    lease = object.__new__(runner._DockerContainerLease)
+    lease.cleanup_binding_record = None
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **kw: pytest.fail("unbound Docker create dispatched"))
+    monkeypatch.setattr(runner.subprocess, "Popen", lambda *a, **kw: pytest.fail("unbound create issuer dispatched"))
+    with pytest.raises(ValueError, match="requires native prepared cleanup binding"):
+        lease.create_inert_container(["docker", "create"], cwd=tmp_path, env={})
+    assert list(tmp_path.iterdir()) == []

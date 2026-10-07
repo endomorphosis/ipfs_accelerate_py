@@ -284,7 +284,7 @@ def _install_fake_grok_docker_primary(
         lambda: "/usr/bin/docker",
     )
     monkeypatch.setattr(
-        grok_cli_runner._DockerContainerLease,
+        grok_cli_runner._LegacyDockerContainerLease,
         "create",
         lambda *_args, **_kwargs: FakeLease(),
     )
@@ -1667,6 +1667,7 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     source_auth.write_text("{}\n", encoding="utf-8")
     source_auth.chmod(0o600)
     fallback = _terra_fallback_command(str(codex), workspace)
+    fallback[fallback.index("-m") + 1] = grok_cli_runner.CODEX_QUOTA_FALLBACK_MODEL
     image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     container_name = "ipfs-accelerate-codex-1-" + "b" * 32
     child_env = grok_cli_runner._codex_task_container_environment()
@@ -1730,7 +1731,20 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         in mounts
     )
     assert not any("/var/run/docker.sock" in mount for mount in mounts)
-    assert not any("/home/" in mount for mount in mounts)
+    # A pytest workspace may itself live under /home. Check the complete source
+    # allowlist instead of rejecting that path substring (or allowing a home
+    # directory merely because the fixture happened to be under /tmp).
+    mount_sources = {
+        field.removeprefix("src=")
+        for mount in mounts
+        for field in mount.split(",")
+        if field.startswith("src=")
+    }
+    assert mount_sources == {
+        "/usr", "/etc/ssl/certs",
+        str(grok_cli_runner._HOST_CODEX_TASK_TOOLCHAIN_PYTHON),
+        str(workspace), str(source_auth),
+    }
 
     inner = command[command.index(image) + 1 :]
     expected_inner = list(fallback)
@@ -1739,7 +1753,6 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]
     assert inner == ["-i", *expected_environment, *expected_inner]
-    assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
 
 
@@ -1757,6 +1770,9 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
     observed: dict[str, object] = {}
 
     def fake_create(command, **kwargs):
+        if "inspect" in command:
+            observed["inspection_command"] = list(command)
+            return subprocess.CompletedProcess(command, 0, stdout=(container_id + "\n").encode("ascii"), stderr=b"")
         observed["create_command"] = list(command)
         observed["create_kwargs"] = dict(kwargs)
         cidfile.write_text(container_id + "\n", encoding="ascii")
@@ -1780,7 +1796,7 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
     )
 
     returncode = (
-        grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
+        grok_cli_runner._run_legacy_created_grok_container_with_typed_failure_capture(
             create_command,
             docker_bin="/usr/bin/docker",
             docker_config=docker_config,
@@ -1791,6 +1807,7 @@ def test_docker_grok_create_is_followed_by_attached_exact_container_start(
     )
 
     assert returncode == 19
+    assert observed["inspection_command"][-1] == container_id
     assert observed["create_command"] == create_command
     assert observed["create_kwargs"]["cwd"] == workspace
     assert observed["create_kwargs"]["stdin"] is subprocess.DEVNULL
@@ -1856,7 +1873,7 @@ def test_docker_grok_create_rejects_untrusted_container_identity(
     )
 
     with pytest.raises(ValueError):
-        grok_cli_runner._run_created_grok_container_with_typed_failure_capture(
+        grok_cli_runner._run_legacy_created_grok_container_with_typed_failure_capture(
             ["/usr/bin/docker", "create", "fixture-image"],
             docker_bin="/usr/bin/docker",
             docker_config=docker_config,
@@ -2530,7 +2547,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         ),
     )
     monkeypatch.setattr(
-        grok_cli_runner._DockerContainerLease,
+        grok_cli_runner._LegacyDockerContainerLease,
         "create",
         fake_create,
     )
@@ -2577,7 +2594,7 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         def validate_route() -> None:
             boundary_events.append("route")
 
-        return grok_cli_runner._run_codex_quota_fallback_in_docker(
+        return grok_cli_runner._run_legacy_codex_quota_fallback_in_docker(
             _terra_fallback_command(str(codex), workspace),
             workspace=workspace,
             prompt="repair",

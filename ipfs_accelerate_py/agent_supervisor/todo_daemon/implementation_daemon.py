@@ -18672,9 +18672,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    @staticmethod
     def _protected_provider_effect_audit(
-        self,
         *,
+        repo_root: Path,
         command_items: Sequence[str],
         receipt_text: str,
         returncode: int | None,
@@ -18761,8 +18762,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             store = DurableProviderAttemptCAS(
                 str(store_path),
                 expected_directory_identity=str(store_identity),
+                create_if_missing=False,
             )
-            terminal = store.read(str(logical_attempt_id))
+            terminal = store.observe(str(logical_attempt_id))
             if terminal is None or terminal.state != "terminal":
                 return audit
             launch_owner_pid = terminal.effect_launch_receipt.get(
@@ -18777,7 +18779,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return audit
             context = parse_agent_implementation_effect_authorization_context(
                 terminal.authorization_context,
-                repo_root=self.repo_root,
+                repo_root=repo_root,
                 effect_started_at_ms=terminal.effect_started_at_ms,
                 expected_signer_parent_pid=launch_owner_pid,
                 max_age_ms=5 * 60 * 1000,
@@ -18885,6 +18887,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "historical_effect_started_at_ms": terminal.effect_started_at_ms,
             }
         )
+        if returncode == 0:
+            # The independent observer replays signed authority and the exact
+            # completed cleanup CAS. A returned wrapper or mutable marker alone
+            # never supplies candidate-release evidence.
+            from .candidate_rejection_closure import observe_provider_cleanup
+
+            cleanup = observe_provider_cleanup(
+                repo_root=repo_root,
+                command_items=command_items,
+                receipt_text=receipt_text,
+            )
+            if cleanup is not None:
+                audit["candidate_provider_cleanup"] = cleanup
         return audit
 
     def _provider_capacity_failure_from_log(
@@ -18945,6 +18960,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         protected_provenance = bool(protected_command or protected_latched)
         if protected_provenance:
             return self._protected_provider_effect_audit(
+                repo_root=self.repo_root,
                 command_items=command_items,
                 receipt_text=receipt_text,
                 returncode=returncode,

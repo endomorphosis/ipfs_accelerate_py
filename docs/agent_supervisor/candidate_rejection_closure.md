@@ -1,11 +1,22 @@
 # Protected candidate rejection closure
 
+## Current integration status (2026-10-07)
+
+The protocol below is a retained design and historical qualification, not a
+description of a fully connected current supervisor. The current tree has the
+closure helpers, durable provider-attempt store, and read-only terminal cleanup
+observer. The Portal diagnostic audit can attach independently verified cleanup
+evidence. The current outer daemon and Bridge do **not** implement the complete
+callback settlement and claim-release chain described below. Existing unknown
+callbacks remain unknown. See [the current cleanup integration status and migration
+plan](durable_cleanup_status.md) before using this document as execution evidence.
+
 A rejected candidate can be retryable while its outer database provider callback
 still has an unknown outcome. Diagnostic codes, a failed attempt, and a stopped
 process do not settle that callback. This path recognizes a separate, fully
 observed terminal rejection before allowing ordinary retry disposition.
 
-## Initial supported path
+## Retained protocol: initial supported path
 
 The producer supports one non-pooled ephemeral workspace, one local Portal
 attempt, and a protected Codex fallback that returned zero before proposal
@@ -73,7 +84,7 @@ inference or retroactive receipt. `CandidateClosureObservationUnknown` also keep
 Portal task, implementation and resource claims, the selected dispatch intent,
 and unfinished state out of generic exception/finally cleanup.
 
-## Qualification and limits
+## Historical qualification and limits
 
 Tests use actual disposable signed native route/CAS storage, typed owner grants,
 reservation/admission, task control, Git preservation, lifecycle transitions, and

@@ -1,5 +1,14 @@
 # Candidate cleanup journal recovery
 
+## Current integration status (2026-10-07)
+
+This document describes the retained protocol. Its helper module is present, but
+the current Bridge, lifecycle owner and outer callback admission still lack the
+complete joins required to invoke it. Cleanup observation alone cannot settle a
+callback or release a claim. Current integration gaps and the required future
+receipt migration are tracked in [durable_cleanup_status.md](durable_cleanup_status.md).
+The qualification described below is historical, not a current end-to-end result.
+
 Future nonpooled protected Codex proposal rejections can recover an interrupted
 native lifecycle deletion without invoking the provider again. This follows the
 native deletion component described in [candidate_lifecycle_delete_journal.md](candidate_lifecycle_delete_journal.md).

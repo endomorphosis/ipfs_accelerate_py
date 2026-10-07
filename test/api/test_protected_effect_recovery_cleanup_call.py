@@ -183,9 +183,6 @@ def _recovery_fixture(monkeypatch, tmp_path: Path, *, status="exited", returncod
         lambda value: "recorded-route-outcome:" + str(value["fallback_returncode"]),
     )
     monkeypatch.setattr(
-        runner, "_recorded_codex_terminal_capacity_evidence", lambda _r: {}
-    )
-    monkeypatch.setattr(
         runner,
         "_recorded_codex_terminal_cleanup_evidence",
         lambda _r: {"binding_record_id": "binding:2"},

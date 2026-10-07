@@ -934,7 +934,10 @@ def _is_internal_docker_cleanup_watchdog_argv(tokens: object) -> bool:
             "grok_cli_runner.py",
         }
         and len(tokens) > argument_index
-        and tokens[argument_index] == "--internal-docker-cleanup-watchdog"
+        and tokens[argument_index] in {
+            "--internal-docker-cleanup-watchdog",
+            "--internal-legacy-docker-cleanup-watchdog",
+        }
     )
 
 

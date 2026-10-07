@@ -41,9 +41,12 @@ def custody(tmp_path, monkeypatch):
         monkeypatch.setenv(name, value)
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    with monkeypatch.context() as mp:
-        mp.setattr(tempfile, "tempdir", str(private))
-        context, paths = _live_cleanup_launch_context()
+    monkeypatch.setattr(tempfile, "tempdir", str(private))
+    from test.api.test_terminal_cleanup_observer import _current_launch_context
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    context, paths = _current_launch_context(tmp_path, workspace)
     cleanup = context["cleanup_receipt"]
     cleanup["watchdog_pid"] = os.getpid()
     cleanup["watchdog_start_ticks"] = runner._runner_process_start_ticks(os.getpid())
@@ -452,17 +455,22 @@ def test_prepared_losing_lease_cleanup_keeps_foreign_winner_untouched(custody):
 
 def test_command_bound_native_terminal_requires_exact_fence_and_dispatch(custody):
     """Fenced binding/CAS/dispatch join, with Docker absence explicitly doubled."""
-    from test.api.test_agent_supervisor_grok_quota_terra_gate import (
-        _created_docker_termination_fence,
-    )
-
     case = custody
     binding = _publish_prepared(case)
-    fence = _created_docker_termination_fence(
-        container_name=case.context["container_name"],
-        container_id=str(case.context["container_id"]).removeprefix("sha256:"),
-        image_id=case.context["image_id"],
-    )
+    # Authored inert-container observation, not a running-kernel-scope proof.
+    # Docker absence below is explicitly doubled for this CAS join test.
+    fence = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/docker-termination-fence@1",
+        "provider": "codex",
+        "container_name": case.context["container_name"],
+        "container_id": str(case.context["container_id"]).removeprefix("sha256:"),
+        "image_id": case.context["image_id"],
+        "isolation_label": "ipfs_accelerate.codex_fallback_isolation",
+        "docker_state": "created",
+        "init_pid": 0,
+        "kernel_scope": {},
+    }
+    fence["fence_id"] = runner._effect_receipt_identity(fence)
     binding.update(
         binding_state="command_bound",
         create_command_id="sha256:" + "a" * 64,

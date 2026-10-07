@@ -48,55 +48,45 @@ def test_transient_preflight_retry_export_has_reviewed_signature() -> None:
 
 
 def test_transient_preflight_retry_uses_current_validated_receipt() -> None:
-    """The legacy export stays 4.5 while current 4.6 receipts stay exact."""
+    """Current route, preflight and receipt share the same exact model."""
 
     nonce = "a" * 64
     evidence = "Error: max turns reached\n"
     receipt = build_grok_failure_receipt(
         probe_stderr_text=evidence,
         nonce=nonce,
-        model="grok-4.6",
+        model="grok-4.7",
         probe_returncode=41,
         primary_dispatched=False,
     )
 
-    assert llm_router.AGENT_IMPLEMENTATION_PRIMARY_MODEL_ID == "grok-4.6"
-    assert GROK_QUOTA_PROBE_CONTRACT["model"] == "grok-4.5"
-    assert (
-        llm_router._LEGACY_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
-        == "grok-4.5"
-    )
-    assert "grok45" in llm_router._LEGACY_AGENT_IMPLEMENTATION_ROUTE.route_id
-    assert (
-        llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
-        == "grok-4.5"
-    )
-    assert (
-        llm_router._GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
-        == "grok-4.6"
-    )
+    assert llm_router.resolve_agent_implementation_route(default_route="legacy").primary_model_id == "grok-4.7"
+    assert GROK_QUOTA_PROBE_CONTRACT["model"] == "grok-4.7"
     assert receipt["probe_contract_id"] == (
-        llm_router._AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS["grok-4.6"]
+        llm_router._AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
     )
     assert valid_grok_failure_receipt(
         receipt,
         nonce=nonce,
-        model="grok-4.6",
+        model="grok-4.7",
         returncode=41,
     )
     assert llm_router.retryable_agent_implementation_preflight_failure(
         evidence,
         receipt,
         nonce=nonce,
-        model="grok-4.6",
+        model="grok-4.7",
         probe_returncode=41,
     )
     assert not llm_router.retryable_agent_implementation_preflight_failure(
         evidence.rstrip("\n"),
         receipt,
         nonce=nonce,
-        model="grok-4.6",
+        model="grok-4.7",
         probe_returncode=41,
+    )
+    assert not llm_router.retryable_agent_implementation_preflight_failure(
+        evidence, receipt, nonce=nonce, model="grok-4.6", probe_returncode=41,
     )
 def test_current_runner_typed_preflight_reaches_retry_without_a_model_call(
     tmp_path: Path,
@@ -153,7 +143,7 @@ def test_current_runner_typed_preflight_reaches_retry_without_a_model_call(
         assert invocation["openai_key_present"] is False
         assert invocation["xai_key"] == "fake-local-grok-authority"
         assert invocation["codex_compat"] == "0"
-        assert invocation["argv"][0:2] == ["--model", "grok-4.6"]
+        assert invocation["argv"][0:2] == ["--model", "grok-4.7"]
         assert invocation["argv"][2:4] == ["--max-turns", "1"]
         assert invocation["argv"][-2:] == [
             "--disallowed-tools",
