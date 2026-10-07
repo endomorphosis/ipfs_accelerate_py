@@ -1,0 +1,206 @@
+{
+  "allowlists": {
+    "admission_refs": [
+      "raw_source_required",
+      "semantic_state_root_cid",
+      "source_cid"
+    ],
+    "admissions": [
+      "freshness",
+      "interface",
+      "schema"
+    ],
+    "capsules": [
+      "capsule_compiler_version",
+      "capsule_schema",
+      "extractor_version",
+      "schema",
+      "semantic_index_schema",
+      "source_cid"
+    ]
+  },
+  "base_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "benchmark_launches": 0,
+  "census": {
+    "bytes": 26974,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/authored-metadata-census-01.json",
+    "sha256": "ad8640c76e78ae412a7bd11b48906fce374fdfe3111e5a1a47faf4db497f3c43"
+  },
+  "census_script": {
+    "bytes": 5565,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/authored_metadata_census.py",
+    "sha256": "7e32918e329ecca9a8380daa894638589d8c51ef9b7fddda509001c5115ef0dc"
+  },
+  "commits": 0,
+  "completion_authority": false,
+  "environment": {
+    "bytecode_disabled": true,
+    "datasets_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+    "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+    "optional_ipfs_kit_bootstrap": "Existing HACC import reported in logs; no IPFS Kit readiness or deployment qualification claimed.",
+    "pytest_plugin_autoload_disabled": true,
+    "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "pythonpath": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+  },
+  "hidden_evaluation_or_solution_reads": 0,
+  "inline_values": "common_bindings keeps all shared values inline. No new opaque aliases, hidden dictionary or absent fact handle is introduced. The complete pre-existing @1 translation_table stays visible and unchanged.",
+  "limitations": [
+    "Byte-derived proxy measurements are not actual provider token usage.",
+    "No total-token savings claim; retained planning and all coding/repair/tool/lookup costs need independent native matched evaluation.",
+    "This codec does not change or truncate the native CLI conversation/tool history.",
+    "Operational source/task/producer currentness and trusted receipt custody remain mandatory upstream checks.",
+    "This codec does not qualify a generic Quack gateway, perform private database reads, attach control.duckdb or confer code semantics proof."
+  ],
+  "offline_complete_input_counts": [
+    {
+      "candidate_bytes": 11817,
+      "candidate_proxy_units": 2955,
+      "capsules": 1,
+      "exact_restoration": true,
+      "fixture_id": "authored-functions-0",
+      "native_bytes": 11319,
+      "native_proxy_units": 2830,
+      "selected_mode": "legacy"
+    },
+    {
+      "candidate_bytes": 18394,
+      "candidate_proxy_units": 4599,
+      "capsules": 3,
+      "exact_restoration": true,
+      "fixture_id": "authored-functions-1",
+      "native_bytes": 18959,
+      "native_proxy_units": 4740,
+      "selected_mode": "common-bindings@1"
+    },
+    {
+      "candidate_bytes": 35290,
+      "candidate_proxy_units": 8823,
+      "capsules": 8,
+      "exact_restoration": true,
+      "fixture_id": "authored-functions-6",
+      "native_bytes": 38505,
+      "native_proxy_units": 9627,
+      "selected_mode": "common-bindings@1"
+    },
+    {
+      "candidate_bytes": 82665,
+      "candidate_proxy_units": 20667,
+      "capsules": 22,
+      "exact_restoration": true,
+      "fixture_id": "authored-functions-20",
+      "native_bytes": 93321,
+      "native_proxy_units": 23331,
+      "selected_mode": "common-bindings@1"
+    }
+  ],
+  "omission_authority": false,
+  "owned_source_files": [
+    {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 20770,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_view.py",
+      "sha256": "0b3e3f712740955bc355b2dc9efd94653e2d1691602e454a6111171f3499c818"
+    }
+  ],
+  "private_database_reads": 0,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_authority": false,
+  "receipt_binding_scope": [
+    "translation_cid",
+    "task_id",
+    "scope_cid",
+    "semantic_root_cid",
+    "source_manifest_sha256",
+    "native_core_sha256",
+    "native_context_sha256",
+    "native_suffix_sha256",
+    "original_translated_semantic_sha256",
+    "native_transport_sha256",
+    "candidate_view_sha256",
+    "common_bindings_sha256",
+    "shared_field_paths",
+    "capsule_count",
+    "admission_count"
+  ],
+  "red_history": {
+    "correction": "A comment-only real producer fixture now asserts exactly one capsule and one admission, candidate expansion, exact native restoration and legacy fallback. A targeted rerun passed before the full final suite.",
+    "execution_receipt": {
+      "bytes": 1559,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-test-execution-01.json",
+      "sha256": "f13c55d935eb26bc3a9f9795aca771801903cac1858fbd6a8e46d7677a5386f6"
+    },
+    "exit_code": 1,
+    "junit_xml": {
+      "bytes": 8659,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml",
+      "sha256": "1d45ec2dc9f67b7dcde98b2f701ec2341831a4d31f6dc1bcbb9ed24376fa5f20"
+    },
+    "result": "50 passed, 1 failed. The zero-function fixture included a ROOT_TEXT symbol and correctly benefited; the authored fallback expectation was wrong.",
+    "stdout_log": {
+      "bytes": 8525,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.log",
+      "sha256": "05999c74b8e06fc5f0871478143b2b4d94761c4bded908097688591dc7957dfe"
+    }
+  },
+  "row_local_fields": "All source bodies, signatures, paths, literals, confidence, admission decisions, caveats, validity bindings, uncertainty statuses and unknown fields remain unchanged. Freshness is a literal shared binding only when identical in all admission rows.",
+  "schema": "semantic-metadata-view-qualification@1",
+  "scope": "Pure opt-in candidate representation and exact restore for already owner-verified semantic transport @1. Original @1 and @2 codecs are unchanged; @2 is refused by the new view.",
+  "selection_rule": "Only select common-bindings@1 if the complete candidate input has fewer UTF-8 bytes and fewer ceil(bytes/4) proxy units. Prefix and suffix must be identical and each transport must occur exactly once. Otherwise retain the exact original input in legacy mode and record the fallback.",
+  "selection_schema": "supervisor-semantic-metadata-selection@1",
+  "source_freshness_verified_by_view": false,
+  "tests": {
+    "command_argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-c",
+      "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.xml",
+      "test/api/test_semantic_metadata_view.py"
+    ],
+    "command_shell": "/home/barberb/.local/bin/python -B -c 'import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))' -q -o addopts= -p no:cacheprovider -p ipfs_accelerate_py.testing.pytest_ast_seal --junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.xml test/api/test_semantic_metadata_view.py",
+    "errors": 0,
+    "execution_receipt": {
+      "bytes": 1576,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-test-execution-final-02.json",
+      "sha256": "46f76bba45f11514511b7f5f277ee67e5809e1ff2efc7a194505455499f023d1"
+    },
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal_path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.duckdb",
+    "junit_elapsed_seconds": 46.765,
+    "junit_xml": {
+      "bytes": 8037,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.xml",
+      "sha256": "52ed43e6364394ca51b1ad9dd45b0ff32d914265292191c99cbbd8a227ccc76e"
+    },
+    "pytest_reported_elapsed_seconds": 46.81,
+    "stdout_log": {
+      "bytes": 7665,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.log",
+      "sha256": "a35b9120507ddad71abeed4f9973b589ca0b882ea5d577ea35b85f2c292c23fa"
+    },
+    "tests": 53,
+    "wrapper_elapsed_seconds": 48.54764382203575
+  },
+  "token_proxy": "utf8-bytes-ceil-div4@1",
+  "upstream_transport_source": {
+    "bytes": 37780,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+    "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+  },
+  "view_receipt_schema": "supervisor-semantic-metadata-view-receipt@1",
+  "view_schema": "supervisor-semantic-metadata-view@1",
+  "whitespace_check": "git diff --no-index --check /dev/null on each new owned file emitted no diagnostics; exit1 reflects the new-file differences."
+}

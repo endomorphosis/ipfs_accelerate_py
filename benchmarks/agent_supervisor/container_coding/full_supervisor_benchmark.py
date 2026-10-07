@@ -31,6 +31,10 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES, validate_coding_reply_mode,
     coding_reply_selection, require_coding_reply_archive,
 )
+from .terminal_semantic_metadata_policy import (
+    DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
+    semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
+)
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -166,6 +170,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                task_profile: dict | None = None, provider_profile: str | None = None,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
+               semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                model_revision: str = "") -> dict:
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -173,6 +178,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+    validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
+        transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
     from .benchmark_resource_profile import execution_budget
     budget = execution_budget(resource_profile)
     config = baseline_config(dataset, output, resource_profile=resource_profile, task_name=task_name)
@@ -184,7 +191,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
                    "model_revision": model_revision if arm == "full" else "",
                    **semantic_transport_selection(semantic_transport_schema),
-                   **coding_reply_selection(coding_reply_mode)},
+                   **coding_reply_selection(coding_reply_mode),
+                   **semantic_metadata_selection(semantic_metadata_view)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -229,10 +237,13 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             setup_cache_policy: str | None = None, task_name: str = TASK,
             task_profile: Path | None = None, provider_profile: str | None = None,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
-            coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE) -> dict:
+            coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
+            semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW) -> dict:
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
+    validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
+        transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
@@ -250,6 +261,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
+    require_semantic_metadata_archive(manifest, semantic_metadata_view)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
         verify_grok_archive(archive / "runtime.tar.gz", manifest)
@@ -286,6 +298,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
+        semantic_metadata_view=semantic_metadata_view,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
@@ -313,6 +326,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
+              **semantic_metadata_observation(semantic_metadata_view),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
@@ -343,6 +357,13 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_transport = validate_semantic_transport_schema(
         config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
         arm=prepared["arm"])
+    metadata_view = validate_semantic_metadata_view(
+        prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=prepared["arm"],
+        transport_schema=transport,
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_metadata_view = validate_semantic_metadata_view(
+        config["agents"][0].get("kwargs", {}).get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        arm=prepared["arm"], transport_schema=configured_transport)
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -368,6 +389,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
+              **semantic_metadata_observation(metadata_view),
+              **({"semantic_metadata_config_unchanged": configured_metadata_view == metadata_view}
+                 if "semantic_metadata_view" in prepared or "semantic_metadata_view" in config["agents"][0].get("kwargs", {}) else {}),
               **({"coding_reply_config_unchanged": configured_reply_mode == reply_mode}
                  if "coding_reply_mode" in prepared or "coding_reply_mode" in config["agents"][0].get("kwargs", {}) else {}),
               **({"semantic_transport_config_unchanged": configured_transport == transport}
@@ -378,7 +402,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
-                  and configured_transport == transport and configured_reply_mode == reply_mode,
+                  and configured_transport == transport and configured_reply_mode == reply_mode
+                  and configured_metadata_view == metadata_view,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -405,6 +430,15 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     if transport != config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
         raise ValueError("prepared semantic transport selection changed")
+    metadata_view = validate_semantic_metadata_view(
+        prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=prepared["arm"],
+        transport_schema=transport,
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_metadata_view = validate_semantic_metadata_view(
+        config["agents"][0].get("kwargs", {}).get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+        arm=prepared["arm"], transport_schema=transport)
+    if metadata_view != configured_metadata_view:
+        raise ValueError("prepared semantic metadata view selection changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -413,6 +447,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
+    require_semantic_metadata_archive(current_manifest, metadata_view)
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
     from .terminal_worker_capability import require_worker_capability
@@ -448,6 +483,9 @@ def main():
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE, help="Explicit coding acknowledgment contract; frozen by preparation")
+    parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
+        default=DEFAULT_SEMANTIC_METADATA_VIEW,
+        help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     from .terminal_setup_cache_advice import POLICIES
     parser.add_argument("--setup-cache-policy", choices=POLICIES,
@@ -462,6 +500,8 @@ def main():
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.coding_reply_mode != DEFAULT_CODING_REPLY_MODE:
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
+        parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -473,7 +513,8 @@ def main():
                          task_name=TASK if args.task is None else args.task,
                          task_profile=args.task_profile, provider_profile=args.provider_profile,
                          semantic_transport_schema=args.semantic_transport_schema,
-                         coding_reply_mode=args.coding_reply_mode)
+                         coding_reply_mode=args.coding_reply_mode,
+                         semantic_metadata_view=args.semantic_metadata_view)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))

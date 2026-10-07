@@ -1,0 +1,157 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test
+configfile: pytest.ini
+collected 6 items
+
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[31mF[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31m                       [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_____ test_independent_historical_reconstruction_checks_both_reply_layers ______[0m
+
+dispatch_case = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1679/test_independent_historical_re0/repository'), 'workspace'...outerDeps(accelerate_managers={}, backend_manager=None, ipfs_backend=None, router_cache={}, remote_cache=None), ...})]}
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_independent_historical_reconstruction_checks_both_reply_layers[39;49;00m(dispatch_case):[90m[39;49;00m
+        case = dispatch_case[90m[39;49;00m
+        _, receipt = invoke(case, semantic_metadata_view=[33m"[39;49;00m[33mcommon-bindings@1[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        receipt[[33m"[39;49;00m[33mphase[39;49;00m[33m"[39;49;00m] = [33m"[39;49;00m[33mcoding[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+>       projected = audit._receipt(receipt, case[[33m"[39;49;00m[33mworkspace[39;49;00m[33m"[39;49;00m].parent)[90m[39;49;00m
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_dispatch.py[0m:80: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+item = {'schema': 'router-implementation-invocation@1', 'invocation_id': '2de470c64b504f38986690a7e1f64ea9', 'provider': 'codex_cli', 'model': 'authored-model', ...}
+workspace_root = PosixPath('/tmp/pytest-of-barberb/pytest-1679/test_independent_historical_re0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_receipt[39;49;00m(item: [96mdict[39;49;00m, workspace_root: Path) -> [96mdict[39;49;00m:[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(item, [96mdict[39;49;00m) [95mor[39;49;00m item.get([33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mrouter-implementation-invocation@1[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid router receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m item.get([33m"[39;49;00m[33mphase[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mcoding[39;49;00m[33m"[39;49;00m [95mor[39;49;00m item.get([33m"[39;49;00m[33mpurpose[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mcoding[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mnon-coding router receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        result = {key: item[key] [94mfor[39;49;00m key [95min[39;49;00m RECEIPT_FIELDS}[90m[39;49;00m
+        result.update({key: item[key] [94mfor[39;49;00m key [95min[39;49;00m TRANSLATION_FIELDS [94mif[39;49;00m key [95min[39;49;00m item})[90m[39;49;00m
+        _identity(result[[33m"[39;49;00m[33minvocation_id[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        location = result[[33m"[39;49;00m[33mworkspace[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(location, [96mstr[39;49;00m) [95mor[39;49;00m [96mlen[39;49;00m(location.encode()) > [94m4096[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid workspace identity[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        workspace, root = Path(location), Path(workspace_root)[90m[39;49;00m
+        [94mif[39;49;00m ([95mnot[39;49;00m workspace.is_absolute() [95mor[39;49;00m [33m"[39;49;00m[33m..[39;49;00m[33m"[39;49;00m [95min[39;49;00m workspace.parts[90m[39;49;00m
+                [95mor[39;49;00m [96mstr[39;49;00m(workspace) != location [95mor[39;49;00m [95mnot[39;49;00m root.is_absolute()[90m[39;49;00m
+                [95mor[39;49;00m workspace == root [95mor[39;49;00m [95mnot[39;49;00m workspace.is_relative_to(root)):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mworkspace outside configured allocation root[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mfor[39;49;00m field [95min[39;49;00m ([33m"[39;49;00m[33mprompt_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mnative_prompt_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworkspace_advisory_sha256[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+            _digest(result[field])[90m[39;49;00m
+        [94mfor[39;49;00m field [95min[39;49;00m ([33m"[39;49;00m[33mprompt_bytes[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mnative_prompt_bytes[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_bytes[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mworkspace_advisory_bytes[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+            [94mif[39;49;00m [96mtype[39;49;00m(result[field]) [95mis[39;49;00m [95mnot[39;49;00m [96mint[39;49;00m [95mor[39;49;00m [95mnot[39;49;00m [94m0[39;49;00m < result[field] <= [94m262_144[39;49;00m:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid input byte count[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        translated = result.get([33m"[39;49;00m[33msemantic_translation[39;49;00m[33m"[39;49;00m) [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+        instruction = result.get([33m"[39;49;00m[33mpublic_instruction[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        router_bytes = result.get([33m"[39;49;00m[33mrouter_prompt_bytes[39;49;00m[33m"[39;49;00m, result[[33m"[39;49;00m[33mnative_prompt_bytes[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        [94mif[39;49;00m translated [95mor[39;49;00m instruction [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            _digest(result[[33m"[39;49;00m[33mrouter_prompt_sha256[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+            [94mif[39;49;00m [96mtype[39;49;00m(router_bytes) [95mis[39;49;00m [95mnot[39;49;00m [96mint[39;49;00m [95mor[39;49;00m [95mnot[39;49;00m [94m0[39;49;00m < router_bytes <= [94m262_144[39;49;00m:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid translated input byte count[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m translated:[90m[39;49;00m
+            translation = result[[33m"[39;49;00m[33msemantic_translation[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            [94mif[39;49;00m ([95mnot[39;49;00m [96misinstance[39;49;00m(translation, [96mdict[39;49;00m)[90m[39;49;00m
+                    [95mor[39;49;00m translation.get([33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m) [95mnot[39;49;00m [95min[39;49;00m {[33m"[39;49;00m[33msupervisor-semantic-router-encoding@1[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                                                         [33m"[39;49;00m[33msupervisor-semantic-router-encoding@2[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+                    [95mor[39;49;00m translation.get([33m"[39;49;00m[33mfreshness_checked[39;49;00m[33m"[39;49;00m) [95mis[39;49;00m [95mnot[39;49;00m [94mTrue[39;49;00m):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid semantic translation receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m (translation[[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33msupervisor-semantic-router-encoding@2[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    [95mand[39;49;00m translation.get([33m"[39;49;00m[33mtransport_schema[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33msupervisor-semantic-router-input@2[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid semantic transport version[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m (translation[[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33msupervisor-semantic-router-encoding@1[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    [95mand[39;49;00m translation.get([33m"[39;49;00m[33mtransport_schema[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msupervisor-semantic-router-input@1[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                    != [33m"[39;49;00m[33msupervisor-semantic-router-input@1[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid semantic transport version[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            _identity(translation[[33m"[39;49;00m[33mtranslation_cid[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        [94melif[39;49;00m instruction [95mis[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m (router_bytes != result[[33m"[39;49;00m[33mnative_prompt_bytes[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+              [95mor[39;49;00m result.get([33m"[39;49;00m[33mrouter_prompt_sha256[39;49;00m[33m"[39;49;00m, result[[33m"[39;49;00m[33mnative_prompt_sha256[39;49;00m[33m"[39;49;00m]) != result[[33m"[39;49;00m[33mnative_prompt_sha256[39;49;00m[33m"[39;49;00m]):[90m[39;49;00m
+            [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33munexplained router projection[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        residual = result.get([33m"[39;49;00m[33mdoctor_residual_context[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m residual [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m ([95mnot[39;49;00m translated [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(residual, [96mdict[39;49;00m)[90m[39;49;00m
+                    [95mor[39;49;00m residual.get([33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mdoctor-residual-router-context@1[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    [95mor[39;49;00m residual.get([33m"[39;49;00m[33mcandidate_only[39;49;00m[33m"[39;49;00m) [95mis[39;49;00m [95mnot[39;49;00m [94mTrue[39;49;00m):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid Doctor residual receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mfor[39;49;00m key [95min[39;49;00m ([33m"[39;49;00m[33martifact_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33madvisory_sha256[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                _digest(residual[key])[90m[39;49;00m
+            _identity(residual[[33m"[39;49;00m[33mtask_cid[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        [94mif[39;49;00m instruction [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m ([95mnot[39;49;00m [96misinstance[39;49;00m(instruction, [96mdict[39;49;00m)[90m[39;49;00m
+                    [95mor[39;49;00m instruction.get([33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m) [95mnot[39;49;00m [95min[39;49;00m {[33m"[39;49;00m[33msupervisor-public-instruction-inclusion@1[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msupervisor-public-instruction-inclusion@2[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+                    [95mor[39;49;00m [96many[39;49;00m(instruction.get(k) [95mis[39;49;00m [95mnot[39;49;00m [94mTrue[39;49;00m [94mfor[39;49;00m k [95min[39;49;00m[90m[39;49;00m
+                           ([33m"[39;49;00m[33mmanifest_signature_verified[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mverbatim_utf8[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource_freshness_verified[39;49;00m[33m"[39;49;00m))[90m[39;49;00m
+                    [95mor[39;49;00m [96many[39;49;00m(instruction.get(k) [95mis[39;49;00m [95mnot[39;49;00m [94mFalse[39;49;00m [94mfor[39;49;00m k [95min[39;49;00m[90m[39;49;00m
+                           ([33m"[39;49;00m[33msemantic_minification_applied[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mhistorical_replay[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mscope_expansion_authority[39;49;00m[33m"[39;49;00m))):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid public instruction inclusion receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mfor[39;49;00m key [95min[39;49;00m ([33m"[39;49;00m[33martifact_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mblock_sha256[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                _digest(instruction[key])[90m[39;49;00m
+            _identity(instruction[[33m"[39;49;00m[33mtask_cid[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+            [94mif[39;49;00m instruction[[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33msupervisor-public-instruction-inclusion@2[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+                requirements = instruction.get([33m"[39;49;00m[33mintent_requirements[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                [94mif[39;49;00m ([95mnot[39;49;00m [96misinstance[39;49;00m(requirements, [96mdict[39;49;00m) [95mor[39;49;00m requirements.get([33m"[39;49;00m[33madmission_graph_verified[39;49;00m[33m"[39;49;00m) [95mis[39;49;00m [95mnot[39;49;00m [94mTrue[39;49;00m[90m[39;49;00m
+                        [95mor[39;49;00m [96many[39;49;00m(requirements.get(key) [95mis[39;49;00m [95mnot[39;49;00m [94mFalse[39;49;00m [94mfor[39;49;00m key [95min[39;49;00m ([33m"[39;49;00m[33mnative_persistence_verified_here[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                            [33m"[39;49;00m[33msource_semantics_verified[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msemantic_alignment_verified[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mproof_authority[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                            [33m"[39;49;00m[33mexecution_authority[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m))):[90m[39;49;00m
+                    [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid task-specific intent requirement receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                [94mfor[39;49;00m key [95min[39;49;00m ([33m"[39;49;00m[33mrequirements_context_cid[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcontract_cid[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mgraph_cid[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcoverage_cid[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mplanning_receipt_cid[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                    _identity(requirements[key])[90m[39;49;00m
+                _digest(requirements[[33m"[39;49;00m[33mledger_sha256[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+                [94mfor[39;49;00m key [95min[39;49;00m ([33m"[39;49;00m[33mrequirement_ids[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mdependency_requirement_ids[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mprohibition_requirement_ids[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                    [94mif[39;49;00m ([95mnot[39;49;00m [96misinstance[39;49;00m(requirements.get(key), [96mlist[39;49;00m) [95mor[39;49;00m [96mlen[39;49;00m(requirements[key]) > [94m512[39;49;00m[90m[39;49;00m
+                            [95mor[39;49;00m [96many[39;49;00m([95mnot[39;49;00m [96misinstance[39;49;00m(item, [96mstr[39;49;00m) [94mfor[39;49;00m item [95min[39;49;00m requirements[key])[90m[39;49;00m
+                            [95mor[39;49;00m [96mlen[39;49;00m([96mset[39;49;00m(requirements[key])) != [96mlen[39;49;00m(requirements[key])):[90m[39;49;00m
+                        [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid intent requirement identity population[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                    [94mfor[39;49;00m requirement_id [95min[39;49;00m requirements[key]:[90m[39;49;00m
+                        _identity(requirement_id)[90m[39;49;00m
+        reply = result.get([33m"[39;49;00m[33mcoding_reply_contract[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        metadata = result.get([33m"[39;49;00m[33msemantic_metadata_view[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m metadata [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mif[39;49;00m ([95mnot[39;49;00m translated [95mor[39;49;00m result[[33m"[39;49;00m[33msemantic_translation[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m] != [33m"[39;49;00m[33msupervisor-semantic-router-encoding@1[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    [95mor[39;49;00m [96mtype[39;49;00m(metadata) [95mis[39;49;00m [95mnot[39;49;00m [96mdict[39;49;00m):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mmetadata coding view requires a verified original semantic transport[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        reply_bytes = [94m0[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m reply [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mcoding_reply_contract[39;49;00m[90m [39;49;00m[94mimport[39;49;00m apply_coding_reply_contract[90m[39;49;00m
+            [94mif[39;49;00m [96mtype[39;49;00m(reply) [95mis[39;49;00m [95mnot[39;49;00m [96mdict[39;49;00m [95mor[39;49;00m reply.get([33m"[39;49;00m[33mmode[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mordinary-completion@1[39;49;00m[33m"[39;49;00m [95mor[39;49;00m item.get([33m"[39;49;00m[33mprovider[39;49;00m[33m"[39;49;00m) != [33m"[39;49;00m[33mcodex_cli[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid coding reply contract receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            _, expected = apply_coding_reply_contract(model_prompt=[33m"[39;49;00m[33m"[39;49;00m, mode=reply[[33m"[39;49;00m[33mmode[39;49;00m[33m"[39;49;00m],[90m[39;49;00m
+                purpose=[33m"[39;49;00m[33mcoding[39;49;00m[33m"[39;49;00m, provider=[33m"[39;49;00m[33mcodex_cli[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            dynamic = {[33m"[39;49;00m[33mmodel_prompt_before_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_before_bytes[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                       [33m"[39;49;00m[33mmodel_prompt_after_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_after_bytes[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mresponse_validated[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+            [94mif[39;49;00m ([96mset[39;49;00m(reply) != [96mset[39;49;00m(expected) [95mor[39;49;00m [96mtype[39;49;00m(reply[[33m"[39;49;00m[33mresponse_validated[39;49;00m[33m"[39;49;00m]) [95mis[39;49;00m [95mnot[39;49;00m [96mbool[39;49;00m[90m[39;49;00m
+                    [95mor[39;49;00m [96many[39;49;00m([96mtype[39;49;00m(reply[key]) [95mis[39;49;00m [95mnot[39;49;00m [96mtype[39;49;00m(expected[key]) [95mor[39;49;00m reply[key] != expected[key][90m[39;49;00m
+                           [94mfor[39;49;00m key [95min[39;49;00m expected [94mif[39;49;00m key [95mnot[39;49;00m [95min[39;49;00m dynamic)):[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid coding reply contract receipt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mfor[39;49;00m field [95min[39;49;00m ([33m"[39;49;00m[33mmodel_prompt_before_sha256[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_after_sha256[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                _digest(reply[field])[90m[39;49;00m
+            [94mfor[39;49;00m field [95min[39;49;00m ([33m"[39;49;00m[33mmodel_prompt_before_bytes[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmodel_prompt_after_bytes[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                [94mif[39;49;00m [96mtype[39;49;00m(reply[field]) [95mis[39;49;00m [95mnot[39;49;00m [96mint[39;49;00m [95mor[39;49;00m [95mnot[39;49;00m [94m0[39;49;00m < reply[field] <= [94m256_000[39;49;00m:[90m[39;49;00m
+                    [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minvalid coding reply contract byte count[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            reply_bytes = reply[[33m"[39;49;00m[33minstruction_bytes[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            [94mif[39;49;00m (reply[[33m"[39;49;00m[33mmodel_prompt_before_bytes[39;49;00m[33m"[39;49;00m] != router_bytes + result[[33m"[39;49;00m[33mworkspace_advisory_bytes[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+                    [95mor[39;49;00m reply[[33m"[39;49;00m[33mmodel_prompt_after_bytes[39;49;00m[33m"[39;49;00m] != result[[33m"[39;49;00m[33mmodel_prompt_bytes[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+                    [95mor[39;49;00m reply[[33m"[39;49;00m[33mmodel_prompt_after_sha256[39;49;00m[33m"[39;49;00m] != result[[33m"[39;49;00m[33mmodel_prompt_sha256[39;49;00m[33m"[39;49;00m]):[90m[39;49;00m
+>               [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33minconsistent coding reply contract input identities[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE               ValueError: inconsistent coding reply contract input identities[0m
+
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py[0m:258: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"allocation_catalog": "authored", "coding_reply_contract": {"automatic_retry_admitted": false, "completion_authority": false, "execution_authority": false, "instruction_bytes": 506, "instruction_sha256": "abd57dd0db7f134b7613479da5cc93ed9ebbbe79d40c1568c3d0d02eeba451e1", "mode": "ordinary-completion@1", "model_prompt_after_bytes": 30449, "model_prompt_after_sha256": "ac8bdde926532881870b53b77ba072e083a0c6596d8202ff6854cb8dfbe51e6d", "model_prompt_before_bytes": 29943, "model_prompt_before_sha256": "d4aea1ff6bc8856c203ae87ac5bc4339e34344da0f239124d6efe7ab801e4bd0", "native_output_schema_bytes": 215, "native_output_schema_requested": true, "native_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76", "owner_selected": true, "residual_task_family_selected": false, "response_validated": true, "schema": "supervisor-coding-reply-contract@1", "settlement_authority": false}, "completion_authority": false, "doctor_residual_context": null, "external_container_boundary": null, "invocation_id": "2de470c64b504f38986690a7e1f64ea9", "model": "authored-model", "model_prompt_bytes": 30449, "model_prompt_sha256": "ac8bdde926532881870b53b77ba072e083a0c6596d8202ff6854cb8dfbe51e6d", "native_prompt_bytes": 56632, "native_prompt_sha256": "68fba2b97d335f9b688853c313df7096f218732a507c06c90740fb1c63906bce", "native_rollout_usage": null, "prompt_bytes": 56632, "prompt_sha256": "68fba2b97d335f9b688853c313df7096f218732a507c06c90740fb1c63906bce", "provider": "codex_cli", "provider_invocation_policy": {"structured_output": {"completion_authority": false, "execution_authority": false, "native_schema_requested": true, "response_schema_validated": true, "schema": "codex-native-coding-completion-json-schema@1", "settlement_authority": false}}, "provider_output_token_cap_enforced": false, "public_instruction": null, "purpose": "coding", "reasoning_effort": "high", "requested_output_tokens": 4096, "router_calls": 1, "router_prompt_bytes": 31725, "router_prompt_sha256": "21b76bddd2aeb30d8e296c2ab77ef1e74c654b00a543e8fc54df3857de4c94ad", "schema": "router-implementation-invocation@1", "seconds": 0.00019072199938818812, "semantic_metadata_native_coding_reply_contract": {"automatic_retry_admitted": false, "completion_authority": false, "execution_authority": false, "instruction_bytes": 506, "instruction_sha256": "abd57dd0db7f134b7613479da5cc93ed9ebbbe79d40c1568c3d0d02eeba451e1", "mode": "ordinary-completion@1", "model_prompt_after_bytes": 33140, "model_prompt_after_sha256": "74be42164bdfbde8446e530da121e5591d67d2e12e7924eedc70753ffb5a1a36", "model_prompt_before_bytes": 32634, "model_prompt_before_sha256": "d5a6091a551f7f34a84cd5b3d26012bc8f13403b59ad4cd0de1923df329e6eab", "native_output_schema_bytes": 215, "native_output_schema_requested": true, "native_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76", "owner_selected": true, "residual_task_family_selected": false, "response_validated": false, "schema": "supervisor-coding-reply-contract@1", "settlement_authority": false}, "semantic_metadata_view": {"candidate_complete_bytes": 30449, "candidate_complete_proxy_tokens": 7613, "candidate_complete_sha256": "ac8bdde926532881870b53b77ba072e083a0c6596d8202ff6854cb8dfbe51e6d", "candidate_only": true, "completion_authority": false, "execution_authority": false, "fallback_reason": null, "native_complete_bytes": 33140, "native_complete_proxy_tokens": 8285, "native_complete_sha256": "74be42164bdfbde8446e530da121e5591d67d2e12e7924eedc70753ffb5a1a36", "omission_authority": false, "program_semantics_proved": false, "proof_authority": false, "publication_authority": false, "schema": "supervisor-semantic-metadata-selection@1", "selected_complete_bytes": 30449, "selected_complete_proxy_tokens": 7613, "selected_complete_sha256": "ac8bdde926532881870b53b77ba072e083a0c6596d8202ff6854cb8dfbe51e6d", "selected_mode": "common-bindings@1", "source_freshness_verified": false, "token_proxy": "utf8-bytes-ceil-div4@1", "view_receipt_sha256": "fc8cfcbff0f1ffaf7b345233b4c2d8c31eb52b1ed6c870c2b23fb88fa8747db4"}, "semantic_response_translation": {"candidate_only": true, "completion_authority": false, "execution_authority": false, "freshness_checked": false, "input_bytes": 70, "input_sha256": "bc06523568b8564feecae9111d21354c4184cf9662374cf386a32b17edbd344b", "output_sha256": "bc06523568b8564feecae9111d21354c4184cf9662374cf386a32b17edbd344b", "schema": "supervisor-semantic-router-decoding@1", "structured_translation": false, "translation_cid": "bafkreifidu3fsws7rftryq7qushfwkbtzmydes673i3zlaw7cgya4z7b5i"}, "semantic_translation": {"completion_authority": false, "execution_authority": false, "freshness_checked": true, "identifier_mappings": 25, "identifier_occurrences": 76, "native_prompt_bytes": 56632, "native_prompt_sha256": "68fba2b97d335f9b688853c313df7096f218732a507c06c90740fb1c63906bce", "provider_prompt_bytes": 31725, "provider_prompt_sha256": "21b76bddd2aeb30d8e296c2ab77ef1e74c654b00a543e8fc54df3857de4c94ad", "schema": "supervisor-semantic-router-encoding@1", "scope_cid": "bafkreihnwhce4a5vjvguld4lr4fm4o4kcpowlgm6m6zrb76fgylhhltiky", "semantic_equivalence_claimed": false, "semantic_root_cid": "baguqeeranhdseufnw5sdyv3dllrsd6xmvddvotgte44sarrey4vtgadxoniq", "semantic_sha256": "38d58a8238248ddbda007b30aff06bd77152af7c5a55389ae2324be024f0ab7c", "task_id": "TASK-1", "translation_cid": "bafkreifidu3fsws7rftryq7qushfwkbtzmydes673i3zlaw7cgya4z7b5i"}, "status": "provider_returned", "timeout_seconds": 30, "usage": {"codex_output_schema_bytes": 215, "codex_output_schema_sha256": "4a118a8ff320f83d454399bed07f1263239bc49d2869c7b3012f02ec4d5c8e76", "exit_code": 0}, "workspace": "/tmp/pytest-of-barberb/pytest-1679/test_independent_historical_re0/allocated-worktree", "workspace_advisory_bytes": 909, "workspace_advisory_sha256": "ef788dcac127ee087e82732f14b254ebe60fbec6064686d014842b8833ba6661"}
+============================= slowest 10 durations =============================
+1.17s setup    api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+1.09s call     api/test_semantic_metadata_dispatch.py::test_implementation_argv_selects_only_explicit_semantic_model_route
+0.63s setup    api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@1-planning]
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@2-coding]
+0.61s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[foreign-supervisor-semantic-router-input@1-coding]
+0.10s call     api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+0.04s call     api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_semantic_metadata_dispatch.py::[1mtest_independent_historical_reconstruction_checks_both_reply_layers[0m - ValueError: inconsistent coding reply contract input identities
+[31m========================= [31m[1m1 failed[0m, [32m5 passed[0m[31m in 19.48s[0m[31m =========================[0m

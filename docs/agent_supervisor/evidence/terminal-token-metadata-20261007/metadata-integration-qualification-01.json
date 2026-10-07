@@ -1,0 +1,209 @@
+{
+  "accounting": {
+    "live_benchmark_launches": 0,
+    "live_provider_calls": 0,
+    "llm_router_retained": true,
+    "model_weights_created": 0,
+    "model_weights_uploaded": 0,
+    "planning_retained": true,
+    "total_provider_token_savings_measured": false
+  },
+  "authority": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "required_fact_omission_authority": false,
+    "source_freshness_authority": false
+  },
+  "created_utc": "2026-10-07T14:28:01.803391+00:00",
+  "datasets_checkout": "/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004",
+  "datasets_commit": "987cf856b2b902aa68c4587bb492b19b932b5d30",
+  "dispatch_development_history": [
+    {
+      "correction": "Updated historical audit byte relation to distinguish undelivered native coding input from selected complete model input.",
+      "log": {
+        "bytes": 30922,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-01.log",
+        "sha256": "cb7f9b27e891040fd2537412b903def58693dd7f11af5d77284851a0ffe1eb9c"
+      },
+      "result": "5 passed, 1 failed"
+    },
+    {
+      "log": {
+        "bytes": 1980,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-02.log",
+        "sha256": "b7f2efe28f618c29092fc577db7b2ab31ba16065a530f78392fdc0d7cc47a22c"
+      },
+      "result": "8 passed",
+      "scope": "Before the actual child IPC regression was added."
+    },
+    {
+      "correction": "Authored child fixture must use the exact producer artifact bytes; altered JSON serialization was correctly refused.",
+      "log": {
+        "bytes": 17667,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-03.log",
+        "sha256": "6d6d607cc4973f659a998b4ab239f94d84f296bb32881cc6fc295fe1e2082040"
+      },
+      "result": "8 passed, 1 failed"
+    },
+    {
+      "correction": "Authored child fixture must retain the canonical repository required for historical native reconstruction.",
+      "log": {
+        "bytes": 20527,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-04.log",
+        "sha256": "13d53fdadb6b2e1884c1885a8e27ffd0094b5b3a3b660fb2ada6c88bd76d6375"
+      },
+      "result": "8 passed, 1 failed"
+    },
+    {
+      "log": {
+        "bytes": 882,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-05.log",
+        "sha256": "47e577393ca04d7c9dcb9e34599528a0129bed8c59a249dd85ed216196be077e"
+      },
+      "result": "1 passed",
+      "scope": "Targeted actual child audit IPC regression; all nine final dispatch tests are included in the combined 354-test suite."
+    }
+  ],
+  "implementation_sources_and_new_tests": [
+    {
+      "bytes": 12534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "2ba8df2097a67fdeef389145bf230c09c93b69fa39a40d0044764c0e3e37193a"
+    },
+    {
+      "bytes": 33772,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "a0b1f23fba45c855b981d194ca7a49b14f44f7c39b3ca6b87d5f0c2f0c9042f2"
+    },
+    {
+      "bytes": 33791,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "b68a14266c49930784e33393697ad759e380b7b63d03bb535927e82f7499290f"
+    },
+    {
+      "bytes": 67514,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "2eed4714c87f8f05c214afa96b0874ef30c644a7a4ebb2e4b5515db736a64139"
+    },
+    {
+      "bytes": 38248,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+    },
+    {
+      "bytes": 18839,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+    },
+    {
+      "bytes": 4470,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "b9d371f60b8d1a4890ea368d2b16a766496d4677f669fcb6df6faee90be10022"
+    },
+    {
+      "bytes": 13423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "sha256": "76466248bca32e45b34f0cf89dc814cc9963f2e82e5405c0e516f0eca2c53c13"
+    },
+    {
+      "bytes": 37750,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e3371c2686e4bb7bcd47a7a5b2cb4fd540b6e7f2a24e0111417e2ef0a067456d"
+    },
+    {
+      "bytes": 10581,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    {
+      "bytes": 12873,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_catalog.py",
+      "sha256": "b17302ada4702db1f10f298fbfe8c9db14dc034de98b238798931f2e479d7b73"
+    },
+    {
+      "bytes": 11972,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_dispatch.py",
+      "sha256": "6f69117b599cc67c52d5e7b688749decec3d7886955af2d028361df848340c42"
+    },
+    {
+      "bytes": 20770,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_view.py",
+      "sha256": "0b3e3f712740955bc355b2dc9efd94653e2d1691602e454a6111171f3499c818"
+    }
+  ],
+  "limitations": [
+    "Byte-derived proxy is not the provider tokenizer. Authored one-file capsule census does not establish actual two-path benchmark population or token savings.",
+    "No new active Quack transport or actual DuckLake extension deployment is qualified. Catalog nominations do not authorize model use or required-fact omission.",
+    "Catalog row and link writes are separate native transactions; a failed link may leave an inert catalog row without a successful bridge receipt.",
+    "Whole-repository tests and a fresh native Terminal Bench run are not claimed; the planning and coding lifecycle remains required."
+  ],
+  "qualified_behaviors": [
+    "Default configuration, input and reply shapes preserved.",
+    "Explicit full arm semantic @1 model-router coding selection; invalid modes, planning route and @2 mixing refused before provider invocation.",
+    "Readable inline common metadata retains exact native source, literal, verdict and unknown-field content; exact restoration and foreign/tampered receipts checked.",
+    "Complete input selection and expansion fallback; original undelivered baseline and actual selected ordinary reply contracts reconstructed independently in the child audit.",
+    "Owner-prepared artifact/evidence pinning and actual temporary native DuckDB registration; native batch rollback control is separately retained.",
+    "Preparation/archive/current-source drift refusal and Harbor/config/collect pass-through qualified offline."
+  ],
+  "runtime_archive_source_paths_source": {
+    "bytes": 4470,
+    "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+    "sha256": "b9d371f60b8d1a4890ea368d2b16a766496d4677f669fcb6df6faee90be10022"
+  },
+  "schema": "terminal-semantic-metadata-integration-qualification@1",
+  "source_base_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "status": "offline_representation_and_integration_qualified",
+  "tests": {
+    "ast_sealing_disabled": false,
+    "elapsed_seconds": 211.434,
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "fresh_ast_seal_catalog": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-seal-01.duckdb",
+    "junit_xml": {
+      "bytes": 64549,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.xml",
+      "sha256": "627ffb9b02007d3cd56708b8f06ddb0c0d37f5dc096c0bff86f96311a4787141"
+    },
+    "known_arguments": [
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "log_cli=false",
+      "--junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.xml"
+    ],
+    "modules": [
+      "test/api/test_semantic_metadata_view.py",
+      "test/api/test_semantic_metadata_catalog.py",
+      "test/api/test_semantic_metadata_dispatch.py",
+      "test/api/test_semantic_router_translation.py",
+      "test/api/test_coding_reply_contract.py",
+      "test/api/test_terminal_doctor_dispatch.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ],
+    "pytest_plugin_autoload_disabled": true,
+    "python": "/home/barberb/.local/bin/python",
+    "python_version": "3.12.3",
+    "skipped": 0,
+    "stdout_log": {
+      "bytes": 6997,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.log",
+      "sha256": "ff1f2354daa879b3613601964bda5769e6918cb66410210b0efb78db80c23e9a"
+    },
+    "tests": 354
+  }
+}

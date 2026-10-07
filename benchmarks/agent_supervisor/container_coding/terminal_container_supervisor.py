@@ -581,6 +581,7 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
 def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+        semantic_metadata_view: str = "legacy",
         coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
@@ -600,6 +601,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
+        raise ValueError("unsupported semantic metadata view")
+    if semantic_metadata_view != "legacy" and (arm != "full"
+            or semantic_transport_schema != "supervisor-semantic-router-input@1"):
+        raise ValueError("metadata view requires the original full semantic arm")
     provider_selection = resolve_provider_profile(provider_profile)
     from .terminal_coding_reply_policy import validate_coding_reply_mode, coding_reply_selection
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=provider_selection["provider"])
@@ -662,6 +668,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    if semantic_metadata_view != "legacy":
+        report["semantic_metadata_view"] = {"requested_mode": semantic_metadata_view,
+            "planning_retained": True, "benchmark_advantage_claimed": False,
+            "provider_usage_savings_established": False}
     native_state = None
     progress = NativeProgress(started=started)
     report["native_progress"] = progress.report
@@ -833,7 +843,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             timeout=implementation_budget,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema,
-            coding_reply_mode=coding_reply_mode)
+            coding_reply_mode=coding_reply_mode,
+            **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
         if report["implementation_route"] == "model_router":
@@ -1043,6 +1054,7 @@ def main():
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, SEMANTIC_TRANSPORT_SCHEMAS
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)

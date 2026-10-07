@@ -1,0 +1,240 @@
+{
+  "created_utc": "2026-10-07T13:44:38.451185+00:00",
+  "evidence_status": {
+    "container_launches": 0,
+    "database_reads": 0,
+    "general_planning_preserved": true,
+    "live_owner_gateway_qualified_here": false,
+    "new_savings_measured": false,
+    "new_tests_run": false,
+    "new_treatment_implemented": false,
+    "provider_calls": 0,
+    "source_edits": 0,
+    "spectral_performance_work_stopped": true
+  },
+  "recommended_next_change": {
+    "implementation": "Prepare a closed metadata model packet from already admitted task/current tree/policy/source scope; replace only selected optional duplicated metadata/evidence records with the one bounded packet/reference before canonical ContextCompiler rendering. Do not append packet to unchanged full context. Leave direct planning, existing native response contract, native validation and owner settlement unchanged.",
+    "inputs": [
+      "Explicit current native task CID/revision/plan/goal, admitted exact outputs and validation argv.",
+      "Caller-owned current tree/policy/source preimage inventory and exact original native immutable core/suffix.",
+      "Allowlisted opaque symbol/receipt/capsule/obligation IDs with typed verdict/assurance/freshness/reason and zero raw provider bodies.",
+      "Optional closed owner snapshot commitment and non-authoritative DuckLake history cursor."
+    ],
+    "mandatory_gates": [
+      "Reject unauthorized metadata fields, authority promotion, foreign repository/task/arm IDs, unknown schema and duplicate/invalid JSON.",
+      "Preserve every unresolved obligation and all six ProofVerdict values literally: proved/disproved/inconclusive/unsupported/error/cancelled; no mapping unknown or timeout to proved.",
+      "Reject over-bound input population or record exact omitted unresolved frontier before manifest build; no hidden collection slicing.",
+      "Verify exact immutable artifact SHA/current source+task/tree/policy before worker handoff; provider child receives no DB program/token/path authority.",
+      "Keep required raw sources and exact validation commands; capsules/ranking/minification do not imply equivalence.",
+      "Delta only within same native task/repo/tree/policy/schema and with authenticated already delivered parent; first call gets invariant core. Revalidate proof cache positive hit at render and native commit using exact key.",
+      "Preserve original core and suffix byte identity; retain reconstruction/selection/omission receipt and exact old/new provider-prompt SHA+bytes.",
+      "If projection is larger or cannot preserve invariants, use explicit unchanged original context selection, never hidden provider call/retry."
+    ],
+    "name": "Owner-bound coding metadata projection at existing ContextCompiler evidence seam",
+    "verification": [
+      "Authored owner/admission/task fixtures; cold API no external calls.",
+      "Exact core/suffix preservation and optional selected evidence replacement, including actual final provider-prompt measurement.",
+      "Forged/missing/stale owner/task/source/receipt hashes; no input mutation; no arbitrary SQL or foreign DB locator.",
+      "All six formal verdicts remain distinct, raw-required/failure/unresolved context cannot disappear, no secret/provider output enters packet.",
+      "Parent-bound delta reconstruction rejects foreign task/arm/tree/policy/schema and unavailable parent.",
+      "Measured token accounting must separate planning/coding/input/output/cache/raw native calls; offline prompt bytes or estimated tokens alone are not observed total-token reduction."
+    ]
+  },
+  "review_scope": "Read-only source inventory; no native database, raw provider history, hidden task/evaluation body, model/provider or benchmark/container execution. No new qualification claims.",
+  "schema": "terminal-owner-metadata-api-inventory@1",
+  "source_bindings": [
+    {
+      "bytes": 90538,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/context/database_context.py",
+      "sha256": "98fb07965f9e43c4b0f8b2c2acf63aeae2ec96641b677b6d4be212f06cd93ce6"
+    },
+    {
+      "bytes": 293498,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406"
+    },
+    {
+      "bytes": 102188,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603"
+    },
+    {
+      "bytes": 42334,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "5bcf46d0c826faae00eefabf635fd0a68c445e5fd5b01b6ae26d6566930fef60"
+    },
+    {
+      "bytes": 4212,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "9b3c359c8fbfa1f6f4ebfafaf038f7df9c441e478db16443796ad82191eb0e54"
+    },
+    {
+      "bytes": 34785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 53490,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 20699,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py",
+      "sha256": "7949695fa35831e612db7f2ba1c9bdab1546b609be50efd2ccf65e97af865380"
+    },
+    {
+      "bytes": 12169,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/supervised_task_context.py",
+      "sha256": "d93d26a12f9f957828e0f5b3bcb4289c11ee4743d3c7a91d3aec196a3a9d3bcc"
+    },
+    {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 25879,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/semantic_state/capsules.py",
+      "sha256": "7e4339a67332929651e05ea8a3deeb09a57ecac9922a5040e6a22877825012d8"
+    },
+    {
+      "bytes": 11722,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_snapshot.py",
+      "sha256": "94464a1d9c01506d52d834224f84180db9ab2d33cb49eadae37c88bc045274f4"
+    },
+    {
+      "bytes": 221833,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "sha256": "a634957c41c636e55d23cdfb7db7db83205d1693043fd23968100e3a35fc43bc"
+    },
+    {
+      "bytes": 80046,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "sha256": "28a2f397855a97f2ab0ed0602a54fbe276c91f3635584f2f93a1d1af91fc0b9e"
+    },
+    {
+      "bytes": 74508,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450"
+    },
+    {
+      "bytes": 16708,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/proof/proof_certificate_database.py",
+      "sha256": "662ccf623c654f115ca4680cc9a15ec058e2957e905035e0cae49b941be79ebf"
+    },
+    {
+      "bytes": 82014,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "sha256": "9dc16feb3333934014cb38da4cf84a114facbe2c558e84c47263f427ccbd3e71"
+    },
+    {
+      "bytes": 2372,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "sha256": "2a262b7d278ed8ac56dfc3792c39da7d04a54044b7313772af8c63c989771723"
+    },
+    {
+      "bytes": 36794,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/federation/ducklake_projection.py",
+      "sha256": "c242b264215744724fc62f430bc2187aed9ac9e13dcc711ac16a6d97de86f102"
+    }
+  ],
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "source_head": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "unqualified_or_unsafe_shortcuts": [
+    {
+      "api": "runtime.external_quack_owner.ExternalQuackOwner.daemon_gateway/require_operation",
+      "lines": [
+        397,
+        370
+      ],
+      "reason": "Still explicitly refuses generic daemon production dispatch pending separate signed host/dispatcher admission; no new SQL service or fake gateway."
+    },
+    {
+      "api": "runtime.supervisor_meta_index.SupervisorMetaIndex.compose_for_subject/orchestration_view",
+      "lines": [
+        670,
+        754
+      ],
+      "reason": "Bounded catalog locator/mtime joins only; _connect performs create-dir/DDL and opens own DuckDB. No typed task-owner/source freshness or proof authority. Model projection must strip raw locator/owner/timestamp fields and validate content separately."
+    },
+    {
+      "api": "proof.proof_certificate_database.records_for_decision",
+      "lines": [
+        185
+      ],
+      "reason": "Observational catalog rows; completion/decision/DuckLake authority false. Cannot replace checked proof cache gate."
+    },
+    {
+      "api": "proof.prover_evidence_store.query_prover_evidence",
+      "lines": [
+        1986
+      ],
+      "reason": "Read-only allowlisted projection table but general WHERE string and default* expose broad projection; future adapter should use fixed closed fields and owner-selected artifact, not provider-supplied query/DB path."
+    },
+    {
+      "api": "context.database_context.compile_manifest_to_capsule",
+      "lines": [
+        2073
+      ],
+      "reason": "Useful standalone proposal capsule, but it constructs goal/authority/scope/acceptance and thus cannot replace original admitted native coding core directly."
+    }
+  ],
+  "usable_existing_seams": [
+    {
+      "api": "context.database_context.TaskContextInput/build_database_context_manifest/DatabaseContextManifest.model_packet",
+      "capability": "Pure bounded derived context, stable content identity, invariant task/dependencies/obligations/validations and explicit optional omitted frontier/expansion handles.",
+      "limit": "Caller-supplied input is not independent owner authentication; payloads need adapter allowlist; collection slicing must not hide unknown omitted work.",
+      "lines": [
+        1388,
+        1941,
+        1220
+      ]
+    },
+    {
+      "api": "context.context_compiler.ContextCompiler.compile/context_provider_input_payload/render_context_capsule",
+      "capability": "Preserves native goal/authority/scope/acceptance and ranked selected evidence, renders exact provider payload for independent byte/token measurement.",
+      "limit": "Optional evidence replacement only; preserve required refs, raw-source obligations and literal original suffix. No automatic evidence omission authority.",
+      "lines": [
+        1593,
+        1095
+      ]
+    },
+    {
+      "api": "runtime.semantic_capsule_selection.immutable_bundle_capsule_reader/select_worker_capsules",
+      "capability": "Call-local verified exact immutable producer bundle/root, byte/CID/schema/symbol binding, producer freshness/admission checks and bounded lexical ranking.",
+      "limit": "Ranking is advisory and not proof; unsupported/stale/unknown or raw-required source still needs exact repository bytes.",
+      "lines": [
+        18,
+        54
+      ]
+    },
+    {
+      "api": "task_sources.quack_owner_snapshot.observe_owner/validate_owner_snapshot",
+      "capability": "Existing authenticated fresh owner-inbox read commits all native tables by count/hash without exporting rows, challenge/owner generation/schema/binary binding/time expiry and no local DB fallback.",
+      "limit": "Needs independently configured qualified owner. Snapshot is freshness commitment, not task/source acceptance, completion or provider authority; no token/owner credential in model packet.",
+      "lines": [
+        307,
+        229
+      ]
+    },
+    {
+      "api": "proof.doctor_proof_cache.DoctorProofCacheGate.revalidate_for_render/revalidate_for_commit",
+      "capability": "Exact key/current source/assurance/receipt reconstruction plus quarantine/tombstone recheck; negatives remain diagnostic.",
+      "limit": "Invoke only inside admitted owner; audits/cache may write and are not read-only metadata queries. Meta-index catalog link is not a positive checked receipt.",
+      "lines": [
+        1727,
+        1734
+      ]
+    },
+    {
+      "api": "federation.ducklake_projection.DuckLakeProjectionWorker.project and integrations.ducklake_history_projection.project_range",
+      "capability": "Typed bounded event ranges, partition checksums, cursor/previous receipt/fence continuity for non-authoritative history.",
+      "limit": "Historical evidence does not prove live freshness or completion; no history-based omission of unresolved state.",
+      "lines": [
+        584,
+        58
+      ]
+    }
+  ]
+}

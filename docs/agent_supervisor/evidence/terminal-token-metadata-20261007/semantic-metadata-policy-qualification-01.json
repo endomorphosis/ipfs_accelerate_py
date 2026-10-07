@@ -1,0 +1,86 @@
+{
+  "accounting": {
+    "container_launches": 0,
+    "model_calls": 0,
+    "private_database_or_provider_history_reads": 0,
+    "provider_calls": 0,
+    "real_harbor_or_benchmark_executions": 0,
+    "source_commits": 0
+  },
+  "authority": {
+    "completion_authority": false,
+    "efficacy_qualified": false,
+    "execution_authority": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "required_fact_omission_authority": false,
+    "token_savings_claimed": false
+  },
+  "created_utc": "2026-10-07T14:11:33.996596+00:00",
+  "focused_tests": {
+    "command": "PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages /home/barberb/.local/bin/python -B -m pytest -q -o addopts= -p no:cacheprovider benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+    "duration_seconds": 1.67,
+    "existing_transport_and_reply_tests_passed": 37,
+    "exit_code": 0,
+    "failed": 0,
+    "log": {
+      "bytes": 15963,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-policy-tests-01.log",
+      "sha256": "f0d41f51ae196e453c223b621a5c9d2dc214af79915eb45a11bfe1cc3db670e3"
+    },
+    "owned_new_tests_passed": 50,
+    "passed": 87,
+    "skipped": 0
+  },
+  "implementation": [
+    "Experimental semantic_metadata_view legacy/common-bindings@1 frozen through actual full_supervisor_benchmark producer config/prepare/CLI/execute/collect and Harbor constructor/setup/run driver argv.",
+    "Legacy fields omitted from default configuration/preparation/argv/Harbor context; existing @1/@2 transport and coding reply modes continue through old tests.",
+    "Opt-in full arm and semantic@1 only; current pinned Codex/Grok model-router profile declaration. Actual signed implementation route separately owned by native dispatch; provider-free routes cannot borrow metadata policy authority.",
+    "Opt-in archive manifest requires exact current 19 source helper bodies including codec/catalog/meta-index/runner/auditor/driver/policy; source file byte counts reject booleans when present. Actual archive bytes/digests require existing preparation and independent archive qualification.",
+    "Preparation freezes explicit selection into config and controls. Collect selection mismatch cannot qualify complete receipt; execute rejects mismatch before invocation. Runtime source changes require new immutable archives and preparations.",
+    "Opt-in declarations explicitly token_savings_claimed=False and semantic_metadata_authority=False."
+  ],
+  "limitations": [
+    "No live provider total-token measurement or reduction claim.",
+    "No production generic Quack gateway, new SQL service or native task/validation authority.",
+    "No edits to existing transport/reply schemas, historical comparators, parent-owned driver/implementation argv/auditor/runner in this subtask.",
+    "Native catalogue bridge qualification remains separate and immutable; catalogue registration alone cannot authorize model use or source freshness."
+  ],
+  "owned_source_and_test": [
+    {
+      "bytes": 4470,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "b9d371f60b8d1a4890ea368d2b16a766496d4677f669fcb6df6faee90be10022"
+    },
+    {
+      "bytes": 33772,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "a0b1f23fba45c855b981d194ca7a49b14f44f7c39b3ca6b87d5f0c2f0c9042f2"
+    },
+    {
+      "bytes": 33791,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "b68a14266c49930784e33393697ad759e380b7b63d03bb535927e82f7499290f"
+    },
+    {
+      "bytes": 12534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "2ba8df2097a67fdeef389145bf230c09c93b69fa39a40d0044764c0e3e37193a"
+    },
+    {
+      "bytes": 13423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "sha256": "76466248bca32e45b34f0cf89dc814cc9963f2e82e5405c0e516f0eca2c53c13"
+    }
+  ],
+  "schema": "terminal-semantic-metadata-policy-offline-qualification@1",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "status": "focused_policy_and_legacy_compatibility_tests_passed",
+  "test_scope": [
+    "Author-created public task files, inert fake archive bytes and explicitly mocked Harbor dry-run; no executable archive or real benchmark reward claimed.",
+    "Both historical policy files retained unchanged and all37 existing tests passed.",
+    "Real source file hash/size inventory checks every required helper; missing/duplicate/wrong digest/boolean size and malformed inventory rejected.",
+    "Mock Harbor setup/run verifies archive refusal before uploads/execution and explicit driver pass-through with existing direct planning.",
+    "Actual producer config/preparation/collection/CLI boundary exercises frozen mode and refusal before subprocess execution on drift."
+  ]
+}

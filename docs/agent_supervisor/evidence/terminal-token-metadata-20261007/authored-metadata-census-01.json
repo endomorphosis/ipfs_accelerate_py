@@ -1,0 +1,781 @@
+{
+  "actual_total_token_reduction": null,
+  "base_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "benchmark_launches": 0,
+  "census_source_sha256": "7e32918e329ecca9a8380daa894638589d8c51ef9b7fddda509001c5115ef0dc",
+  "codec_source_sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e",
+  "fixture_scope": "Authored local source and temporary owner-created producer catalogs only; no evaluation, solutions or model transcripts.",
+  "fixture_source_sha256": "0b3e3f712740955bc355b2dc9efd94653e2d1691602e454a6111171f3499c818",
+  "fixtures": [
+    {
+      "actual_common_field_names": {
+        "admission_refs": [],
+        "admissions": [],
+        "capsules": []
+      },
+      "admission_count": 1,
+      "authored_function_count": 0,
+      "authored_source_sha256": "322824073c5b4bc3d6cd01f4f2ad87a853aac1d61c0d4f9b834101049ad9d248",
+      "candidate_source_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "capsule_count": 1,
+      "complete_selection_receipt": {
+        "candidate_complete_bytes": 11817,
+        "candidate_complete_proxy_tokens": 2955,
+        "candidate_complete_sha256": "0d9cb8f7eb9242dd36fabcc5a4fa5927eab48d2b070ade7403f0178e702a04c8",
+        "candidate_only": true,
+        "completion_authority": false,
+        "execution_authority": false,
+        "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+        "native_complete_bytes": 11319,
+        "native_complete_proxy_tokens": 2830,
+        "native_complete_sha256": "97b461e101a3bcb6954c6cd907bf267f5c69b7f8d7713e636f167402e73a1bad",
+        "omission_authority": false,
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-selection@1",
+        "selected_complete_bytes": 11319,
+        "selected_complete_proxy_tokens": 2830,
+        "selected_complete_sha256": "97b461e101a3bcb6954c6cd907bf267f5c69b7f8d7713e636f167402e73a1bad",
+        "selected_mode": "legacy",
+        "source_freshness_verified": false,
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "view_receipt_sha256": "621479effdbdef8d932a321c98c69561b549ceae5b7f48aed66980a4c18ff739"
+      },
+      "exact_native_transport_restored": true,
+      "fixture_id": "authored-functions-0",
+      "no_source_or_status_omission": true,
+      "original_admission_field_names": [
+        "admission",
+        "assessment_cid",
+        "caveats",
+        "freshness",
+        "interface",
+        "ref",
+        "schema"
+      ],
+      "original_admission_ref_field_names": [
+        "capsule_cid",
+        "confidence",
+        "raw_source_required",
+        "semantic_state_root_cid",
+        "source_cid",
+        "stable_symbol_id",
+        "validity_bindings",
+        "version_cid"
+      ],
+      "original_capsule_field_names": [
+        "annotations",
+        "capsule_cid",
+        "capsule_compiler_version",
+        "capsule_schema",
+        "confidence",
+        "contracts",
+        "decorators",
+        "defaults",
+        "dependency_fact_cids",
+        "dependency_link_ids",
+        "dependency_stable_ids",
+        "dependency_version_cids",
+        "docstring_hint",
+        "effects",
+        "exception_behavior",
+        "extractor_version",
+        "fixture_refs",
+        "metadata",
+        "proof_obligation_refs",
+        "relevant_binding_projection_cid",
+        "schema",
+        "schema_relations",
+        "semantic_index_schema",
+        "serialization_relations",
+        "signature",
+        "source_cid",
+        "source_slice_path",
+        "stable_symbol_id",
+        "symbol_fact_cid",
+        "test_refs",
+        "version_cid"
+      ],
+      "view_receipt": {
+        "admission_count": 1,
+        "candidate_only": true,
+        "candidate_view_bytes": 10270,
+        "candidate_view_proxy_tokens": 2568,
+        "candidate_view_sha256": "c3044197defe9ed39afe14a5b41d033fc99c027d11958d0d135790239aa149d9",
+        "capsule_count": 1,
+        "common_bindings_sha256": "56cb15668c707799f1afd0b40713852f9041fcea22236a5cfdac556de9c66426",
+        "completion_authority": false,
+        "execution_authority": false,
+        "native_context_sha256": "9dfc49e4daa1dbcb0e28bad468562a5ccce1b2bd0ccdcb321eb69dfe748bb6e4",
+        "native_core_sha256": "2c971274eabc2a8ab0ea0617d4e69c74012e1073025d0e9178d7ac8bbd756fc9",
+        "native_suffix_sha256": "48cde447881a879e736f3e83325bd185b435a3e8d708bd9d5f6580a8570d0b6a",
+        "native_transport_bytes": 9772,
+        "native_transport_proxy_tokens": 2443,
+        "native_transport_sha256": "10d8f4969f81f4196d6e03c8850e9b5edff535be545977a36420e0b86dcd03d1",
+        "omission_authority": false,
+        "original_translated_semantic_sha256": "edd4cde2dbb0290ce79392ef47d8f367016fa0742bb1444e02e28867fe9e130b",
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-view-receipt@1",
+        "scope_cid": "bafkreihufzyayunfidaki2da2v7micvkfgblujpuwo5p3anrbt2qi4pdfu",
+        "semantic_root_cid": "baguqeerasp5b24h6p3plbqrr57s3cuoaefn7mtxergr76xs5ynw7yreghg7q",
+        "shared_field_paths": [],
+        "source_freshness_verified": false,
+        "source_manifest_sha256": "20aa00aa0bf352c7839226e6bba4f58149f61fde549e6c7e77d84e65bd3f4f34",
+        "source_transport_schema": "supervisor-semantic-router-input@1",
+        "task_id": "AUTHORED-METADATA-TASK",
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "translation_cid": "bafkreibbiqvdt5sufajehd6futrvmmiwyloolrqbn6pc5zpavetzpcfvdi",
+        "view_schema": "supervisor-semantic-metadata-view@1"
+      }
+    },
+    {
+      "actual_common_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "admission_count": 3,
+      "authored_function_count": 1,
+      "authored_source_sha256": "6defee1de2d174dc500f48c732f7ec6adbc6fed213b419d44561d89bc4416891",
+      "candidate_source_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "capsule_count": 3,
+      "complete_selection_receipt": {
+        "candidate_complete_bytes": 18394,
+        "candidate_complete_proxy_tokens": 4599,
+        "candidate_complete_sha256": "2e2049d50b2c1c28dd698d1aac3969d1b32395f141cfe5f3b697920873c8981d",
+        "candidate_only": true,
+        "completion_authority": false,
+        "execution_authority": false,
+        "fallback_reason": null,
+        "native_complete_bytes": 18959,
+        "native_complete_proxy_tokens": 4740,
+        "native_complete_sha256": "ba956990fcea9d6102c8bbd71b22e4c88f819e7b112b1c75a8f54ce0b41db6af",
+        "omission_authority": false,
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-selection@1",
+        "selected_complete_bytes": 18394,
+        "selected_complete_proxy_tokens": 4599,
+        "selected_complete_sha256": "2e2049d50b2c1c28dd698d1aac3969d1b32395f141cfe5f3b697920873c8981d",
+        "selected_mode": "common-bindings@1",
+        "source_freshness_verified": false,
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "view_receipt_sha256": "6da0cd098f901fd2c55dea7e4ee932122bc6be18d7f6fd73023534684dfb5b24"
+      },
+      "exact_native_transport_restored": true,
+      "fixture_id": "authored-functions-1",
+      "no_source_or_status_omission": true,
+      "original_admission_field_names": [
+        "admission",
+        "assessment_cid",
+        "caveats",
+        "freshness",
+        "interface",
+        "ref",
+        "schema"
+      ],
+      "original_admission_ref_field_names": [
+        "capsule_cid",
+        "confidence",
+        "raw_source_required",
+        "semantic_state_root_cid",
+        "source_cid",
+        "stable_symbol_id",
+        "validity_bindings",
+        "version_cid"
+      ],
+      "original_capsule_field_names": [
+        "annotations",
+        "capsule_cid",
+        "capsule_compiler_version",
+        "capsule_schema",
+        "confidence",
+        "contracts",
+        "decorators",
+        "defaults",
+        "dependency_fact_cids",
+        "dependency_link_ids",
+        "dependency_stable_ids",
+        "dependency_version_cids",
+        "docstring_hint",
+        "effects",
+        "exception_behavior",
+        "extractor_version",
+        "fixture_refs",
+        "metadata",
+        "proof_obligation_refs",
+        "relevant_binding_projection_cid",
+        "schema",
+        "schema_relations",
+        "semantic_index_schema",
+        "serialization_relations",
+        "signature",
+        "source_cid",
+        "source_slice_path",
+        "stable_symbol_id",
+        "symbol_fact_cid",
+        "test_refs",
+        "version_cid"
+      ],
+      "view_receipt": {
+        "admission_count": 3,
+        "candidate_only": true,
+        "candidate_view_bytes": 16847,
+        "candidate_view_proxy_tokens": 4212,
+        "candidate_view_sha256": "2f90325f42cd58ba6515b21c0678b1107a9594b99d2dc7551a43d6298c59f43f",
+        "capsule_count": 3,
+        "common_bindings_sha256": "63103181398d0aa41e2d8b89b6bf13135ed84f315d8894638cd3b5aacf0de778",
+        "completion_authority": false,
+        "execution_authority": false,
+        "native_context_sha256": "9dfc49e4daa1dbcb0e28bad468562a5ccce1b2bd0ccdcb321eb69dfe748bb6e4",
+        "native_core_sha256": "2c971274eabc2a8ab0ea0617d4e69c74012e1073025d0e9178d7ac8bbd756fc9",
+        "native_suffix_sha256": "48cde447881a879e736f3e83325bd185b435a3e8d708bd9d5f6580a8570d0b6a",
+        "native_transport_bytes": 17412,
+        "native_transport_proxy_tokens": 4353,
+        "native_transport_sha256": "2218499b80bf528cab3282b7357269770f3598279994c38b0b2827b261aa62a3",
+        "omission_authority": false,
+        "original_translated_semantic_sha256": "5fbc09d991d9be7e8a61bc1bd8e1bef98bb1bc7dd6888c83fe2585f45ce774e8",
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-view-receipt@1",
+        "scope_cid": "bafkreibqctien426d2frcc2n25s6gfslnjavoxjioqlrjphdm4q752nyde",
+        "semantic_root_cid": "baguqeeralgi4rwchy4t372cd254ins227epndpb6eou6cal6zkhfxuosoqia",
+        "shared_field_paths": [
+          [
+            "admission_refs",
+            "raw_source_required"
+          ],
+          [
+            "admission_refs",
+            "semantic_state_root_cid"
+          ],
+          [
+            "admission_refs",
+            "source_cid"
+          ],
+          [
+            "admissions",
+            "freshness"
+          ],
+          [
+            "admissions",
+            "interface"
+          ],
+          [
+            "admissions",
+            "schema"
+          ],
+          [
+            "capsules",
+            "capsule_compiler_version"
+          ],
+          [
+            "capsules",
+            "capsule_schema"
+          ],
+          [
+            "capsules",
+            "extractor_version"
+          ],
+          [
+            "capsules",
+            "schema"
+          ],
+          [
+            "capsules",
+            "semantic_index_schema"
+          ],
+          [
+            "capsules",
+            "source_cid"
+          ]
+        ],
+        "source_freshness_verified": false,
+        "source_manifest_sha256": "30dbcb8a90ec57f5bc8725e70bc79c98cc2a8a0a440d94f468faf02f5e1965f0",
+        "source_transport_schema": "supervisor-semantic-router-input@1",
+        "task_id": "AUTHORED-METADATA-TASK",
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "translation_cid": "bafkreiecxkx62zv2dyyjaw2gmtkdevlj2tdokkbn5j3wzdszouzxt5zphm",
+        "view_schema": "supervisor-semantic-metadata-view@1"
+      }
+    },
+    {
+      "actual_common_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "admission_count": 8,
+      "authored_function_count": 6,
+      "authored_source_sha256": "0f0580ff0f1337de3fcb381394a8c67191f169a457bd13d7d37aa212ca3c7c04",
+      "candidate_source_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "capsule_count": 8,
+      "complete_selection_receipt": {
+        "candidate_complete_bytes": 35290,
+        "candidate_complete_proxy_tokens": 8823,
+        "candidate_complete_sha256": "643a905fc1c91f58ed2f537066628b6765765fbd8d358dc0de4481beece91307",
+        "candidate_only": true,
+        "completion_authority": false,
+        "execution_authority": false,
+        "fallback_reason": null,
+        "native_complete_bytes": 38505,
+        "native_complete_proxy_tokens": 9627,
+        "native_complete_sha256": "c2d69f36bfb09f62bcdc34adf2d99405625403137c7fa486349ab937c6a6c9d4",
+        "omission_authority": false,
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-selection@1",
+        "selected_complete_bytes": 35290,
+        "selected_complete_proxy_tokens": 8823,
+        "selected_complete_sha256": "643a905fc1c91f58ed2f537066628b6765765fbd8d358dc0de4481beece91307",
+        "selected_mode": "common-bindings@1",
+        "source_freshness_verified": false,
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "view_receipt_sha256": "d38cb454e03e4a3eeeeed2327a485c25b2b319668fe5b62462a63c8680641859"
+      },
+      "exact_native_transport_restored": true,
+      "fixture_id": "authored-functions-6",
+      "no_source_or_status_omission": true,
+      "original_admission_field_names": [
+        "admission",
+        "assessment_cid",
+        "caveats",
+        "freshness",
+        "interface",
+        "ref",
+        "schema"
+      ],
+      "original_admission_ref_field_names": [
+        "capsule_cid",
+        "confidence",
+        "raw_source_required",
+        "semantic_state_root_cid",
+        "source_cid",
+        "stable_symbol_id",
+        "validity_bindings",
+        "version_cid"
+      ],
+      "original_capsule_field_names": [
+        "annotations",
+        "capsule_cid",
+        "capsule_compiler_version",
+        "capsule_schema",
+        "confidence",
+        "contracts",
+        "decorators",
+        "defaults",
+        "dependency_fact_cids",
+        "dependency_link_ids",
+        "dependency_stable_ids",
+        "dependency_version_cids",
+        "docstring_hint",
+        "effects",
+        "exception_behavior",
+        "extractor_version",
+        "fixture_refs",
+        "metadata",
+        "proof_obligation_refs",
+        "relevant_binding_projection_cid",
+        "schema",
+        "schema_relations",
+        "semantic_index_schema",
+        "serialization_relations",
+        "signature",
+        "source_cid",
+        "source_slice_path",
+        "stable_symbol_id",
+        "symbol_fact_cid",
+        "test_refs",
+        "version_cid"
+      ],
+      "view_receipt": {
+        "admission_count": 8,
+        "candidate_only": true,
+        "candidate_view_bytes": 33743,
+        "candidate_view_proxy_tokens": 8436,
+        "candidate_view_sha256": "e80703898804bee93d247cc53c737c854045abf8e1d8d5dcd662e9b40151f8f4",
+        "capsule_count": 8,
+        "common_bindings_sha256": "e763faeb6b9c40c10d477bd1ea8fe66266924d946527b2def90c811288840a57",
+        "completion_authority": false,
+        "execution_authority": false,
+        "native_context_sha256": "9dfc49e4daa1dbcb0e28bad468562a5ccce1b2bd0ccdcb321eb69dfe748bb6e4",
+        "native_core_sha256": "2c971274eabc2a8ab0ea0617d4e69c74012e1073025d0e9178d7ac8bbd756fc9",
+        "native_suffix_sha256": "48cde447881a879e736f3e83325bd185b435a3e8d708bd9d5f6580a8570d0b6a",
+        "native_transport_bytes": 36958,
+        "native_transport_proxy_tokens": 9240,
+        "native_transport_sha256": "8b10993946ea2b0b754cb727be713a86a062ceb5d6b37d66c16e5086f053ecbf",
+        "omission_authority": false,
+        "original_translated_semantic_sha256": "a25cff1c099443d7d0c03937ac18d1fd82026db2ab1aff16c9e359260674d76c",
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-view-receipt@1",
+        "scope_cid": "bafkreib3rk7h7lxaxj5kbalci6oe7r5r7ggqdyfp56k7iofxfu6prtvp3u",
+        "semantic_root_cid": "baguqeera6aqitqvhkdya4saasrpbhejgkthcjlxjzycbzrn4nfk2ywgan4wq",
+        "shared_field_paths": [
+          [
+            "admission_refs",
+            "raw_source_required"
+          ],
+          [
+            "admission_refs",
+            "semantic_state_root_cid"
+          ],
+          [
+            "admission_refs",
+            "source_cid"
+          ],
+          [
+            "admissions",
+            "freshness"
+          ],
+          [
+            "admissions",
+            "interface"
+          ],
+          [
+            "admissions",
+            "schema"
+          ],
+          [
+            "capsules",
+            "capsule_compiler_version"
+          ],
+          [
+            "capsules",
+            "capsule_schema"
+          ],
+          [
+            "capsules",
+            "extractor_version"
+          ],
+          [
+            "capsules",
+            "schema"
+          ],
+          [
+            "capsules",
+            "semantic_index_schema"
+          ],
+          [
+            "capsules",
+            "source_cid"
+          ]
+        ],
+        "source_freshness_verified": false,
+        "source_manifest_sha256": "30958a4c0df2a942771eeb9c7c7b083ff1513cf506f50f72ac786a0e0c657af2",
+        "source_transport_schema": "supervisor-semantic-router-input@1",
+        "task_id": "AUTHORED-METADATA-TASK",
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "translation_cid": "bafkreigzdb2z4oxwxwcbgkonuhj2r5ronjf7cqwvfxeccojbkn255xiyuu",
+        "view_schema": "supervisor-semantic-metadata-view@1"
+      }
+    },
+    {
+      "actual_common_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "admission_count": 22,
+      "authored_function_count": 20,
+      "authored_source_sha256": "00c2840583c61697f8bde35ed110697675ff6f2388bc141290f1dcca8b711dd8",
+      "candidate_source_field_names": {
+        "admission_refs": [
+          "raw_source_required",
+          "semantic_state_root_cid",
+          "source_cid"
+        ],
+        "admissions": [
+          "freshness",
+          "interface",
+          "schema"
+        ],
+        "capsules": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "extractor_version",
+          "schema",
+          "semantic_index_schema",
+          "source_cid"
+        ]
+      },
+      "capsule_count": 22,
+      "complete_selection_receipt": {
+        "candidate_complete_bytes": 82665,
+        "candidate_complete_proxy_tokens": 20667,
+        "candidate_complete_sha256": "138ed8f74fde995ef396de7f4585a91e470db1ff35a060d2f39e2af7634b5d3f",
+        "candidate_only": true,
+        "completion_authority": false,
+        "execution_authority": false,
+        "fallback_reason": null,
+        "native_complete_bytes": 93321,
+        "native_complete_proxy_tokens": 23331,
+        "native_complete_sha256": "ebd595d0ecba81c0a0d1e5458baedbd124fba3b8a6d6d664c09ee7b3576007b4",
+        "omission_authority": false,
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-selection@1",
+        "selected_complete_bytes": 82665,
+        "selected_complete_proxy_tokens": 20667,
+        "selected_complete_sha256": "138ed8f74fde995ef396de7f4585a91e470db1ff35a060d2f39e2af7634b5d3f",
+        "selected_mode": "common-bindings@1",
+        "source_freshness_verified": false,
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "view_receipt_sha256": "39d5ad73e15a64595dd770bd804433307c13e900f383afac2d7a6cf28d700f11"
+      },
+      "exact_native_transport_restored": true,
+      "fixture_id": "authored-functions-20",
+      "no_source_or_status_omission": true,
+      "original_admission_field_names": [
+        "admission",
+        "assessment_cid",
+        "caveats",
+        "freshness",
+        "interface",
+        "ref",
+        "schema"
+      ],
+      "original_admission_ref_field_names": [
+        "capsule_cid",
+        "confidence",
+        "raw_source_required",
+        "semantic_state_root_cid",
+        "source_cid",
+        "stable_symbol_id",
+        "validity_bindings",
+        "version_cid"
+      ],
+      "original_capsule_field_names": [
+        "annotations",
+        "capsule_cid",
+        "capsule_compiler_version",
+        "capsule_schema",
+        "confidence",
+        "contracts",
+        "decorators",
+        "defaults",
+        "dependency_fact_cids",
+        "dependency_link_ids",
+        "dependency_stable_ids",
+        "dependency_version_cids",
+        "docstring_hint",
+        "effects",
+        "exception_behavior",
+        "extractor_version",
+        "fixture_refs",
+        "metadata",
+        "proof_obligation_refs",
+        "relevant_binding_projection_cid",
+        "schema",
+        "schema_relations",
+        "semantic_index_schema",
+        "serialization_relations",
+        "signature",
+        "source_cid",
+        "source_slice_path",
+        "stable_symbol_id",
+        "symbol_fact_cid",
+        "test_refs",
+        "version_cid"
+      ],
+      "view_receipt": {
+        "admission_count": 22,
+        "candidate_only": true,
+        "candidate_view_bytes": 81117,
+        "candidate_view_proxy_tokens": 20280,
+        "candidate_view_sha256": "8e7aa181ecac64443bca661cfc5441f954f567f1afee3657c958892f91d40385",
+        "capsule_count": 22,
+        "common_bindings_sha256": "7b783b3375c3edf2efabb6254dafd986376058a1840b28d637301da50fd9df89",
+        "completion_authority": false,
+        "execution_authority": false,
+        "native_context_sha256": "9dfc49e4daa1dbcb0e28bad468562a5ccce1b2bd0ccdcb321eb69dfe748bb6e4",
+        "native_core_sha256": "2c971274eabc2a8ab0ea0617d4e69c74012e1073025d0e9178d7ac8bbd756fc9",
+        "native_suffix_sha256": "48cde447881a879e736f3e83325bd185b435a3e8d708bd9d5f6580a8570d0b6a",
+        "native_transport_bytes": 91773,
+        "native_transport_proxy_tokens": 22944,
+        "native_transport_sha256": "3aa852c8ef2c6897e1cfdc9865c1fdc836f712b4419b61dc6a821cd3f471ab54",
+        "omission_authority": false,
+        "original_translated_semantic_sha256": "1c8a281cea0059745c4912f6c43f538dd10df4b3ecc7920739cab5dcd6886825",
+        "program_semantics_proved": false,
+        "proof_authority": false,
+        "publication_authority": false,
+        "schema": "supervisor-semantic-metadata-view-receipt@1",
+        "scope_cid": "bafkreiajofuax4uupfhzik4vxk7q2f7efoctmxudiyuas6i4nwcqpkv4dq",
+        "semantic_root_cid": "baguqeerannu7jh36vfndqtnzmgu4oe446lqtisucmkqqisqr3g3vtzca5piq",
+        "shared_field_paths": [
+          [
+            "admission_refs",
+            "raw_source_required"
+          ],
+          [
+            "admission_refs",
+            "semantic_state_root_cid"
+          ],
+          [
+            "admission_refs",
+            "source_cid"
+          ],
+          [
+            "admissions",
+            "freshness"
+          ],
+          [
+            "admissions",
+            "interface"
+          ],
+          [
+            "admissions",
+            "schema"
+          ],
+          [
+            "capsules",
+            "capsule_compiler_version"
+          ],
+          [
+            "capsules",
+            "capsule_schema"
+          ],
+          [
+            "capsules",
+            "extractor_version"
+          ],
+          [
+            "capsules",
+            "schema"
+          ],
+          [
+            "capsules",
+            "semantic_index_schema"
+          ],
+          [
+            "capsules",
+            "source_cid"
+          ]
+        ],
+        "source_freshness_verified": false,
+        "source_manifest_sha256": "c330bf939f3c3008243954cfc37b6c55ee18e74299e2cdc98fde77f0c414c494",
+        "source_transport_schema": "supervisor-semantic-router-input@1",
+        "task_id": "AUTHORED-METADATA-TASK",
+        "token_proxy": "utf8-bytes-ceil-div4@1",
+        "translation_cid": "bafkreihdx3nbl3yzojfiurijgnsews4g3lc35ti25szgmktkj2ia6y5mp4",
+        "view_schema": "supervisor-semantic-metadata-view@1"
+      }
+    }
+  ],
+  "full_wrapper_scope": "Actual workspace renderer and ordinary-completion reply suffix, plus identical authored Doctor/public-instruction stand-ins; offline census, not live dispatch qualification.",
+  "private_database_reads": 0,
+  "provider_calls": 0,
+  "provider_token_usage": null,
+  "schema": "authored-semantic-metadata-census@1",
+  "token_proxy": "utf8-bytes-ceil-div4@1"
+}

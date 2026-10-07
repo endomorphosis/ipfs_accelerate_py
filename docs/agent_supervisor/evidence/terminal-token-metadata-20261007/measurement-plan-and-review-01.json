@@ -1,0 +1,903 @@
+{
+  "schema": "terminal-semantic-metadata-measurement-plan-and-independent-review@1",
+  "generated_at": "2026-10-07T14:24:17.256706+00:00",
+  "reviewer": "/root/matched_transport_accounting",
+  "status": "offline_representation_catalog_and_dispatch_qualified_live_efficacy_unmeasured",
+  "review_passed": true,
+  "unresolved_blockers": [],
+  "reviewed_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "reviewed_source_bindings": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+      "bytes": 12534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "2ba8df2097a67fdeef389145bf230c09c93b69fa39a40d0044764c0e3e37193a"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+      "bytes": 33772,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "a0b1f23fba45c855b981d194ca7a49b14f44f7c39b3ca6b87d5f0c2f0c9042f2"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+      "bytes": 33791,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "b68a14266c49930784e33393697ad759e380b7b63d03bb535927e82f7499290f"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 67514,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "2eed4714c87f8f05c214afa96b0874ef30c644a7a4ebb2e4b5515db736a64139"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "bytes": 38248,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 18839,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+      "bytes": 4470,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "b9d371f60b8d1a4890ea368d2b16a766496d4677f669fcb6df6faee90be10022"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 37750,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e3371c2686e4bb7bcd47a7a5b2cb4fd540b6e7f2a24e0111417e2ef0a067456d"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+      "bytes": 10581,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    }
+  },
+  "reviewed_test_source_bindings": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py": {
+      "bytes": 13423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+      "sha256": "76466248bca32e45b34f0cf89dc814cc9963f2e82e5405c0e516f0eca2c53c13"
+    },
+    "test/api/test_semantic_metadata_catalog.py": {
+      "bytes": 12873,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_catalog.py",
+      "sha256": "b17302ada4702db1f10f298fbfe8c9db14dc034de98b238798931f2e479d7b73"
+    },
+    "test/api/test_semantic_metadata_dispatch.py": {
+      "bytes": 11972,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_dispatch.py",
+      "sha256": "6f69117b599cc67c52d5e7b688749decec3d7886955af2d028361df848340c42"
+    },
+    "test/api/test_semantic_metadata_view.py": {
+      "bytes": 20770,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_view.py",
+      "sha256": "0b3e3f712740955bc355b2dc9efd94653e2d1691602e454a6111171f3499c818"
+    }
+  },
+  "archive_closure_bindings": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+      "bytes": 12534,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "sha256": "2ba8df2097a67fdeef389145bf230c09c93b69fa39a40d0044764c0e3e37193a"
+    },
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+      "bytes": 27661,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "1bb99dabc5797d300c6c1998ba45e9eb65188715ec60c30474392914ded06d37"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+      "bytes": 33772,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "a0b1f23fba45c855b981d194ca7a49b14f44f7c39b3ca6b87d5f0c2f0c9042f2"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+      "bytes": 33791,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "b68a14266c49930784e33393697ad759e380b7b63d03bb535927e82f7499290f"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": {
+      "bytes": 3057,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py",
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 67514,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "2eed4714c87f8f05c214afa96b0874ef30c644a7a4ebb2e4b5515db736a64139"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "bytes": 38248,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 18839,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+      "bytes": 4470,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "sha256": "b9d371f60b8d1a4890ea368d2b16a766496d4677f669fcb6df6faee90be10022"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": {
+      "bytes": 3257,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py",
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": {
+      "bytes": 48931,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": {
+      "bytes": 5423,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 37750,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "e3371c2686e4bb7bcd47a7a5b2cb4fd540b6e7f2a24e0111417e2ef0a067456d"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+      "bytes": 10581,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+      "bytes": 18633,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+      "bytes": 37780,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": {
+      "bytes": 53490,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+      "bytes": 7870,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "bytes": 553806,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/llm_router.py",
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    }
+  },
+  "archive_closure_note": "19 source bodies are bound by the opt-in policy. These hashes record the review snapshot and source guard; no fresh live runtime archive or native benchmark is claimed by this review.",
+  "evidence_bindings": [
+    {
+      "bytes": 9963,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-view-qualification-01.json",
+      "sha256": "58d4661d3b54d9f28c876a953faa0cc7afa42c09ea9b89653360d6b2238fc770"
+    },
+    {
+      "bytes": 6089,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-catalog-qualification-02.json",
+      "sha256": "915d593f8afabe10a00a49d1cf8eefc00d213581060b36d87df93068c64f1ea3"
+    },
+    {
+      "bytes": 5837,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-policy-qualification-01.json",
+      "sha256": "0d40f65c6cfb8296ae1c9c2172fa415de6aa699560fb926884ebca31a97c43d7"
+    },
+    {
+      "bytes": 26974,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/authored-metadata-census-01.json",
+      "sha256": "ad8640c76e78ae412a7bd11b48906fce374fdfe3111e5a1a47faf4db497f3c43"
+    },
+    {
+      "bytes": 64549,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.xml",
+      "sha256": "627ffb9b02007d3cd56708b8f06ddb0c0d37f5dc096c0bff86f96311a4787141"
+    },
+    {
+      "bytes": 6997,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.log",
+      "sha256": "ff1f2354daa879b3613601964bda5769e6918cb66410210b0efb78db80c23e9a"
+    },
+    {
+      "bytes": 1559,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-test-execution-01.json",
+      "sha256": "f13c55d935eb26bc3a9f9795aca771801903cac1858fbd6a8e46d7677a5386f6"
+    },
+    {
+      "bytes": 8659,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml",
+      "sha256": "1d45ec2dc9f67b7dcde98b2f701ec2341831a4d31f6dc1bcbb9ed24376fa5f20"
+    },
+    {
+      "bytes": 30922,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-01.log",
+      "sha256": "cb7f9b27e891040fd2537412b903def58693dd7f11af5d77284851a0ffe1eb9c"
+    },
+    {
+      "bytes": 17667,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-03.log",
+      "sha256": "6d6d607cc4973f659a998b4ab239f94d84f296bb32881cc6fc295fe1e2082040"
+    },
+    {
+      "bytes": 20527,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-04.log",
+      "sha256": "13d53fdadb6b2e1884c1885a8e27ffd0094b5b3a3b660fb2ada6c88bd76d6375"
+    },
+    {
+      "bytes": 882,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-dispatch-tests-05.log",
+      "sha256": "47e577393ca04d7c9dcb9e34599528a0129bed8c59a249dd85ed216196be077e"
+    }
+  ],
+  "historical_input_bindings": [
+    {
+      "bytes": 6695,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/qualified-pair-factual-result-01.json",
+      "sha256": "4de57315121fed04c5095817997a494897b6d4fd99dc0e1b0615eb3630c7d992"
+    },
+    {
+      "bytes": 76719,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/comparison-01.json",
+      "sha256": "9b26fa9dd2f5b615dfbb7d655a1192cb82d37eaf7915216723b7dfa6baaf304c"
+    },
+    {
+      "bytes": 2150,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/qualified-pair-publication-report-01.md",
+      "sha256": "318494546583bfd0bf1663ebc63f5fafd15187d6959f5d29367a8f4733ace381"
+    },
+    {
+      "bytes": 41744,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/next-metadata-treatment-backlog-20261007-03.json",
+      "sha256": "e692b51f8dbaea22a7bae42999bfb93ee5780156381b71ec983d71d0d2e3105f"
+    }
+  ],
+  "fixed_review_findings": [
+    {
+      "finding": "Catalog receipt evidence IDs were not compared to an independently expected native evidence population.",
+      "resolution": "Ordered expected_native_evidence_ids is required and compared before database mutation."
+    },
+    {
+      "finding": "The last catalog artifact pin preceded optional DuckLake projection.",
+      "resolution": "Immutable artifact descriptor/hash is checked again after sanitized history projection."
+    },
+    {
+      "finding": "A final metadata projection would invalidate ordinary-completion after-prompt custody if legacy metrics were reused as actual input.",
+      "resolution": "The baseline undelivered coding reply contract is retained separately. The actual selected coding reply contract and actual provider input are bound, while both complete views use the identical schema and literal reply suffix."
+    },
+    {
+      "finding": "Python dictionary equality can conflate false with zero and true with one in receipt layers.",
+      "resolution": "Strict selection-field types and canonical JSON comparison preserve Boolean distinctions in both new receipt layers."
+    },
+    {
+      "finding": "The old final router-byte arithmetic would reject every actually selected smaller view.",
+      "resolution": "Baseline arithmetic binds native_complete_bytes; selected bytes/hash bind the actual provider input, and independent historical reconstruction verifies both layers."
+    }
+  ],
+  "reviewed_behavior": {
+    "default_legacy_at1_input_configuration_argv_and_receipt_shapes_preserved": true,
+    "explicit_opt_in_full_indexed_coding_at1_required": true,
+    "at2_and_planning_view_selection_refused": true,
+    "upstream_current_source_and_producer_admission_remain_required": true,
+    "exact_shared_metadata_values_remain_inline": true,
+    "common_field_allowlists": {
+      "capsules": [
+        "schema",
+        "capsule_schema",
+        "semantic_index_schema",
+        "capsule_compiler_version",
+        "extractor_version",
+        "source_cid"
+      ],
+      "admissions": [
+        "schema",
+        "interface",
+        "freshness"
+      ],
+      "admission_refs": [
+        "source_cid",
+        "semantic_state_root_cid",
+        "raw_source_required"
+      ]
+    },
+    "literals_source_bodies_paths_signatures_native_core_suffix_and_unknown_fields_preserved": true,
+    "all_six_native_verdicts_preserved": [
+      "proved",
+      "disproved",
+      "inconclusive",
+      "unsupported",
+      "error",
+      "cancelled"
+    ],
+    "row_overrides_foreign_aliases_tampered_receipts_noncanonical_duplicate_nonfinite_and_overbound_inputs_refused": true,
+    "exact_original_at1_restoration_required": true,
+    "complete_prefix_suffix_and_coding_generation_schema_custody_preserved": true,
+    "expanding_complete_view_falls_back_to_unchanged_legacy": true,
+    "preparation_configuration_native_argv_and_archive_selection_bound": true,
+    "selection_drift_refused_before_invocation_or_reported_incomplete": true,
+    "independent_cold_collector_and_subprocess_model_input_replay_tested": true,
+    "catalog_registration_observational_only": true,
+    "bridge_model_use_authorized": false,
+    "bridge_source_freshness_verified": false,
+    "required_fact_omission_authority": false
+  },
+  "independent_controls": {
+    "actual_provider_token_usage": null,
+    "all_passed": true,
+    "benchmark_launches": 0,
+    "checks": [
+      {
+        "control": "exact_transport_restoration",
+        "passed": true
+      },
+      {
+        "control": "all_six_native_verdicts_retained",
+        "passed": true
+      },
+      {
+        "control": "literal_source_core_suffix_and_unknown_fields_retained",
+        "passed": true
+      },
+      {
+        "control": "complete_selected_input_shrinks",
+        "passed": true
+      },
+      {
+        "control": "nonexpanding_fallback_is_exact_legacy",
+        "passed": true
+      },
+      {
+        "control": "at2_refused",
+        "passed": true
+      },
+      {
+        "control": "changed_literal_boundary_refused",
+        "passed": true
+      },
+      {
+        "control": "canonical_audit_distinguishes_boolean_and_integer",
+        "passed": true
+      }
+    ],
+    "private_database_reads": 0,
+    "provider_calls": 0,
+    "schema": "independent-authored-metadata-controls@1",
+    "scope": "Pure authored shape fixture; upstream source/admission freshness is not independently qualified by this fixture. No native task or evaluator content used.",
+    "token_proxy": "utf8-bytes-ceil-div4@1"
+  },
+  "validation": {
+    "final_fresh_combined_suite": {
+      "binding": {
+        "bytes": 64549,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.xml",
+        "sha256": "627ffb9b02007d3cd56708b8f06ddb0c0d37f5dc096c0bff86f96311a4787141"
+      },
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "passed": 354,
+        "skipped": 0,
+        "tests": 354
+      }
+    },
+    "focused_real_producer_codec_suite": {
+      "binding": {
+        "bytes": 8037,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-final-02.xml",
+        "sha256": "52ed43e6364394ca51b1ad9dd45b0ff32d914265292191c99cbbd8a227ccc76e"
+      },
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "passed": 53,
+        "skipped": 0,
+        "tests": 53
+      }
+    },
+    "focused_catalog_suite": {
+      "passed": 61,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "60 bridge controls plus the existing native atomic batch rollback control on authored temporary DuckDB."
+    },
+    "focused_policy_suite": {
+      "passed": 87,
+      "new": 50,
+      "existing_transport_and_reply": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    "overlapping_suite_counts_are_not_summed_as_unique_tests": true,
+    "retained_initial_codec_run": {
+      "binding": {
+        "bytes": 8659,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml",
+        "sha256": "1d45ec2dc9f67b7dcde98b2f701ec2341831a4d31f6dc1bcbb9ed24376fa5f20"
+      },
+      "counts": {
+        "errors": 0,
+        "failures": 1,
+        "passed": 50,
+        "skipped": 0,
+        "tests": 51
+      }
+    },
+    "retained_failure_interpretation": [
+      "The first codec run had 50 passes and one failed fixture assumption: the zero-function source still created a ROOT_TEXT symbol and genuinely selected a smaller common view. The corrected comment-only fixture asserts one capsule/admission and exact legacy fallback.",
+      "Intermediate dispatch/audit debugging logs remain retained. The initial selected-view byte invariant failed and was fixed; subsequent raw artifact-byte and missing canonical-repository fixture mismatches were correct refusals, with the final cold IPC fixture corrected and included in the fresh suite."
+    ],
+    "fresh_seal_database_bodies_read": false,
+    "actual_provider_calls": 0,
+    "actual_benchmark_launches": 0,
+    "private_database_reads": 0,
+    "authored_mock_usage_is_not_native_provider_usage": true
+  },
+  "prior_qualified_pair": {
+    "frozen_source_head": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+    "archive_sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797",
+    "qualification_gates": {
+      "baseline_passed": 74,
+      "compact_passed": 74,
+      "cross_arm_passed": 20,
+      "failed_gates": [],
+      "independent_review_passed": 46
+    },
+    "original_native_outcomes": {
+      "baseline_native_task_completed": true,
+      "baseline_reward": 1,
+      "both_exact_native_and_complete_model_input_audits_verified": true,
+      "both_remaining_processes_zero_and_worker_cleanup_returncode_zero": true,
+      "compact_native_task_completed": true,
+      "compact_reward": 1
+    },
+    "phase_tokens": {
+      "baseline_planning": 25243,
+      "baseline_coding": 221749,
+      "compact_planning": 25192,
+      "compact_coding": 301925,
+      "baseline_coding_share_percent": 89.779830925698,
+      "compact_minus_baseline_planning": -51,
+      "compact_minus_baseline_coding": 80176
+    },
+    "observed_usage": {
+      "baseline": {
+        "cached_input_tokens": 176896,
+        "input_tokens": 242507,
+        "output_tokens": 4485,
+        "total_tokens": 246992
+      },
+      "baseline_uncached_input_tokens": 65611,
+      "cached_input_already_in_input_total": true,
+      "compact": {
+        "cached_input_tokens": 254592,
+        "input_tokens": 320808,
+        "output_tokens": 6309,
+        "total_tokens": 327117
+      },
+      "compact_minus_baseline": {
+        "cached_input_tokens": 77696,
+        "input_tokens": 78301,
+        "output_tokens": 1824,
+        "total_tokens": 80125
+      },
+      "compact_uncached_input_tokens": 66216,
+      "full_pair_tokens": 574109,
+      "retained_campaign_cli_sessions": 13,
+      "retained_prior_five_attempt_tokens": 1311238,
+      "retained_seven_attempt_campaign_tokens": 1885347
+    },
+    "compact_minus_baseline_total_tokens": 80125,
+    "observed_compact_total_increase_percent": 32.44032195374749,
+    "coding_initial_input_bytes": {
+      "baseline_complete_model": 59731,
+      "baseline_native": 62443,
+      "compact_complete_model": 57160,
+      "compact_minus_baseline_complete_model": -2571,
+      "compact_minus_baseline_native": -1271,
+      "compact_native": 61172,
+      "same_fixed_reply_suffix_each": 506,
+      "same_native_generation_schema_each": 215
+    },
+    "repeatable_or_causal_reduction_established": false,
+    "savings_supported": false,
+    "interpretation": "One qualified pair observed 80,125 more total tokens (+32.44%) despite a 2,571-byte smaller complete initial coding input. Coding contributed 89.78% of baseline tokens. Initial bytes and proxy counts cannot establish complete session savings. The native coding inputs also differed, so this was not a transport-only measurement on identical native bytes.",
+    "counter_records_are_not_api_call_counts": true,
+    "cached_input_already_contained_in_input_tokens": true,
+    "earlier_failed_attempts_and_failed_audits_preserved": true,
+    "campaign_scope": "The seven retained comparison attempts and 13 native CLI sessions total 1,885,347 observed tokens. This is not a total for all project, interactive-assistant, embedding or training activity."
+  },
+  "permitted_historical_context_metadata": {
+    "arms": [
+      {
+        "audited_context_chunks": {
+          "code-retrieval-context": {
+            "bytes": 4832,
+            "count": 1,
+            "sha256": "03a79ff0e314eb9b28786031a184e2e3bdaa75342eb1eeb06f835b9b3c33021a"
+          },
+          "intent-world-context": {
+            "bytes": 6340,
+            "count": 2,
+            "sha256": "28a80d8f021a957e47f9acd20bc6a059c41f947f1bb17d1fc991f958eb35914e"
+          },
+          "semantic-context": {
+            "bytes": 31939,
+            "count": 6,
+            "sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f"
+          }
+        },
+        "coding_token_count_records": 6,
+        "doctor_advisory_bytes": 2109,
+        "doctor_residual_row_population": null,
+        "doctor_residual_successors": 1,
+        "indexed_context": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "51c09a7ed1415242ed25829e13e7c510a5dba6b02cea21db86b97ffc55e1d8e6",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "120d6c9d844a7e2ac88b9c0a1d80b9253f6cc9fd8a8911a07df7b64d66f9e12b",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "label": "baseline",
+        "phase_usage": [
+          {
+            "phase": "planning",
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23692,
+              "output_tokens": 1551,
+              "total_tokens": 25243
+            }
+          },
+          {
+            "phase": "coding",
+            "tokens": {
+              "cached_input_tokens": 176896,
+              "input_tokens": 218815,
+              "output_tokens": 2934,
+              "total_tokens": 221749
+            }
+          }
+        ],
+        "post_publication_embedding_accounting": {
+          "all_refreshes_receipted": false,
+          "known_subtotals": {
+            "local_embedding_calls": null,
+            "local_embedding_texts": null,
+            "remote_embedding_calls": null,
+            "text_generation_calls": null
+          },
+          "totals": {
+            "local_embedding_calls": null,
+            "local_embedding_texts": null,
+            "remote_embedding_calls": null,
+            "text_generation_calls": null
+          }
+        }
+      },
+      {
+        "audited_context_chunks": {
+          "code-retrieval-context": {
+            "bytes": 4832,
+            "count": 1,
+            "sha256": "03a79ff0e314eb9b28786031a184e2e3bdaa75342eb1eeb06f835b9b3c33021a"
+          },
+          "intent-world-context": {
+            "bytes": 6070,
+            "count": 1,
+            "sha256": "67c79e2deadf99bd9866493ab27e06dc42e130c7d0810aa365e2f07accc831b8"
+          },
+          "semantic-context": {
+            "bytes": 31939,
+            "count": 6,
+            "sha256": "0e973bce2a09692c701d8619af2ce9928c6b5fcfcb1e8464408373f6457c049f"
+          }
+        },
+        "coding_token_count_records": 8,
+        "doctor_advisory_bytes": 2109,
+        "doctor_residual_row_population": null,
+        "doctor_residual_successors": 1,
+        "indexed_context": {
+          "context_preparation_is_dispatch_evidence": false,
+          "doctor_repair_status": "abstained",
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "initial_indexes_reused": true,
+          "learned_embeddings": false,
+          "native_fact_rows_replayed": 4,
+          "new_embedding_calls": 0,
+          "prepared": true,
+          "worker_capsules": 4,
+          "worker_semantic_bytes": 31939
+        },
+        "initial_indexed_context": {
+          "canonical_tasks_created": false,
+          "full_capsules": 8,
+          "indexed_symbols": 4,
+          "learned_embeddings": false,
+          "planning_model_request_sha256": "01a3d3d18f5b07034ff61e0ff6316aa15b84342d59c5392d5a656f0baff29fa4",
+          "preparation_is_provider_dispatch_evidence": false,
+          "prepared": true,
+          "provider_calls": 0,
+          "summary_sha256": "2fd4f1da18842cfaad725d18e8a9de79d0183465afff941a687b3ef8827b7e52",
+          "supplied_to_planning_router": true,
+          "world_task_count": 0
+        },
+        "label": "compact",
+        "phase_usage": [
+          {
+            "phase": "planning",
+            "tokens": {
+              "cached_input_tokens": 0,
+              "input_tokens": 23686,
+              "output_tokens": 1506,
+              "total_tokens": 25192
+            }
+          },
+          {
+            "phase": "coding",
+            "tokens": {
+              "cached_input_tokens": 254592,
+              "input_tokens": 297122,
+              "output_tokens": 4803,
+              "total_tokens": 301925
+            }
+          }
+        ],
+        "post_publication_embedding_accounting": {
+          "all_refreshes_receipted": false,
+          "known_subtotals": {
+            "local_embedding_calls": null,
+            "local_embedding_texts": null,
+            "remote_embedding_calls": null,
+            "text_generation_calls": null
+          },
+          "totals": {
+            "local_embedding_calls": null,
+            "local_embedding_texts": null,
+            "remote_embedding_calls": null,
+            "text_generation_calls": null
+          }
+        }
+      }
+    ],
+    "prioritization": "The identical audited semantic chunk is 31,939 bytes (~51% of baseline native initial coding input); identical retrieval is 4,832 bytes. These are targets for investigation, not quantities proven removable.",
+    "doctor_viability": "Both Doctor advisories are 2,109 bytes and report one residual successor. Actual residual row and shared-reference populations were not retained in host receipts, so one successor must not be relabeled one row or used to predict factoring savings.",
+    "world_population_note": "World context differs: baseline 6,340 bytes/two chunks, compact 6,070 bytes/one chunk. Do not normalize those facts or source/root differences away.",
+    "existing_reuse_note": "Initial indexes were already reused with four replayed native fact rows and zero new initial embedding calls. These observations do not support claiming elimination of fresh embedding calls that were already zero.",
+    "broader_accounting_gap": "Post-publication embedding counters are null and all_refreshes_receipted=false. Any broader all-model accounting claim must preserve this unknown scope or add complete new receipts.",
+    "audit_scope": "Existing context audit verifies the router task prompt and complete selected initial model prompt layers. Provider harness/system context and native CLI internal conversation/tool history are outside the initial-input digest; complete native token usage is a separate session metric."
+  },
+  "fresh_authored_offline_census": {
+    "token_proxy": "utf8-bytes-ceil-div4@1",
+    "proxy_definition": "ceil(UTF-8 byte length / 4), an explicitly labeled byte-derived proxy; not an actual provider tokenizer or native session usage.",
+    "wrapper_scope": "Actual workspace renderer and ordinary-completion reply suffix, plus identical authored Doctor/public-instruction stand-ins; offline census, not live dispatch qualification.",
+    "rows": [
+      {
+        "admission_count": 1,
+        "candidate_complete_bytes": 11817,
+        "candidate_complete_proxy_tokens": 2955,
+        "capsule_count": 1,
+        "common_field_names": {
+          "admission_refs": [],
+          "admissions": [],
+          "capsules": []
+        },
+        "exact_native_transport_restored": true,
+        "fallback_reason": "complete_input_not_smaller_under_bytes_and_proxy",
+        "fixture_id": "authored-functions-0",
+        "native_complete_bytes": 11319,
+        "native_complete_proxy_tokens": 2830,
+        "selected_complete_bytes": 11319,
+        "selected_mode": "legacy"
+      },
+      {
+        "admission_count": 3,
+        "candidate_complete_bytes": 18394,
+        "candidate_complete_proxy_tokens": 4599,
+        "capsule_count": 3,
+        "common_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid",
+            "source_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema",
+            "source_cid"
+          ]
+        },
+        "exact_native_transport_restored": true,
+        "fallback_reason": null,
+        "fixture_id": "authored-functions-1",
+        "native_complete_bytes": 18959,
+        "native_complete_proxy_tokens": 4740,
+        "selected_complete_bytes": 18394,
+        "selected_mode": "common-bindings@1"
+      },
+      {
+        "admission_count": 8,
+        "candidate_complete_bytes": 35290,
+        "candidate_complete_proxy_tokens": 8823,
+        "capsule_count": 8,
+        "common_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid",
+            "source_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema",
+            "source_cid"
+          ]
+        },
+        "exact_native_transport_restored": true,
+        "fallback_reason": null,
+        "fixture_id": "authored-functions-6",
+        "native_complete_bytes": 38505,
+        "native_complete_proxy_tokens": 9627,
+        "selected_complete_bytes": 35290,
+        "selected_mode": "common-bindings@1"
+      },
+      {
+        "admission_count": 22,
+        "candidate_complete_bytes": 82665,
+        "candidate_complete_proxy_tokens": 20667,
+        "capsule_count": 22,
+        "common_field_names": {
+          "admission_refs": [
+            "raw_source_required",
+            "semantic_state_root_cid",
+            "source_cid"
+          ],
+          "admissions": [
+            "freshness",
+            "interface",
+            "schema"
+          ],
+          "capsules": [
+            "capsule_compiler_version",
+            "capsule_schema",
+            "extractor_version",
+            "schema",
+            "semantic_index_schema",
+            "source_cid"
+          ]
+        },
+        "exact_native_transport_restored": true,
+        "fallback_reason": null,
+        "fixture_id": "authored-functions-20",
+        "native_complete_bytes": 93321,
+        "native_complete_proxy_tokens": 23331,
+        "selected_complete_bytes": 82665,
+        "selected_mode": "common-bindings@1"
+      }
+    ],
+    "source_file_population": "Each authored fixture uses one authored source file.",
+    "actual_largest_eigenval_selected_view_counts": null,
+    "actual_provider_token_usage": null,
+    "actual_total_token_reduction": null,
+    "actual_benchmark_launches": 0,
+    "actual_provider_calls": 0,
+    "efficacy_established": false,
+    "interpretation": "All four fixtures restore exactly. One capsule expands and falls back; larger authored populations shrink. Real largest-eigenval worker metadata spans two public source paths, so its common source-field population and complete byte benefit must be measured independently without exporting source/evaluator bodies."
+  },
+  "measurement_plan": {
+    "objective": "Reduce total native Terminal Bench supervisor tokens while preserving one LLM planning session and one LLM coding session through llm_router.",
+    "next_treatment": "A separately selected common-bindings@1 coding metadata view on original semantic transport @1, with all shared values inline.",
+    "planning": "Keep the general planning session, original declarations, canonical/native generation schema and native graph admission unchanged.",
+    "stage_1_actual_prepared_view_census": {
+      "before_live_dispatch": true,
+      "provider_calls": 0,
+      "method": "The verified native owner emits only closed metadata aggregates: actual capsule/admission populations, exactly equal shareable field names, source-group counts, full native/candidate/selected initial prompt bytes and proxy, exact restoration result, and source/task/root/schema bindings. Source/evaluator/provider response bodies are not exported or inspected.",
+      "gate": "Both complete views must fit native bounds. Exact restoration, unchanged required facts/core/literal wrappers and strict byte/proxy non-expansion must pass. Record requested versus actual selected mode and fallback reason.",
+      "viability": "An actual legacy fallback or negligible complete-input gain does not justify a live efficacy pilot merely because the codec is qualified."
+    },
+    "stage_2_separate_versioned_comparison": {
+      "preserve_historical_producers_and_receipts": true,
+      "control": "Freeze one new runtime/archive for both arms; use identical original public task inputs, provider/model/reasoning/CLI version, resource/setup controls, signed declarations and policy. Hold coding transport @1 and coding reply mode/schema/suffix fixed; vary only explicit metadata-view selection.",
+      "identity": "Reconstruct and hash each arm independently. Keep native administrative identities separately bound; compare reviewed authorized source/declaration/fact populations without broad root, authority, world or status normalization.",
+      "required_observation": "A treatment arm must actually select common-bindings@1. Legacy fallback is retained with all costs but is not an observed projection treatment.",
+      "input_audit": "Verify actual selected final input and its complete counterfactual @1 baseline, all literal prefix/suffix components, current producer/source bindings and requested/observed generation-schema custody through the independently frozen collector/subprocess audit."
+    },
+    "primary_metric": {
+      "definition": "Sum complete final native input_tokens + output_tokens across planning, coding and every additional model attempt. Use the cumulative session total once; do not sum cumulative counter snapshots or add aggregate summaries again.",
+      "cached_input": "Cached input is already included in input_tokens. Report cache and uncached input separately without subtracting cache from a total-token saving claim.",
+      "failures": "Preserve unsuccessful, cancelled, rejected and retried attempt costs. Missing or incomplete native usage is unknown, never zero. Retain known subtotals and incomplete coverage rather than claiming complete savings.",
+      "counter_semantics": "Token-count record counts and CLI-session counts are distinct from provider API-call counts."
+    },
+    "secondary_metrics": [
+      "Planning and coding input, cached input, uncached input, output and total tokens separately.",
+      "Actual complete initial prompt bytes/proxy, schema identities and selected/fallback mode.",
+      "Actual receipted additional model attempts, owner lookups, tool payload sizes, validation/repair rounds and deterministic-analysis time; leave unavailable counts unknown.",
+      "Metadata catalog registration/reuse, proof-cache hit validation and source-currentness costs, when actually observed.",
+      "Dollar cost only from qualified actual price/cost receipts; no invented price calculation."
+    ],
+    "outcome_gates": [
+      "Exactly one receipted planning and one coding router session for the intended controlled comparison, with every extra attempt detected and accounted.",
+      "Original task/source hashes and native scope/output/effect/validation/acceptance population preserved.",
+      "Strict response validation, actual native plan admission and unchanged original correctness/performance validators.",
+      "Original official reward, native completion/publication outcome, failure settlement and clean lifecycle shutdown.",
+      "Complete input/schema/usage/control gates; no provider fallback disguised as the selected treatment."
+    ],
+    "repetition": "Report the first qualified pair as an observation. Use a predeclared replication budget/pair count and balanced execution order before claiming repeatable savings or equal reliability; retain adverse results and failures.",
+    "deferred_work": [
+      "Fresh native proof/status replacement views may reduce repeated reasoning only when exact obligations, all six verdicts, reasons, assumptions and current source/dependency/certificate bindings remain visible.",
+      "A catalog nomination, locator or mtime never certifies content freshness, proof or required-fact omission. The bridge’s actual file-backed DuckDB controls do not qualify a generic live Quack gateway.",
+      "Qualify a specific bounded task-bound owner expansion operation before replacing required inline facts with handles; count all lookup and repair costs.",
+      "DuckLake history/deltas require authenticated parent delivery, exact reconstruction and separate currentness checks at a supported supervisor-controlled boundary. They do not truncate native CLI internal history.",
+      "8D/384D/768D or separately qualified Leanstral representations may rank nominations. Embedding distance and reconstruction loss do not prove equivalence or authorize fact omission; new training is outside this one-factor treatment."
+    ]
+  },
+  "limitations": [
+    "Offline bytes and a byte-derived proxy do not demonstrate actual initial tokenizer reduction, complete session token reduction, monetary saving or speed improvement.",
+    "Lossless representation restoration does not mechanically prove program semantics, law/prose alignment, numerical correctness, performance or model comprehension.",
+    "Actual benchmark-specific projection viability remains unmeasured until a permitted prepared-view metadata census is emitted.",
+    "The bridge artifact is opaque: independent native owner verification and expected evidence population remain required before model use.",
+    "Actual generic Quack gateway and DuckLake extension/storage projection are not newly qualified here.",
+    "Initial-prompt factoring does not control or shorten native CLI internal conversation or tool history.",
+    "The prior adverse qualified result remains evidence against assuming smaller initial prompts imply lower total cost; one pair is insufficient for a reliable causal effect."
+  ],
+  "reviewer_actions": {
+    "repository_source_edits": 0,
+    "actual_provider_calls": 0,
+    "actual_benchmark_launches": 0,
+    "private_database_bodies_read": false,
+    "raw_native_provider_responses_or_thoughts_read": false,
+    "hidden_evaluation_public_eval_or_task_solution_bodies_read": false,
+    "artifact_only_output": true
+  },
+  "proof_authority": false,
+  "execution_authority": false,
+  "publication_authority": false,
+  "completion_authority": false,
+  "program_semantics_proved": false,
+  "required_fact_omission_authority": false,
+  "live_token_savings_established": false
+}

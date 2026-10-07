@@ -1,0 +1,20 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test
+configfile: pytest.ini
+collected 8 items
+
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                     [100%][0m
+
+============================= slowest 10 durations =============================
+1.11s setup    api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+1.02s call     api/test_semantic_metadata_dispatch.py::test_implementation_argv_selects_only_explicit_semantic_model_route
+0.66s setup    api/test_semantic_metadata_dispatch.py::test_boolean_integer_receipt_tampering_is_rejected[metadata]
+0.65s setup    api/test_semantic_metadata_dispatch.py::test_boolean_integer_receipt_tampering_is_rejected[baseline_reply]
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@1-planning]
+0.61s setup    api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+0.60s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[foreign-supervisor-semantic-router-input@1-coding]
+0.60s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@2-coding]
+0.10s call     api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+0.09s call     api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+[32m============================== [32m[1m8 passed[0m[32m in 21.61s[0m[32m ==============================[0m

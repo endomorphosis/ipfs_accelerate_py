@@ -1,0 +1,83 @@
+
+----------------------------- live log collection ------------------------------
+2026-10-07 14:00:28 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-07 14:00:28 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-07 14:00:28 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-07 14:00:28 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-07 14:00:28 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-07 14:00:28 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-07 14:00:28 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+
+test/api/test_semantic_metadata_view.py::test_real_producer_full_transport_and_native_prompt_round_trip PASSED [  1%]
+test/api/test_semantic_metadata_view.py::test_actual_allowlist_and_every_value_remain_inline PASSED [  3%]
+test/api/test_semantic_metadata_view.py::test_receipt_binds_native_core_source_task_and_roots_without_authority PASSED [  5%]
+test/api/test_semantic_metadata_view.py::test_complete_input_selection_counts_all_literal_prefix_and_suffix PASSED [  7%]
+test/api/test_semantic_metadata_view.py::test_real_small_fixture_falls_back_without_altering_native_input FAILED [  9%]
+test/api/test_semantic_metadata_view.py::test_complete_selection_rejects_changed_or_ambiguous_literal_boundaries[prefix] PASSED [ 11%]
+test/api/test_semantic_metadata_view.py::test_complete_selection_rejects_changed_or_ambiguous_literal_boundaries[suffix] PASSED [ 13%]
+test/api/test_semantic_metadata_view.py::test_complete_selection_rejects_changed_or_ambiguous_literal_boundaries[duplicate] PASSED [ 15%]
+test/api/test_semantic_metadata_view.py::test_complete_selection_rejects_changed_or_ambiguous_literal_boundaries[missing] PASSED [ 17%]
+test/api/test_semantic_metadata_view.py::test_original_at1_at2_are_unchanged_and_at2_is_refused PASSED [ 19%]
+test/api/test_semantic_metadata_view.py::test_unknown_fields_statuses_and_structured_literals_stay_row_local PASSED [ 21%]
+test/api/test_semantic_metadata_view.py::test_nonidentical_or_missing_binding_fields_are_never_factored PASSED [ 23%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[common] PASSED [ 25%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[row] PASSED [ 27%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[task] PASSED [ 29%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[scope] PASSED [ 31%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[root] PASSED [ 33%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[manifest] PASSED [ 35%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[core] PASSED [ 37%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[literal] PASSED [ 39%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[alias] PASSED [ 41%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[instructions] PASSED [ 43%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[authority] PASSED [ 45%]
+test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[unknown_top] PASSED [ 47%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[task_id] PASSED [ 49%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[scope_cid] PASSED [ 50%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[semantic_root_cid] PASSED [ 52%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[translation_cid] PASSED [ 54%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[source_manifest_sha256] PASSED [ 56%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[native_core_sha256] PASSED [ 58%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[native_context_sha256] PASSED [ 60%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[native_suffix_sha256] PASSED [ 62%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[original_translated_semantic_sha256] PASSED [ 64%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[native_transport_sha256] PASSED [ 66%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[candidate_view_sha256] PASSED [ 68%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[common_bindings_sha256] PASSED [ 70%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[shared_field_paths] PASSED [ 72%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[capsule_count] PASSED [ 74%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[candidate_view_proxy_tokens] PASSED [ 76%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[proof_authority] PASSED [ 78%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[candidate_only] PASSED [ 80%]
+test/api/test_semantic_metadata_view.py::test_receipt_mutation_or_foreign_binding_refuses_restore[unknown] PASSED [ 82%]
+test/api/test_semantic_metadata_view.py::test_even_rehashed_receipt_cannot_allow_unknown_common_fields_or_row_overrides PASSED [ 84%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[{"schema":1,"schema":1}] PASSED [ 86%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[{"x":NaN}] PASSED [ 88%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[{"x":Infinity}] PASSED [ 90%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[{"x":1e999}] PASSED [ 92%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[{} ] PASSED [ 94%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused[[]] PASSED [ 96%]
+test/api/test_semantic_metadata_view.py::test_duplicate_nonfinite_noncanonical_and_nontransport_inputs_refused["literal"] PASSED [ 98%]
+test/api/test_semantic_metadata_view.py::test_oversized_deep_and_wrong_row_shapes_refused PASSED [100%]
+
+=================================== FAILURES ===================================
+_______ test_real_small_fixture_falls_back_without_altering_native_input _______
+
+native_factory = <function native_factory.<locals>.build at 0xfd2cc400c900>
+
+    def test_real_small_fixture_falls_back_without_altering_native_input(native_factory):
+        _repository, encoded, _source = native_factory(0)
+        candidate = view_codec.project_semantic_metadata_view(encoded.provider_prompt)
+        selection = view_codec.select_semantic_metadata_view(view=candidate,
+            native_complete_prompt=encoded.provider_prompt, candidate_complete_prompt=candidate.provider_prompt)
+>       assert selection.selected_mode == "legacy"
+E       AssertionError: assert 'common-bindings@1' == 'legacy'
+E         
+E         - legacy
+E         + common-bindings@1
+
+test/api/test_semantic_metadata_view.py:149: AssertionError
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml -
+=========================== short test summary info ============================
+FAILED test/api/test_semantic_metadata_view.py::test_real_small_fixture_falls_back_without_altering_native_input
+======================== 1 failed, 50 passed in 46.51s =========================

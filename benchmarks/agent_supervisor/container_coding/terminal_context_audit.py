@@ -35,11 +35,17 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract")
 
 
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _same_json(left, right) -> bool:
+    """Compare typed canonical values: false is distinct from zero."""
+    options = dict(sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return json.dumps(left, **options) == json.dumps(right, **options)
 
 
 def _base(status="unknown", reason="observation_unavailable") -> dict:
@@ -228,6 +234,26 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                 for requirement_id in requirements[key]:
                     _identity(requirement_id)
     reply = result.get("coding_reply_contract")
+    metadata = result.get("semantic_metadata_view")
+    if metadata is not None:
+        if (not translated or result["semantic_translation"]["schema"] != "supervisor-semantic-router-encoding@1"
+                or type(metadata) is not dict
+                or metadata.get("schema") != "supervisor-semantic-metadata-selection@1"
+                or metadata.get("selected_mode") not in {"legacy", "common-bindings@1"}
+                or metadata.get("candidate_only") is not True
+                or any(metadata.get(key) is not False for key in (
+                    "source_freshness_verified", "program_semantics_proved", "omission_authority",
+                    "proof_authority", "execution_authority", "completion_authority", "publication_authority"))):
+            raise ValueError("metadata coding view requires a verified original semantic transport")
+        for key in ("view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"):
+            _digest(metadata.get(key))
+        for key in ("native_complete_bytes", "candidate_complete_bytes", "selected_complete_bytes",
+                    "native_complete_proxy_tokens", "candidate_complete_proxy_tokens", "selected_complete_proxy_tokens"):
+            if type(metadata.get(key)) is not int or not 0 < metadata[key] <= 262_144:
+                raise ValueError("invalid metadata input count")
+        if (metadata["selected_complete_bytes"] != result["model_prompt_bytes"]
+                or metadata["selected_complete_sha256"] != result["model_prompt_sha256"]):
+            raise ValueError("metadata selection differs from actual provider input")
     reply_bytes = 0
     if reply is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
@@ -247,13 +273,18 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             if type(reply[field]) is not int or not 0 < reply[field] <= 256_000:
                 raise ValueError("invalid coding reply contract byte count")
         reply_bytes = reply["instruction_bytes"]
-        if (reply["model_prompt_before_bytes"] != router_bytes + result["workspace_advisory_bytes"]
+        expected_before = (router_bytes + result["workspace_advisory_bytes"] if metadata is None
+                           else metadata["selected_complete_bytes"] - reply_bytes)
+        if (reply["model_prompt_before_bytes"] != expected_before
                 or reply["model_prompt_after_bytes"] != result["model_prompt_bytes"]
                 or reply["model_prompt_after_sha256"] != result["model_prompt_sha256"]):
             raise ValueError("inconsistent coding reply contract input identities")
+    expected_complete_bytes = result["model_prompt_bytes"] if metadata is None else metadata["native_complete_bytes"]
     if (result["prompt_sha256"] != result["native_prompt_sha256"]
             or result["prompt_bytes"] != result["native_prompt_bytes"]
-            or router_bytes + result["workspace_advisory_bytes"] + reply_bytes != result["model_prompt_bytes"]):
+            or router_bytes + result["workspace_advisory_bytes"] + reply_bytes != expected_complete_bytes
+            or metadata is None and result.get("semantic_metadata_native_coding_reply_contract") is not None
+            or reply is None and result.get("semantic_metadata_native_coding_reply_contract") is not None):
         raise ValueError("inconsistent router input identities")
     return result
 
@@ -310,9 +341,40 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None):
         from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract
         model, expected = apply_coding_reply_contract(model_prompt=model, mode=reply["mode"],
             purpose="coding", provider="codex_cli")
-        for field in expected:
-            if field != "response_validated":
-                checks["coding_reply_" + field] = reply[field] == expected[field]
+        baseline_reply = expected
+        if receipt.get("semantic_metadata_view") is None:
+            for field in expected:
+                if field != "response_validated":
+                    checks["coding_reply_" + field] = reply[field] == expected[field]
+    metadata = receipt.get("semantic_metadata_view")
+    if metadata is not None:
+        if not translated:
+            raise ValueError("metadata view requires retained semantic input")
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
+            project_semantic_metadata_view, select_semantic_metadata_view,
+        )
+        view = project_semantic_metadata_view(encoded.provider_prompt)
+        if not router_prompt.startswith(encoded.provider_prompt):
+            raise ValueError("metadata audit differs from reconstructed native transport")
+        candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
+        candidate, candidate_advisory = render_model_prompt(prompt=candidate_router, purpose="coding",
+            workspace=Path(receipt["workspace"]), semantic_transport=True)
+        if candidate_advisory != advisory:
+            raise ValueError("metadata audit changed workspace advisory")
+        if reply is not None:
+            candidate, candidate_reply = apply_coding_reply_contract(model_prompt=candidate,
+                mode=reply["mode"], purpose="coding", provider="codex_cli")
+        selection = select_semantic_metadata_view(view=view, native_complete_prompt=model,
+            candidate_complete_prompt=candidate)
+        checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
+        model = selection.selected_prompt
+        if reply is not None:
+            checks["semantic_metadata_native_reply_contract"] = (
+                _same_json(receipt.get("semantic_metadata_native_coding_reply_contract"), baseline_reply))
+            selected_reply = candidate_reply if model == candidate else baseline_reply
+            for field in selected_reply:
+                if field != "response_validated":
+                    checks["metadata_selected_coding_reply_" + field] = reply[field] == selected_reply[field]
     checks.update(model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],
         model_prompt_bytes=len(model.encode()) == receipt["model_prompt_bytes"],
         workspace_advisory_sha256=_sha(advisory.encode()) == receipt["workspace_advisory_sha256"],

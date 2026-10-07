@@ -1,0 +1,14 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test
+configfile: pytest.ini
+collected 1 item
+
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[32m                            [100%][0m
+
+============================= slowest 10 durations =============================
+1.17s setup    api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+1.09s call     api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================== [32m[1m1 passed[0m[32m in 17.60s[0m[32m ==============================[0m

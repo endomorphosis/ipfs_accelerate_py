@@ -1,0 +1,100 @@
+{
+  "authority": {
+    "completion_authority": false,
+    "current_source_verified_by_bridge": false,
+    "execution_authority": false,
+    "freshness_authority": false,
+    "model_use_authorized": false,
+    "proof_authority": false,
+    "publication_authority": false,
+    "required_fact_omission_authority": false
+  },
+  "created_utc": "2026-10-07T13:57:43.204575+00:00",
+  "focused_tests": {
+    "command": "PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages /home/barberb/.local/bin/python -B -m pytest -q -o addopts= -p no:cacheprovider test/api/test_semantic_metadata_catalog.py test/api/test_supervisor_meta_index.py::test_batched_links_match_single_identities_and_roll_back_on_database_failure",
+    "duration_seconds": 15.99,
+    "existing_native_batch_rollback_tests_passed": 1,
+    "exit_code": 0,
+    "failed": 0,
+    "log": {
+      "bytes": 8660,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-catalog-tests-02.log",
+      "sha256": "103472bd8d93655b6d37c5f10ec18041e7755046cbfea00eab4a4940b90fd10c"
+    },
+    "owned_tests_passed": 60,
+    "passed": 61,
+    "skipped": 0
+  },
+  "integration_requirements": [
+    "Expected binding and expected_native_evidence_ids must come from independently verified current native owner preparation, not from receipt under test.",
+    "Root verifies actual view codec reconstruction and source freshness upstream. Artifact is opaque to this bridge; registration is not model-use authorization.",
+    "Provider input excludes bridge DB locators/owner tokens/programs; root chooses immutable experimental view and existing native response/validation/settlement.",
+    "Experimental readable metadata view savings remain unmeasured; no claim of total-token reduction."
+  ],
+  "known_native_api_limits": [
+    "Public API separates catalog upsert and link transaction; link failure can leave an inert catalog row, cannot produce successful bridge receipt.",
+    "Native index persistence is file-backed DuckDB here; this bridge does not qualify generic Quack gateway or launch a server.",
+    "Actual DuckLake extension/storage projection is not newly qualified; tests check unconfigured native observation and authored negative projection boundaries.",
+    "Catalog nomination grants no source freshness, proof, execution, completion, publication or required-fact omission authority."
+  ],
+  "native_source_bindings": [
+    {
+      "bytes": 53490,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 10885,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py",
+      "sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83"
+    },
+    {
+      "bytes": 13799,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5"
+    }
+  ],
+  "owned_source_and_test": [
+    {
+      "bytes": 10581,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    {
+      "bytes": 12873,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_catalog.py",
+      "sha256": "b17302ada4702db1f10f298fbfe8c9db14dc034de98b238798931f2e479d7b73"
+    }
+  ],
+  "prior_test_run": {
+    "duration_seconds": 1.83,
+    "failed": 0,
+    "log": {
+      "bytes": 7721,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/semantic-metadata-catalog-tests-01.log",
+      "sha256": "d2d723845772468baa2270006abe9053b3d4a27f1284c93c7b26cc1ecc2ec7c6"
+    },
+    "passed": 54,
+    "scope": "Pre-review evidence-list/final-history-pin hardening version, preserved as chronology; final qualification uses current bound source and final log."
+  },
+  "public_api": "register_semantic_metadata_catalog(*, index, artifact, owner_receipt, expected_binding, expected_native_evidence_ids, project_history=True)",
+  "qualified_scope": [
+    "Closed bounded receipt and separately supplied native context/source/task/revision/ordered evidence-ID bindings checked before database mutation.",
+    "Owner-owned read-only single-link regular artifact exact hash/bytes and nofollow/inode checks before registration, after native links and after history projection.",
+    "Existing native SupervisorMetaIndex.register_catalog plus one atomic link_identities batch; actual authored temporary DuckDB query and idempotence checks.",
+    "Foreign context/source/task/IDs, cycles/nonfinite fields, authority promotion, absent/stale/writable/symlink/hardlink/FIFO/oversized artifacts and artifact replacement fail closed.",
+    "Existing actual native batched identity transaction rollback behavior checked.",
+    "DuckLake observation summary strips error bodies/locators and retains explicit no authority. Missing or unavailable projection does not authorize use."
+  ],
+  "schema": "semantic-metadata-catalog-offline-qualification@1",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "status": "focused_native_duckdb_tests_passed_observational_only",
+  "work_accounting": {
+    "benchmark_runs": 0,
+    "model_calls": 0,
+    "new_containers_or_servers": 0,
+    "private_database_reads": 0,
+    "provider_calls": 0,
+    "source_commits": 0
+  }
+}

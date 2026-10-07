@@ -24,6 +24,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "runner_initialization", "argument_validation", "planning_contract",
     "container_boundary", "workspace_identity", "semantic_context",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
+    "semantic_metadata_view",
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
     "semantic_response_decode", "coding_reply_validation", "unclassified",
@@ -39,6 +40,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_router_translation.py", "doctor_residual_context.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
+    "semantic_metadata_view.py",
 })
 
 
@@ -178,6 +180,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         container_boundary_sha256: str = "", purpose: str = "coding",
         semantic_repository: Path | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
+        semantic_metadata_view: str = "legacy",
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
@@ -206,6 +209,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if (semantic_transport_schema != "supervisor-semantic-router-input@1"
             and (purpose != "coding" or semantic_repository is None)):
         raise ValueError("compact semantic transport requires a semantic coding route")
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
+        raise ValueError("unsupported semantic metadata view")
+    if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
+            or semantic_transport_schema != "supervisor-semantic-router-input@1"):
+        raise ValueError("metadata view requires the original semantic coding transport")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
     failure_phase = "planning_contract"
@@ -299,6 +307,33 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         from .coding_reply_contract import apply_coding_reply_contract
         model_prompt, coding_reply_receipt = apply_coding_reply_contract(
             model_prompt=model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+    metadata_receipt = None
+    metadata_native_reply = None
+    if semantic_metadata_view != "legacy":
+        failure_phase = "semantic_metadata_view"
+        from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
+        view = project_semantic_metadata_view(encoded.provider_prompt)
+        if not router_prompt.startswith(encoded.provider_prompt):
+            raise ValueError("metadata view differs from the verified semantic transport")
+        candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
+        candidate_model, candidate_advisory = render_model_prompt(prompt=candidate_router,
+            purpose=purpose, workspace=root, semantic_transport=True)
+        if candidate_advisory != advisory:
+            raise ValueError("metadata view changed the workspace advisory")
+        if coding_reply_mode != "legacy":
+            candidate_model, candidate_reply = apply_coding_reply_contract(model_prompt=candidate_model,
+                mode=coding_reply_mode, purpose=purpose, provider=provider)
+            prompt_fields = {"model_prompt_before_sha256", "model_prompt_before_bytes",
+                             "model_prompt_after_sha256", "model_prompt_after_bytes"}
+            if ({key: value for key, value in candidate_reply.items() if key not in prompt_fields}
+                    != {key: value for key, value in coding_reply_receipt.items() if key not in prompt_fields}):
+                raise ValueError("metadata view changed the coding response contract")
+            metadata_native_reply = dict(coding_reply_receipt)
+        selection = select_semantic_metadata_view(view=view, native_complete_prompt=model_prompt,
+            candidate_complete_prompt=candidate_model)
+        model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
+        if coding_reply_mode != "legacy" and model_prompt == candidate_model:
+            coding_reply_receipt = candidate_reply
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
     # Native provider children must never inherit a typed owner token, private
@@ -354,6 +389,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if metadata_receipt is not None:
+        receipt["semantic_metadata_view"] = metadata_receipt
+    if metadata_native_reply is not None:
+        receipt["semantic_metadata_native_coding_reply_contract"] = metadata_native_reply
     failure_phase = "provider_invocation"
     provider_options = {}
     if codex_planning_schema is not None:
@@ -529,6 +568,7 @@ def main():
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
@@ -547,6 +587,7 @@ def main():
                         container_boundary_sha256=args.container_boundary_sha256,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         semantic_transport_schema=args.semantic_transport_schema,
+                        semantic_metadata_view=args.semantic_metadata_view,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,

@@ -1,0 +1,66 @@
+
+test/api/test_semantic_metadata_catalog.py::test_actual_duckdb_registration_is_inert_owner_bound_and_idempotent 
+-------------------------------- live log call ---------------------------------
+2026-10-07 13:54:00 [    INFO] Registered service: ipfs (service_manager.py:93)
+2026-10-07 13:54:00 [    INFO] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-07 13:54:00 [    INFO] Registered test suite: performance (test_framework.py:82)
+2026-10-07 13:54:00 [    INFO] Registered test suite: integration (test_framework.py:82)
+2026-10-07 13:54:00 [    INFO] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-07 13:54:00 [    INFO] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-07 13:54:00 [    INFO] Storage initialized with distributed backend (storage_wrapper.py:92)
+PASSED                                                                   [  1%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[context_cid] PASSED [  3%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[native_evidence_sha256] PASSED [  5%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[native_prompt_sha256] PASSED [  7%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[repository_id] PASSED [  9%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[source_scope_cid] PASSED [ 11%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[task_cid] PASSED [ 12%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[task_id] PASSED [ 14%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[task_revision] PASSED [ 16%]
+test/api/test_semantic_metadata_catalog.py::test_foreign_context_source_or_native_task_rejected_before_database[tree_id] PASSED [ 18%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-completion_authority] PASSED [ 20%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-execution_authority] PASSED [ 22%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-freshness_authority] PASSED [ 24%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-proof_authority] PASSED [ 25%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-publication_authority] PASSED [ 27%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[True-required_fact_omission_authority] PASSED [ 29%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-completion_authority] PASSED [ 31%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-execution_authority] PASSED [ 33%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-freshness_authority] PASSED [ 35%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-proof_authority] PASSED [ 37%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-publication_authority] PASSED [ 38%]
+test/api/test_semantic_metadata_catalog.py::test_authority_cannot_be_inferred_or_widened[0-required_fact_omission_authority] PASSED [ 40%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[schema] PASSED [ 42%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[unknown_field] PASSED [ 44%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[missing_field] PASSED [ 46%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[provider_call] PASSED [ 48%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[bool_provider] PASSED [ 50%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[bool_revision] PASSED [ 51%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[invalid_hash] PASSED [ 53%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[oversize_receipt] PASSED [ 55%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[empty_ids] PASSED [ 57%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[duplicate_ids] PASSED [ 59%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[oversize_ids] PASSED [ 61%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[control_id] PASSED [ 62%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[nonfinite] PASSED [ 64%]
+test/api/test_semantic_metadata_catalog.py::test_bad_owner_receipt_rejected_before_database[cycle] PASSED [ 66%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[missing] PASSED [ 68%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[changed] PASSED [ 70%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[writable] PASSED [ 72%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[hardlink] PASSED [ 74%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[symlink] PASSED [ 75%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[parent_symlink] PASSED [ 77%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[fifo] PASSED [ 79%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[directory] PASSED [ 81%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[bad_size] PASSED [ 83%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[oversize] PASSED [ 85%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[unsafe_parent] PASSED [ 87%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_exact_hash_and_immutable_file_guards[relative] PASSED [ 88%]
+test/api/test_semantic_metadata_catalog.py::test_no_arbitrary_database_program_and_control_plane_refused PASSED [ 90%]
+test/api/test_semantic_metadata_catalog.py::test_single_native_batch_and_one_observational_history_projection PASSED [ 92%]
+test/api/test_semantic_metadata_catalog.py::test_history_can_be_explicitly_disabled PASSED [ 94%]
+test/api/test_semantic_metadata_catalog.py::test_link_failure_has_no_success_and_leaves_only_inert_native_catalog PASSED [ 96%]
+test/api/test_semantic_metadata_catalog.py::test_artifact_swap_during_registration_cannot_yield_success PASSED [ 98%]
+test/api/test_semantic_metadata_catalog.py::test_history_cannot_grant_authority PASSED [100%]
+
+============================== 54 passed in 1.83s ==============================

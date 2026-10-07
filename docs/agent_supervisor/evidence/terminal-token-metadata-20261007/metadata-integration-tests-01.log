@@ -1,0 +1,40 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007
+configfile: pytest.ini
+collected 354 items
+
+test/api/test_semantic_metadata_view.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [  9%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                    [ 14%][0m
+test/api/test_semantic_metadata_catalog.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 23%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                          [ 31%][0m
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                    [ 34%][0m
+test/api/test_semantic_router_translation.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 42%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                 [ 48%][0m
+test/api/test_coding_reply_contract.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 58%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                           [ 62%][0m
+test/api/test_terminal_doctor_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                   [ 65%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py [32m.[0m[32m [ 65%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                        [ 79%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py [32m.[0m[32m [ 79%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                      [ 85%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py [32m.[0m[32m [ 85%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                         [ 90%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py [32m.[0m[32m [ 90%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                       [ 95%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py [32m.[0m[32m [ 95%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                          [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-integration-tests-01.xml -
+============================= slowest 10 durations =============================
+3.94s call     test/api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+1.35s call     test/api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+1.03s call     test/api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+0.91s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.84s call     test/api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.81s setup    test/api/test_semantic_metadata_view.py::test_even_rehashed_receipt_cannot_allow_unknown_common_fields_or_row_overrides
+0.81s call     test/api/test_semantic_router_translation.py::test_explicit_program_translation_round_trips_real_subset_and_support[program1]
+0.79s setup    test/api/test_semantic_metadata_view.py::test_candidate_tampering_refuses_exact_restore[instructions]
+0.78s setup    test/api/test_semantic_metadata_view.py::test_real_producer_full_transport_and_native_prompt_round_trip
+0.75s setup    test/api/test_coding_reply_contract.py::test_unconstrained_provider_cannot_bypass_reply_validation[{"schema":"supervisor-coding-completion@1","status":"candidate_ready","private-key":"private-canary"}]
+[32m======================= [32m[1m354 passed[0m[32m in 211.49s (0:03:31)[0m[32m ========================[0m

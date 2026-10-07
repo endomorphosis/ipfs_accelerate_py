@@ -1497,3 +1497,13 @@ staging candidate. Finite numerical qualification is separate from performance:
 the retained local timing attempts failed consistent improvement over NumPy,
 so explicit Doctor selection remains residual and does not promote this
 candidate for the optimization benchmark. General planning remains unchanged.
+
+## Complete token reduction with metadata (2026-10-07)
+
+The [metadata and capsule plan](terminal_token_metadata_plan.md) retains planning
+and `llm_router` while reducing repeated context and reasoning. The first opt-in
+implementation shares identical inline semantic metadata, verifies exact
+restoration, and selects it only when the complete coding input shrinks under
+the recorded byte proxy. Native catalog registration and independent input
+reconstruction are qualified offline. Total provider token savings require a
+separate matched benchmark; smaller input bytes do not establish that result.

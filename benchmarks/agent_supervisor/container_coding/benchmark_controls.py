@@ -61,7 +61,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "semantic_transport_schema" in kwargs:
             from .terminal_semantic_transport_policy import validate_semantic_transport_schema
@@ -70,6 +70,12 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             from .terminal_coding_reply_policy import validate_coding_reply_mode
             validate_coding_reply_mode(kwargs["coding_reply_mode"], arm=kwargs.get("arm"),
                                       provider=selected["provider"])
+        if "semantic_metadata_view" in kwargs:
+            from .terminal_semantic_metadata_policy import validate_semantic_metadata_view
+            from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
+            validate_semantic_metadata_view(kwargs["semantic_metadata_view"], arm=kwargs.get("arm"),
+                transport_schema=kwargs.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+                provider=selected["provider"])
         if "task_profile" in kwargs:
             from .terminal_task_profile import validate_task_profile
             validate_task_profile(kwargs["task_profile"])

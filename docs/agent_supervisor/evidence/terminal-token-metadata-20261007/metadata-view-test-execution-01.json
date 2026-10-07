@@ -1,0 +1,25 @@
+{
+  "benchmark_launches": 0,
+  "command_argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+    "-q",
+    "-o",
+    "addopts=",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "ipfs_accelerate_py.testing.pytest_ast_seal",
+    "--junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml",
+    "test/api/test_semantic_metadata_view.py"
+  ],
+  "command_shell": "/home/barberb/.local/bin/python -B -c 'import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))' -q -o addopts= -p no:cacheprovider -p ipfs_accelerate_py.testing.pytest_ast_seal --junitxml=/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.xml test/api/test_semantic_metadata_view.py",
+  "elapsed_seconds": 48.188214232970495,
+  "exit_code": 1,
+  "log": "/home/barberb/lift_coding/artifacts/terminal-token-metadata-20261007/metadata-view-tests-01.log",
+  "provider_calls": 0,
+  "source_sha256": "31d5af0ef03fa0b186f53b735b1d89827d048ebcfc9db0896b7239977a6004b2",
+  "test_sha256": "76081bdf0a02fc4f48de313faec4bb57e83405d481f8f1d817174a5d9860b6cf"
+}

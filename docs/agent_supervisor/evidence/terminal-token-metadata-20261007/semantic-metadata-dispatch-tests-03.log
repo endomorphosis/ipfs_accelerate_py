@@ -1,0 +1,110 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test
+configfile: pytest.ini
+collected 9 items
+
+test/api/test_semantic_metadata_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m[31m                    [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_____ test_actual_audit_subprocess_retains_metadata_and_both_reply_layers ______[0m
+
+dispatch_case = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-1686/test_actual_audit_subprocess_r0/repository'), 'workspace'...ory_id":"repo:test","scope":{"allowed_paths":["mod.py"]},"stage":"implementation","tree_id":"tree:test"}', 'calls': []}
+compiled = {'state': PosixPath('/tmp/pytest-of-barberb/pytest-1686/test_actual_audit_subprocess_r0/state'), 'capsule': PosixPath(...orkspace_root': PosixPath('/tmp/pytest-of-barberb/pytest-1686/test_actual_audit_subprocess_r0/removed-worktrees'), ...}
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_actual_audit_subprocess_retains_metadata_and_both_reply_layers[39;49;00m(dispatch_case, compiled):[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mcontext[39;49;00m[04m[96m.[39;49;00m[04m[96mcontext_compiler[39;49;00m[90m [39;49;00m[94mimport[39;49;00m ([90m[39;49;00m
+            ContextCompiler, build_text_context_references, render_context_capsule,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mcontext[39;49;00m[04m[96m.[39;49;00m[04m[96mcontext_contracts[39;49;00m[90m [39;49;00m[94mimport[39;49;00m ContextBudget[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mbenchmarks[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mcontainer_coding[39;49;00m[04m[96m.[39;49;00m[04m[96mterminal_task_profile[39;49;00m[90m [39;49;00m[94mimport[39;49;00m ([90m[39;49;00m
+            PROFILE, instruction_sha256, task_profile_bytes,[90m[39;49;00m
+        )[90m[39;49;00m
+        case = dispatch_case[90m[39;49;00m
+        root = case[[33m"[39;49;00m[33mrepository[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+        artifact = root / [33m"[39;49;00m[33m.runtime/semantic/worker-context.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        semantic = json.loads(artifact.read_text())[90m[39;49;00m
+        prepared_path = compiled[[33m"[39;49;00m[33mstate[39;49;00m[33m"[39;49;00m] / [33m"[39;49;00m[33mprepared.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        prepared = json.loads(prepared_path.read_text())[90m[39;49;00m
+        expected_path = compiled[[33m"[39;49;00m[33mstate[39;49;00m[33m"[39;49;00m] / [33m"[39;49;00m[33mcontext-result.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        expected = json.loads(expected_path.read_text())[90m[39;49;00m
+        source_hash = hashlib.sha256((root / [33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m).read_bytes()).hexdigest()[90m[39;49;00m
+        profile = {[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mterminal-public-task-profile@1[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            [33m"[39;49;00m[33minstruction_sha256[39;49;00m[33m"[39;49;00m: instruction_sha256(prepared[[33m"[39;49;00m[33mquery[39;49;00m[33m"[39;49;00m]), [33m"[39;49;00m[33minput_paths[39;49;00m[33m"[39;49;00m: [[33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m],[90m[39;49;00m
+            [33m"[39;49;00m[33moutputs[39;49;00m[33m"[39;49;00m: [{[33m"[39;49;00m[33mpath[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33meffect[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mmodify[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mmedia_type[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mtext/x-python[39;49;00m[33m"[39;49;00m}]}[90m[39;49;00m
+        prepared.update(spec={[33m"[39;49;00m[33mtask_key[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mTASK-1[39;49;00m[33m"[39;49;00m}, worker_inputs=[[33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m], task_profile=profile)[90m[39;49;00m
+        prepared[[33m"[39;49;00m[33mmanifest[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33msources[39;49;00m[33m"[39;49;00m] = {[33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m: {[33m"[39;49;00m[33msha256[39;49;00m[33m"[39;49;00m: source_hash},[90m[39;49;00m
+            PROFILE: {[33m"[39;49;00m[33msha256[39;49;00m[33m"[39;49;00m: hashlib.sha256(task_profile_bytes(profile)).hexdigest()}}[90m[39;49;00m
+        expected[[33m"[39;49;00m[33msemantic_root_cid[39;49;00m[33m"[39;49;00m] = semantic[[33m"[39;49;00m[33msemantic_root_cid[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+        retrieval = {[33m"[39;49;00m[33mtask_id[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mTASK-1[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mindex_id[39;49;00m[33m"[39;49;00m: expected[[33m"[39;49;00m[33mindex_id[39;49;00m[33m"[39;49;00m], [33m"[39;49;00m[33mresult_id[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcid:result[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            [33m"[39;49;00m[33mquery_id[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcid:query[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mquery_text[39;49;00m[33m"[39;49;00m: prepared[[33m"[39;49;00m[33mquery[39;49;00m[33m"[39;49;00m], [33m"[39;49;00m[33msource_sha256[39;49;00m[33m"[39;49;00m: {[33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m: source_hash},[90m[39;49;00m
+            [33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcurrent[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mnomination_only[39;49;00m[33m"[39;49;00m: [94mTrue[39;49;00m, [33m"[39;49;00m[33msemantic_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+            [33m"[39;49;00m[33mexecution_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m, [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m}[90m[39;49;00m
+        world = {[33m"[39;49;00m[33msemantic_root_cid[39;49;00m[33m"[39;49;00m: semantic[[33m"[39;49;00m[33msemantic_root_cid[39;49;00m[33m"[39;49;00m], [33m"[39;49;00m[33mworld_snapshot_cid[39;49;00m[33m"[39;49;00m: expected[[33m"[39;49;00m[33mworld_snapshot_cid[39;49;00m[33m"[39;49;00m],[90m[39;49;00m
+            [33m"[39;49;00m[33mplan_projection_cid[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcid:projection[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mintent_freshness_checked[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+            [33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m: [{[33m"[39;49;00m[33mtask_cid[39;49;00m[33m"[39;49;00m: expected[[33m"[39;49;00m[33mtask_cid[39;49;00m[33m"[39;49;00m], [33m"[39;49;00m[33mbody[39;49;00m[33m"[39;49;00m: {[33m"[39;49;00m[33mlocal_planning_contract_cid[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcid:contract[39;49;00m[33m"[39;49;00m}}],[90m[39;49;00m
+            [33m"[39;49;00m[33mexecution_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m, [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m}[90m[39;49;00m
+        refs = [][90m[39;49;00m
+        [94mfor[39;49;00m kind, payload [95min[39;49;00m [([33m"[39;49;00m[33msemantic-context[39;49;00m[33m"[39;49;00m, semantic), ([33m"[39;49;00m[33mcode-retrieval-context[39;49;00m[33m"[39;49;00m, retrieval),[90m[39;49;00m
+                              ([33m"[39;49;00m[33mintent-world-context[39;49;00m[33m"[39;49;00m, world)]:[90m[39;49;00m
+            refs.extend(build_text_context_references(json.dumps(payload, ensure_ascii=[94mFalse[39;49;00m),[90m[39;49;00m
+                reference_prefix=kind, kind=kind, path=artifact.relative_to(root).as_posix() [94mif[39;49;00m kind == [33m"[39;49;00m[33msemantic-context[39;49;00m[33m"[39;49;00m [94melse[39;49;00m [33m"[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                repository_id=[33m"[39;49;00m[33mrepo:test[39;49;00m[33m"[39;49;00m, tree_id=[33m"[39;49;00m[33mtree:test[39;49;00m[33m"[39;49;00m, required=[94mTrue[39;49;00m, chunk_bytes=[94m1201[39;49;00m))[90m[39;49;00m
+        result = ContextCompiler(ContextBudget(max_input_tokens=[94m65536[39;49;00m, max_items=[94m128[39;49;00m,[90m[39;49;00m
+            max_item_bytes=[94m16384[39;49;00m, max_serialized_bytes=[94m262144[39;49;00m)).compile(repository_id=[33m"[39;49;00m[33mrepo:test[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            tree_id=[33m"[39;49;00m[33mtree:test[39;49;00m[33m"[39;49;00m, objective_id=[33m"[39;49;00m[33mTASK-1[39;49;00m[33m"[39;49;00m, objective_revision=[33m"[39;49;00m[33msha256:task[39;49;00m[33m"[39;49;00m, policy_id=[33m"[39;49;00m[33mpolicy:test[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+            policy_revision=[33m"[39;49;00m[33msha256:policy[39;49;00m[33m"[39;49;00m, caller=[33m"[39;49;00m[33msupervisor:test[39;49;00m[33m"[39;49;00m, stage=[33m"[39;49;00m[33mimplementation[39;49;00m[33m"[39;49;00m, goal={[33m"[39;49;00m[33mid[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mTASK-1[39;49;00m[33m"[39;49;00m},[90m[39;49;00m
+            authority={[33m"[39;49;00m[33mmode[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mcandidate_only[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m},[90m[39;49;00m
+            scope={[33m"[39;49;00m[33mallowed_paths[39;49;00m[33m"[39;49;00m: [[33m"[39;49;00m[33mmod.py[39;49;00m[33m"[39;49;00m]}, acceptance={[33m"[39;49;00m[33mcriteria[39;49;00m[33m"[39;49;00m: [[33m"[39;49;00m[33mpending native validation[39;49;00m[33m"[39;49;00m]}, evidence=refs)[90m[39;49;00m
+        [94mcase[39;49;00m[[33m"[39;49;00m[33mprompt[39;49;00m[33m"[39;49;00m] = render_context_capsule(result.capsule)[90m[39;49;00m
+        compiled[[33m"[39;49;00m[33mcapsule[39;49;00m[33m"[39;49;00m].write_text(result.capsule.to_json())[90m[39;49;00m
+        prepared_path.write_text(json.dumps(prepared))[90m[39;49;00m
+        expected_path.write_text(json.dumps(expected))[90m[39;49;00m
+>       _, receipt = invoke(case, semantic_metadata_view=[33m"[39;49;00m[33mcommon-bindings@1[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_dispatch.py[0m:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/test/api/test_semantic_metadata_dispatch.py[0m:56: in invoke
+    [0m[94mreturn[39;49;00m runner.run(prompt=case[[33m"[39;49;00m[33mprompt[39;49;00m[33m"[39;49;00m], provider=[33m"[39;49;00m[33mcodex_cli[39;49;00m[33m"[39;49;00m, model=[33m"[39;49;00m[33mauthored-model[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py[0m:274: in run
+    [0mencoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,[90m[39;49;00m
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py[0m:515: in encode_semantic_router_prompt
+    [0m[94mreturn[39;49;00m _encode(prompt=prompt, repository=repository, current=[94mTrue[39;49;00m, transport_schema=transport_schema)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py[0m:450: in _encode
+    [0msemantic, symbols = _verified_semantic(root, artifact=artifact, text=text,[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+root = PosixPath('/tmp/pytest-of-barberb/pytest-1686/test_actual_audit_subprocess_r0/repository')
+artifact = '.runtime/semantic/worker-context.json'
+text = '{"admissions": [{"admission": "raw_source_required", "assessment_cid": "baguqeerazpmify46d4blhejxzawk4qvnixkyimum5ybq...ylhhltiky", "semantic_root_cid": "baguqeeraq4i6dk4kpaporbs3xv5vquk5qsddxqvfq2jxj7majzc5lop2aptq", "task_id": "TASK-1"}'
+task_id = 'TASK-1', current = True
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92m_verified_semantic[39;49;00m(root, *, artifact, text, task_id, current):[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96m.[39;49;00m[04m[96m.[39;49;00m[04m[96msemantic_state[39;49;00m[04m[96m.[39;49;00m[04m[96mdatasets_adapter[39;49;00m[90m [39;49;00m[94mimport[39;49;00m IpfsDatasetsSemanticStateProvider[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96m.[39;49;00m[04m[96msemantic_context_runtime[39;49;00m[90m [39;49;00m[94mimport[39;49;00m load_semantic_worker_context, _source_scope_payload, _validate_program_payload[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96m.[39;49;00m[04m[96m.[39;49;00m[04m[96m.[39;49;00m[04m[96mmcp_server[39;49;00m[04m[96m.[39;49;00m[04m[96mmcplusplus[39;49;00m[04m[96m.[39;49;00m[04m[96mkubo_cid[39;49;00m[90m [39;49;00m[94mimport[39;49;00m cid_for_bytes[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m[04m[96m.[39;49;00m[04m[96msemantic_state[39;49;00m[04m[96m.[39;49;00m[04m[96mmodels[39;49;00m[90m [39;49;00m[94mimport[39;49;00m SemanticCapsule[90m[39;49;00m
+        [94mfrom[39;49;00m[90m [39;49;00m[04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m[04m[96m.[39;49;00m[04m[96msemantic_index[39;49;00m[04m[96m.[39;49;00m[04m[96msnapshot[39;49;00m[90m [39;49;00m[94mimport[39;49;00m RepositorySnapshot[90m[39;49;00m
+    [90m[39;49;00m
+        raw = _read(root, artifact)[90m[39;49;00m
+        [94mif[39;49;00m raw != text.encode():[90m[39;49;00m
+>           [94mraise[39;49;00m SemanticTranslationError([33m"[39;49;00m[33mnominated semantic artifact differs from native prompt[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation.SemanticTranslationError: nominated semantic artifact differs from native prompt[0m
+
+[1m[31m/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py[0m:333: SemanticTranslationError
+============================= slowest 10 durations =============================
+1.15s setup    api/test_semantic_metadata_dispatch.py::test_opt_in_preserves_default_input_and_binds_actual_selected_reply
+0.97s call     api/test_semantic_metadata_dispatch.py::test_implementation_argv_selects_only_explicit_semantic_model_route
+0.64s setup    api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_boolean_integer_receipt_tampering_is_rejected[baseline_reply]
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@1-planning]
+0.62s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[common-bindings@1-supervisor-semantic-router-input@2-coding]
+0.61s setup    api/test_semantic_metadata_dispatch.py::test_boolean_integer_receipt_tampering_is_rejected[metadata]
+0.61s setup    api/test_semantic_metadata_dispatch.py::test_unsupported_selection_refuses_before_provider[foreign-supervisor-semantic-router-input@1-coding]
+0.58s setup    api/test_semantic_metadata_dispatch.py::test_independent_historical_reconstruction_checks_both_reply_layers
+0.10s call     api/test_semantic_metadata_dispatch.py::test_actual_audit_subprocess_retains_metadata_and_both_reply_layers
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/api/test_semantic_metadata_dispatch.py::[1mtest_actual_audit_subprocess_retains_metadata_and_both_reply_layers[0m - ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation.Sem...
+[31m========================= [31m[1m1 failed[0m, [32m8 passed[0m[31m in 23.26s[0m[31m =========================[0m

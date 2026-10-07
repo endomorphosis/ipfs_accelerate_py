@@ -1,0 +1,141 @@
+{
+  "schema": "documentation-gates-qualification@1",
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-token-metadata-20261007",
+  "base_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "workflow": ".github/workflows/documentation-gates.yml",
+  "source_bindings": [
+    {
+      "bytes": 3479,
+      "path": ".github/workflows/documentation-gates.yml",
+      "sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+    },
+    {
+      "bytes": 2845,
+      "path": "scripts/docs/check_agent_supervisor_docs.py",
+      "sha256": "09580aa9a8707ce8da278d5b7fef4055e1945e53266c0fc4437e516eda1fed87"
+    },
+    {
+      "bytes": 10445,
+      "path": "scripts/docs/check_current_docs_links.py",
+      "sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e"
+    },
+    {
+      "bytes": 9157,
+      "path": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "sha256": "98c1500f34c8b23bdec05f5bc7e192ca44294f967b00cc0a48dc7dd0248499ce"
+    },
+    {
+      "bytes": 103272,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "44420cbd99c2a225189819ecfbea48ec2401ee44dd8e98fffbaf114ea571374d"
+    },
+    {
+      "bytes": 37272,
+      "path": "pyproject.toml",
+      "sha256": "f9b2597c80a08b838a6c81cb9eb3a713d3b3256036fecffaf942b18a9585b3c5"
+    },
+    {
+      "bytes": 20065,
+      "path": "setup.py",
+      "sha256": "93af5252ba66c3ff506bdd326a44586be41af77c930952b74f0b232f82d33d0b"
+    },
+    {
+      "bytes": 40208,
+      "path": "ipfs_accelerate_py/__init__.py",
+      "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+    },
+    {
+      "bytes": 9136,
+      "path": "docs/INDEX.md",
+      "sha256": "cac96a98e15a05f2df10777aca74526a5277a9289127220d2513c4b8936019d3"
+    },
+    {
+      "bytes": 15652,
+      "path": "docs/development/DOCUMENTATION_CURRENT_STATE.md",
+      "sha256": "ac1ecc6cd8cf35463754bc7127da1d8b6efb0fb87c0f57c32871c4db00c69e9a"
+    },
+    {
+      "bytes": 22999,
+      "path": "docs/development/DOCUMENTATION_VALIDATION_2026_08.md",
+      "sha256": "bc33fe2795fe773853697f0645bef505ff9169048b70da091229799b7fc5c6c6"
+    }
+  ],
+  "source_bindings_unchanged_during_checks": true,
+  "all_four_workflow_gates_passed": true,
+  "inline_workflow_bodies_match_exactly": true,
+  "gates": [
+    {
+      "name": "Supervisor primary-doc vocabulary",
+      "workflow_command": "python scripts/docs/check_agent_supervisor_docs.py",
+      "actual_command": "/home/barberb/.local/bin/python scripts/docs/check_agent_supervisor_docs.py",
+      "exit_code": 0,
+      "output": "OK: primary agent-supervisor docs are free of board-prefix ticket IDs\n",
+      "tool_chunk_id": "6d0597",
+      "tool_reported_wall_time_seconds": 0.00001568
+    },
+    {
+      "name": "Maintained-surface relative links",
+      "workflow_command": "python scripts/docs/check_current_docs_links.py",
+      "actual_command": "/home/barberb/.local/bin/python scripts/docs/check_current_docs_links.py",
+      "exit_code": 0,
+      "output": "OK: 46 allowlisted documentation files have resolvable relative links (anchors checked)\n",
+      "tool_chunk_id": "0553e0",
+      "tool_reported_wall_time_seconds": 0.000007696
+    },
+    {
+      "name": "Packaging version pin alignment",
+      "workflow_command": "python - <<'PY' [exact inline workflow body] PY",
+      "actual_command": "/home/barberb/.local/bin/python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY",
+      "exit_code": 0,
+      "output": "OK: packaging pins aligned at 0.0.45\n",
+      "tool_chunk_id": "ece22d",
+      "tool_reported_wall_time_seconds": 0.000007456
+    },
+    {
+      "name": "Closeout navigation markers",
+      "workflow_command": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"",
+      "actual_command": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"",
+      "exit_code": 0,
+      "output": "OK: closeout navigation markers present\n",
+      "tool_chunk_id": "affc41",
+      "tool_reported_wall_time_seconds": 0.00001504
+    }
+  ],
+  "manual_plan_link_inspection": {
+    "source": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+    "allowlisted_by_maintained_surface_gate": false,
+    "markdown_relative_links_found": 3,
+    "links": [
+      {
+        "bytes": 4591,
+        "regular_file": true,
+        "resolved_path": "docs/agent_supervisor/evidence/terminal-reply-contract-pair-20261007/README.md",
+        "sha256": "d0539b8926f336910e02f9c13b4862591071b6104b47dfdfd911318e7aea2019",
+        "target": "evidence/terminal-reply-contract-pair-20261007/README.md"
+      },
+      {
+        "bytes": 18633,
+        "regular_file": true,
+        "resolved_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
+        "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e",
+        "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py"
+      },
+      {
+        "bytes": 10581,
+        "regular_file": true,
+        "resolved_path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py",
+        "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61",
+        "target": "../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py"
+      }
+    ],
+    "all_three_resolve": true,
+    "navigation_source": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+    "navigation_target": "terminal_token_metadata_plan.md",
+    "navigation_link_present_before_checks": true
+  },
+  "provider_calls": 0,
+  "source_edits": 0,
+  "commits": 0
+}
+

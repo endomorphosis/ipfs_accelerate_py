@@ -36,6 +36,10 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode, require_coding_reply_archive,
     coding_reply_selection,
 )
+from .terminal_semantic_metadata_policy import (
+    DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
+    semantic_metadata_observation, require_semantic_metadata_archive,
+)
 
 
 def measured_usage(report: dict) -> dict:
@@ -268,7 +272,8 @@ class FullSupervisorAgent(BaseAgent):
                  setup_cache_selection: dict | None = None, task_profile: dict | None = None,
                  provider_profile: str | None = None,
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
-                 coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE, **kwargs):
+                 coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
+                 semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
@@ -276,6 +281,8 @@ class FullSupervisorAgent(BaseAgent):
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
+        self.semantic_metadata_view = validate_semantic_metadata_view(semantic_metadata_view,
+            arm=arm, transport_schema=self.semantic_transport_schema, provider=selected_provider["provider"])
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
@@ -329,6 +336,11 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=selected_provider["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        metadata_view = validate_semantic_metadata_view(
+            getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
+            transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            provider=selected_provider["provider"])
+        require_semantic_metadata_archive(manifest, metadata_view)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -366,6 +378,11 @@ class FullSupervisorAgent(BaseAgent):
         reply_mode = validate_coding_reply_mode(getattr(self, "coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
             arm=self.arm, provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_coding_reply_archive(manifest, reply_mode)
+        metadata_view = validate_semantic_metadata_view(
+            getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW), arm=self.arm,
+            transport_schema=transport,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+        require_semantic_metadata_archive(manifest, metadata_view)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -390,6 +407,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--semantic-transport-schema", transport]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
             argv += ["--coding-reply-mode", reply_mode]
+        if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
+            argv += ["--semantic-metadata-view", metadata_view]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -422,6 +441,7 @@ class FullSupervisorAgent(BaseAgent):
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
+                            **semantic_metadata_observation(metadata_view),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,
