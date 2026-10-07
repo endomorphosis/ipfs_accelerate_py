@@ -41,6 +41,12 @@ manager paths without a retained Popen also refuse visible cleanup custody.
 
 ## Disabled paths and benchmark blockers
 
+These blockers concern the protected nested-Docker provider route. The existing
+Harbor `FullSupervisorAgent` instead deploys the admitted runtime and isolated
+worker inside the original task container, and routes model calls through
+`llm_router`. That benchmark path can be qualified separately without enabling
+the native lease factory or substituting the missing protected image.
+
 Native lease creation and native internal watchdog/removal CLI entrypoints are
 disabled before effects until all owners and signed launch contracts agree. There
 is no environment override. Existing private protocol functions are exercised by
@@ -54,6 +60,10 @@ offline fixtures; their presence does not establish live lifecycle qualification
    Existing historical namespaces also block successor launch until explicit
    recovery/retention handling is admitted. Unsigned compatibility watchdogs
    retain their previous behavior and are not upgraded to the native protocol.
+   The [cold-owner recovery plan](cold_owner_cleanup_recovery_plan.md) maps the
+   required independently admitted checkpoint, complete inventory, and exact
+   pre-dispatch persistence hooks. A new local sidecar cannot supply that
+   authority when the whole namespace or its history has disappeared.
 2. **Signed launch agreement:** the current Codex builder and authority validator
    use a direct `/usr/bin/env` suffix. The native adapter expects a different
    gated launch, and its own positive command grammar is incompatible with that
