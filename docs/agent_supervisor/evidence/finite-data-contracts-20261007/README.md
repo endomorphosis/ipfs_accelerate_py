@@ -24,3 +24,11 @@ plugin; its log was retained and the corrected command passed.
 This is local native integration evidence with authored inputs. It is not a new
 Docker/Terminal-Bench reward, a Lean proof, or a matched model-token comparison.
 Filtering, aggregation, nesting and multi-output transformations remain open.
+
+During publication, another datasets runtime update arrived. It was merged
+without conflicts, then the 50 new supervisor checks (including the native
+lifecycle) passed again against datasets commit `47d492c69`; this rerun overlaps
+the earlier 409 checks. See the [merge qualification](publication-merge-check.json).
+Both runs retained unchanged source. GitHub documentation and qualification
+jobs for `f018deeaf` did not start because the account has a billing lock; local
+checks do not establish GitHub CI success.

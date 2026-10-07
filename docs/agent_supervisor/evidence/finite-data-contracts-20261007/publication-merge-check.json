@@ -1,0 +1,59 @@
+{
+  "benchmark_result": false,
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 50
+  },
+  "datasets_source_sha256": {
+    "ipfs_datasets_py/logic/formalization/autoencoder/checkpoint_hub.py": "afb659af856780cbd9a36ac171139bbf42fad25e10f368568a964c6b11b8a790",
+    "ipfs_datasets_py/logic/formalization/autoencoder/contextual_legal_ir_runtime.py": "3aaa92143de29d34b9ad07503f4ee12111e5d407f1f3f6fe6244c61fddf98c1f",
+    "ipfs_datasets_py/logic/formalization/autoencoder/normative_legal_ir_runtime.py": "0873cf30118c71aaa51db3068e8e8be3d12f60bdc49fbe0634b1d157e2ab3213",
+    "ipfs_datasets_py/logic/software_contracts/finite_record_projection.py": "bbe1aad97ec589e31969bae6f94daa248b6861ec8bc87caff96f9b38c4e2eb6d",
+    "tests/unit/logic/formalization/autoencoder/test_normative_legal_ir_runtime.py": "04bd5e60d16da66fcfc652b8ab40a520fab45104873ef39efd34e4478ef0e2e6",
+    "tests/unit/logic/legal_ir/test_scope_proposal_preflight_integration.py": "e0fc9a5efeea30c3422a873103863fb01eeacf93c5244931173269817a30c692",
+    "tests/unit/logic/software_contracts/test_finite_record_projection.py": "515d723e5b46df759befbc82cbbf6a97d108f19de1c7397dee7bebb10d791fa0"
+  },
+  "github_ci": {
+    "documentation_check_id": 112630369679,
+    "head": "f018deeaf",
+    "local_checks_are_not_github_ci_success": true,
+    "qualification_check_id": 112630369433,
+    "status": "not_started_account_billing_lock"
+  },
+  "log_sha256": "ba56cff8db3d0f4d173c5bea64ce2634915887199c99d804e0b425f07be40966",
+  "native_lifecycle_repeated": true,
+  "overlaps_previous_qualification": true,
+  "schema": "finite-data-publication-merge-check@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "f7876f0693c17f87453ab5b0613c7891259f30d12bf261ce78f55149e773f91a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "8c5f01d3e9cee55a263f6da0ce1d5e6bd3e62c41d5a433e2aa9d4c6d0d3aecdc",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "1c29711c0832158243a25ea9e4014ec519df0e2c3b938e65520415df6a080e3e",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "bc00440d0617f8b4425bc137f6d4155b6db29d648a9bcc8c669c86579dc9542a",
+    "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "2f1d769f15238499dce41d27e7779d3ec561cc69f28678ea6ecf91702496cc03",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "99e57a82866832fc4961a5b8daf240ddd45a0e74e196bd1e5f66fa60dcca9578",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_data_transform.py": "8a3e72b62577dbf588e01d62660cb72212f3a96dc6671b3260a8a6391990e5d7",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "988f80180a354be63f2c7e2175800c8f8648125bb31bd214f95ee7699d12933e",
+    "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "b14de5609b0b097d640ea274a291f487e1b5da9adcf2f3a557cacb1cc053efc5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_candidate_runner.py": "f61314562aebe18bbb358b70ad9fe07eee6b7e04bb38165ae7f78381bce96c77",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_data_contract.py": "34dddd1bfc7a756787363d7a382b4d5f6e1b37f6d2cd44eb5ef0c6d3dac159ab",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_workflow.py": "042d239b5e9b1b6841c48fb525acfcec56cef1e9e6c1b8db2890e06bbeed2c35",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "d90aac6900610a8a6742c00473c9a6af1f703bf26dc05faf45ccfbbb2b0d9eb1",
+    "test/api/test_doctor_data_contract.py": "bb114069cf838ef08b012b5262b56e6a461fbe1dea155bb99d9f1ae5968513de",
+    "test/api/test_doctor_data_dispatch.py": "5c15ed20b89ba162b46d2717aa1c9d3370ae9252ea518a58c73fd6abd34f2afa",
+    "test/api/test_intent_data_transform.py": "972ea4246e446fecc17081cb6ad6b37e13335fc7ec803add223181a6f3602540",
+    "test/integration/test_native_data_contract_repair.py": "f2341b5b86cc34f00907ebded8c55bcfdc686e96f9cf4831b81b5b66f4b8a975"
+  },
+  "source_unchanged": true,
+  "targets": [
+    "test/api/test_intent_data_transform.py",
+    "test/api/test_doctor_data_contract.py",
+    "test/api/test_doctor_data_dispatch.py",
+    "test/integration/test_native_data_contract_repair.py"
+  ],
+  "tested_accelerate_commit": "f018deeaf295194a82654bff5a0e6d3d7634b4cb",
+  "tested_datasets_commit": "47d492c697f3e766d107ae9c02d8b8dcd18660b2",
+  "wall_seconds": 120.68076476902934,
+  "xml_sha256": "1bde8430feb385e7d345a84800d1011e559c308f6c6aaa28f14843c24521016f"
+}
