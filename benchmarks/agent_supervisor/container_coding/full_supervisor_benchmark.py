@@ -304,7 +304,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
     output.mkdir(parents=True)
-    _json(output / "config.json", config.model_dump(mode="json", context={"redact_sensitive_env": False}))
+    wire = benchmark_controls.canonicalize_serialized_retry_sets(
+        config.model_dump(mode="json", context={"redact_sensitive_env": False}))
+    _json(output / "config.json", wire)
     harbor = Path(sys.executable).with_name("harbor")
     command = [str(harbor), "run", "--config", str(output / "config.json"), "--yes"]
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)

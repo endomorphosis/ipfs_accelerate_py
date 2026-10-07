@@ -360,6 +360,10 @@ class FullSupervisorAgent(BaseAgent):
         boundary = self.logs_dir / "worker-boundary"
         await deploy_worker_boundary(environment, output=boundary,
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
+        if selected_provider["provider"] == "grok_cli":
+            from .terminal_grok_deployment import require_grok_credential_readiness
+            await require_grok_credential_readiness(environment,
+                output=self.logs_dir / "provider-readiness")
         if selection is not None:
             self.setup_cache_receipt = await apply_setup_cache_advice(environment,
                 archive_dir=self.runtime_archive, expected=selection,

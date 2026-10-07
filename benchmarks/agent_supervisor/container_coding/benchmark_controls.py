@@ -28,6 +28,35 @@ def _digest(value):
                                     allow_nan=False).encode()).hexdigest()
 
 
+def canonicalize_serialized_retry_sets(config):
+    """Order only Harbor's two set-valued filters before a new config is sealed.
+
+    Call on a validated model_dump(mode="json") result at preparation time.
+    Readers and @1 control hashing deliberately retain their exact historical
+    behavior; this helper must not be applied while replaying a frozen record.
+    Every other list, including instructions, argv and tools, retains its order.
+    """
+    from copy import deepcopy
+
+    if type(config) is not dict:
+        raise ValueError("serialized Harbor configuration must be an object")
+    result = deepcopy(config)
+    retry = result.get("retry")
+    if retry is None:
+        return result
+    if type(retry) is not dict:
+        raise ValueError("serialized Harbor retry configuration must be an object")
+    for field in ("include_exceptions", "exclude_exceptions"):
+        value = retry.get(field)
+        if value is None:
+            continue
+        if (type(value) is not list or any(type(item) is not str for item in value)
+                or len(value) != len(set(value))):
+            raise ValueError("serialized retry exception filters must be unique string lists")
+        retry[field] = sorted(value)
+    return result
+
+
 def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, cli_version):
     """Build before execution from the validated, serialized Harbor config."""
     if len(config.get("agents", [])) != 1 or len(config.get("tasks", [])) != 1:

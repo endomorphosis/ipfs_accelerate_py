@@ -190,7 +190,8 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         raise ValueError("native auth resolver did not select the existing default auth file")
     hashes = _task_hashes(task)
     output.mkdir(parents=True)
-    wire = config.model_dump(mode="json", context={"redact_sensitive_env": False})
+    wire = benchmark_controls.canonicalize_serialized_retry_sets(
+        config.model_dump(mode="json", context={"redact_sensitive_env": False}))
     _json(output / "config.json", wire)
     command = [executable, "run", "--config", str(output / "config.json"), "--yes"]
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)
