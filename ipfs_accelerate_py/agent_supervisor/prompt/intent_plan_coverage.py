@@ -18,6 +18,11 @@ from .prompt_workflow import PromptGoalGraph, PromptOutputRecord
 INTENT_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@1"
 INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@2"
 INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@3"
+INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@4"
+INTENT_SYMBOLIC_CONTRACT_SCHEMAS = frozenset({
+    INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA,
+    INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA,
+})
 INTENT_PLAN_PROPOSAL_SCHEMA = "intent-plan-proposal@1"
 INTENT_PLAN_PROVIDER_REQUEST_SCHEMA = "intent-plan-provider-request@1"
 INTENT_PLAN_COVERAGE_RECEIPT_SCHEMA = "intent-plan-coverage-receipt@1"
@@ -160,12 +165,14 @@ def validate_intent_requirement_contract(
 
     value = _decode(_json(contract))
     keys = {"schema", "source_path", "ledger", "requirements"}
-    if value.get("schema") in {INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
+    if value.get("schema") in INTENT_SYMBOLIC_CONTRACT_SCHEMAS:
         keys.add("symbolic_operations")
     if value.get("schema") == INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA:
         keys.add("source_applicability")
+    if value.get("schema") == INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA:
+        keys.add("reviewed_data_transform")
     _object(value, keys, "intent contract")
-    if value["schema"] not in {INTENT_REQUIREMENT_CONTRACT_SCHEMA, INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
+    if value["schema"] not in {INTENT_REQUIREMENT_CONTRACT_SCHEMA, *INTENT_SYMBOLIC_CONTRACT_SCHEMAS}:
         raise IntentPlanCoverageError("unsupported intent contract schema")
     value["source_path"] = _path(value["source_path"])
     try:
@@ -225,7 +232,7 @@ def validate_intent_requirement_contract(
     for key in spec_by_id:
         visit(key)
     value["requirements"] = sorted(specs, key=lambda item: item["requirement_id"])
-    if value["schema"] in {INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
+    if value["schema"] in INTENT_SYMBOLIC_CONTRACT_SCHEMAS:
         from ..planning.intent_requirement_adapter import validate_symbolic_operations
 
         value["symbolic_operations"] = validate_symbolic_operations(
@@ -235,6 +242,10 @@ def validate_intent_requirement_contract(
         from ..runtime.header_intent_applicability import validate_applicability_selection
         value["source_applicability"] = validate_applicability_selection(
             value["source_applicability"], operations=value["symbolic_operations"]["operations"])
+    if value["schema"] == INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA:
+        from ..planning.intent_data_transform import validate_reviewed_data_transform
+        value["reviewed_data_transform"] = validate_reviewed_data_transform(
+            value["reviewed_data_transform"], operations=value["symbolic_operations"]["operations"])
     return value
 
 
@@ -242,6 +253,7 @@ def build_intent_requirement_contract(
     *, source_path: str, ledger: Mapping[str, Any], requirements: list[dict],
     source_text: str | None = None,
     symbolic_operations: Mapping[str, Any] | None = None,
+    reviewed_data_transform: Mapping[str, Any] | None = None,
 ) -> dict:
     """Build a contract from already authored groundings; no effects are inferred."""
     contract = {
@@ -251,6 +263,11 @@ def build_intent_requirement_contract(
     if symbolic_operations is not None:
         contract.update(schema=INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA,
                         symbolic_operations=symbolic_operations)
+    if reviewed_data_transform is not None:
+        if symbolic_operations is None:
+            raise IntentPlanCoverageError("reviewed data transformation requires explicit symbolic operations")
+        contract.update(schema=INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA,
+                        reviewed_data_transform=reviewed_data_transform)
     return validate_intent_requirement_contract(contract, source_text=source_text)
 
 
