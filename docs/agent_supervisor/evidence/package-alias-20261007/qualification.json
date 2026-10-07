@@ -1,0 +1,233 @@
+{
+  "benchmark_result": false,
+  "ci_observation": {
+    "annotation": "The job was not started because your account is locked due to a billing issue.",
+    "documentation_job": 112637891488,
+    "head": "87bc7018d430ff6797e2b19bbe73318192f7d31f",
+    "local_checks_are_ci_success": false
+  },
+  "completion_authority": false,
+  "date": "2026-10-07",
+  "dependency_note": {
+    "datasets_head": "47d492c697f3e766d107ae9c02d8b8dcd18660b2",
+    "optional_kit_clean": true,
+    "optional_kit_head": "3133d4fdc85a885ba7d776465bdee48f7a867e01",
+    "optional_kit_tree": "/home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py",
+    "parent_kit_pin_qualified": false
+  },
+  "documentation_gate": {
+    "command": "python -B scripts/docs/run_documentation_gates.py",
+    "exit_code": 0,
+    "log_sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+  },
+  "implementation_commit": "0c3a6ae91d62b2e38657be142e35836f7ee4010f",
+  "initial_failure": {
+    "corrected_full_file_run": "source-partition-02",
+    "production_guard_commit": "15eb32b497",
+    "reason": "Unchanged owner rejects duplicate keys at manifest authoring, before the test expected a Doctor refusal.",
+    "repair": "Test asserts exact early refusal, duplicate-key cause and absence of Doctor state; admission code unchanged.",
+    "test": "test_signing_arbitrary_support_bytes_cannot_grant_harness_roles[duplicate_profile_key]"
+  },
+  "limits": [
+    "Authored source and intent; no learned autoencoder or embedding qualification.",
+    "Finite alias/signature proof assumes ordinary source-based Python imports; no whole-program proof.",
+    "Local native integration only; no new Docker/Terminal-Bench reward or matched token comparison.",
+    "Run counts overlap; do not add them as independent coverage."
+  ],
+  "merged_upstream_commit": "87bc7018d430ff6797e2b19bbe73318192f7d31f",
+  "native_lifecycle": {
+    "asserted_by_passing_test": [
+      "signed authored intent planning",
+      "two stored DuckLake catalog records and two links",
+      "context bundle attached",
+      "real Lean and Z3 checks",
+      "staged candidate",
+      "native START",
+      "signed structural validation",
+      "publication",
+      "completed task",
+      "STOP with zero tracked process members",
+      "refreshed current published context",
+      "separate repaired Python behavior"
+    ],
+    "passed_runs": [
+      "combined-01",
+      "merged-03"
+    ],
+    "provider_calls": 0,
+    "provider_invocation_forbidden_in_parent_and_worker": true,
+    "retrieval_policy": "lexical-tfidf-symbols@1",
+    "test": "test_signed_indexed_package_alias_validates_publishes_completes_and_stops",
+    "whole_program_verified": false
+  },
+  "precommit_hook": "Git skipped the installed nonexecutable hook; no hook success claimed.",
+  "proof_authority": false,
+  "qualified_merge_commit": "00daa9e1ea37e9fb2198472f37ab46cce5d2e4fb",
+  "runs": {
+    "combined-01": {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import pathlib, tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/symbolic-data-datasets-20261007/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/combined-01.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/combined-01-fixtures",
+        "test/api/test_doctor_package_alias_contract.py",
+        "test/api/test_program_dependency_package_imports.py",
+        "test/api/test_agent_supervisor_program_dependency_graph.py",
+        "test/api/test_doctor_imported_alias_workflow.py",
+        "test/api/test_doctor_alias_binding_coverage.py",
+        "test/api/test_doctor_task_workflow.py",
+        "test/api/test_agent_supervisor_doctor_repair_composition.py",
+        "test/api/test_doctor_contract_candidate_runner.py",
+        "test/api/test_doctor_contract_refresh.py",
+        "test/api/test_doctor_scoped_analysis.py",
+        "test/api/test_doctor_source_partition.py",
+        "test/api/test_plan_critic_dependency_coverage.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py",
+        "test/integration/test_native_package_alias_repair.py"
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 1,
+        "skipped": 0,
+        "tests": 412
+      },
+      "datasets_head": "47d492c697f3e766d107ae9c02d8b8dcd18660b2",
+      "log_sha256": "54ca2c82351859b50cc480e3478ee4010a374d9b6a37447b33559f1d780e2f71",
+      "source_base": "318696e5e0f6d9991c26073164e5740ec43a40e9",
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "db9092bf72a74b89fda3079aa180fb1df4ba059e3a12aa8dbaa5a8c7fdd17233",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py": "c83db2a81a5622d64fc53ca9ee9c628312a0a18600ef4774c5dd7d63e4e0134a",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py": "06a89b8c98972bc361cd835cec627452374721563303b28f06c378d452208dd8",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py": "fa303d7ad549f5e9369bf1b0e0fcf8a68588c1b3f944b8f6004f96814078dba4",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py": "7e92dffc782cdb78100265744face2320a00df90f5594eeae45cd2a42d39db51",
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_dependency_graph.py": "2638505b04948a4873e702e02c616cbb7b73bf3aa560ce4335a75c32c1cb11bf",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_alias_contract.py": "a4d861613e812ede49f569ba22731d27aaeb3be0112680e548bb68d62647fc8c",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12",
+        "test/api/test_agent_supervisor_doctor_repair_composition.py": "b15d0a9a62463bd246d9cbcaa24639f8448255dc8bc92a7f34912da2f90ca20a",
+        "test/api/test_agent_supervisor_program_dependency_graph.py": "cff6bb3d91c0ad65d60f3851ea48d6a72e8e787262a4b4941b96fc43200340a5",
+        "test/api/test_doctor_alias_binding_coverage.py": "a1e2c36555d9536c19997c13960552e0465825b3f59c0d2684b3886518db8e8a",
+        "test/api/test_doctor_contract_candidate_runner.py": "dae9bc9013246e485c498858236317d5dd425846b389e632aa6e4f5e04404146",
+        "test/api/test_doctor_contract_refresh.py": "63445bcd6137acbf14750e2926089eccc54a32f5ef2bbb072e37d95fb4aa4934",
+        "test/api/test_doctor_imported_alias_workflow.py": "8876af1e603de2b59e810cfdf90d7d1880580b2fa0f33b5b32b573e752a09e2f",
+        "test/api/test_doctor_package_alias_contract.py": "49ecc7c4d73008165bf323fcd548ea205d6a196d4fc8d29b0a0f62dc7cfa335f",
+        "test/api/test_doctor_scoped_analysis.py": "964bb4221d5885762a16fbebc80fc85f1dcb60879da3d962af34ef4eefe29fcb",
+        "test/api/test_doctor_source_partition.py": "b9c8b557591b43137482a1a52afa53901c5ee055ed2b6f7c2bafc1310ad40764",
+        "test/api/test_doctor_task_workflow.py": "de1027d24b52f51e6d0de16a64f3de6158e5519ff19b587efa0fc49a371520c6",
+        "test/api/test_plan_critic_dependency_coverage.py": "7c8a54993b732406f63671443d18f90eba7491ccc18a4026dfccf0ba7584d5ff",
+        "test/api/test_program_dependency_package_imports.py": "5d5b17bafdf926d340d6ce782155db3939499910e2ec875d1faf26042e3a76e6",
+        "test/integration/test_native_package_alias_repair.py": "258640f58739eaa44672eb23751cbeef787c9d4a434f96d0a8ffc3371a228b89"
+      },
+      "source_superseded": {
+        "test/api/test_doctor_source_partition.py": {
+          "corrected_sha256": "6565c92cf1edde55487f2f544a30c9832adf0030a913c1b8c56e8d3609d21f57",
+          "qualified_sha256": "b9c8b557591b43137482a1a52afa53901c5ee055ed2b6f7c2bafc1310ad40764",
+          "requalified_by": "source-partition-02"
+        }
+      },
+      "source_unchanged_during_run": true,
+      "wall_seconds": 372.3365698059788,
+      "xml_sha256": "f62a8862602404c45452410a77edb0f59f7616f32d06b591d9b47cbb2d97cec2"
+    },
+    "merged-03": {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import pathlib, tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/symbolic-data-datasets-20261007/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/merged-03.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/merged-03-fixtures",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py",
+        "test/integration/test_native_package_alias_repair.py"
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 22
+      },
+      "datasets_head": "47d492c697f3e766d107ae9c02d8b8dcd18660b2",
+      "log_sha256": "1361ef555befabd5fb7a1b341062832e2ef6e41f961ee29362f0d6f8b6afbf49",
+      "source_base": "00daa9e1ea37e9fb2198472f37ab46cce5d2e4fb",
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab",
+        "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "db9092bf72a74b89fda3079aa180fb1df4ba059e3a12aa8dbaa5a8c7fdd17233",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py": "06a89b8c98972bc361cd835cec627452374721563303b28f06c378d452208dd8",
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_dependency_graph.py": "2638505b04948a4873e702e02c616cbb7b73bf3aa560ce4335a75c32c1cb11bf",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_alias_contract.py": "a4d861613e812ede49f569ba22731d27aaeb3be0112680e548bb68d62647fc8c",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12",
+        "test/api/test_doctor_package_alias_contract.py": "49ecc7c4d73008165bf323fcd548ea205d6a196d4fc8d29b0a0f62dc7cfa335f",
+        "test/api/test_doctor_source_partition.py": "6565c92cf1edde55487f2f544a30c9832adf0030a913c1b8c56e8d3609d21f57",
+        "test/api/test_program_dependency_package_imports.py": "5d5b17bafdf926d340d6ce782155db3939499910e2ec875d1faf26042e3a76e6",
+        "test/integration/test_native_package_alias_repair.py": "258640f58739eaa44672eb23751cbeef787c9d4a434f96d0a8ffc3371a228b89"
+      },
+      "source_superseded": {},
+      "source_unchanged_during_run": true,
+      "wall_seconds": 106.41237098298734,
+      "xml_sha256": "3f6010e163ef18abae5ec1a86f9fb0917d07d6a30bdc4823981848a70134aad2"
+    },
+    "source-partition-02": {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import pathlib, tests; assert pathlib.Path(tests.__file__).resolve() == pathlib.Path('/home/barberb/lift_coding/.worktrees/symbolic-data-datasets-20261007/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/source-partition-02.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/package-alias-20261007/qualification/source-partition-02-fixtures",
+        "test/api/test_doctor_source_partition.py"
+      ],
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 17
+      },
+      "datasets_head": "47d492c697f3e766d107ae9c02d8b8dcd18660b2",
+      "log_sha256": "a71d0fa7199d4ff6c1af4bd6546cb5c20e37578eb58a66853ab575166172316a",
+      "source_base": "318696e5e0f6d9991c26073164e5740ec43a40e9",
+      "source_sha256": {
+        "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "db9092bf72a74b89fda3079aa180fb1df4ba059e3a12aa8dbaa5a8c7fdd17233",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py": "06a89b8c98972bc361cd835cec627452374721563303b28f06c378d452208dd8",
+        "ipfs_accelerate_py/agent_supervisor/analysis/program_dependency_graph.py": "2638505b04948a4873e702e02c616cbb7b73bf3aa560ce4335a75c32c1cb11bf",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_alias_contract.py": "a4d861613e812ede49f569ba22731d27aaeb3be0112680e548bb68d62647fc8c",
+        "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": "ff79af2ec8f3f783a138c546970a2450aec72ac6b47e633d9f2fcf47c33b0b12",
+        "test/api/test_doctor_package_alias_contract.py": "49ecc7c4d73008165bf323fcd548ea205d6a196d4fc8d29b0a0f62dc7cfa335f",
+        "test/api/test_doctor_source_partition.py": "6565c92cf1edde55487f2f544a30c9832adf0030a913c1b8c56e8d3609d21f57",
+        "test/api/test_program_dependency_package_imports.py": "5d5b17bafdf926d340d6ce782155db3939499910e2ec875d1faf26042e3a76e6",
+        "test/integration/test_native_package_alias_repair.py": "258640f58739eaa44672eb23751cbeef787c9d4a434f96d0a8ffc3371a228b89"
+      },
+      "source_superseded": {},
+      "source_unchanged_during_run": true,
+      "wall_seconds": 47.428872616030276,
+      "xml_sha256": "7f08556354aab32c0714071ae8bcaeaeab25e59f1635dc39aa90bd3572b34e0f"
+    }
+  },
+  "schema": "package-alias-contract-qualification@1"
+}

@@ -80,8 +80,8 @@ an exact early sizing check remains outstanding.
 Two generic closed operators are available on eligible profiles: a local Python
 keyword rename and an imported alias call repair. For example, an existing
 `from helpers import transform as normalize` can justify changing the unresolved
-`transform(value)` call to `normalize(value)`. The latter route requires a signed,
-flat local donor, an unambiguous alias, closed function bodies and inert arguments,
+`transform(value)` call to `normalize(value)`. The latter route requires a signed
+local donor, an unambiguous alias, closed function bodies and inert arguments,
 compatible signatures, no shadowing, no unresolved calls or call cycles, and no
 import-time effects. Module and function docstrings, immutable literal defaults
 (including signed numeric literals), positional-only parameters, and arithmetic
@@ -93,6 +93,9 @@ The grammar admits at most 16 bindings per module, 32 parameters per function,
 and 64-character identifiers. Separate native theorem and prover-argument limits
 return an explicit residual on overflow, before proof state is created.
 It does not insert dependencies or guess missing imports.
+The [package operator](PACKAGE_ALIAS_CONTRACTS.md) additionally resolves absolute
+and relative imports through fully captured regular packages with inert
+initializers. Namespace packages, reexports and dynamic imports retain residuals.
 The source-derived finite binding map is projected to real Lean/Z3 checks for
 alias resolution, the original name's absence, and argument preservation. The
 finite signature projection additionally checks positional capacity, permitted
