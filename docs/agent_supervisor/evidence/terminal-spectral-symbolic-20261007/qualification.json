@@ -1,0 +1,197 @@
+{
+  "allocated_native_materialization_tested": true,
+  "automatic_benchmark_route_promoted": false,
+  "completion_authority": false,
+  "cost_scope": "Numerical operator, conditional checks and authored native candidate qualification only; implementation chat and subagents excluded. General benchmark planning was not rerun.",
+  "created_at_utc": "2026-10-07T12:44:49.100392+00:00",
+  "earlier_cache_run": {
+    "ast_seal_cache_skips": 58,
+    "errors": 0,
+    "failures": 0,
+    "passed": 55
+  },
+  "evidence": [
+    {
+      "bytes": 5800,
+      "path": "authored_spectral_microbench.py",
+      "sha256": "2cd52ba8de73a1b37fcb0b3723fc02b4f737ffda03e1671bfc6912912b5aab0d"
+    },
+    {
+      "bytes": 24101,
+      "path": "authored-spectral-microbench-01.json",
+      "sha256": "969fec6c624595a16d35abc73feb187d15f4d98847f4db658438b07c1a76d647"
+    },
+    {
+      "bytes": 23949,
+      "path": "authored-spectral-microbench-02.json",
+      "sha256": "11b6d4460e437830117de2d39875d2e21fd61e13da843e40bff5b4b1fcf0b6c4"
+    },
+    {
+      "bytes": 2061,
+      "path": "spectral-performance-not-qualified-01.json",
+      "sha256": "7235b9176b6a93e907009b01457808ab65523205d61b56b28cc584c8b240fb6f"
+    },
+    {
+      "bytes": 10667,
+      "path": "spectral-kernel-qualification-02.json",
+      "sha256": "51440a87c3d9068096635d0db6813153a314a1a24ddcedb52a8cf0a955f65900"
+    },
+    {
+      "bytes": 3363,
+      "path": "authored-spectral-numeric-qualification-02.json",
+      "sha256": "c88b09b07cb62aa45c96ebc5e6adac03bfcbde3081ce87f2fd0d5088150fe7ca"
+    },
+    {
+      "bytes": 3879,
+      "path": "reviewed-eigen-candidate-01.py",
+      "sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b"
+    },
+    {
+      "bytes": 5150,
+      "path": "doctor-spectral-contract-qualification-02.json",
+      "sha256": "1b85b264be560fda740ee9edb2ee744b2d38b06b2ce5163dbb974fef42040bcb"
+    },
+    {
+      "bytes": 63950,
+      "path": "doctor-spectral-contract-tests-02.log",
+      "sha256": "8d02bd082478b5b77557c9858ea5468a024a13e21372e3d410d7c4f1eddc12ec"
+    },
+    {
+      "bytes": 4383,
+      "path": "conditional-spectral-algebra-01.json",
+      "sha256": "e355f1f53d8759ea0c830d30cc1507b007db4e5d6661d201c9507b8d0da7ae33"
+    },
+    {
+      "bytes": 800,
+      "path": "isolated-spectral-target-01.json",
+      "sha256": "47cc5657d05b0540e3230a2a8805f6f3db3b30d79a7dc5c211effb4bc499b813"
+    },
+    {
+      "bytes": 17831,
+      "path": "independent-spectral-review-01.json",
+      "sha256": "a5a437eff47698b67520792748d66ffc1e1cd2898475b544396c9ec0f51848ad"
+    },
+    {
+      "bytes": 3316,
+      "path": "spectral-integration-tests-01.log",
+      "sha256": "94f9de6dc546d6ef163766ebe4e834aff8a6cecff9a5fabbdec6f25f594dc772"
+    },
+    {
+      "bytes": 29824,
+      "path": "spectral-integration-tests-01.xml",
+      "sha256": "23473a5ec930ea9181a456bf5806c0e0ae5054b2be86f4fa5d82c0b205977499"
+    },
+    {
+      "bytes": 3984,
+      "path": "spectral-integration-tests-02.log",
+      "sha256": "d5285654e7ab3fb46c30b82488e3245db5285bf4883e46efd2a0f4742b40fbdb"
+    },
+    {
+      "bytes": 16842,
+      "path": "spectral-integration-tests-02.xml",
+      "sha256": "df6c7f4626a47cf29d3cd999b760246aaf2c8dad4fad36a2362d8cedf02881b2"
+    },
+    {
+      "bytes": 319,
+      "path": "original-workspace-snapshot.json",
+      "sha256": "0f22443711b8d538793e2265257d9441e7b1375baac293b3aa0706388a7636e9"
+    }
+  ],
+  "finite_fixture_count": 22,
+  "formal_lemma_count": 13,
+  "fresh_sealing": "Required AST sealing remained enabled with a new explicit DuckDB seal catalog.",
+  "fresh_tests": {
+    "errors": 0,
+    "failures": 0,
+    "seconds": 77.05,
+    "skipped": 0,
+    "tests": 113
+  },
+  "general_planning_changed": false,
+  "ieee_floating_point_proved": false,
+  "independent_control_count": 24,
+  "independent_review_passed": true,
+  "kernel_proved": false,
+  "local_target": {
+    "executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "interpreter": "/home/barberb/.local/bin/python",
+    "numpy_version": "1.26.4",
+    "python_version": "3.12.3",
+    "scipy_version": "1.11.4"
+  },
+  "measured_token_savings_established": false,
+  "native_runtime_provider_calls": 0,
+  "new_model_weights": 0,
+  "official_benchmark_launches": 0,
+  "official_target_runtime_qualified": false,
+  "performance_qualified": false,
+  "proof_authority": false,
+  "publication_authority": false,
+  "remaining_work": [
+    "Review a faster recipe and account for setup costs.",
+    "Install and qualify dependencies in the actual target environment.",
+    "Pass target numerical and consistent-speed validation before promoting the benchmark route."
+  ],
+  "reviewed_profile": "dominant-eigenpair-f64-small@1",
+  "schema": "terminal-spectral-symbolic-qualification@1",
+  "source_base_commit": "c733fa1240e3e31c5172ebc35e53f65da4b93891",
+  "sources": [
+    {
+      "bytes": 3817,
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/spectral_kernel_proof.py",
+      "sha256": "529835978f49d57bd7234925c1dbe2da159c49ebf3edeca9ebbe8326ded11a32"
+    },
+    {
+      "bytes": 16687,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/spectral_eigen_kernel.py",
+      "sha256": "a63e2b74a1923ea26493e2cc26d45c1c08da1c2f1423f141fd2933585b257105"
+    },
+    {
+      "bytes": 8904,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/spectral_target_qualification.py",
+      "sha256": "b0516c2f0db2d8f12f3d5d06fc788c299881e67bd120fe631b82b7d8e826dabe"
+    },
+    {
+      "bytes": 14021,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_spectral_contract.py",
+      "sha256": "119c8556e291bd179627f12d0b36950382b624ee5e6f400d35903d1d29c3ae3c"
+    },
+    {
+      "bytes": 18164,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "ca6a7c83ec7f843f06f254ee63341f85ce6117886085579e87bd8abe7ed9d57a"
+    },
+    {
+      "bytes": 11402,
+      "path": "test/api/test_spectral_eigen_kernel.py",
+      "sha256": "6d375534f2cc65648328a98280c72c42b8c7e3a485a027a6e25619d152451e3f"
+    },
+    {
+      "bytes": 18785,
+      "path": "test/api/test_doctor_spectral_contract.py",
+      "sha256": "393c89c19e5408bc0f96150930fe5460d76ca49b433eba385afec00e6d389ec5"
+    },
+    {
+      "bytes": 4632,
+      "path": "test/api/test_spectral_symbolic_qualification.py",
+      "sha256": "836121bcfed7db6cbbe8cd648852618443d0c10b9856c746b34e4944faa8d43e"
+    },
+    {
+      "bytes": 2401,
+      "path": "test/api/test_terminal_spectral_dispatch.py",
+      "sha256": "e901dac7bdeeb89f18f9e733acc09ee4db87592c2d4f297795297df99934f11d"
+    },
+    {
+      "bytes": 8241,
+      "path": "docs/agent_supervisor/spectral_symbolic_operator.md",
+      "sha256": "01e407752bae77930a9e2a8739a76150af07092a8b7e89189f6de58d2b267b9f"
+    },
+    {
+      "bytes": 102671,
+      "path": "docs/agent_supervisor/terminal_symbolic_capabilities.md",
+      "sha256": "510471a7c52be62bf1ed26dfd83c953316987fe84b92995aed5e303333349243"
+    }
+  ],
+  "task_source_bound_candidate_tested": true,
+  "whole_program_proved": false
+}

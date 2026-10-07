@@ -1,0 +1,147 @@
+{
+  "accepted": true,
+  "available": true,
+  "backend": "scipy_dgeev",
+  "case_count": 22,
+  "cases": [
+    {
+      "accepted": true,
+      "case_id": "general_1",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_2",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_3",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_4",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_5",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_6",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_7",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_8",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_9",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "general_10",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "rotation",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "negative_dominant",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "equal_modulus_tie",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "zero",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "defective_jordan",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "nonnormal",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "large_rotation",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "small_rotation",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "fortran_layout",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "transpose_layout",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "negative_stride_layout",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    },
+    {
+      "accepted": true,
+      "case_id": "readonly_layout",
+      "input_unchanged": true,
+      "reason_code": "accepted"
+    }
+  ],
+  "exact_spectral_certificate": false,
+  "optimization_candidate": true,
+  "qualification_scope": "authored_local_numerical_only",
+  "reason_code": "accepted",
+  "schema": "spectral-numeric-qualification@1",
+  "source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "speed_improvement_qualified": false
+}

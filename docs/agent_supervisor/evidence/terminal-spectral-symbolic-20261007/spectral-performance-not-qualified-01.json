@@ -1,0 +1,44 @@
+{
+  "attempts": [
+    {
+      "all_authored_cases_faster": false,
+      "binding": {
+        "bytes": 24101,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/authored-spectral-microbench-01.json",
+        "sha256": "969fec6c624595a16d35abc73feb187d15f4d98847f4db658438b07c1a76d647"
+      },
+      "candidate_compile_import_workspace_setup_ns": 53006962,
+      "candidate_faster_case_count": 2,
+      "candidate_source_sha256": "1e00624f1f46f20e72c79b0aad71a11cdb3570c2090011ab64297898acf824d2",
+      "case_count": 31,
+      "n_gt_1_ratio_max": 1.9607782415924322,
+      "n_gt_1_ratio_min": 1.163800296760712
+    },
+    {
+      "all_authored_cases_faster": false,
+      "binding": {
+        "bytes": 23949,
+        "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/authored-spectral-microbench-02.json",
+        "sha256": "11b6d4460e437830117de2d39875d2e21fd61e13da843e40bff5b4b1fcf0b6c4"
+      },
+      "candidate_compile_import_workspace_setup_ns": 47945042,
+      "candidate_faster_case_count": 2,
+      "candidate_source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+      "case_count": 31,
+      "n_gt_1_ratio_max": 1.5968474244552588,
+      "n_gt_1_ratio_min": 1.0178638210661062
+    }
+  ],
+  "benchmark_launches": 0,
+  "cost_scope": "Full public-entry function, including domain validation/copy/scaling/selection/reconstruction, timed. Import/compile/workspace setup costs are separately retained.",
+  "final_candidate_source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "limitation": "Authored local31cases; target Python3.13/NumPy2.3/SciPy availability and actual benchmark speed remain unqualified.",
+  "no_savings_claim": true,
+  "performance_gate_passed": false,
+  "performance_not_qualified": true,
+  "provider_calls": 0,
+  "reason_code": "consistent_speed_improvement_not_observed",
+  "schema": "spectral-performance-gate@1",
+  "target_interpreter_qualified": false,
+  "terminal_bench_speed_qualified": false
+}

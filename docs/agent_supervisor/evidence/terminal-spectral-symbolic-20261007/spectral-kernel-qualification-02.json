@@ -1,0 +1,242 @@
+{
+  "base_commit": "c733fa1240e3e31c5172ebc35e53f65da4b93891",
+  "benchmark_launches": 0,
+  "checker_fields": [
+    "accepted",
+    "raw_allclose_passed",
+    "residual_passed",
+    "normalized_residual_passed",
+    "spectrum_membership_passed",
+    "dominant_passed",
+    "nonzero_vector",
+    "reference_backend",
+    "reason_code",
+    "reference_max_scaled_modulus",
+    "candidate_scaled_modulus",
+    "modulus_scale"
+  ],
+  "correct_tiny_complex_vector_regression": {
+    "accepted": true,
+    "candidate_scaled_modulus": 0.9999999999999998,
+    "dominant_passed": true,
+    "modulus_scale": 2.0000000000000004,
+    "nonzero_vector": true,
+    "normalized_residual_passed": true,
+    "raw_allclose_passed": true,
+    "reason_code": "accepted",
+    "reference_backend": "numpy.linalg.eig",
+    "reference_max_scaled_modulus": 1.0,
+    "residual_passed": true,
+    "spectrum_membership_passed": true
+  },
+  "corrective_behavior": "Scale extreme owned matrix copies by a positive maximum component before DGEEV; rescale the chosen eigenvalue; reject nonzero INFO, invalid vector or unrepresentable eigenvalue. The independent checker normalizes vectors and checks complex spectrum membership as well as dominance.",
+  "domain": "Finite real float64 NumPy square matrices, size 1 through 10; general nonsymmetric and potentially complex right eigenpairs. Empty, nonfinite and wrong-dtype inputs are rejected explicitly.",
+  "emitted_candidate": {
+    "bytes": 3879,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/reviewed-eigen-candidate-01.py",
+    "sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b"
+  },
+  "environment": {
+    "numpy": "1.26.4",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+    "scipy": "1.17.1"
+  },
+  "fallback": "Explicit allow_numpy_fallback only. NumPy backend records optimization_candidate=False and fallback_reason=scipy_unavailable. Default standalone SciPy source never silently falls back.",
+  "hidden_evaluation_or_solution_reads": 0,
+  "limitations": [
+    "No exact spectral or forward-error certificate for arbitrary nonnormal floats.",
+    "Convergence or unrepresentable output can fail closed even with finite inputs.",
+    "Local SciPy availability and numerical qualification are not target Python 3.13 dependency qualification.",
+    "Performance gate failed; deterministic numerical and proof-adapter work does not certify the public task speed constraint."
+  ],
+  "microbench_script": {
+    "bytes": 5800,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/authored_spectral_microbench.py",
+    "sha256": "2cd52ba8de73a1b37fcb0b3723fc02b4f737ffda03e1671bfc6912912b5aab0d"
+  },
+  "numeric_checker_scope": "Independent full public NumPy spectrum; literal raw np.allclose compatibility is reported separately. Admission requires finite products, robust unit-vector/scaled-matrix residual, nonzero finite vector, complex spectrum membership with relative tolerance 1e-7 and zero absolute tolerance, and scaled-modulus dominance. Numerical evidence, not an exact spectral proof.",
+  "numeric_qualification": {
+    "bytes": 3363,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/authored-spectral-numeric-qualification-02.json",
+    "sha256": "c88b09b07cb62aa45c96ebc5e6adac03bfcbde3081ce87f2fd0d5088150fe7ca"
+  },
+  "owned_source_files": [
+    {
+      "bytes": 16687,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/ipfs_accelerate_py/agent_supervisor/runtime/spectral_eigen_kernel.py",
+      "sha256": "a63e2b74a1923ea26493e2cc26d45c1c08da1c2f1423f141fd2933585b257105"
+    },
+    {
+      "bytes": 11402,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/test/api/test_spectral_eigen_kernel.py",
+      "sha256": "6d375534f2cc65648328a98280c72c42b8c7e3a485a027a6e25619d152451e3f"
+    }
+  ],
+  "performance_attempts_unchanged_by_checker_hardening": true,
+  "performance_gate": {
+    "bytes": 2061,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-performance-not-qualified-01.json",
+    "sha256": "7235b9176b6a93e907009b01457808ab65523205d61b56b28cc584c8b240fb6f"
+  },
+  "performance_timing_scope": "Both retained attempts time only the standalone emitted candidate, whose source SHA is unchanged by checker hardening. The independent checker runs outside timed samples.",
+  "provider_calls": 0,
+  "public_contract_files": [
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    }
+  ],
+  "qualification_receipt_command_quoting_corrected": true,
+  "raw_dgeev_scaling_regression": [
+    {
+      "expected_real_eigenvalues": [
+        -2.9999999999999998e+150,
+        2e+150
+      ],
+      "info": 0,
+      "matches_expected": false,
+      "raw_dgeev_wi": [
+        0.0,
+        0.0
+      ],
+      "raw_dgeev_wr": [
+        -1.4885657073574027e+138,
+        9.923771382382686e+137
+      ],
+      "scale": 1e+150
+    },
+    {
+      "expected_real_eigenvalues": [
+        -3e-150,
+        2e-150
+      ],
+      "info": 0,
+      "matches_expected": false,
+      "raw_dgeev_wi": [
+        0.0,
+        0.0
+      ],
+      "raw_dgeev_wr": [
+        -6.717876107567089e-139,
+        4.478584071711392e-139
+      ],
+      "scale": 1e-150
+    },
+    {
+      "expected_real_eigenvalues": [
+        -3e-300,
+        2e-300
+      ],
+      "info": 0,
+      "matches_expected": false,
+      "raw_dgeev_wi": [
+        0.0,
+        0.0
+      ],
+      "raw_dgeev_wr": [
+        -6.717876107567089e-139,
+        4.478584071711392e-139
+      ],
+      "scale": 1e-300
+    }
+  ],
+  "revision_reason": "Independent review found raw allclose plus modulus dominance could admit a wrong-sign eigenvalue for a tiny nonzero vector. Mandatory normalized residual and complex spectrum membership now reject that case.",
+  "schema": "spectral-kernel-qualification@1",
+  "source_commits": 0,
+  "supersedes": {
+    "bytes": 6635,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-kernel-qualification-01.json",
+    "sha256": "5162fb0a03e99d6d47c838b43ce1e0d56236f63e2abc4f0d56cee15472eb935a"
+  },
+  "test_evidence": {
+    "command": "env PYTHONPATH=/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONDONTWRITEBYTECODE=1 IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB=/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-kernel-tests-final-03.duckdb /home/barberb/.local/bin/python -B -c 'import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))' -q -o addopts= -p no:cacheprovider -p ipfs_accelerate_py.testing.pytest_ast_seal --junitxml=/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-kernel-tests-final-03.xml test/api/test_spectral_eigen_kernel.py",
+    "errors": 0,
+    "exit_code": 0,
+    "failures": 0,
+    "junit_elapsed_seconds": 1.026,
+    "junit_xml": {
+      "bytes": 7366,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-kernel-tests-final-03.xml",
+      "sha256": "b88883b76684943007b61308bde71b5cb1746f9c128520a0be98d377b582bb59"
+    },
+    "pytest_reported_elapsed_seconds": 1.05,
+    "red_initial_persisted_log": null,
+    "red_initial_result": "4 failed, 44 passed in 1.06 s; scaled numerical fixtures and aggregate qualification failed.",
+    "red_initial_tool_chunk_id": "8f318a",
+    "stdout_log": {
+      "bytes": 6620,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-kernel-tests-final-03.log",
+      "sha256": "0f7330769f021d3d8012350b36bb00f3a3dd2c7beb0d2a78cc7a3c9e2713e26a"
+    },
+    "stdout_tool_chunk_id": "cba041",
+    "tests": 53,
+    "warning_scope": "Literal public np.allclose diagnostic on the authored infinite-product rejection fixture; accepted remains False.",
+    "warnings": 1
+  },
+  "wrong_sign_tiny_vector_regressions": [
+    {
+      "matrix_scale": 1.0,
+      "report": {
+        "accepted": false,
+        "candidate_scaled_modulus": 1.0,
+        "dominant_passed": true,
+        "modulus_scale": 2.0,
+        "nonzero_vector": true,
+        "normalized_residual_passed": false,
+        "raw_allclose_passed": true,
+        "reason_code": "normalized_residual_failed",
+        "reference_backend": "numpy.linalg.eig",
+        "reference_max_scaled_modulus": 1.0,
+        "residual_passed": true,
+        "spectrum_membership_passed": false
+      },
+      "vector_scale": 1e-100,
+      "wrong_sign_eigenvalue": -2.0
+    },
+    {
+      "matrix_scale": 1e-300,
+      "report": {
+        "accepted": false,
+        "candidate_scaled_modulus": 1.0,
+        "dominant_passed": true,
+        "modulus_scale": 2e-300,
+        "nonzero_vector": true,
+        "normalized_residual_passed": false,
+        "raw_allclose_passed": true,
+        "reason_code": "normalized_residual_failed",
+        "reference_backend": "numpy.linalg.eig",
+        "reference_max_scaled_modulus": 0.9999999999999999,
+        "residual_passed": true,
+        "spectrum_membership_passed": false
+      },
+      "vector_scale": 1e-100,
+      "wrong_sign_eigenvalue": -2e-300
+    },
+    {
+      "matrix_scale": 1e-300,
+      "report": {
+        "accepted": false,
+        "candidate_scaled_modulus": 1.0,
+        "dominant_passed": true,
+        "modulus_scale": 2e-300,
+        "nonzero_vector": true,
+        "normalized_residual_passed": false,
+        "raw_allclose_passed": true,
+        "reason_code": "normalized_residual_failed",
+        "reference_backend": "numpy.linalg.eig",
+        "reference_max_scaled_modulus": 0.9999999999999999,
+        "residual_passed": true,
+        "spectrum_membership_passed": false
+      },
+      "vector_scale": 1e-320,
+      "wrong_sign_eigenvalue": -2e-300
+    }
+  ]
+}

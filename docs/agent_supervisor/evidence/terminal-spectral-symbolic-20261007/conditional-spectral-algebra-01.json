@@ -1,0 +1,133 @@
+{
+  "all_lemmas_verified": true,
+  "analysis_source_sha256": "529835978f49d57bd7234925c1dbe2da159c49ebf3edeca9ebbe8326ded11a32",
+  "assumptions": [
+    "The trusted solver supplies a complete numerical spectrum.",
+    "Packed real columns satisfy the declared ideal backend eigenvector equations.",
+    "Selector inputs are finite nonnegative computed magnitudes."
+  ],
+  "checks": [
+    {
+      "name": "packed_complex_vector_sign_1",
+      "smtlib_bytes": 462,
+      "smtlib_sha256": "e48ea9ccc9800f0c17d5f52b2cc50b7f9350888536b6f099dcdcb1ac3bcacd34",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "packed_complex_vector_sign_-1",
+      "smtlib_bytes": 482,
+      "smtlib_sha256": "69dea0c9bd82fdc35640e5523d5a03cc2fb8d1af7d1a823147e057a42c88fba3",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "normalized_packed_vector_is_nonzero",
+      "smtlib_bytes": 389,
+      "smtlib_sha256": "ee2963cd5be1402086255e4ff34c71aaccd4cfd45451c024e166fcdd727227b6",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_1",
+      "smtlib_bytes": 161,
+      "smtlib_sha256": "ea3e5213630ad1433a04dd86e9fe8e874fff8b4b15226f0ca7cd1bcde132ad0e",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_2",
+      "smtlib_bytes": 286,
+      "smtlib_sha256": "6d24b4f8d1b0558bdbfaafe468827cfea3010ff292d69e688d9950f8bc23bc8b",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_3",
+      "smtlib_bytes": 392,
+      "smtlib_sha256": "b1219b1f5a1bd5266aad43f9cca3a549fd7044a2d77c4f1911904f69ffbb09a2",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_4",
+      "smtlib_bytes": 507,
+      "smtlib_sha256": "d88f6fa30e9dbd3067e180335a56e99147d197c3f5b6fc45898dbf84a0ecff02",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_5",
+      "smtlib_bytes": 622,
+      "smtlib_sha256": "b62746d036673827956730ca37e434341358ab29554ab199c8977a78e56eff2c",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_6",
+      "smtlib_bytes": 743,
+      "smtlib_sha256": "00346be7b40162ecb88a56d2b1e645ffa510bb78bf66dc6b759d4401c2c093bf",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_7",
+      "smtlib_bytes": 858,
+      "smtlib_sha256": "2b833884731fc74a5ad864e0e688d5ede31d59f7d250e63b68f84158386fdc5e",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_8",
+      "smtlib_bytes": 976,
+      "smtlib_sha256": "577a0465ac29d4653b8e78d13c6692c73d8fc04434d92bd5ff366776f8d4768e",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_9",
+      "smtlib_bytes": 1100,
+      "smtlib_sha256": "1f5bee36a2714e1de03851c935e18380a889440133c69c3437e6290b6c5fa3b9",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    },
+    {
+      "name": "bounded_magnitude_argmax_10",
+      "smtlib_bytes": 1268,
+      "smtlib_sha256": "c7d45f677702661b125bbe035d13ac92d5fcc123286bda18aedab2bc9cf414fc",
+      "unknown_reason": null,
+      "verdict": "unsat",
+      "verified": true
+    }
+  ],
+  "completion_authority": false,
+  "ieee_floating_point_accuracy_proved": false,
+  "kernel_proved": false,
+  "kernel_source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "lapack_implementation_proved": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_authority": false,
+  "python_program_mechanically_verified": false,
+  "schema": "spectral-adapter-smt-lemmas@1",
+  "scope": "conditional ideal complex-vector algebra and bounded computed-magnitude selection",
+  "solver": {
+    "name": "z3",
+    "version": "4.15.4"
+  },
+  "status": "verified_scoped_lemmas",
+  "timing_proved": false,
+  "whole_program_proved": false
+}

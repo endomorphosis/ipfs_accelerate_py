@@ -1,0 +1,932 @@
+{
+  "all_authored_cases_faster": false,
+  "benchmark_launches": 0,
+  "calls_per_batch": 400,
+  "candidate_compile_import_workspace_setup_ns": 47945042,
+  "candidate_faster_case_count": 2,
+  "candidate_validation_copy_selection_reconstruction_included": true,
+  "case_count": 31,
+  "cases": [
+    {
+      "candidate_faster_in_this_local_case": true,
+      "candidate_median_ns": 2134.2575,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        2126.4575,
+        2142.94,
+        2130.8175,
+        2141.18,
+        2134.2575,
+        2140.62,
+        2133.8575
+      ],
+      "candidate_to_reference_ratio": 0.3456906053633889,
+      "case_id": "general_1",
+      "input_unchanged": true,
+      "n": 1,
+      "public_numpy_reference_median_ns": 6173.895,
+      "public_numpy_reference_samples_ns": [
+        6186.975,
+        6188.0925,
+        6168.815,
+        6179.1725,
+        6169.575,
+        6165.3725,
+        6173.895
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": true,
+      "candidate_median_ns": 2131.5775,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        2121.5375,
+        2138.78,
+        2131.5775,
+        2135.7375,
+        2123.94,
+        2136.5775,
+        2123.5775
+      ],
+      "candidate_to_reference_ratio": 0.34650021498000155,
+      "case_id": "triangular_1",
+      "input_unchanged": true,
+      "n": 1,
+      "public_numpy_reference_median_ns": 6151.735,
+      "public_numpy_reference_samples_ns": [
+        6161.775,
+        6174.2525,
+        6152.8525,
+        6143.855,
+        6147.0125,
+        6137.055,
+        6151.735
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7330.7025,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7308.345,
+        7330.105,
+        7342.1425,
+        7331.9425,
+        7328.745,
+        7337.625,
+        7330.7025
+      ],
+      "candidate_to_reference_ratio": 1.127922286985632,
+      "case_id": "general_2",
+      "input_unchanged": true,
+      "n": 2,
+      "public_numpy_reference_median_ns": 6499.2975,
+      "public_numpy_reference_samples_ns": [
+        6527.655,
+        6494.1775,
+        6488.8975,
+        6486.2575,
+        6505.375,
+        6509.1775,
+        6499.2975
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7073.9825,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7057.6225,
+        7073.9825,
+        7087.6225,
+        7093.8225,
+        7066.9825,
+        7064.8625,
+        7082.7425
+      ],
+      "candidate_to_reference_ratio": 1.1287930708465412,
+      "case_id": "triangular_2",
+      "input_unchanged": true,
+      "n": 2,
+      "public_numpy_reference_median_ns": 6266.855,
+      "public_numpy_reference_samples_ns": [
+        6266.855,
+        6260.2925,
+        6269.055,
+        6275.3325,
+        6262.535,
+        6258.4525,
+        6287.015
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8315.7125,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8304.8725,
+        8328.795,
+        8315.7125,
+        8344.5525,
+        8304.9125,
+        8327.3125,
+        8297.4725
+      ],
+      "candidate_to_reference_ratio": 1.2958040737586707,
+      "case_id": "complex_pair_2",
+      "input_unchanged": true,
+      "n": 2,
+      "public_numpy_reference_median_ns": 6417.415,
+      "public_numpy_reference_samples_ns": [
+        6435.175,
+        6420.055,
+        6416.375,
+        6480.6175,
+        6417.415,
+        6406.095,
+        6382.775
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9348.6,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9328.0425,
+        9352.9625,
+        9335.2825,
+        9361.2,
+        9357.4825,
+        9335.8425,
+        9348.6
+      ],
+      "candidate_to_reference_ratio": 1.2097006642380608,
+      "case_id": "general_3",
+      "input_unchanged": true,
+      "n": 3,
+      "public_numpy_reference_median_ns": 7728.0275,
+      "public_numpy_reference_samples_ns": [
+        7731.1475,
+        7734.665,
+        7728.0275,
+        7723.8275,
+        7710.0675,
+        7617.185,
+        7829.75
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7288.5825,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7342.745,
+        7269.7025,
+        7288.5825,
+        7280.665,
+        7285.7425,
+        7291.505,
+        7311.1025
+      ],
+      "candidate_to_reference_ratio": 1.1306973446714639,
+      "case_id": "triangular_3",
+      "input_unchanged": true,
+      "n": 3,
+      "public_numpy_reference_median_ns": 6446.095,
+      "public_numpy_reference_samples_ns": [
+        6429.495,
+        6433.5375,
+        6470.9775,
+        6446.095,
+        6460.0575,
+        6468.455,
+        6445.9375
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8430.5125,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8420.155,
+        8457.3525,
+        8421.675,
+        8430.5125,
+        8480.435,
+        8407.4325,
+        8444.715
+      ],
+      "candidate_to_reference_ratio": 1.2390196173528625,
+      "case_id": "complex_pair_3",
+      "input_unchanged": true,
+      "n": 3,
+      "public_numpy_reference_median_ns": 6804.18,
+      "public_numpy_reference_samples_ns": [
+        6779.2575,
+        6790.86,
+        6804.18,
+        6907.02,
+        6853.78,
+        7031.58,
+        6798.74
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9795.845,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9712.725,
+        9795.845,
+        9777.485,
+        9818.285,
+        9834.445,
+        9817.2075,
+        9795.365
+      ],
+      "candidate_to_reference_ratio": 1.2452407337197546,
+      "case_id": "general_4",
+      "input_unchanged": true,
+      "n": 4,
+      "public_numpy_reference_median_ns": 7866.6275,
+      "public_numpy_reference_samples_ns": [
+        7845.7075,
+        7846.75,
+        7866.6275,
+        7894.99,
+        7891.23,
+        7854.3875,
+        7882.0275
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7530.185,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7481.705,
+        7526.945,
+        7530.185,
+        7538.065,
+        7572.3075,
+        7620.905,
+        7502.625
+      ],
+      "candidate_to_reference_ratio": 1.1450493229663046,
+      "case_id": "triangular_4",
+      "input_unchanged": true,
+      "n": 4,
+      "public_numpy_reference_median_ns": 6576.2975,
+      "public_numpy_reference_samples_ns": [
+        6579.3375,
+        6577.1775,
+        6576.2975,
+        6567.1775,
+        6559.2975,
+        6576.4175,
+        6557.8175
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8569.955,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8547.195,
+        8569.955,
+        8599.995,
+        8587.995,
+        8696.595,
+        8569.555,
+        8549.355
+      ],
+      "candidate_to_reference_ratio": 1.2856107226797848,
+      "case_id": "complex_pair_4",
+      "input_unchanged": true,
+      "n": 4,
+      "public_numpy_reference_median_ns": 6666.0575,
+      "public_numpy_reference_samples_ns": [
+        6664.6975,
+        6652.8975,
+        6682.2975,
+        6680.54,
+        6666.4575,
+        6657.5375,
+        6666.0575
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 10078.8075,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        10039.0075,
+        10078.8075,
+        10081.6475,
+        10080.2075,
+        10061.8075,
+        10124.05,
+        10055.2875
+      ],
+      "candidate_to_reference_ratio": 1.0845964242823385,
+      "case_id": "general_5",
+      "input_unchanged": true,
+      "n": 5,
+      "public_numpy_reference_median_ns": 9292.68,
+      "public_numpy_reference_samples_ns": [
+        9275.3225,
+        9298.68,
+        9284.9625,
+        9296.32,
+        9298.4825,
+        9266.32,
+        9292.68
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7614.1075,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7552.425,
+        7614.1075,
+        7629.2275,
+        7661.1075,
+        7661.2275,
+        7607.7475,
+        7606.905
+      ],
+      "candidate_to_reference_ratio": 1.1163631618553447,
+      "case_id": "triangular_5",
+      "input_unchanged": true,
+      "n": 5,
+      "public_numpy_reference_median_ns": 6820.4575,
+      "public_numpy_reference_samples_ns": [
+        6826.5,
+        6820.9775,
+        6818.4175,
+        6809.38,
+        6820.4575,
+        6812.42,
+        6827.3
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8745.1975,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8695.155,
+        8755.635,
+        8741.6375,
+        8756.5575,
+        8750.275,
+        8736.315,
+        8745.1975
+      ],
+      "candidate_to_reference_ratio": 1.2592906588158976,
+      "case_id": "complex_pair_5",
+      "input_unchanged": true,
+      "n": 5,
+      "public_numpy_reference_median_ns": 6944.5425,
+      "public_numpy_reference_samples_ns": [
+        6944.5425,
+        6956.74,
+        6963.54,
+        6956.1,
+        6942.5425,
+        6921.9,
+        6910.78
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 11920.265,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        11875.9025,
+        11927.5825,
+        11892.025,
+        11920.265,
+        12064.545,
+        11897.1825,
+        11938.905
+      ],
+      "candidate_to_reference_ratio": 1.161446768044165,
+      "case_id": "general_6",
+      "input_unchanged": true,
+      "n": 6,
+      "public_numpy_reference_median_ns": 10263.29,
+      "public_numpy_reference_samples_ns": [
+        10271.53,
+        10263.29,
+        10243.8875,
+        10241.41,
+        10302.41,
+        10250.49,
+        10281.41
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7785.7075,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7757.7875,
+        7785.7075,
+        7783.5075,
+        7811.5875,
+        7756.5875,
+        7804.8275,
+        7793.2675
+      ],
+      "candidate_to_reference_ratio": 1.1025130694693586,
+      "case_id": "triangular_6",
+      "input_unchanged": true,
+      "n": 6,
+      "public_numpy_reference_median_ns": 7061.7825,
+      "public_numpy_reference_samples_ns": [
+        7066.7825,
+        7069.7025,
+        7039.8225,
+        7049.14,
+        7061.7825,
+        7053.9425,
+        7062.7025
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8916.9975,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8889.1975,
+        8922.72,
+        8916.9975,
+        8922.3975,
+        8883.7575,
+        8946.7175,
+        8908.5175
+      ],
+      "candidate_to_reference_ratio": 1.2530309635883883,
+      "case_id": "complex_pair_6",
+      "input_unchanged": true,
+      "n": 6,
+      "public_numpy_reference_median_ns": 7116.3425,
+      "public_numpy_reference_samples_ns": [
+        7125.1425,
+        7097.82,
+        7116.3425,
+        7120.5,
+        7108.1425,
+        7133.1425,
+        7112.5025
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 13431.275,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        13381.5975,
+        13432.155,
+        13413.6775,
+        13639.64,
+        13431.275,
+        13449.3175,
+        13426.7175
+      ],
+      "candidate_to_reference_ratio": 1.1433575042951643,
+      "case_id": "general_7",
+      "input_unchanged": true,
+      "n": 7,
+      "public_numpy_reference_median_ns": 11747.2225,
+      "public_numpy_reference_samples_ns": [
+        11747.2225,
+        11740.4225,
+        11765.0625,
+        11737.5825,
+        11761.305,
+        11742.7,
+        11754.4225
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 7988.83,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        7950.51,
+        7990.43,
+        7988.83,
+        7988.99,
+        7985.51,
+        8004.03,
+        7976.6675
+      ],
+      "candidate_to_reference_ratio": 1.1114209664309362,
+      "case_id": "triangular_7",
+      "input_unchanged": true,
+      "n": 7,
+      "public_numpy_reference_median_ns": 7187.9425,
+      "public_numpy_reference_samples_ns": [
+        7196.1825,
+        7187.9425,
+        7189.6625,
+        7185.7825,
+        7182.8625,
+        7187.0225,
+        7195.6625
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9113.08,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9056.4375,
+        9135.44,
+        9093.16,
+        9113.08,
+        9106.12,
+        9113.36,
+        9120.08
+      ],
+      "candidate_to_reference_ratio": 1.256293388043812,
+      "case_id": "complex_pair_7",
+      "input_unchanged": true,
+      "n": 7,
+      "public_numpy_reference_median_ns": 7253.9425,
+      "public_numpy_reference_samples_ns": [
+        7317.505,
+        7265.6625,
+        7251.2225,
+        7247.8225,
+        7258.4625,
+        7246.8625,
+        7253.9425
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 14766.6475,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        14766.6475,
+        14761.29,
+        14727.2475,
+        14798.29,
+        14807.8875,
+        14736.4875,
+        14779.5275
+      ],
+      "candidate_to_reference_ratio": 1.1151644117597637,
+      "case_id": "general_8",
+      "input_unchanged": true,
+      "n": 8,
+      "public_numpy_reference_median_ns": 13241.6775,
+      "public_numpy_reference_samples_ns": [
+        13323.7975,
+        13252.995,
+        13223.115,
+        13214.995,
+        13241.6775,
+        13180.835,
+        13255.5975
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8217.4725,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8193.15,
+        8217.4725,
+        8235.47,
+        8264.8725,
+        8232.9925,
+        8214.6325,
+        8207.03
+      ],
+      "candidate_to_reference_ratio": 1.109751667334028,
+      "case_id": "triangular_8",
+      "input_unchanged": true,
+      "n": 8,
+      "public_numpy_reference_median_ns": 7404.785,
+      "public_numpy_reference_samples_ns": [
+        7411.545,
+        7404.785,
+        7411.345,
+        7403.905,
+        7401.5025,
+        7406.265,
+        7402.625
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9286.0425,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9256.32,
+        9284.12,
+        9287.3625,
+        9287.44,
+        9268.1225,
+        9302.28,
+        9286.0425
+      ],
+      "candidate_to_reference_ratio": 1.2424419907613367,
+      "case_id": "complex_pair_8",
+      "input_unchanged": true,
+      "n": 8,
+      "public_numpy_reference_median_ns": 7474.025,
+      "public_numpy_reference_samples_ns": [
+        7480.305,
+        7465.665,
+        7474.305,
+        7473.025,
+        7474.025,
+        7478.865,
+        7470.985
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 16120.98,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        16031.9,
+        16122.7,
+        16095.86,
+        16165.66,
+        16147.5825,
+        16120.98,
+        16078.5
+      ],
+      "candidate_to_reference_ratio": 1.103335796638555,
+      "case_id": "general_9",
+      "input_unchanged": true,
+      "n": 9,
+      "public_numpy_reference_median_ns": 14611.1275,
+      "public_numpy_reference_samples_ns": [
+        14611.1275,
+        14578.9275,
+        14590.0075,
+        14640.7675,
+        14644.1675,
+        14569.2875,
+        14619.2875
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8487.9925,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8468.075,
+        8487.9925,
+        8497.435,
+        8483.9525,
+        8505.675,
+        8489.115,
+        8487.5925
+      ],
+      "candidate_to_reference_ratio": 1.0958487655068128,
+      "case_id": "triangular_9",
+      "input_unchanged": true,
+      "n": 9,
+      "public_numpy_reference_median_ns": 7745.5875,
+      "public_numpy_reference_samples_ns": [
+        7745.5875,
+        7739.0675,
+        7751.2675,
+        7747.6275,
+        7759.3475,
+        7733.7075,
+        7740.3875
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9524.2825,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9474.1625,
+        9526.5625,
+        9513.565,
+        9524.1225,
+        9524.2825,
+        9557.6025,
+        9525.8425
+      ],
+      "candidate_to_reference_ratio": 1.223001806390971,
+      "case_id": "complex_pair_9",
+      "input_unchanged": true,
+      "n": 9,
+      "public_numpy_reference_median_ns": 7787.6275,
+      "public_numpy_reference_samples_ns": [
+        7787.6275,
+        7791.1875,
+        7790.1475,
+        7779.2275,
+        7783.7475,
+        7775.87,
+        7793.7475
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 16282.6225,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        16221.6225,
+        16313.7025,
+        16282.6225,
+        16314.9425,
+        16276.78,
+        16293.0625,
+        16272.54
+      ],
+      "candidate_to_reference_ratio": 1.0178638210661062,
+      "case_id": "general_10",
+      "input_unchanged": true,
+      "n": 10,
+      "public_numpy_reference_median_ns": 15996.8575,
+      "public_numpy_reference_samples_ns": [
+        15996.8575,
+        15995.42,
+        16048.9,
+        15989.3,
+        16006.1,
+        15981.82,
+        16017.38
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 8760.035,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        8703.755,
+        8760.035,
+        8736.4375,
+        8773.475,
+        8761.9575,
+        8757.075,
+        8761.3575
+      ],
+      "candidate_to_reference_ratio": 1.093081917178163,
+      "case_id": "triangular_10",
+      "input_unchanged": true,
+      "n": 10,
+      "public_numpy_reference_median_ns": 8014.07,
+      "public_numpy_reference_samples_ns": [
+        8002.63,
+        8012.11,
+        8014.07,
+        8027.07,
+        8025.59,
+        8014.23,
+        8013.23
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 9748.005,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        9710.0025,
+        9753.685,
+        9739.325,
+        9761.525,
+        9748.005,
+        9743.725,
+        9750.405
+      ],
+      "candidate_to_reference_ratio": 1.215221047198872,
+      "case_id": "complex_pair_10",
+      "input_unchanged": true,
+      "n": 10,
+      "public_numpy_reference_median_ns": 8021.59,
+      "public_numpy_reference_samples_ns": [
+        8026.83,
+        8019.27,
+        8027.27,
+        8009.63,
+        8021.59,
+        8007.55,
+        8029.23
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 10311.05,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        10277.9275,
+        10321.85,
+        10308.01,
+        10299.93,
+        10311.05,
+        10318.81,
+        10315.85
+      ],
+      "candidate_to_reference_ratio": 1.586369687270064,
+      "case_id": "large_rotation_2",
+      "input_unchanged": true,
+      "n": 2,
+      "public_numpy_reference_median_ns": 6499.7775,
+      "public_numpy_reference_samples_ns": [
+        6550.0575,
+        6527.8575,
+        6442.015,
+        6499.7775,
+        6427.535,
+        6525.4975,
+        6440.4975
+      ],
+      "reference_numeric_accepted": true
+    },
+    {
+      "candidate_faster_in_this_local_case": false,
+      "candidate_median_ns": 10304.9275,
+      "candidate_numeric_accepted": true,
+      "candidate_samples_ns": [
+        10228.6875,
+        10296.21,
+        10304.9275,
+        10323.53,
+        10314.29,
+        10310.85,
+        10297.09
+      ],
+      "candidate_to_reference_ratio": 1.5968474244552588,
+      "case_id": "tiny_rotation_2",
+      "input_unchanged": true,
+      "n": 2,
+      "public_numpy_reference_median_ns": 6453.295,
+      "public_numpy_reference_samples_ns": [
+        6505.6575,
+        6445.7775,
+        6547.7375,
+        6449.2175,
+        6453.295,
+        6570.3375,
+        6450.135
+      ],
+      "reference_numeric_accepted": true
+    }
+  ],
+  "cpu_count": 20,
+  "full_candidate_function_cost_included": true,
+  "limitations": [
+    "Authored local matrices only; no evaluation files read.",
+    "Timing is local Python3.12/NumPy1.26/SciPy1.17 and cannot certify target Python3.13/NumPy2.3.",
+    "Initial compilation, explicit SciPy import and workspace queries are reported setup costs.",
+    "Numerical cross-check uses independent public NumPy path, not an exact spectral certificate."
+  ],
+  "microbench_source_sha256": "2cd52ba8de73a1b37fcb0b3723fc02b4f737ffda03e1671bfc6912912b5aab0d",
+  "numpy": "1.26.4",
+  "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+  "provider_calls": 0,
+  "python": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "repeats": 7,
+  "schema": "authored-spectral-microbench@1",
+  "scipy": "1.17.1",
+  "setup_cost_included_in_per_call_samples": false,
+  "setup_cost_reported_separately": true,
+  "source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "target_interpreter_qualified": false,
+  "terminal_bench_speed_qualified": false,
+  "warmups_per_arm_per_case": 30
+}

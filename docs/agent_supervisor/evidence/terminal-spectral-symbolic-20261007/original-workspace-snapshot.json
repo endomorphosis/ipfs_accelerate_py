@@ -1,0 +1,7 @@
+{
+  "schema": "spectral-symbolic-original-workspace-snapshot@1",
+  "created_at_utc": "2026-10-07T12:19:51.079962+00:00",
+  "head": "fe18069df4203da9bddfb77b1ed41748f4d5fb4d",
+  "index_sha256": "80b0426031778d38c8b762a273739e08edbf2ce2b18690efb4f541fa6de120a4",
+  "native_llm_provider_calls_by_this_new_experiment": 0
+}

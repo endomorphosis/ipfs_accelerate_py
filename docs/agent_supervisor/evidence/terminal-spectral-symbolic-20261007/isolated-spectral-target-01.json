@@ -1,0 +1,21 @@
+{
+  "accepted": true,
+  "backend": "scipy_dgeev",
+  "case_count": 22,
+  "completion_authority": false,
+  "executable": "/usr/bin/python3.12",
+  "executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+  "interpreter": "/home/barberb/.local/bin/python",
+  "kernel_proved": false,
+  "numpy_version": "1.26.4",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "publication_authority": false,
+  "python_version": "3.12.3",
+  "reason_code": "accepted_finite_fixture_checks",
+  "schema": "spectral-target-numeric-qualification@1",
+  "scipy_version": "1.11.4",
+  "source_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "target_probe_sha256": "343b6d8f7ad474d280c143afedf695ee4bf1373db21f65d103ae25023a2b6653",
+  "timing_qualified": false
+}

@@ -1,0 +1,30 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/test
+configfile: pytest.ini
+collected 113 items
+
+test/api/test_spectral_eigen_kernel.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 29%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                     [ 46%][0m
+test/api/test_doctor_spectral_contract.py [33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33m [ 73%]
+[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33m                                                                  [ 79%][0m
+test/api/test_spectral_symbolic_qualification.py [33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33m               [ 87%][0m
+test/api/test_terminal_spectral_dispatch.py [32m.[0m[32m.[0m[33m                           [ 89%][0m
+test/api/test_terminal_doctor_dispatch.py [33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33ms[0m[33m                   [100%][0m
+
+[33m=============================== warnings summary ===============================[0m
+api/test_spectral_eigen_kernel.py::test_checker_rejects_infinite_residual_products
+  /home/barberb/.local/lib/python3.12/site-packages/numpy/core/numeric.py:2359: RuntimeWarning: invalid value encountered in multiply
+    y = y * ones_like(cond)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-integration-tests-01.xml -
+============================= slowest 10 durations =============================
+0.70s setup    api/test_terminal_spectral_dispatch.py::test_missing_target_retains_residual_without_provider
+0.62s setup    api/test_terminal_spectral_dispatch.py::test_actual_numeric_candidate_does_not_promote_unqualified_speed
+0.57s call     api/test_terminal_spectral_dispatch.py::test_actual_numeric_candidate_does_not_promote_unqualified_speed
+0.20s call     api/test_terminal_spectral_dispatch.py::test_missing_target_retains_residual_without_provider
+0.04s call     api/test_spectral_eigen_kernel.py::test_actual_emitted_candidate_general_sizes_and_immutability[1]
+
+(5 durations < 0.005s hidden.  Use -vv to show these durations.)
+[33m================== [32m55 passed[0m, [33m[1m58 skipped[0m, [33m[1m1 warning[0m[33m in 29.89s[0m[33m ==================[0m
