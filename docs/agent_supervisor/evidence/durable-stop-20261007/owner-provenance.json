@@ -1,0 +1,38 @@
+{
+  "schema": "managed-cleanup-owner-provenance@1",
+  "date": "2026-10-07",
+  "base": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "donor_reference": {
+    "repository": "/home/barberb/lift_coding/.worktrees/fleet-supervisor-maintenance-20260910",
+    "commit": "f7194e65775f000c8d8924e700a54b4067d83298",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "sha256": "fc8755bb75d464aca6da71db78c57b988bcfe865f7494adbcbf9655bb10af9b5",
+    "use": "Reviewed retained directory-anchor, exact-watchdog-birth and durable-binding algorithms. No donor source closure or manager replacement was applied."
+  },
+  "implementation": "New bounded read-only observer. Reuses the current producer private canonical control reader, cleanup-root/fence/dispatch validators, completion constructor, terminal CAS observer and issue_removal=False Docker/kernel absence function. Preserves current managed STOP absolute deadline and fixed-point rescans. Durable completion is revalidated after the final empty process snapshot under the same absolute deadline.",
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": {
+      "sha256": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+      "lines": 559
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+      "sha256": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61",
+      "lines": 15036
+    }
+  },
+  "scope": [
+    "warm managed Popen owner with namespace retained before child birth",
+    "exact watchdog and detached removal issuer preservation",
+    "durable authority/completion/resource/CAS joins before fresh independent Docker and kernel observation",
+    "unknown retained across STOP retries of the same Popen",
+    "existing cleanup refuses new birth and process-only plan-bound fence"
+  ],
+  "limitations": [
+    "native producer and CLI entrypoints remain disabled",
+    "no cold owner deletion-resistant recovery or imported historical namespace authority",
+    "no owner-issued Docker removal or mutating cleanup replay",
+    "no command-bound unfenced completion acceptance",
+    "no live Docker or model call",
+    "no Terminal Bench score"
+  ]
+}

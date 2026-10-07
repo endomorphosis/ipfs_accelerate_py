@@ -1,0 +1,208 @@
+{
+  "schema": "supervisor-durable-stop-qualification@1",
+  "date": "2026-10-07",
+  "accelerate_base": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "datasets_revision": "271ad796288e17039f036af6a0d003a4628da6ed",
+  "counts": {
+    "tests": 222,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+    "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61",
+    "test/api/test_agent_supervisor_grok_cleanup_integration.py": "5948a49750f7fdf2b4db18f2611d242b4de1614a275c74a8d9d9665823a0e032",
+    "test/api/test_durable_cleanup_observer.py": "0241b2efa13df6469682447e6b6072ba9dfe28be7a10d416b562c884b20b6e2b",
+    "test/api/test_durable_cleanup_owner_stop.py": "c931699719c2e24dc77ef335b11e9db294aaecf26e6a4ef74cef2daf11e8e82d",
+    "test/api/test_lifecycle_provider_cleanup_custody.py": "7d3007a01d1155fdbda45636bc6e127bd31df6f6bf4776971e5d77fcf5b689fe",
+    "test/api/test_agent_supervisor_lifecycle_orchestrator.py": "0e8d6c2e9d075bd0124e8ab91100b4229c90ce128b69a3f332b1df2d0825fa39",
+    "test/integration/test_admitted_start_cleanup_repair.py": "dadfafe5481ab08e4d1f1ae4d0af210bbf0b300cb15c96a3396beb3740f1f40f",
+    "test/integration/test_native_launch_witness_cleanup.py": "d5a298360184dd49032d50e488a9d5c7d118f6092f8d13bbcbec1bb02421ad97",
+    "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": "bae57e008deeebe74ce2868003a251664d72f4e69b3227ab36b745653c106c58"
+  },
+  "runs": [
+    {
+      "label": "cleanup-frozen-01",
+      "counts": {
+        "tests": 70,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": {
+        "argv": [
+          "/home/barberb/.local/bin/python",
+          "-B",
+          "-m",
+          "pytest",
+          "-q",
+          "-o",
+          "addopts=",
+          "-p",
+          "no:cacheprovider",
+          "-p",
+          "ipfs_accelerate_py.testing.pytest_ast_seal",
+          "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/cleanup-frozen-01.xml",
+          "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/cleanup-frozen-01-fixtures",
+          "test/api/test_durable_cleanup_observer.py",
+          "test/api/test_durable_cleanup_owner_stop.py",
+          "test/api/test_agent_supervisor_grok_cleanup_integration.py"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007",
+        "environment_overrides": {
+          "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+          "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/cleanup-frozen-01.duckdb",
+          "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/cleanup-frozen-01-resources.json"
+        },
+        "before": {
+          "accelerate_head": "07eed982c7150406480eefdf0c57cdd2f772b671",
+          "accelerate_status": "M docs/agent_supervisor/durable_cleanup_status.md\n M ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py\n M ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py\n?? ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_owner_stop.py\n?? test/api/test_lifecycle_provider_cleanup_custody.py",
+          "datasets_head": "271ad796288e17039f036af6a0d003a4628da6ed",
+          "datasets_status": "",
+          "source_sha256": {
+            "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+            "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61",
+            "test/api/test_agent_supervisor_grok_cleanup_integration.py": "5948a49750f7fdf2b4db18f2611d242b4de1614a275c74a8d9d9665823a0e032",
+            "test/api/test_durable_cleanup_observer.py": "0241b2efa13df6469682447e6b6072ba9dfe28be7a10d416b562c884b20b6e2b",
+            "test/api/test_durable_cleanup_owner_stop.py": "c931699719c2e24dc77ef335b11e9db294aaecf26e6a4ef74cef2daf11e8e82d",
+            "test/api/test_lifecycle_provider_cleanup_custody.py": "7d3007a01d1155fdbda45636bc6e127bd31df6f6bf4776971e5d77fcf5b689fe"
+          }
+        }
+      },
+      "seconds": 47.05310498998733,
+      "source_unchanged": true,
+      "log_sha256": "91140dc281074e30573d80c2f49783bf2a4821eb7fdb305c249a4fbc492841b1",
+      "xml_sha256": "7a9b03d14fc810c5edf5ffef220bfe14e1cf9cdc2a99cd994c280780cedffe72",
+      "seal_duckdb_sha256": "42273af0f188d82128ee3dbef14d3b9228bb0cde00d8d87e44f7c991e78d1c85"
+    },
+    {
+      "label": "lifecycle-frozen-01",
+      "counts": {
+        "tests": 76,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": {
+        "argv": [
+          "/home/barberb/.local/bin/python",
+          "-B",
+          "-m",
+          "pytest",
+          "-q",
+          "-o",
+          "addopts=",
+          "-p",
+          "no:cacheprovider",
+          "-p",
+          "ipfs_accelerate_py.testing.pytest_ast_seal",
+          "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/lifecycle-frozen-01.xml",
+          "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/lifecycle-frozen-01-fixtures",
+          "test/api/test_lifecycle_provider_cleanup_custody.py",
+          "test/api/test_agent_supervisor_lifecycle_orchestrator.py",
+          "test/integration/test_native_launch_witness_cleanup.py",
+          "test/integration/test_admitted_start_cleanup_repair.py"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007",
+        "environment_overrides": {
+          "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+          "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/lifecycle-frozen-01.duckdb",
+          "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/lifecycle-frozen-01-resources.json"
+        },
+        "before": {
+          "accelerate_head": "07eed982c7150406480eefdf0c57cdd2f772b671",
+          "accelerate_status": "M docs/agent_supervisor/durable_cleanup_status.md\n M ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py\n M ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py\n?? ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_owner_stop.py\n?? test/api/test_lifecycle_provider_cleanup_custody.py",
+          "datasets_head": "271ad796288e17039f036af6a0d003a4628da6ed",
+          "datasets_status": "",
+          "source_sha256": {
+            "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+            "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61",
+            "test/api/test_agent_supervisor_lifecycle_orchestrator.py": "0e8d6c2e9d075bd0124e8ab91100b4229c90ce128b69a3f332b1df2d0825fa39",
+            "test/api/test_durable_cleanup_observer.py": "0241b2efa13df6469682447e6b6072ba9dfe28be7a10d416b562c884b20b6e2b",
+            "test/api/test_durable_cleanup_owner_stop.py": "c931699719c2e24dc77ef335b11e9db294aaecf26e6a4ef74cef2daf11e8e82d",
+            "test/api/test_lifecycle_provider_cleanup_custody.py": "7d3007a01d1155fdbda45636bc6e127bd31df6f6bf4776971e5d77fcf5b689fe",
+            "test/integration/test_admitted_start_cleanup_repair.py": "dadfafe5481ab08e4d1f1ae4d0af210bbf0b300cb15c96a3396beb3740f1f40f",
+            "test/integration/test_native_launch_witness_cleanup.py": "d5a298360184dd49032d50e488a9d5c7d118f6092f8d13bbcbec1bb02421ad97"
+          }
+        }
+      },
+      "seconds": 62.46901535597863,
+      "source_unchanged": true,
+      "log_sha256": "ce195786f8f100cac15f655fc3f6065b771e339721673edda2eb0ae52ade0d0e",
+      "xml_sha256": "cdfdccf271825eb9f36c07832c754e9d4581c4c86dbcb9ff7539eea362c60f7b",
+      "seal_duckdb_sha256": "6f094599d9d233cad5cb649ce37946e3a1068cb8b435a7fa2fba269ba2546f24"
+    },
+    {
+      "label": "health-frozen-03",
+      "counts": {
+        "tests": 76,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": {
+        "argv": [
+          "/home/barberb/.local/bin/python",
+          "-B",
+          "-m",
+          "pytest",
+          "-q",
+          "-o",
+          "addopts=",
+          "-p",
+          "no:cacheprovider",
+          "-p",
+          "ipfs_accelerate_py.testing.pytest_ast_seal",
+          "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/health-frozen-03.xml",
+          "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/health-frozen-03-fixtures",
+          "test/api/test_agent_supervisor_multi_supervisor_runner_health.py"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007",
+        "environment_overrides": {
+          "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-stop-20261007:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+          "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/health-frozen-03.duckdb",
+          "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-stop-20261007/health-frozen-03-resources.json"
+        },
+        "before": {
+          "accelerate_head": "07eed982c7150406480eefdf0c57cdd2f772b671",
+          "accelerate_status": "M docs/agent_supervisor/durable_cleanup_status.md\n M ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py\n M ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py\n M test/api/test_agent_supervisor_multi_supervisor_runner_health.py\n?? ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_observer.py\n?? test/api/test_durable_cleanup_owner_stop.py\n?? test/api/test_lifecycle_provider_cleanup_custody.py",
+          "datasets_head": "271ad796288e17039f036af6a0d003a4628da6ed",
+          "datasets_status": "",
+          "source_sha256": {
+            "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+            "ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+            "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "a3f71ba82885162f2fbd67124d072fc4ab370e1d0bb4806506a5b90cdcf8aa61",
+            "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": "bae57e008deeebe74ce2868003a251664d72f4e69b3227ab36b745653c106c58",
+            "test/api/test_durable_cleanup_observer.py": "0241b2efa13df6469682447e6b6072ba9dfe28be7a10d416b562c884b20b6e2b",
+            "test/api/test_durable_cleanup_owner_stop.py": "c931699719c2e24dc77ef335b11e9db294aaecf26e6a4ef74cef2daf11e8e82d",
+            "test/api/test_lifecycle_provider_cleanup_custody.py": "7d3007a01d1155fdbda45636bc6e127bd31df6f6bf4776971e5d77fcf5b689fe"
+          }
+        }
+      },
+      "seconds": 30.946424809983,
+      "source_unchanged": true,
+      "log_sha256": "203600c28e63afd0f8bc6db3a0a6f2b609813e839b7b7acc72ce8209e9963f41",
+      "xml_sha256": "2b88ab00f50e5278da2da91ea1b42f08f783cc8f92b244fc910abae59f68c034",
+      "seal_duckdb_sha256": "9726e5b593831f99ef1ac7f4e29fed036d18e03c75fc2e91eb5e18b521605994"
+    }
+  ],
+  "unchanged_native_producer_sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8",
+  "boundaries": [
+    "Offline native cleanup protocol with explicit Docker absence doubles.",
+    "Real local process shutdown, signed START witness and interrupted-START repair fixtures.",
+    "Same-Popen retained observer; lifecycle persistent refusal only.",
+    "Native lease factory and all four native CLI modes remain disabled.",
+    "No live Docker dispatch, provider invocation, Terminal Bench score or token comparison.",
+    "Older shutdown and generation-status failures classified separately on the clean baseline."
+  ]
+}

@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import weakref
 from collections import deque
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
@@ -90,6 +91,7 @@ from ..control.lifecycle_orchestrator import (
     LinuxProcessAdapter,
     ProcessIdentity,
     ProcessIdentityMismatch,
+    ProcessTreeSnapshot,
 )
 from ..core.multiformats_identity import cid_for_dag_json
 from ..core.wrapper_utils import (
@@ -120,6 +122,12 @@ from .configured_board_live_capsule import (
     parse_configured_board_live_capsule_admission,
     verify_configured_board_accepted_source,
     verify_configured_board_live_capsule,
+)
+from .durable_cleanup_observer import (
+    CleanupDirectoryAnchor,
+    ManagedCleanupObserver,
+    has_cleanup_custody,
+    process_birth,
 )
 
 OutputFn = Callable[[str], None]
@@ -2243,6 +2251,13 @@ def _strict_plan_bound_process_fence_observation(
         or not 2 <= max_scans <= 8
     ):
         raise ValueError("strict process observation scan bound is invalid")
+    try:
+        if has_cleanup_custody(Path(profile.run_root)):
+            # This process-only observer has no retained cleanup namespace.
+            # It cannot authorize successor birth or release from /proc alone.
+            return "unknown", None
+    except (OSError, ValueError):
+        return "unknown", None
     adapter = LinuxProcessAdapter()
     try:
         _parent, _group, _session, started = adapter._stat(  # noqa: SLF001
@@ -2329,6 +2344,11 @@ def _strict_plan_bound_process_fence_observation(
             )
         stable_empty_scans += 1
         if stable_empty_scans >= 2:
+            try:
+                if has_cleanup_custody(Path(profile.run_root)):
+                    return "unknown", None
+            except (OSError, ValueError):
+                return "unknown", None
             return "dead", ProcessTreeSnapshot(
                 profile_id=profile.profile_id,
                 run_id=profile.run_id,
@@ -7197,12 +7217,17 @@ def start_track(
     pid_reservation_identity: tuple[int, int] | None = None
     out_handle: BinaryIO | None = None
     fresh_log_identity: _LaunchLogIdentity | None = None
+    cleanup_anchor: CleanupDirectoryAnchor | None = None
 
     def discard_unborn_launch_resources() -> None:
         """Release every resource allocated before a child can be born."""
 
         nonlocal gate_read_fd, gate_write_fd, pid_reservation_fd
         nonlocal out_handle, fresh_log_identity
+        nonlocal cleanup_anchor
+        if cleanup_anchor is not None:
+            cleanup_anchor.close()
+            cleanup_anchor = None
         if out_handle is not None:
             try:
                 out_handle.close()
@@ -7285,6 +7310,12 @@ def start_track(
             ),
         )
         launch_environment = profile.launch_environment(0)
+        # Retain this exact namespace before any child can publish a provider
+        # effect.  Reopening a missing/replaced name at STOP cannot prove absence.
+        cleanup_anchor = CleanupDirectoryAnchor.open_before_launch(run_root)
+        if has_cleanup_custody(run_root):
+            raise ValueError("supervisor birth retains unresolved prior cleanup custody")
+        cleanup_anchor.validate()
         if plan_bound_dispatch:
             # Isolated absolute-script launch bootstraps only its own accepted
             # repository root.  Build a positive environment in the parent
@@ -7378,6 +7409,10 @@ def start_track(
                 ),
             )
             setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+            setattr(process, "_agent_supervisor_cleanup_directory_anchor", cleanup_anchor)
+            setattr(process, "_agent_supervisor_fencing_epoch", 0)
+            weakref.finalize(process, cleanup_anchor.close)
+            cleanup_anchor = None  # ownership transferred to the Popen lifetime
             if birth_deadline is not None and time.monotonic() >= birth_deadline:
                 raise SupervisorRunWindowExpired(
                     "run window closed during supervisor process birth"
@@ -11087,6 +11122,33 @@ def _terminate_managed_process(
         # A caller-created Popen has no durable run/profile binding.  Refuse to
         # turn its PID into signal authority.
         return False, ()
+    cleanup_anchor = getattr(process, "_agent_supervisor_cleanup_directory_anchor", None)
+    cleanup_observer = None
+    try:
+        if getattr(process, "_agent_supervisor_cleanup_observation_unknown", False):
+            return False, ()
+        if cleanup_anchor is not None:
+            cleanup_observer = getattr(process, "_agent_supervisor_cleanup_observer", None)
+            if cleanup_observer is None:
+                cleanup_observer = ManagedCleanupObserver(
+                    profile, cleanup_anchor,
+                    fencing_epoch=getattr(process, "_agent_supervisor_fencing_epoch", 0),
+                )
+                setattr(process, "_agent_supervisor_cleanup_observer", cleanup_observer)
+            elif not isinstance(cleanup_observer, ManagedCleanupObserver):
+                raise ValueError("managed cleanup observer custody changed")
+            elif (cleanup_observer.profile != profile or cleanup_observer.anchor is not cleanup_anchor
+                    or cleanup_observer.fencing_epoch
+                    != getattr(process, "_agent_supervisor_fencing_epoch", 0)):
+                raise ValueError("managed cleanup observer owner binding changed")
+        elif has_cleanup_custody(Path(profile.run_root)):
+            # Historical/recovered Popen projections have no retained directory
+            # custody.  A newly opened name cannot replace that missing proof.
+            setattr(process, "_agent_supervisor_cleanup_observation_unknown", True)
+            return False, ()
+    except (OSError, TypeError, ValueError):
+        setattr(process, "_agent_supervisor_cleanup_observation_unknown", True)
+        return False, ()
     graceful_seconds = max(0.1, float(grace_seconds))
     adapter = LinuxProcessAdapter()
 
@@ -11125,6 +11187,7 @@ def _terminate_managed_process(
                 break
 
     observed_pids = {int(process.pid)}
+    protected_births: frozenset[tuple[int, int, str]] = frozenset()
 
     def remember_and_validate(current_tree: object) -> None:
         members = tuple(getattr(current_tree, "members", ()))
@@ -11134,6 +11197,10 @@ def _terminate_managed_process(
             (item for item in members if int(item.pid) == int(process.pid)),
             None,
         )
+        captured_birth = getattr(process, "_agent_supervisor_process_identity", None)
+        if (process_member is not None and isinstance(captured_birth, ProcessIdentity)
+                and process_birth(process_member) != process_birth(captured_birth)):
+            raise ProcessIdentityMismatch("managed Popen birth differs from the captured owner")
         if process_member is not None and int(process.pid) not in {
             int(item.pid) for item in roots
         }:
@@ -11145,12 +11212,43 @@ def _terminate_managed_process(
 
     current_tree = tree
     while True:
+        if cleanup_observer is not None:
+            try:
+                protected_births = cleanup_observer.observe(current_tree)
+            except (OSError, TypeError, ValueError):
+                setattr(process, "_agent_supervisor_cleanup_observation_unknown", True)
+                return False, tuple(sorted(observed_pids))
+        for member in current_tree.members:
+            marked_cleanup = any(arg in {
+                "--internal-docker-cleanup-watchdog",
+                "--internal-docker-cleanup-watchdog-launcher",
+                "--internal-docker-removal-issuer",
+                "--internal-docker-removal-issuer-launcher",
+            } for arg in getattr(member, "argv", ()))
+            if (
+                marked_cleanup and process_birth(member) not in protected_births
+                or any(pid == member.pid and birth != process_birth(member)
+                       for birth in protected_births for pid in (birth[0],))
+            ):
+                setattr(process, "_agent_supervisor_cleanup_observation_unknown", True)
+                raise ProcessIdentityMismatch("native cleanup watchdog lacks exact retained custody")
+        ordinary_members = current_tree.members
+        fence_tree = current_tree
+        if protected_births:
+            ordinary_members = tuple(
+                member for member in current_tree.members
+                if process_birth(member) not in protected_births
+            )
+            fence_tree = ProcessTreeSnapshot(
+                profile_id=current_tree.profile_id, run_id=current_tree.run_id,
+                members=ordinary_members, captured_at_ms=current_tree.captured_at_ms,
+            )
         now = time.monotonic()
-        if current_tree.members:
+        if fence_tree.members:
             remaining_grace = max(0.0, graceful_deadline - now)
             remaining_total = max(0.0, final_deadline - now)
             adapter.terminate(
-                current_tree,
+                fence_tree,
                 grace_seconds=remaining_grace,
                 deadline_ms=max(1, int(remaining_total * 1000)),
             )
@@ -11170,13 +11268,41 @@ def _terminate_managed_process(
         residual = adapter.snapshot(profile)
         remember_and_validate(residual)
         root_exited = process.poll() is not None
-        if root_exited and not residual.members:
-            return True, tuple(sorted(observed_pids))
+        only_cleanup = bool(protected_births) and all(
+            process_birth(member) in protected_births for member in residual.members
+        )
+        if root_exited and (not residual.members or only_cleanup):
+            cleanup_complete = (
+                cleanup_observer.complete(deadline=final_deadline)
+                if cleanup_observer is not None else True
+            )
+            residual = adapter.snapshot(profile)
+            remember_and_validate(residual)
+            if cleanup_complete and not residual.members:
+                # A retained watchdog may publish its last binding and exit
+                # between the first completion scan and this empty tree.  Read
+                # the durable barrier again after the final producer absence;
+                # the same absolute STOP deadline still bounds every query.
+                if cleanup_observer is not None:
+                    cleanup_complete = cleanup_observer.complete(deadline=final_deadline)
+                # An unanchored ordinary owner must also refuse cleanup that
+                # appeared after the first scan; never turn late state into an
+                # apparently empty process-only STOP.
+                if cleanup_observer is None:
+                    try:
+                        late_cleanup = has_cleanup_custody(Path(profile.run_root))
+                    except (OSError, ValueError):
+                        late_cleanup = True
+                    if late_cleanup:
+                        setattr(process, "_agent_supervisor_cleanup_observation_unknown", True)
+                        return False, tuple(sorted(observed_pids))
+                if cleanup_complete:
+                    return True, tuple(sorted(observed_pids))
         if time.monotonic() >= final_deadline:
             return False, tuple(sorted(observed_pids))
 
         current_tree = residual
-        if not current_tree.members:
+        if not ordinary_members:
             # Only the exact Popen root remains (or /proc has not exposed its
             # markers yet).  Poll without extending the absolute deadline.
             time.sleep(
@@ -11210,6 +11336,12 @@ def stop_tracks(
     for track in tracks:
         process = processes.get(track.name)
         try:
+            if process is None:
+                resolved = track.resolve(repo_root)
+                run_root = (resolved.supervisor_pid_path.parent.resolve(strict=False)
+                            / "lifecycle-runs" / resolved.name)
+                if has_cleanup_custody(run_root):
+                    raise ValueError("managed STOP lacks a Popen owner for retained cleanup custody")
             fenced, member_pids = _terminate_managed_process(
                 process,
                 grace_seconds=grace_seconds,

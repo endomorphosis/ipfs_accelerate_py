@@ -1,0 +1,15 @@
+{
+  "baseline_commit": "07eed982c7150406480eefdf0c57cdd2f772b671",
+  "test_nodeid": "test/api/test_agent_supervisor_multi_supervisor_runner_health.py::test_status_reader_retries_two_persistent_atomic_replacements_then_fails_closed",
+  "exit_code": 1,
+  "observed_calls": 4,
+  "stale_expected_calls": 2,
+  "classification": "stale_test_expectation",
+  "production_change_commit": "16460d0fe9865fca280809d8d4b0e75e18ef130c",
+  "production_change_date": "2026-09-09",
+  "evidence": "Production explicitly changed retry bound from 2 to 4 with the comment to retry a bounded number of atomic replacement races; the test retained its 2026-09-02 expectation of 2. Structural read failures remain immediate and persistent races remain unsafe.",
+  "log": "status-retry-baseline-01.log",
+  "log_sha256": "016d5457e16cdd6ace95e65b0681037434e5b02ace4b224299545c34ac883175",
+  "xml": "status-retry-baseline-01.xml",
+  "production_changed_this_turn": false
+}
