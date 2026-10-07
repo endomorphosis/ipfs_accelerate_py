@@ -1,0 +1,104 @@
+{
+  "accounting_review_passed": true,
+  "coding_initial_input_bytes": {
+    "baseline_complete_model": 58535,
+    "baseline_native": 61247,
+    "coding_reply_suffix_each": 506,
+    "compact_complete_model": 58251,
+    "compact_minus_baseline_complete_model": -284,
+    "compact_minus_baseline_native": 1016,
+    "compact_native": 62263,
+    "native_generation_schema_each": 215
+  },
+  "coding_token_count_records": {
+    "baseline": 7,
+    "compact": 9,
+    "records_are_not_api_call_counts": true
+  },
+  "frozen_source_or_preparations_or_native_receipts_or_comparator_modified": false,
+  "input_bindings": [
+    {
+      "bytes": 75890,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/comparison-01-20261007.json",
+      "sha256": "496f94617a0383562691711251d49c089eafa6a59b3617c3b53776fdea717b19"
+    },
+    {
+      "bytes": 24348,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/completed-pair-independent-review-01-20261007.json",
+      "sha256": "9b9dc7b01a982e11ef5a18d00f0f5ee83c73c1c81a82d7fb95756c77c81d910f"
+    },
+    {
+      "bytes": 201664,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/receipt.json",
+      "sha256": "55eaa198d87afef4a83f5dc006cff2170663c6f9ed2721054e166493e1c928c4"
+    },
+    {
+      "bytes": 202197,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/receipt.json",
+      "sha256": "c75f908ec055019241c925d1c67d709a6c6549fd493fd62a72f83033550c99d0"
+    },
+    {
+      "bytes": 2678,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-context-audit-provider-projection-diagnosis.json",
+      "sha256": "41880b0c056741adbdb9a346dcf64c45679a13f84956dfa4c5cb4163f24ab857"
+    }
+  ],
+  "limitations": [
+    "Both official verifier outcomes passed; the audit IPC field-loss defect is an independent qualification failure.",
+    "The native inputs differ by 1,016 bytes; the 284-byte complete input difference is not a same-input transport-only measurement.",
+    "The compact run used more total tokens in this observation; smaller initial bytes do not establish total token savings.",
+    "Nine versus seven coding token-count records are observations, not API-call counts or established causes.",
+    "Required public sealed context was not exported for baseline and its container was deleted. Restored provider metadata does not establish reconstruction.",
+    "Campaign accounting covers the listed five retained comparison attempts, not every historical project/model run."
+  ],
+  "native_benchmark_outcomes": {
+    "baseline_native_task_completed": true,
+    "baseline_official_reward": 1.0,
+    "both_cleanup_zero_remaining_processes_and_zero_worker_returncode": true,
+    "compact_native_task_completed": true,
+    "compact_official_reward": 1.0
+  },
+  "new_provider_calls_by_review": 0,
+  "observed_native_usage": {
+    "baseline": {
+      "cached_input_tokens": 219136,
+      "input_tokens": 285149,
+      "output_tokens": 5426,
+      "total_tokens": 290575
+    },
+    "compact": {
+      "cached_input_tokens": 294656,
+      "input_tokens": 362131,
+      "output_tokens": 6655,
+      "total_tokens": 368786
+    },
+    "compact_minus_baseline_tokens": {
+      "cached_input_tokens": 75520,
+      "input_tokens": 76982,
+      "output_tokens": 1229,
+      "total_tokens": 78211
+    },
+    "complete_usage_observed_both": true,
+    "pair_total_tokens": 659361,
+    "prior_three_attempts_tokens": 651877,
+    "retained_five_attempt_campaign_tokens": 1311238
+  },
+  "qualification": {
+    "cross_arm_failed_gates": [],
+    "matched_pair_qualified": false,
+    "missing_field": "provider",
+    "native_input_reconstruction_established": false,
+    "original_audit_failure_retained": true,
+    "qualified_saving_percentage": null,
+    "same_three_failed_gates_each_arm": [
+      "complete_exact_coding_context_audit",
+      "coding_reply_full_input_audit_includes_contract_before_after",
+      "coding_hashes_match_reconstructed_inputs"
+    ]
+  },
+  "raw_provider_response_or_thought_read": false,
+  "recorded_at_utc": "2026-10-07T04:21:28.810969+00:00",
+  "reviewer": "/root/matched_transport_accounting",
+  "schema": "ordinary-coding-reply-current-pair-factual-result@1",
+  "task_solution_or_hidden_evaluator_contents_read": false
+}

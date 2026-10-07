@@ -1,0 +1,137 @@
+{
+  "author": "/root/terminal_context_compaction_options",
+  "base_commit": "108931f98f9b270267ec7185850a835cad670513",
+  "created_at_utc": "2026-10-07T04:20:11.053034+00:00",
+  "fix": "Carry the recorded provider only when coding_reply_contract is non-null. Do not infer a missing provider. Keep omitted/null-contract legacy IPC field sets unchanged.",
+  "git_diff_check": {
+    "exit_code": 0,
+    "paths": [
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ]
+  },
+  "green_run": {
+    "argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-c",
+      "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py"
+    ],
+    "cwd": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007",
+    "elapsed_seconds_reported_by_pytest": 40.42,
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit-provider-ipc-green-01.duckdb",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    },
+    "exit_code": 0,
+    "failed": 0,
+    "log_availability": "Output was captured by the execution tool, not redirected to a persistent log.",
+    "log_path": null,
+    "passed": 37,
+    "pytest_summary": "37 passed in 40.42s",
+    "tool_output_chunk_id": "1c00d8"
+  },
+  "implementation_diff": {
+    "source_added_lines": 10,
+    "source_removed_lines": 2,
+    "targeted_test_added_lines": 96
+  },
+  "native_test_registry_artifacts": [
+    {
+      "bytes": 798720,
+      "kind": "native pytest AST-seal registry; not provider usage or benchmark state",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit-provider-ipc-red-01.duckdb",
+      "sha256": "f43cc1c23f12fd216b4c763e0a14ef67fc120cd71f3d25cef10763346b1c45b4"
+    },
+    {
+      "bytes": 1323008,
+      "kind": "native pytest AST-seal registry; not provider usage or benchmark state",
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit-provider-ipc-green-01.duckdb",
+      "sha256": "f7474734ef386ebe614708ad94f5dff4b33f4920664bee12371effd976da8d1c"
+    }
+  ],
+  "problem": "Ordinary completion requires provider=codex_cli in _receipt, but the owner-to-child collector projection omitted provider. A direct full receipt could validate while real child collection rejected it as InvalidReceipt.",
+  "qualification_checkout": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007",
+  "qualification_limit": "This qualifies the IPC fix for a future frozen runtime. It does not repair or replace the already completed live pair's immutable audit records or establish a token-saving result.",
+  "qualified_behaviors": [
+    "Actual collector launches the real bounded audit subprocess and ordinary completion verifies the complete final model input including its instruction suffix.",
+    "Missing provider is not synthesized and remains rejected by the child.",
+    "Foreign grok_cli provider is retained as supplied and rejected by the child.",
+    "Tampered pre-suffix input digest fails model-input verification while matching native capsule remains observed.",
+    "Legacy receipts with omitted or explicit null coding_reply_contract retain exactly the former projected IPC fields, excluding provider, usage and unrelated metadata.",
+    "Existing historical transport @1/@2 reconstruction, input binding, tampering, timeout and safe module-import tests pass."
+  ],
+  "red_run": {
+    "argv": [
+      "/home/barberb/.local/bin/python",
+      "-B",
+      "-c",
+      "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path(\"/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004/tests/__init__.py\"); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+      "-q",
+      "-o",
+      "addopts=",
+      "-p",
+      "no:cacheprovider",
+      "-p",
+      "ipfs_accelerate_py.testing.pytest_ast_seal",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py::test_actual_collector_preserves_completion_provider_and_reconstructs_final_input"
+    ],
+    "cwd": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007",
+    "elapsed_seconds_reported_by_pytest": 13.95,
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/audit-provider-ipc-red-01.duckdb",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-results-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    },
+    "exit_code": 1,
+    "failure": "Real collect_terminal_context_audit returned status unknown instead of verified_all_observed_model_inputs.",
+    "log_availability": "Output was captured by the execution tool, not redirected to a persistent log. No synthetic log is presented as original execution output.",
+    "log_path": null,
+    "pytest_summary": "1 failed in 13.95s",
+    "source_sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a",
+    "source_was_unmodified_base": true,
+    "test_sha256": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a",
+    "tool_output_chunk_id": "32807a"
+  },
+  "schema": "terminal-context-audit-provider-ipc-qualification@1",
+  "scope": {
+    "benchmark_launches": 0,
+    "commits_created": 0,
+    "comparator_modified": false,
+    "frozen_runtime_45803_modified": false,
+    "model_usage_fixture_claimed_as_real": false,
+    "native_live_reports_modified": false,
+    "new_provider_calls": 0,
+    "prepared_live_pair_modified": false,
+    "source_files_changed": [
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py"
+    ]
+  },
+  "source_bindings": [
+    {
+      "bytes": 33713,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab"
+    },
+    {
+      "bytes": 8947,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "sha256": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a"
+    }
+  ],
+  "status": "passed"
+}

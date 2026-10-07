@@ -1,0 +1,110 @@
+{
+  "archive": {
+    "bytes": 1341138962,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/bundle-01/runtime.tar.gz",
+    "sha256": "ea6a6806d62264f14801c2ad5c8f34a72a9478112930bb4320c1083784778797"
+  },
+  "archive_audit": {
+    "bytes": 63990,
+    "checks_passed": 245,
+    "corrected_auditor_source": {
+      "actual_body_verified": true,
+      "bytes": 33713,
+      "expected_sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab",
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+    },
+    "mode_source_guards": 13,
+    "native_wheel_payloads": 128,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/independent-runtime-archive-audit-prelaunch-20261007-01.json",
+    "selected_actual_bodies": 49,
+    "sha256": "207ef9732c0c9792cb0a09485c985780452233da7cf47c7fa8d60581695ed66b"
+  },
+  "auditor": "/root/matched_transport_preflight",
+  "created_at_utc": "2026-10-07T04:25:26.914137+00:00",
+  "frozen_source_head": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "limits": [
+    "Readiness qualifies frozen source/archive and prepared metadata controls, not successful live installation, provider sessions, input reconstruction, official reward, completion, cleanup or token savings.",
+    "No assertion about live state after the audit timestamps; root owns any subsequent execution.",
+    "Original A1 evidence remains immutable and separate from this corrected fresh pair."
+  ],
+  "original_pair_prelaunch_metadata_preserved": [
+    {
+      "bytes": 6238044,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/bundle-01/manifest.json",
+      "sha256": "55c6ae2a57ee5a9b0c8ce248fd8e68233c3f75f488d92b91590cedc0a36122e0"
+    },
+    {
+      "bytes": 3441,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/config.json",
+      "sha256": "54c8b6366f8d71cea6c1ec0aad9e037cbe98d25d4158409289941bff9e4fcaa5"
+    },
+    {
+      "bytes": 65683,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/preparation.json",
+      "sha256": "1c1d6b2d9060b067670bfb350851af464dd54dcb46f20a30bc09f9ddb2e597e3"
+    },
+    {
+      "bytes": 2184,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01-prepare-command.json",
+      "sha256": "00b631a378af1f311e9ebf02c56fd12177b7151d0150126514366ba10370a6fc"
+    },
+    {
+      "bytes": 3515,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/config.json",
+      "sha256": "75f76131f720dc84d4fc48495d9aa5b1059e3d4c0d6907b35a921deda7993203"
+    },
+    {
+      "bytes": 65751,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01/preparation.json",
+      "sha256": "bd61101520bf5064b69ff5d7216c96694475ce852a3299acdb8ca90b4899052e"
+    },
+    {
+      "bytes": 2182,
+      "matches_original_prelaunch": true,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/compact-01-prepare-command.json",
+      "sha256": "d80dee62975ca70ddde169250a45c3b04ebbbb462e3e274b85d5d5542e0d681f"
+    }
+  ],
+  "preparation_exit_bindings": [
+    {
+      "bytes": 160,
+      "completed_at_utc": "2026-10-07T04:23:50.298312+00:00",
+      "exit_code": 0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01-prepare-exit.json",
+      "seconds": 11.625406042963732,
+      "sha256": "7886cc150d6f997c7d2fafe27b2d07858f6f62bf01138b1f7ce42dea23220c6b"
+    },
+    {
+      "bytes": 158,
+      "completed_at_utc": "2026-10-07T04:24:27.155415+00:00",
+      "exit_code": 0,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/compact-01-prepare-exit.json",
+      "seconds": 11.92288704996463,
+      "sha256": "c73e6be626f8819245b77393a38d63bf5aeb7e44d49dfa4973c4e7b2ff15da58"
+    }
+  ],
+  "prepared_pair_audit": {
+    "bytes": 14256,
+    "checks_passed": 100,
+    "common_coding_reply_mode": "ordinary-completion@1",
+    "configuration_difference_fields": [
+      "agents[0].kwargs.semantic_transport_schema",
+      "jobs_dir"
+    ],
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/independent-prepared-pair-audit-prelaunch-20261007-01.json",
+    "retry_serialization_normalized": false,
+    "sha256": "cb62bec055263f37c8146031c99332cd703c175b2b587fd9496c8e00d9f6b797",
+    "unexpected_difference_fields": []
+  },
+  "provider_or_container_calls": 0,
+  "raw_model_or_hidden_evaluator_bodies_read": false,
+  "schema": "terminal-corrected-audit-runtime-pair-independent-readiness@1",
+  "source_or_prepared_files_changed": 0,
+  "verdict": "clear"
+}

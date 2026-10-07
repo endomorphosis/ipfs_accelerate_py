@@ -1,0 +1,64 @@
+{
+  "checks": [
+    {
+      "name": "full_retained_coding_invocation_passes_frozen_receipt_parser",
+      "passed": true
+    },
+    {
+      "name": "frozen_collection_projection_omits_provider",
+      "passed": true
+    },
+    {
+      "name": "projected_metadata_reproduces_invalid_coding_reply_contract",
+      "passed": true
+    },
+    {
+      "name": "restoring_only_recorded_owner_provider_makes_metadata_parser_accept",
+      "passed": true
+    }
+  ],
+  "coding_invocation_id": "1098208f83764098b0cdce77526ca58c",
+  "full_input_reconstruction_established": false,
+  "input_bindings": [
+    {
+      "bytes": 201664,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/baseline-01/receipt.json",
+      "sha256": "55eaa198d87afef4a83f5dc006cff2170663c6f9ed2721054e166493e1c928c4"
+    },
+    {
+      "bytes": 33368,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-reply-contract-runtime-20261006/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a"
+    }
+  ],
+  "native_audit_qualification_fixed": false,
+  "native_audit_retained_status": "unknown",
+  "native_or_source_mutations": 0,
+  "new_provider_calls": 0,
+  "owner_authored_parser_diagnostic": "invalid coding reply contract receipt",
+  "private_state_or_database_read": false,
+  "proposal": {
+    "do_not_change": [
+      "native receipts or reports",
+      "frozen source or preparations",
+      "comparison producer",
+      "task solution or evaluator"
+    ],
+    "minimal_change": "Include the recorded owner-authored provider in the bounded IPC receipt projection; preserve its native validation.",
+    "supplemental_evidence_requirements": [
+      "Bind the corrected auditor source independently while retaining the original failed report and receipts.",
+      "Use only retained sealed public context artifacts, captured original sources, source/manifest/signature bindings, and exact native receipt.",
+      "Require complete original native and final model input hashes including the 506-byte suffix to reconstruct exactly.",
+      "If the required sealed artifacts were deleted or not retained, reconstruction remains unavailable; do not infer success from matching receipt bytes."
+    ]
+  },
+  "raw_provider_response_or_thought_read": false,
+  "recorded_at_utc": "2026-10-07T04:13:29.580204+00:00",
+  "recorded_provider": "codex_cli",
+  "restored_metadata_fields": [
+    "provider"
+  ],
+  "schema": "coding-reply-context-audit-provider-projection-diagnosis@1",
+  "source_head": "45803f0dca3365982b6058bf7e7c9c94a95aefcf",
+  "task_or_solution_body_read": false
+}

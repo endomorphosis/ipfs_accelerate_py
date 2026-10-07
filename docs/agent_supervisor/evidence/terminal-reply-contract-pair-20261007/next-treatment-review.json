@@ -1,0 +1,152 @@
+{
+  "auditor": "/root/matched_transport_preflight",
+  "backlog": {
+    "bytes": 41744,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/next-metadata-treatment-backlog-20261007-03.json",
+    "sha256": "e692b51f8dbaea22a7bae42999bfb93ee5780156381b71ec983d71d0d2e3105f"
+  },
+  "baseline_metadata_evidence": {
+    "all_arm_gates_passed": true,
+    "bytes": 38713,
+    "coding_input_audit_status": "verified_all_observed_model_inputs",
+    "coding_share_percent": 89.77983092569801,
+    "coding_total_tokens": 221749,
+    "compact_result_read_by_this_review": false,
+    "existing_qualification_gates_passed": 74,
+    "official_reward": 1,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/baseline-01-independent-precompact-gate.json",
+    "planning_total_tokens": 25243,
+    "sha256": "225a9bc51ac1ccb0b6bfff41b97aa04470b98f43c65dd01a9e6a667f25342cfc",
+    "supervisor_total_tokens": 246992
+  },
+  "blocking_findings": [],
+  "checks": [
+    {
+      "detail": "29 prior paths and the added actual collector test match immutable git blobs and actual frozen files. Only the auditor changed within the prior 29-file population; all source outside its collector AST is unchanged.",
+      "name": "revision_rebase_bindings",
+      "passed": true
+    },
+    {
+      "detail": "P0 stays one direct-planning administrative acceptance reference with exact canonical round-trip, unchanged native schema/admission and one planning session. Complete-view non-expansion is a local gate; phase share and input bytes are not efficacy claims. No new training is mixed in.",
+      "name": "bounded_P0_not_main_savings_promise",
+      "passed": true
+    },
+    {
+      "detail": "246,992 = 25,243 + 221,749; 221,749 / 246,992 * 100 = 89.779830925698. Existing independent precompact receipt reports all 74 gates pass, reward 1 and verified_all_observed_model_inputs. This is one completed baseline, not a final matched pair or repeatable cost law.",
+      "name": "baseline_arithmetic_and_qualification_provenance",
+      "passed": true
+    },
+    {
+      "detail": "Earlier A1 recorded 284 fewer complete coding-input bytes and 78,211 more total tokens; its input audit remains unqualified, and native inputs also differ. The backlog preserves its costs and does not retroactively repair audit records, discard the adverse observation or claim causality.",
+      "name": "earlier_adverse_and_unqualified_observation_retained",
+      "passed": true
+    },
+    {
+      "detail": "Exact reconstruction is per arm; administrative IDs remain separately bound. New comparator may only compare reviewed semantic/source populations, with no broad hash/root normalization; legacy fallback is not observed projected treatment.",
+      "name": "cross_trial_ids_and_complete_reconstruction",
+      "passed": true
+    },
+    {
+      "detail": "Native proved/disproved/inconclusive/unsupported/error/cancelled and reasons are retained. Proved/counterexample cards require accepted matching evidence, fresh dependencies/assumptions and supported semantic domains; metadata reconstruction and exact-real algebra grant no program/numerical/timing proof or omission authority.",
+      "name": "all_six_native_verdicts_and_formal_boundaries",
+      "passed": true
+    },
+    {
+      "detail": "Unchanged external owner gateway remains explicitly unqualified and fail-closed. Typed owner-qualified read operation, current content, installed expansion and mandatory closure/completeness are prerequisites. DuckLake history is observational and does not control native CLI internal history.",
+      "name": "gateway_and_history_readiness_not_assumed",
+      "passed": true
+    },
+    {
+      "detail": "Revision 3 labels compact result pending at plan revision and claims no final pair, promotion or savings. Total native planning/coding, all later turns/attempt costs, cached-token inclusion and missing-usage unknown rules remain required.",
+      "name": "honest_snapshot_and_full_accounting",
+      "passed": true
+    }
+  ],
+  "created_at_utc": "2026-10-07T04:44:36.098560+00:00",
+  "earlier_A1_metadata_evidence": {
+    "audit_provider_field_loss_retained": true,
+    "bytes": 4372,
+    "compact_minus_baseline_total_tokens": 78211,
+    "matched_pair_qualified": false,
+    "native_coding_inputs_differed_bytes": 1016,
+    "native_full_input_reconstruction_established": false,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/current-pair-factual-result-20261007.json",
+    "recorded_complete_coding_input_bytes_smaller": 284,
+    "sha256": "daaf9fdcdc1096a1f5f14ab14bfaca2de3aaafbebba4366eae45aae9347a8e40"
+  },
+  "evidence_boundary": "Read-only proposal/source binding review plus retained aggregate baseline and earlier A1 metadata. Source findings and arithmetic are independently checked; proof/omission authority, future transformation correctness and efficacy remain unqualified. The temporal pending label is assessed as a dated snapshot, not current live status.",
+  "frozen_source_commit": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "nonblocking_scope_qualification": {
+    "claim": "Only IPC changed within the 29 prior bound backlog files.",
+    "publication_rule": "Do not generalize the scoped 29-file statement into whole-runtime equivalence between 45803 and 7a870. Other worker/lifecycle/custody and test paths differ; these runtimes are retained separate and the fresh pair is matched within R4.",
+    "whole_commit_delta_code_paths": [
+      "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+      "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_projection_request.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_retrieval_revision.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py",
+      "test/api/test_bridge_failure_diagnostics.py",
+      "test/api/test_container_worker_timeout_contract.py",
+      "test/api/test_native_grok_timeout_custody.py",
+      "test/api/test_native_provider_custody_observation.py",
+      "test/api/test_native_provider_failure_settlement.py",
+      "test/api/test_terminal_failure_observation.py",
+      "test/api/test_worker_child_custody.py",
+      "test/integration/test_admitted_native_provider_failure_settlement.py"
+    ]
+  },
+  "prior_revision_independent_review": {
+    "bytes": 9395,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/next-metadata-treatment-backlog-independent-review-20261007-02.json",
+    "sha256": "2980a31c0dfc974ad338a2f4d321dcebc13aec4194d18a9663e5a9dd797024e9"
+  },
+  "required_before_future_treatment_qualification": [
+    "Implement and independently qualify P0 codec, exact full planning-input reconstruction, source/config/archive selection custody and controlled comparison producer.",
+    "Interpret the completed R4 pair and preserve old campaign costs before choosing future coding transport; no inference of pending arm outcome from baseline.",
+    "Qualify typed metadata/proof owner resolution, current dependency scope and installed bounded expansion before later P1-P4 treatments.",
+    "Repeat fully accounted controlled pairs before reliable savings or equal reliability claims."
+  ],
+  "revision": 3,
+  "schema": "terminal-metadata-backlog-independent-review@2",
+  "scope": {
+    "benchmark_or_container_operations": 0,
+    "future_token_savings_measured": false,
+    "future_treatment_implemented": false,
+    "native_report_or_prepared_file_edits": 0,
+    "pending_compact_final_receipt_reads": 0,
+    "private_database_reads": 0,
+    "provider_calls": 0,
+    "raw_model_transcript_or_hidden_evaluator_body_reads": 0,
+    "source_edits": 0,
+    "test_reruns": 0
+  },
+  "source_binding_review": {
+    "bytes": 11163,
+    "only_changed_prior_binding": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-results-20261007/next-metadata-treatment-backlog-source-bindings-independent-20261007-03.json",
+    "prior_bindings_verified": 29,
+    "prior_byte_identical": 28,
+    "sha256": "4ec34780ea9959f8c205ef507cb9d1ed8c727bc4a8dadd506c6af08d5219306c",
+    "supplemental_collector_test_verified": 1,
+    "whole_runtime_only_ipc_claim_established": false
+  },
+  "status": "passed_for_snapshot_proposed_backlog_review_not_final_pair_or_runtime_qualification"
+}

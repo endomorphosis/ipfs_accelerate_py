@@ -1,0 +1,665 @@
+{
+  "auditor": "/root/terminal_context_compaction_options",
+  "created_at_utc": "2026-10-07T04:40:48.532319+00:00",
+  "current_pair_boundary": "The R4 reply-contract-matched transport pair uses frozen source 7a870ac52aefe798eef4d48319f168e62d840ae8. Its fresh baseline has been reported qualified; the compact arm is currently running. Preserve archive, preparations, runtime, task inputs, native reports and current comparator. Neither this backlog nor prior observations promote a transport or predict the pending result.",
+  "embedding_and_training_boundary": "Existing 8D spaCy, 384D embeddings, 768D GTE and a separately qualified Leanstral-derived representation may rank catalog candidates. Their distances and reconstruction losses do not certify laws, program equivalence or required-fact omission. None is required to implement P0; new training should not be mixed into this treatment.",
+  "evaluation_protocol": {
+    "cached_input": "cached_input_tokens is already contained in input_tokens; report uncached input separately without subtracting cached tokens from a total-token claim.",
+    "first_gate": "Interpret the complete corrected R4 matched pair after the pending compact arm finishes. Keep earlier A1 costs and its unqualified audit visible; do not overwrite any attempt or mix runtimes.",
+    "input_accounting": "Bind full native request, selected view, final provider input and independently reconstructed digest/count. Generation schema custody is separately recorded; do not invent a token count from schema bytes or omit harness/tool-turn costs from observed native totals. Exact full-request reconstruction is checked within each arm. Across live trials, verify the same authorized source/declaration populations and reviewed context facts, while retaining separately bound native administrative identities. Do not invent identity equality or apply broad hash/root normalization.",
+    "interpretation": "Report a matched-pair observation only after all gates pass. Repeat controlled pairs before claiming repeatable savings or equal reliability. No percentage reduction is predicted by this backlog.",
+    "live_control": "On a newly frozen qualified runtime, use identical original public task inputs, provider/model/reasoning, setup/resource budgets and fixed coding transport plus ordinary coding reply contract in both arms. Vary only the explicit planning acceptance-reference selection.",
+    "offline_first": "Build authorized public-task fixtures and both complete planning/provider views without a provider call. Bind exact source hashes, projection/reconstruction evidence, schema identities, bytes and explicitly named proxy estimates.",
+    "outcome_gates": [
+      "Original input hashes unchanged",
+      "Native generation schema and response validation qualified",
+      "Independent full input reconstruction",
+      "Official reward and original correctness/performance validators",
+      "Native admitted completion/publication outcome",
+      "Failure settlement and lifecycle cleanup",
+      "Comparable archive/host source/configuration/setup/resource/provider controls"
+    ],
+    "phase_cost_interpretation": "Use phase totals to prioritize investigation, not to manufacture a predicted reduction. The qualified fresh baseline coding share is 89.78%; a single planning-field transform is a bounded representation experiment. The earlier 284-byte smaller recorded coding input with 78,211 more tokens illustrates why input size and cumulative session cost must be measured separately.",
+    "planning_and_coding": "Require exactly one receipted LLM planning session and one receipted LLM coding session through llm_router, no fallback, complete plan admission and actual coding contract validation. Retain later native turns and all failed attempt costs.",
+    "primary_metric": "Sum complete native input_tokens + output_tokens across both sessions and any recorded additional attempts. Do not double-count cumulative native token records or add session summaries again.",
+    "staged_independent_metrics": [
+      "P0: exact selected/full planning view bytes and a labeled proxy; same observed native generation schema, full per-arm reconstruction, retained planning/coding sessions and actual total tokens.",
+      "P1: one exact coding metadata normalization; unchanged source/effect/authority facts and complete final-input verification; full native coding and supervisor totals.",
+      "P2: one supported proof/status replacement view; same proof/check population and fresh dependency/assumption scope; count subsequent coding/tool/validation turns.",
+      "P3: one typed expansion interface; all lookup calls/payloads/repairs and complete native totals, with required inline or actually expandable facts.",
+      "P4: one supported decision-boundary delta; parent reconstruction and currentness, full-versus-delta complete cost, no claim about unsupported CLI history compaction."
+    ],
+    "unknown_usage": "Missing or incomplete final native usage remains unknown, never zero. Unreceipted attempts invalidate a complete saving claim while observed costs remain visible."
+  },
+  "findings": [
+    {
+      "fact": "Summary index 2 serializes the complete acceptance array, and summary index 3 serializes the complete independently signed task specification containing that same array. This is literal representation redundancy on the direct planning route.",
+      "id": "F1",
+      "source": "terminal_indexed_preparation._constraints"
+    },
+    {
+      "fact": "After current preparation and initial-context verification, the provider request receives both verbatim terminal_public_instruction and terminal_planner_task_contract. On the frozen direct route, the typed contract contains the exact acceptance array again. The smallest refreshed treatment can reference that already present structured field.",
+      "id": "F2",
+      "source": "terminal_indexed_preparation._plan_prepared router closure and terminal_planner_contract.bind_terminal_task_contract"
+    },
+    {
+      "fact": "This typed contract binder currently selects only direct terminal-indexed-public-preparation@1. A first treatment referencing it must reject IntentIR coverage/symbolic and multitask modes rather than assume the field is available there. The earlier design allowed direct or coverage because it referenced the following prose declaration; that broader precondition does not transfer unchanged.",
+      "id": "F3",
+      "source": "terminal_planner_contract.bind_terminal_task_contract"
+    },
+    {
+      "fact": "The existing DuckDB query is parameterized and bounded to 1..256 records, deduplicates linked locator rows, and returns false decision/completion/DuckLake authority. Catalog IDs, locators and recorded mtimes are nominations, not source-content freshness proofs or an installed model fact expansion tool.",
+      "id": "F4",
+      "source": "supervisor_meta_index.compose_for_subject"
+    },
+    {
+      "fact": "The generic external owner facade explicitly reports real_owner_bound_gateway_operations_unqualified_fail_closed and canonical_39_operation_owner_handler_unqualified. Do not assume an arbitrary model-facing Quack gateway already exists; qualify a specific typed read operation through a supported live owner path before relying on expansion.",
+      "id": "F5",
+      "source": "external_quack_owner.py"
+    },
+    {
+      "fact": "Doctor already uses canonical minified JSON and verifies exact artifact, task, baseline source and matching worktree. It repeats obligation IDs at top level and in rows, while rows may repeat evidence references. A later replacement view can share identical records, but appending another status card would initially increase context.",
+      "id": "F6",
+      "source": "doctor_residual_context.load_doctor_residual_advisory"
+    },
+    {
+      "fact": "Declared-input closure is generated after a proposed graph exists, and explicitly declines code semantic closure/proof authority. Existing decision-context completeness and delta reconstruction APIs are reusable, but they are not a preplanning semantic omission certificate or control of native CLI internal history.",
+      "id": "F7",
+      "source": "local_planning_admission._declared_closure and ContextCompiler decision/delta APIs"
+    },
+    {
+      "fact": "Native verdicts include proved, disproved, inconclusive, unsupported, error and cancelled. A compact four-status view must retain the original native verdict/reason so an error or cancellation is not hidden as an ordinary unresolved obligation.",
+      "id": "F8",
+      "source": "formal_verification_contracts.ProofVerdict"
+    }
+  ],
+  "frozen_source_commit": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+  "objective": "Reduce cumulative Terminal Bench supervisor input and output tokens while retaining one LLM planning session and one LLM coding session through llm_router.",
+  "observations_supplied_by_parent": {
+    "earlier_A1_pair": {
+      "interpretation": "A 284-byte smaller recorded coding input accompanied 78,211 more total tokens. This is an unqualified adverse observation, not causal evidence for a reliable benefit or a result to discard.",
+      "observed_compact_minus_baseline_total_tokens": 78211,
+      "qualification": "unqualified_input_audit",
+      "reason": "Frozen ordinary-completion audit IPC lost the provider field; historical native audit records remain unchanged.",
+      "recorded_compact_coding_input_bytes_smaller": 284,
+      "runtime_source": "45803f0dca3365982b6058bf7e7c9c94a95aefcf"
+    },
+    "fresh_R4_baseline": {
+      "arithmetic_verified": true,
+      "coding_input_audit_status": "verified_all_observed_model_inputs",
+      "coding_share_of_total_percent": 89.779830925698,
+      "coding_total_tokens": 221749,
+      "compact_arm_result": "pending_at_plan_revision",
+      "official_reward": 1,
+      "passed_qualification_gates": 74,
+      "planning_share_of_total_percent": 10.220169074302001,
+      "planning_total_tokens": 25243,
+      "runtime_source": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+      "supervisor_total_tokens": 246992
+    },
+    "prioritization": "Coding contributes approximately 90% of the fresh baseline total. P0 remains a low-risk one-field representation pilot; it is not a promise of a large total-token saving. Prioritize subsequent typed coding metadata, fresh proof/status cards and bounded lookup for the larger observed phase cost, and measure whether each treatment reduces full native session usage.",
+    "provenance": "Bounded aggregate metadata supplied in the parent task; this plan did not reread live transcripts, private databases, evaluator/solution bodies or raw model outputs."
+  },
+  "priority_summary": [
+    {
+      "order": 1,
+      "reason": "Qualify a narrowly reversible direct planning acceptance reference with the planning session retained. Keep it separate and describe its limited scope.",
+      "ticket": "P0"
+    },
+    {
+      "order": 2,
+      "reason": "Target the coding phase that currently accounts for 89.78% of the qualified baseline tokens. Normalize exact typed metadata and replace repeated current proof/status material; full session benefit remains unmeasured.",
+      "tickets": [
+        "P1",
+        "P2"
+      ]
+    },
+    {
+      "order": 3,
+      "reason": "Qualify an actual bounded owner-resolved lookup boundary and only then history/delta disclosure. Count lookup/continuation/retry costs and preserve mandatory facts.",
+      "tickets": [
+        "P3",
+        "P4"
+      ]
+    },
+    {
+      "order": 4,
+      "reason": "IntentIR requirement table normalization belongs to a separately selected planning-preserved route and is absent from the direct matched pair.",
+      "ticket": "P5"
+    }
+  ],
+  "recommended_next_independent_treatment": {
+    "changes_allowed": [
+      "Replace only the exact summary[2] string; retain summary ordering and all other fields.",
+      "Retain the full native provider request and immutable reconstruction mapping outside the provider context.",
+      "Record native/full-view and selected/model-view digest and byte count, source/manifest/task/request/scan bindings, fixed replacement path and actual mode selected."
+    ],
+    "cost_boundary": "The fresh R4 baseline reports 25,243 planning tokens and 221,749 coding tokens. A shorter initial planning request does not determine cumulative planning usage and can affect later behavior. Do not infer savings from phase share, input bytes, cached prefixes or the fact that an exact transform is safe.",
+    "eligibility": [
+      "Frozen direct planning with exactly one independently signed TB-CODE-TASK declaration and the expected canonical planning request/schema/version/stage.",
+      "The expected typed terminal_planner_task_contract is present and passes its native structural and request-root/evidence/scope/command checks.",
+      "Recompute the full legacy administrative summaries from the independently verified current spec and original public instruction. Target summary and full declaration summary match exactly before replacing text.",
+      "The typed contract acceptance array exactly equals the manifest task spec acceptance array and the duplicated legacy summary population.",
+      "Current source inventory, current preparation equality and initial-context selection replay succeed before projection."
+    ],
+    "estimated_or_actual_token_reduction": null,
+    "exact_field": "constraints.constraint_summaries[2]",
+    "hook": "Inside _plan_prepared.router after bind_public_instruction and bind_terminal_task_contract, before model_request_sha256, planner-provider-request persistence and provider_callable dispatch.",
+    "id": "P0",
+    "implementation_work_items": [
+      {
+        "deliverable": "Strict bounded duplicate-free finite canonical JSON parsing, fixed one-field transform, exact reconstruction, immutable source-bound receipt, explicit eligible-mode checks and non-expansion decision.",
+        "id": "P0-1",
+        "scope": "New small pure planning-view codec and tests"
+      },
+      {
+        "deliverable": "Apply the codec only at the final verified request boundary and persist full native plus selected view identities without adding a second planning call. Keep isolated_planner and llm_router custody unchanged.",
+        "id": "P0-2",
+        "scope": "Active Terminal Bench planning dispatch"
+      },
+      {
+        "deliverable": "Versioned explicit opt-in, legacy shape stability, single signed task/direct planning restriction, source-bound archive checks and selection drift rejection before provider invocation.",
+        "id": "P0-3",
+        "scope": "Preparation/Harbor/driver/controls/archive qualification"
+      },
+      {
+        "deliverable": "Add read-only reconstruction of the selected planning input from the retained immutable full request and transformation receipt. Verify complete provider input digest/count and schema custody. Existing coding auditing does not independently reconstruct planning input.",
+        "id": "P0-4",
+        "scope": "Independent planning input audit"
+      },
+      {
+        "deliverable": "Keep the current coding-transport comparator frozen. The new producer must vary only planning-context selection, hold task declarations, policy and generation schema constant, hold coding transport/reply settings constant, verify both observed modes and exactly reconstruct each arm's full native request. Keep per-arm administrative identities separately bound. Compare explicitly reviewed source/semantic fields; do not erase arbitrary root, constraint, proof-status or authority differences. A projected arm that falls back to legacy is not an observed projection treatment.",
+        "id": "P0-5",
+        "scope": "A separately versioned comparison producer"
+      }
+    ],
+    "invariants": [
+      "Original public instruction text is unchanged and delivered once as the bound public instruction field.",
+      "Complete response_schema, output acceptance arrays, typed task contract, allowed paths, outputs, validations, budgets, policy roots, evidence handles, initial summaries and advisory uncertainty are unchanged.",
+      "Native plan response is never repaired. Canonical schema validation, FormalPlanCompiler, formal-plan validation and signed native graph admission still examine the complete candidate and declarations.",
+      "The Codex planning generation schema, projection custody and observed schema digest/count are identical between treatment arms.",
+      "Coding transport, coding reply mode/schema/suffix, provider/model/reasoning/resource/setup controls and task inputs are held fixed.",
+      "No representation receipt grants proof of program behavior or execution, scope expansion, completion or publication authority."
+    ],
+    "name": "Direct planning acceptance reference",
+    "non_expansion_gate": "Compare both complete final planning views after all instruction/contract/advisory additions, using actual bytes plus one explicitly named local tokenizer proxy. Select the reference view only when both fit current bounds and the complete selected input is smaller in bytes and under that proxy; otherwise retain the original view and record the fallback reason. Proxy improvement is not actual provider usage or cumulative savings.",
+    "offline_qualification": [
+      "Legacy default prompt/receipt/configuration shapes remain byte-compatible.",
+      "Acceptance, declaration, request root, source hash, task key, manifest, initial selection, or schema drift refuses projection before any provider access.",
+      "Missing typed contract, symbolic/coverage/multitask mode, duplicate keys, nonfinite values, wrong replacement path, changed literal instruction and tampered reconstruction mapping are rejected.",
+      "Every acceptance criterion survives exact round-trip; no dropped dependency, output, validation or effect binding.",
+      "Original and projected complete Codex generation schemas and native validators are identical; valid original candidates pass and altered acceptance/scope/commands fail native admission.",
+      "Large/unicode/empty-or-short acceptance fixtures exercise both beneficial and non-expanding fallback cases.",
+      "Historical replay after accepted source changes reconstructs bytes without conferring current dispatch freshness.",
+      "All generated/provider schema receipt fields remain accurately bound; authored test usage is labeled and never mistaken for measured native usage."
+    ],
+    "priority": 1,
+    "proposed_selection": "An explicit versioned planning-context selection such as acceptance-reference@1; legacy remains the default. Bind the choice into preparation, configuration, archived runtime sources and retained receipts.",
+    "proposed_text": "All goal/task acceptance arrays must exactly equal terminal_planner_task_contract.tasks[0].acceptance.",
+    "reconstruction_gate": "Restore the exact legacy summary string from the controller-held current signed acceptance array using the same native serialization. Require exact equality of the original canonical request bytes and hashes, not merely a matching array length or CID.",
+    "test_hooks": [
+      "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+      "test/api/test_terminal_planner_task_contract.py",
+      "test/api/test_codex_planning_schema.py",
+      "test/api/test_router_implementation_runner.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py"
+    ],
+    "why_first": "This is the smallest low-risk reversible change: one redundant planning field, no extra lookup or solver call, no omitted criterion, no training and no second planning call. It is a bounded representation pilot while coding comprises approximately 90% of the currently qualified baseline cost. It must not be sold as the main total-token reduction."
+  },
+  "revision": 3,
+  "schema": "terminal-metadata-treatment-backlog@1",
+  "scope": {
+    "benchmark_launches": 0,
+    "current_frozen_pair_modified": false,
+    "hidden_evaluation_or_solution_reads": 0,
+    "new_provider_calls": 0,
+    "next_treatment_token_savings_measured": false,
+    "private_database_reads": 0,
+    "production_source_edits": 0,
+    "raw_transcript_reads": 0
+  },
+  "source_bindings": [
+    {
+      "bytes": 70450,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "relevant_hooks": [
+        {
+          "line": 91,
+          "name": "_constraints"
+        },
+        {
+          "line": 708,
+          "name": "_plan_prepared"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "e37919c582621eadd59b4fe5b8dd9016a712c8cd8ba93e323148a7dbbce7e674"
+    },
+    {
+      "bytes": 46937,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "597981706506afe8103a8ab8dfc64b8b639b36677b34111c24bd2f890dc4961d"
+    },
+    {
+      "bytes": 2174,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_planner_instruction.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "052ae6ac4db607755d424727743373d0774a55e2c52c257b59d4cc8e67b9687c"
+    },
+    {
+      "bytes": 65871,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "relevant_hooks": [
+        {
+          "line": 685,
+          "name": "isolated_planner"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "4507ec69b98a4ccfef3df45575ad7f4a2ae537ee8e50a222df18d0116a93c080"
+    },
+    {
+      "bytes": 33713,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "relevant_hooks": [
+        {
+          "line": 505,
+          "name": "collect_terminal_context_audit"
+        }
+      ],
+      "same_as_revision2": false,
+      "sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab"
+    },
+    {
+      "bytes": 30585,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "87929ef6d1842986029aed0df559cc8aafc17330589f07c105ebec2bd98e7f2f"
+    },
+    {
+      "bytes": 32372,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "1e58774cfa67f93551ced44cce507aedb2f485db50c39ab48939cd6530a328c0"
+    },
+    {
+      "bytes": 12019,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "8de67b1e2437368ccadc4819e33296db9e3e3a51d3632cf6bc0761e7cb946489"
+    },
+    {
+      "bytes": 115963,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "relevant_hooks": [
+        {
+          "line": 850,
+          "name": "build_prompt_goal_provider_request"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "2d311b1e0b482f4398f6f9271f5b67ad155bb6a216f6c147f2ff6604d8b01612"
+    },
+    {
+      "bytes": 10417,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "relevant_hooks": [
+        {
+          "line": 82,
+          "name": "contract_from_prompt"
+        },
+        {
+          "line": 110,
+          "name": "bind_terminal_task_contract"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "3d6bf9ba8b0f5009aa7084b2bbb84c1717b122b835b951bccb54fe6764089cfa"
+    },
+    {
+      "bytes": 6186,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/codex_planning_schema.py",
+      "relevant_hooks": [
+        {
+          "line": 25,
+          "name": "planning_schema"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "1df9d13d7a076892934233672725b1dab4651bdb95bd65452f1df63df3a3d75a"
+    },
+    {
+      "bytes": 34785,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "8d5da7766075b558f51728ce53e8d078c32c87f0fdb343f3f14f4712ed5c0a8e"
+    },
+    {
+      "bytes": 37780,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    {
+      "bytes": 14744,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "relevant_hooks": [
+        {
+          "line": 125,
+          "name": "load_doctor_residual_advisory"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "416da2db6ded8dd1ab578304ee9c07103c5c564cceb785caa8c33bae4732cc00"
+    },
+    {
+      "bytes": 5309,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_context.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "d293d3177366ab5b546f43555889f9fb6e5af04bc05347d3297c35be9f3836dd"
+    },
+    {
+      "bytes": 53490,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "relevant_hooks": [
+        {
+          "line": 1028,
+          "name": "compose_for_subject"
+        },
+        {
+          "line": 670,
+          "name": "compose_for_subject"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    {
+      "bytes": 20699,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/external_quack_owner.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "7949695fa35831e612db7f2ba1c9bdab1546b609be50efd2ccf65e97af865380"
+    },
+    {
+      "bytes": 99549,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "relevant_hooks": [
+        {
+          "line": 911,
+          "name": "_declared_closure"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "d185892a39e4b7fccbdd1402f5b80dd6fd01081b8990edcce1fd85b79af535ca"
+    },
+    {
+      "bytes": 4212,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "relevant_hooks": [
+        {
+          "line": 54,
+          "name": "select_worker_capsules"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "9b3c359c8fbfa1f6f4ebfafaf038f7df9c441e478db16443796ad82191eb0e54"
+    },
+    {
+      "bytes": 293498,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "relevant_hooks": [
+        {
+          "line": 7149,
+          "name": "compile_decision_context"
+        },
+        {
+          "line": 5107,
+          "name": "compile_delta"
+        },
+        {
+          "line": 5350,
+          "name": "compile_decision_context"
+        },
+        {
+          "line": 6223,
+          "name": "verify"
+        },
+        {
+          "line": 6308,
+          "name": "compile_retry"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "3104bce772ddf996618578da149071d3bfe620947e41effb653f67232bd63406"
+    },
+    {
+      "bytes": 102188,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603"
+    },
+    {
+      "bytes": 2372,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "relevant_hooks": [
+        {
+          "line": 58,
+          "name": "project_range"
+        }
+      ],
+      "same_as_revision2": true,
+      "sha256": "2a262b7d278ed8ac56dfc3792c39da7d04a54044b7313772af8c63c989771723"
+    },
+    {
+      "bytes": 74508,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450"
+    },
+    {
+      "bytes": 16902,
+      "matches_frozen_commit": true,
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_property_catalog.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "0d127ae0849060aaa169e7cc435191f623d7511496af456100b642a135687958"
+    },
+    {
+      "bytes": 16816,
+      "matches_frozen_commit": true,
+      "path": "docs/agent_supervisor/evidence/supervisor-context-token-economy-20261006/README.md",
+      "same_as_revision2": true,
+      "sha256": "4420b74608451d43a80956211cd76d240f9755a228f4118b12a3c78d370ba5ee"
+    },
+    {
+      "bytes": 4700,
+      "matches_frozen_commit": true,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/roadmap.md",
+      "same_as_revision2": true,
+      "sha256": "96bdc8ae12c4a40b8b0d03168d30adeb1c4fc404def7a0c74ebb2e2d1f8e4db1"
+    },
+    {
+      "bytes": 22438,
+      "matches_frozen_commit": true,
+      "path": "docs/agent_supervisor/evidence/terminal-context-pair-20261006/next-treatment-design.json",
+      "same_as_revision2": true,
+      "sha256": "55e0944dc993e2f83cf25e3f4471a140ce2405ed5ee690e26e7e310706437d95"
+    },
+    {
+      "bytes": 5654,
+      "matches_frozen_commit": true,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/README.md",
+      "same_as_revision2": true,
+      "sha256": "2320ecfc950e8588ceee328a6226720de4ec847ee05a609de5e66b5635386678"
+    },
+    {
+      "bytes": 43357,
+      "matches_frozen_commit": true,
+      "path": "docs/agent_supervisor/evidence/terminal-reply-contract-20261006/compare_reply_contract_receipts.py",
+      "relevant_hooks": [],
+      "same_as_revision2": true,
+      "sha256": "b03e5ae68fe299daf148a36b90b6c70364cd1263984abd5d2639bcf6756186b6"
+    }
+  ],
+  "source_checkout": "/home/barberb/lift_coding_worktrees/terminal-audit-provider-runtime-20261007",
+  "source_rebase": {
+    "byte_identical_files": 28,
+    "changed_files": [
+      {
+        "new_bytes": 33713,
+        "new_sha256": "7a1ee6db1b5d2d10501a5b940c661b1afdf0b2efcc06259892e1e29a6daa02ab",
+        "old_bytes": 33368,
+        "old_sha256": "22b5ba628ed414b8b040495e0d491a440b00f9d927acfb3fdbac4ccfe8a1e49a",
+        "path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py"
+      }
+    ],
+    "current_commit": "7a870ac52aefe798eef4d48319f168e62d840ae8",
+    "current_files_match_git_commit": true,
+    "meaningful_change": "The coding audit collector conditionally carries the recorded provider for a non-null ordinary coding reply contract. It does not synthesize missing providers; missing/foreign values still fail child validation. Omitted/null-contract legacy IPC shapes stay unchanged. This fixes a post-provider input-observation defect; it does not alter planner/coder prompt construction or establish token efficacy.",
+    "old_bound_files_checked": 29,
+    "old_bound_files_present": 29,
+    "previous_commit": "45803f0dca3365982b6058bf7e7c9c94a95aefcf",
+    "runtime_checkout_tracked_clean": true,
+    "unchanged_design_boundaries": [
+      "Direct-planning acceptance duplication and typed contract eligibility",
+      "Native plan generation schema and full parser/admission checks",
+      "Exact semantic transport and candidate grammar",
+      "All six native proof verdicts",
+      "Fail-closed unqualified generic external Quack gateway",
+      "Native decision-context completeness and delta interfaces"
+    ]
+  },
+  "status": "proposed_source_bound_backlog_not_implemented",
+  "subsequent_backlog": [
+    {
+      "cost_target": "The measured coding phase is the larger target. Preserve and separately evaluate the small P0 planning treatment rather than stack unmeasured context changes.",
+      "depends_on": [
+        "Interpret P0 independently before combining treatments."
+      ],
+      "evaluation": "Offline exact round-trip and unchanged native scope/effect/source/authority controls first; then one separate matched two-session treatment on fixed coding transport and reply contract. Record full final model input plus complete native planning/coding totals, later token records and tool/repair counts. An initial byte saving is not an efficacy gate; the older adverse A1 observation must remain visible.",
+      "formal_gate": "Prove finite representation equality by exact reconstruction; do not label the algorithm proved. Preserve missing prover/capability gaps, attempted strategies and uncertainty.",
+      "id": "P1",
+      "implementation": "Start from the final coding boundary after native semantic, Doctor and public-instruction records have been verified. Retain complete records in the owner-controlled metadata/proof/capsule catalogs. Replace one existing view with shared exact record/ID/root/authority/evidence tables; do not append another metadata summary. Doctor residuals repeat obligation IDs and can share repeated evidence; retrieval/world and required capsule metadata need their own verified producer/source binding before extending transport to them. Use compose_for_subject only to nominate bounded authorized records and resolve content in each native owner. Exact normalization precedes semantic fact omission.",
+      "name": "Exact normalization of typed coding metadata",
+      "native_checks": "Task/repository/source head, semantic/dependency roots, record hash, assumption scope, output/effect/validation bindings and original currentness checks remain mandatory. Mtimes or locator identity alone cannot satisfy freshness."
+    },
+    {
+      "cost_target": "Reduce repeated coding reasoning about already checked obligations and incompatible strategies without removing the planning session. Actual native-token effect is measured independently.",
+      "depends_on": [
+        "Qualified current native proof/Doctor record resolution; P1 or an independently evaluated replacement view."
+      ],
+      "evaluation": "Replace repeated existing advice/status material only after fresh certificate/counterexample and assumption/dependency checks. Keep unsupported numerical behavior and performance obligations visible. Freeze exact supported check population between arms and include deterministic-analysis time, tool output, validation/repair turns and native input/output totals. Do not append cards and claim savings from a shorter card body alone.",
+      "id": "P2",
+      "implementation": "Use reviewed obligation/property IDs and exact accepted certificate or checked counterexample bindings. Shared cards retain obligation, compact claim, model status, native verdict, reason, logic family, assumptions, source/dependency roots and certificate/validation reference. Keep full certificate bodies in authorized catalogs.",
+      "name": "Project native formal status cards into the same capsule",
+      "native_verdict_projection": "A concise model status may be proved/disproved/unknown/unsupported, but every card retains the exact native verdict and reason. Inconclusive, error and cancelled are not silently collapsed into an ordinary unknown result, and no non-affirmative state becomes proved.",
+      "native_verdicts_preserved": [
+        "proved",
+        "disproved",
+        "inconclusive",
+        "unsupported",
+        "error",
+        "cancelled"
+      ],
+      "status_rules": [
+        "proved needs accepted evidence and matching native assurance for the exact obligation, assumptions and current dependencies.",
+        "disproved needs a checked counterexample within the supported semantic domain.",
+        "inconclusive, missing, error and cancelled stay non-affirmative, retain native verdict/reason and useful failure information.",
+        "unsupported remains distinct and retains required capability/operator.",
+        "An administrative reconstruction or exact-real algebraic certificate does not prove floating-point complex eigenpairs or benchmark timing."
+      ]
+    },
+    {
+      "capsule_gate": "Use DecisionContextCompiler and a checked completeness/mandatory-closure witness. Keep required facts inline until the actual expansion tool is installed, accessible and tested. Vector similarity only nominates records.",
+      "depends_on": [
+        "One specific typed owner read operation qualified; generic external Quack facade readiness must not be assumed."
+      ],
+      "evaluation": "Measure initial view and all actual expansion/tool turns, payloads, native continuations, repairs and both LLM sessions. Required explanatory facts remain inline until authenticated expansion works. The complete provider total, original reward and lifecycle completion/cleanup decide practical value.",
+      "gateway_readiness": "Frozen external_quack_owner.py still reports real_owner_bound_gateway_operations_unqualified_fail_closed and canonical_39_operation_owner_handler_unqualified. Qualify a particular typed owner read path; do not assume a generic model gateway is ready.",
+      "id": "P3",
+      "implementation": "Add a read-only, task/question-bound handle resolver that returns bounded authorized source spans, capsule interfaces/dependencies/effects or proof explanations. No arbitrary SQL, raw locator exposure, credentials or attachment of exclusive control.duckdb.",
+      "name": "Qualified bounded fact expansion",
+      "negative_controls": [
+        "Foreign repository/task/root, stale source/dependency, unknown/ambiguous handle, changed query scope, unavailable owner, missing required interface/effect/assumption, excessive rows/bytes and attempted scope expansion."
+      ]
+    },
+    {
+      "authority": "History carries observational provenance only; it does not establish current proof, scheduling, lease, completion or omission authority.",
+      "depends_on": [
+        "Qualified parent capsule, source-current fact resolver and supported supervisor-controlled continuation boundary."
+      ],
+      "evaluation": "Use separately qualified parent/delta source bindings and no required-evidence downgrades. Include complete delta, mapping, reconstruction and retrieval costs plus native continuation tokens. The coding CLI's internal history remains outside the current initial-prompt compressor; do not infer its savings from history cursor bytes.",
+      "id": "P4",
+      "implementation": "Use typed range/cursor/checksum history receipts to nominate changed records. Check present source/dependency freshness separately, then use existing compile_delta/compile_retry and deterministic reconstruction.",
+      "name": "DuckLake changed-record capsules at supported decision boundaries",
+      "session_limit": "The native coding CLI currently owns its conversation and tool history. Do not claim initial-input delta code truncates those turns or that a new session remembers an absent parent."
+    },
+    {
+      "depends_on": [
+        "A separately selected planning-preserved IntentIR route; not present in the current direct matched pair."
+      ],
+      "evaluation": "Separate from direct P0; attribute savings only to runs actually carrying this appendix and retain all native admission/source checks.",
+      "id": "P5",
+      "implementation": "Deduplicate exact source-unit text/span/hash, repeated authority flags and overlapping selected/dependency/prohibition records in build_task_intent_context. Preserve all selected requirements, dependency closure and global prohibitions, native atoms, task scope, operations and validation.",
+      "name": "IntentIR source-unit and requirement tables"
+    }
+  ],
+  "supersedes_draft": {
+    "path": "/home/barberb/lift_coding/artifacts/terminal-reply-contract-20261006/next-metadata-treatment-backlog-20261007-02.json",
+    "reason": "Refresh onto corrected R4 runtime; retain per-arm identity rules and adjust prioritization from measured native phase cost while preserving earlier unqualified attempts.",
+    "revision": 2,
+    "sha256": "855b18799f471eb57ed2d883373de9b7f18b68c371b4ddb48d09d57feb0b49fd"
+  },
+  "supplemental_source_bindings": [
+    {
+      "bytes": 8947,
+      "matches_frozen_commit": true,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+      "role": "Actual collector/subprocess IPC qualification tests added with R4 audit fix.",
+      "sha256": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a"
+    }
+  ],
+  "temporal_history": {
+    "R4_baseline_observation_is_not_compact_arm_result": true,
+    "first_A1_native_audit_records_preserved": true,
+    "no_retroactive_requalification_claim": true,
+    "prior_costs_not_excluded_from_experiment_accounting": true,
+    "revision2_preserved": true
+  }
+}
