@@ -509,8 +509,16 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
     if timeout_seconds < .1:
         return _base(reason="audit_budget_unavailable")
     try:
-        rows = [{key: row[key] for key in (*RECEIPT_FIELDS, *TRANSLATION_FIELDS) if key in row}
-                for row in receipts if isinstance(row, dict) and row.get("phase") == "coding"]
+        rows = []
+        for row in receipts:
+            if not isinstance(row, dict) or row.get("phase") != "coding":
+                continue
+            fields = (*RECEIPT_FIELDS, *TRANSLATION_FIELDS)
+            # The child must verify ordinary completion against the recorded
+            # provider. Never infer a missing provider from the selected mode.
+            if row.get("coding_reply_contract") is not None:
+                fields += ("provider",)
+            rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()
         if len(rows) > MAX_RECEIPTS or len(request) > MAX_REQUEST_BYTES:
             return _base(reason="audit_request_exceeds_bound")
