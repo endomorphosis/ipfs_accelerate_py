@@ -1,0 +1,20 @@
+{
+  "baseline_file_sha256": "e16ece857516f5f04dedeb44b15b665ea18b77e9eba960d12de3dd7bddce8e25",
+  "baseline_head": "c733fa1240e3e31c5172ebc35e53f65da4b93891",
+  "capacity_parser_donor_chunk_sha256": "626036e67f0027d41704968675db2433baa9a8181c5d419c5e4b89eb8571d683",
+  "capacity_parser_donor_commit": "f85306a2e254b02b9e44b8e8cb8d599f7e6c694c",
+  "donor_adjustments": [
+    "Public bind wrapper retains its original single verification and replace operation; private historical binding uses the restored core.",
+    "Corrected indentation of existing invocation-verification keyword arguments.",
+    "Restored legacy capacity companion parser independently; caps retained result buffer at four while preserving donor output semantics. No capacity log wrapper or dispatch behavior restored."
+  ],
+  "donor_commit": "7311b3f6d9ae87a02f4109f15426a6e3c1d50962",
+  "donor_file": "ipfs_accelerate_py/agent_implementation_route.py",
+  "donor_sha256": "9c740bee8d4560797bcbdbc933c68d71e18e18f102f403e58900aa9db3b9307f",
+  "existing_function_signatures_unchanged": true,
+  "note": "Only reviewed authority-file patch is selected; no full historical file replacement or provider launch.",
+  "observer_tests_sha256": "f7bd36e6d0fccaebd260b2eac10c483139755aefb439b79578eca542a6466cf9",
+  "patch_sha256": "83efe26255fa7fb74f18627678e178a4897fdb926d484b906b1187936326818f",
+  "restored_file_sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2",
+  "schema": "authority-cleanup-restoration-provenance@1"
+}

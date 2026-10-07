@@ -1,0 +1,825 @@
+{
+  "donor_path": "/home/barberb/lift_coding/.worktrees/spar-main-integration-1789158715/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+  "donor_commit": "0586132421f0552c6c732d3d388c1f501ce2deb2",
+  "donor_sha256": "c013e8d414d5e784bdc2ca100e91e2ef4bc3146a839823fbe555e04b9473eed9",
+  "target_path": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+  "selected_definitions": [
+    {
+      "name": "_DetachedDockerCleanupWatchdog",
+      "line": 17298,
+      "lines": 70,
+      "sha256": "c9ee419cd9c123e7831fe6ca3e99b3393ff8b95bf0c0dc5effdf15168b791035",
+      "target_line": 15011,
+      "target_sha256": "c9ee419cd9c123e7831fe6ca3e99b3393ff8b95bf0c0dc5effdf15168b791035",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_DockerBindingLock",
+      "line": 14606,
+      "lines": 108,
+      "sha256": "300e8d72af3d9f26d6207cfd4031b68f51cd38bbc0f0f58ddb2e7ec44f0bef7e",
+      "target_line": 12284,
+      "target_sha256": "300e8d72af3d9f26d6207cfd4031b68f51cd38bbc0f0f58ddb2e7ec44f0bef7e",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_DockerContainerLease",
+      "line": 4244,
+      "lines": 1283,
+      "sha256": "8e88fdd4dae3b031bc0dd6416292622f85e76d1f42171cdc01368fda0f67e8a9",
+      "target_line": 9019,
+      "target_sha256": "8d2e10f183f7142bd0bd41514dbdd07e8cd36c151a6c487de268453ef4c5e122",
+      "donor_bytes_preserved": false
+    },
+    {
+      "name": "_admit_bound_cleanup_terminal",
+      "line": 17596,
+      "lines": 82,
+      "sha256": "66785196ab09dac27bd9193c4049d5006156c2460c0ad8a44857e0573d161c4d",
+      "target_line": 15313,
+      "target_sha256": "66785196ab09dac27bd9193c4049d5006156c2460c0ad8a44857e0573d161c4d",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_admit_terminal_cleanup_authority",
+      "line": 17733,
+      "lines": 118,
+      "sha256": "214716dbbbe4fe5ca7729223c59029131e80361fb4a8049802c74d7933d2543c",
+      "target_line": 15452,
+      "target_sha256": "214716dbbbe4fe5ca7729223c59029131e80361fb4a8049802c74d7933d2543c",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_arm_docker_removal_once",
+      "line": 15429,
+      "lines": 199,
+      "sha256": "3c6984414f2a24fdf75fb66b379ead1050d760195577d20c7a668ae77d4322c3",
+      "target_line": 13118,
+      "target_sha256": "3c6984414f2a24fdf75fb66b379ead1050d760195577d20c7a668ae77d4322c3",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_attest_exact_docker_execution",
+      "line": 12648,
+      "lines": 159,
+      "sha256": "1c5da9d2e5bf1ef533d9cbde8a7e3c50741f9ed5967d68890b9655457abf8497",
+      "target_line": 10376,
+      "target_sha256": "1c5da9d2e5bf1ef533d9cbde8a7e3c50741f9ed5967d68890b9655457abf8497",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_authority_path",
+      "line": 15935,
+      "lines": 6,
+      "sha256": "8e6a0bc8a9db11793cbaf894fbc907a637771c31045b3ddf6aa1e36a211febed",
+      "target_line": 13633,
+      "target_sha256": "8e6a0bc8a9db11793cbaf894fbc907a637771c31045b3ddf6aa1e36a211febed",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_binding_authority_present",
+      "line": 15942,
+      "lines": 40,
+      "sha256": "ae3c670fbe3a2933ec87a275047ded58b1183acba23420c2b587e0c93381b811",
+      "target_line": 13641,
+      "target_sha256": "ae3c670fbe3a2933ec87a275047ded58b1183acba23420c2b587e0c93381b811",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_binding_retirement_pair_matches",
+      "line": 15983,
+      "lines": 75,
+      "sha256": "1f9003eddc6044be508e72e69a400d170a7257a53473e4c3f7868a66c287bf54",
+      "target_line": 13683,
+      "target_sha256": "1f9003eddc6044be508e72e69a400d170a7257a53473e4c3f7868a66c287bf54",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_completion_path",
+      "line": 15930,
+      "lines": 4,
+      "sha256": "437a84b5ceb09d2c0d34db4c5578d6a987bb9155649d9e9615e07afbd697662c",
+      "target_line": 13627,
+      "target_sha256": "437a84b5ceb09d2c0d34db4c5578d6a987bb9155649d9e9615e07afbd697662c",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_completion_value",
+      "line": 16309,
+      "lines": 111,
+      "sha256": "e130e50e1c1b70dd2ac00388f47537105c3c65129ab6f23265b46ba070dd9bc3",
+      "target_line": 14012,
+      "target_sha256": "e130e50e1c1b70dd2ac00388f47537105c3c65129ab6f23265b46ba070dd9bc3",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_intent_terminal_authority",
+      "line": 16463,
+      "lines": 23,
+      "sha256": "11265c80547710f8a838db17dfbf5f6b83bc76654904823961025c8dafa3c8e8",
+      "target_line": 14168,
+      "target_sha256": "11265c80547710f8a838db17dfbf5f6b83bc76654904823961025c8dafa3c8e8",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_intent_value",
+      "line": 16180,
+      "lines": 128,
+      "sha256": "4141e26d77eafe663badcbdbdaf7817b2e299f280308bab8415550279abc4754",
+      "target_line": 13882,
+      "target_sha256": "4141e26d77eafe663badcbdbdaf7817b2e299f280308bab8415550279abc4754",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_path_identity",
+      "line": 12836,
+      "lines": 22,
+      "sha256": "8698fc55a8bc365eab242e8d27a248a0c228179d41c62f6cd3dfdb1fe528cac4",
+      "target_line": 10566,
+      "target_sha256": "8698fc55a8bc365eab242e8d27a248a0c228179d41c62f6cd3dfdb1fe528cac4",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_path_quarantine",
+      "line": 15648,
+      "lines": 35,
+      "sha256": "2126b4733a6d5afc31644f81f9f3160add7e130c143a364dd6d2f93fe7bb4ba6",
+      "target_line": 13339,
+      "target_sha256": "2126b4733a6d5afc31644f81f9f3160add7e130c143a364dd6d2f93fe7bb4ba6",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_progress_matches",
+      "line": 16487,
+      "lines": 69,
+      "sha256": "82b73182f93cfc694e9fb78129bcc2636059b8c9107e4b6fbb40cc76974623eb",
+      "target_line": 14193,
+      "target_sha256": "82b73182f93cfc694e9fb78129bcc2636059b8c9107e4b6fbb40cc76974623eb",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_cleanup_tombstone_matches",
+      "line": 15684,
+      "lines": 9,
+      "sha256": "20e6b7e05806a6dcb8cdbe7b0e29d5629bf81b4803438bc1a47fea8d4f7674ee",
+      "target_line": 13376,
+      "target_sha256": "20e6b7e05806a6dcb8cdbe7b0e29d5629bf81b4803438bc1a47fea8d4f7674ee",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_create_bound_provider_container",
+      "line": 6183,
+      "lines": 30,
+      "sha256": "f7151f28b2f6d4ff7f7175873e0d2ceca9d29eb68ff52968635bc4874c92ba2a",
+      "target_line": 10240,
+      "target_sha256": "f7151f28b2f6d4ff7f7175873e0d2ceca9d29eb68ff52968635bc4874c92ba2a",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_discard_owned_cleanup_tombstone",
+      "line": 15841,
+      "lines": 45,
+      "sha256": "566460870ef03d4c7c0b5a9483e4c7f0814fc6bb655b8bb9bbebdada404fdd8e",
+      "target_line": 13536,
+      "target_sha256": "566460870ef03d4c7c0b5a9483e4c7f0814fc6bb655b8bb9bbebdada404fdd8e",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_binding_lock_descriptor",
+      "line": 14749,
+      "lines": 91,
+      "sha256": "08cc2fdbfb1e3f61489da7296b21c09ced9fa80a95f055d4c9bb7887740f954d",
+      "target_line": 12429,
+      "target_sha256": "08cc2fdbfb1e3f61489da7296b21c09ced9fa80a95f055d4c9bb7887740f954d",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_binding_uniqueness_socket",
+      "line": 14715,
+      "lines": 33,
+      "sha256": "dcd0534c33ce959aef435c34284711a2cf311a5c63d0ec5a4a7f7b3319289f72",
+      "target_line": 12394,
+      "target_sha256": "dcd0534c33ce959aef435c34284711a2cf311a5c63d0ec5a4a7f7b3319289f72",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_binding_path",
+      "line": 13387,
+      "lines": 49,
+      "sha256": "fc0bd254ed54bc27e597a367955088ac19fde9090639ffd99280b723ff2769a2",
+      "target_line": 11129,
+      "target_sha256": "fc0bd254ed54bc27e597a367955088ac19fde9090639ffd99280b723ff2769a2",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_binding_value",
+      "line": 12977,
+      "lines": 118,
+      "sha256": "16d59fc24f5db10f97d45c1d5472ccf521ccf659bd80ae5495c701764e244143",
+      "target_line": 10711,
+      "target_sha256": "16d59fc24f5db10f97d45c1d5472ccf521ccf659bd80ae5495c701764e244143",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_control_socket",
+      "line": 17187,
+      "lines": 26,
+      "sha256": "25b61103ba8592a2fd9d7ab197f761712f0ff71661a9928b1993c33db2f4f70c",
+      "target_line": 14897,
+      "target_sha256": "25b61103ba8592a2fd9d7ab197f761712f0ff71661a9928b1993c33db2f4f70c",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_root_identity",
+      "line": 12859,
+      "lines": 62,
+      "sha256": "7c54d6e363a3555da92f507aa969503ae3f598535d1841b4a912f0e552bfe2f8",
+      "target_line": 10590,
+      "target_sha256": "7c54d6e363a3555da92f507aa969503ae3f598535d1841b4a912f0e552bfe2f8",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_watchdog_env",
+      "line": 12531,
+      "lines": 32,
+      "sha256": "b50fcbb0086cdce3a6a998b5500b2d932e437e456b1ded0d8b41ee540c80b905",
+      "target_line": 10272,
+      "target_sha256": "887de61960d589f1fef9b898e361be11651febf5ff118883b2e38cedf49f4014",
+      "donor_bytes_preserved": false
+    },
+    {
+      "name": "_docker_cleanup_watchdog_launcher_main",
+      "line": 17230,
+      "lines": 67,
+      "sha256": "d1021b4428bc95aa28a05cfd5b4c84c4d0932c3c3ca1f28336e313a19fcb156b",
+      "target_line": 14942,
+      "target_sha256": "d1021b4428bc95aa28a05cfd5b4c84c4d0932c3c3ca1f28336e313a19fcb156b",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_cleanup_watchdog_main",
+      "line": 3150,
+      "lines": 1092,
+      "sha256": "5785392470900fbc9033d4c655a29fdacd170f6993466ac184a3f001e01dd16d",
+      "target_line": 7925,
+      "target_sha256": "5785392470900fbc9033d4c655a29fdacd170f6993466ac184a3f001e01dd16d",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_codex_host_vendor_mounts",
+      "line": 13515,
+      "lines": 17,
+      "sha256": "d6abdb950cad4bf64b65443dabea44f7de0964dad75de7f1ec7e25375775f701",
+      "target_line": 11180,
+      "target_sha256": "d6abdb950cad4bf64b65443dabea44f7de0964dad75de7f1ec7e25375775f701",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_control_peer_credentials",
+      "line": 17214,
+      "lines": 15,
+      "sha256": "d8d723399d8981dbd3a9d1a172511b2cbff351e5c7ffb5753d4ca97ce8601e35",
+      "target_line": 14925,
+      "target_sha256": "d8d723399d8981dbd3a9d1a172511b2cbff351e5c7ffb5753d4ca97ce8601e35",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_control_read_exact",
+      "line": 13917,
+      "lines": 25,
+      "sha256": "4633db204b6fc5a0bc1d82f3795825249cbc65519daa808a0a1923bb645e01b0",
+      "target_line": 11587,
+      "target_sha256": "4633db204b6fc5a0bc1d82f3795825249cbc65519daa808a0a1923bb645e01b0",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_create_command_identity",
+      "line": 13533,
+      "lines": 321,
+      "sha256": "56ddb765818baf93b0625dc6c9eeefc71fe50c786f3fe07d796df9e855a07b85",
+      "target_line": 11199,
+      "target_sha256": "56ddb765818baf93b0625dc6c9eeefc71fe50c786f3fe07d796df9e855a07b85",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_create_environment_payload",
+      "line": 13980,
+      "lines": 31,
+      "sha256": "6ef0fd3377bcf736590c31b72bf649834792ae134c9fa8022c0136ff82feafdb",
+      "target_line": 11652,
+      "target_sha256": "6ef0fd3377bcf736590c31b72bf649834792ae134c9fa8022c0136ff82feafdb",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_create_journal_value",
+      "line": 14012,
+      "lines": 85,
+      "sha256": "8183e4cc9f3e649d1d6513d155f8a19fb67f2b5b33555ca50450b479bd6c23d1",
+      "target_line": 11685,
+      "target_sha256": "8183e4cc9f3e649d1d6513d155f8a19fb67f2b5b33555ca50450b479bd6c23d1",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_create_private_handoff_payload",
+      "line": 13855,
+      "lines": 25,
+      "sha256": "a46d6027e00774365411bc586b888ffca38baf8ea1db3a827fee1d4a5dca9229",
+      "target_line": 11522,
+      "target_sha256": "a46d6027e00774365411bc586b888ffca38baf8ea1db3a827fee1d4a5dca9229",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_create_private_result_payload",
+      "line": 13881,
+      "lines": 27,
+      "sha256": "b0f66241cd0c1cc8ba5464fe81addd3620b6feaa4eec211b83869862c4e8c408",
+      "target_line": 11549,
+      "target_sha256": "b0f66241cd0c1cc8ba5464fe81addd3620b6feaa4eec211b83869862c4e8c408",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_removal_dispatch_path",
+      "line": 14975,
+      "lines": 4,
+      "sha256": "55de0c033a5f2737854a175406a2dc44d7c3f7ddcbcab4e4a050270934194471",
+      "target_line": 12657,
+      "target_sha256": "55de0c033a5f2737854a175406a2dc44d7c3f7ddcbcab4e4a050270934194471",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_removal_dispatch_value",
+      "line": 14980,
+      "lines": 103,
+      "sha256": "584d90001af58858123ec47c7c847fd72870667999e4e0213d96e8e98c3cc238",
+      "target_line": 12663,
+      "target_sha256": "584d90001af58858123ec47c7c847fd72870667999e4e0213d96e8e98c3cc238",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_removal_issuer_launcher_main",
+      "line": 15379,
+      "lines": 49,
+      "sha256": "5dddc8f7d61cc8fdee6688d48ad76c8b6d7666159312e56761df0305f442aa6b",
+      "target_line": 13067,
+      "target_sha256": "5dddc8f7d61cc8fdee6688d48ad76c8b6d7666159312e56761df0305f442aa6b",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_removal_issuer_live",
+      "line": 15113,
+      "lines": 15,
+      "sha256": "37c180fb31a8e8256db08711392e33fc30767b5509ec27b55f1ca5c4836804fb",
+      "target_line": 12798,
+      "target_sha256": "37c180fb31a8e8256db08711392e33fc30767b5509ec27b55f1ca5c4836804fb",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_removal_issuer_main",
+      "line": 15186,
+      "lines": 192,
+      "sha256": "d910f01eaed86544eb669a1577055df1e61962d5648d8e22502976cc332716ff",
+      "target_line": 12873,
+      "target_sha256": "d910f01eaed86544eb669a1577055df1e61962d5648d8e22502976cc332716ff",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_docker_termination_scope_quiescent",
+      "line": 12808,
+      "lines": 27,
+      "sha256": "96f300f2e8453e9580a73e8155b28d9afc2a5c15817e05f574731fe7de1de9ae",
+      "target_line": 10537,
+      "target_sha256": "96f300f2e8453e9580a73e8155b28d9afc2a5c15817e05f574731fe7de1de9ae",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_finalize_verified_cleanup_completion",
+      "line": 16836,
+      "lines": 350,
+      "sha256": "4cb2e53882af89824546a3ec35a3b39c9fec3452de5d7570c714dea8fb664b88",
+      "target_line": 14545,
+      "target_sha256": "4cb2e53882af89824546a3ec35a3b39c9fec3452de5d7570c714dea8fb664b88",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_observed_provider_attempt_cleanup_state",
+      "line": 17679,
+      "lines": 53,
+      "sha256": "488ee9fab0538483b3fb49b00c28f89cd3caa52e066bb4a07711dff199a0b5ed",
+      "target_line": 15397,
+      "target_sha256": "488ee9fab0538483b3fb49b00c28f89cd3caa52e066bb4a07711dff199a0b5ed",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_open_docker_removal_execution_authority",
+      "line": 15129,
+      "lines": 56,
+      "sha256": "596e26ec9b5c0876f5d9280da3efbbc95c7f59475ba5dc1d984ce13436a1ce43",
+      "target_line": 12815,
+      "target_sha256": "596e26ec9b5c0876f5d9280da3efbbc95c7f59475ba5dc1d984ce13436a1ce43",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_owned_cleanup_path_matches",
+      "line": 15629,
+      "lines": 18,
+      "sha256": "4899314f68c050242c65c06235aeaa897959df09ae6508a2c8b1f4a334d8e6a2",
+      "target_line": 13319,
+      "target_sha256": "4899314f68c050242c65c06235aeaa897959df09ae6508a2c8b1f4a334d8e6a2",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_private_control_bytes",
+      "line": 13165,
+      "lines": 14,
+      "sha256": "f9e5bfde832fffef444c9e93b4e59810187fd1fe9802644bee29d6834f5e5e3e",
+      "target_line": 10903,
+      "target_sha256": "f9e5bfde832fffef444c9e93b4e59810187fd1fe9802644bee29d6834f5e5e3e",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_private_control_directory",
+      "line": 13139,
+      "lines": 25,
+      "sha256": "3e9042fde0837c3e76657eabfb575e8d9539a899be1c1389fff84947ee6269b9",
+      "target_line": 10876,
+      "target_sha256": "3e9042fde0837c3e76657eabfb575e8d9539a899be1c1389fff84947ee6269b9",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_provider_start_socketpair",
+      "line": 12958,
+      "lines": 18,
+      "sha256": "1014b5905a38abfd796c6754103ca9d10e3a4cac0dd4a07282e746af4803b302",
+      "target_line": 10691,
+      "target_sha256": "1014b5905a38abfd796c6754103ca9d10e3a4cac0dd4a07282e746af4803b302",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_publish_cleanup_completion",
+      "line": 16421,
+      "lines": 41,
+      "sha256": "7b0c548e850a6322cffebc98c8846961d1ecb1a43fd930db63778c29e8443eea",
+      "target_line": 14125,
+      "target_sha256": "7b0c548e850a6322cffebc98c8846961d1ecb1a43fd930db63778c29e8443eea",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_publish_docker_termination_fence_binding",
+      "line": 14841,
+      "lines": 133,
+      "sha256": "60bcfa186daf3a79f609ff18d40819b0986a5a368c6c91dca299225cfee4dece",
+      "target_line": 12522,
+      "target_sha256": "60bcfa186daf3a79f609ff18d40819b0986a5a368c6c91dca299225cfee4dece",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_read_detached_docker_cleanup_watchdog",
+      "line": 17369,
+      "lines": 43,
+      "sha256": "e0295ea24c32f8a52c57d26f051ab18e34b0281bcc3411280816d179c81db17a",
+      "target_line": 15083,
+      "target_sha256": "e0295ea24c32f8a52c57d26f051ab18e34b0281bcc3411280816d179c81db17a",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_read_docker_create_private_result",
+      "line": 13943,
+      "lines": 36,
+      "sha256": "bc3c493e96c5172ee685c46cbfcd791059a80bd8d0d85269dbcd1726acd7db30",
+      "target_line": 11614,
+      "target_sha256": "bc3c493e96c5172ee685c46cbfcd791059a80bd8d0d85269dbcd1726acd7db30",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_read_private_control_record",
+      "line": 13259,
+      "lines": 108,
+      "sha256": "35414988387c09408ec73fd594ff19e5d2613343063ebe69652f2cc2d15321ae",
+      "target_line": 10999,
+      "target_sha256": "35414988387c09408ec73fd594ff19e5d2613343063ebe69652f2cc2d15321ae",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_recorded_codex_cleanup_identity",
+      "line": 17413,
+      "lines": 80,
+      "sha256": "c8e0f2259555b0d6a6761b8b736a854e5c4bed79614d57b1a33dbad3220ca065",
+      "target_line": 15128,
+      "target_sha256": "c8e0f2259555b0d6a6761b8b736a854e5c4bed79614d57b1a33dbad3220ca065",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_recorded_codex_lease_root",
+      "line": 7280,
+      "lines": 34,
+      "sha256": "294e7ef61963e5abaf56a9bf94a587cb5ae99728a0fc27501697cbb7b65aa526",
+      "target_line": 3395,
+      "target_sha256": "294e7ef61963e5abaf56a9bf94a587cb5ae99728a0fc27501697cbb7b65aa526",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_recorded_codex_running_fence",
+      "line": 17852,
+      "lines": 123,
+      "sha256": "5be28b94e8c2f7b71d8a303227508287a6016b67342ee034ec3375d63707276b",
+      "target_line": 15572,
+      "target_sha256": "5be28b94e8c2f7b71d8a303227508287a6016b67342ee034ec3375d63707276b",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_recorded_codex_terminal_cleanup_evidence",
+      "line": 17494,
+      "lines": 101,
+      "sha256": "bcd16aada24f2c269df2538ed510ee697642efc7511c89b819e1c6768fb0d65c",
+      "target_line": 15210,
+      "target_sha256": "bcd16aada24f2c269df2538ed510ee697642efc7511c89b819e1c6768fb0d65c",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_recover_cleanup_completion",
+      "line": 16557,
+      "lines": 244,
+      "sha256": "64d6504d46498c6354c7edb5b9bef2a779aebf296681b13560de6ed15427f1e0",
+      "target_line": 14264,
+      "target_sha256": "64d6504d46498c6354c7edb5b9bef2a779aebf296681b13560de6ed15427f1e0",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_reject_duplicate_control_keys",
+      "line": 13096,
+      "lines": 9,
+      "sha256": "4b081c6c9338c7fab829003993e366ea2d82a795770cd20735760417249b14f5",
+      "target_line": 10831,
+      "target_sha256": "4b081c6c9338c7fab829003993e366ea2d82a795770cd20735760417249b14f5",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_release_recorded_codex_effect_cleanup",
+      "line": 7316,
+      "lines": 459,
+      "sha256": "b1f719b3ad50ce2cf2f1e2bfa49c07c4a58a840432107550e9d9301eb9e49260",
+      "target_line": 3432,
+      "target_sha256": "b1f719b3ad50ce2cf2f1e2bfa49c07c4a58a840432107550e9d9301eb9e49260",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_remove_exact_docker_container",
+      "line": 2826,
+      "lines": 166,
+      "sha256": "6ed421399a47279347a296296d3b7af7e2aeed02d36ccde6d15475d592b84dfa",
+      "target_line": 7757,
+      "target_sha256": "6ed421399a47279347a296296d3b7af7e2aeed02d36ccde6d15475d592b84dfa",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_remove_or_admit_cleanup_tombstone",
+      "line": 15820,
+      "lines": 20,
+      "sha256": "707230912a987dc6013fcbe217fbb27f7d4ea60219b757080a42b527a849a224",
+      "target_line": 13514,
+      "target_sha256": "707230912a987dc6013fcbe217fbb27f7d4ea60219b757080a42b527a849a224",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_remove_owned_cleanup_path",
+      "line": 15694,
+      "lines": 125,
+      "sha256": "995a09d83ac682f3dbd1ce0592a4f5dc102a49149bf06e2c62a6bde260ab8d52",
+      "target_line": 13387,
+      "target_sha256": "995a09d83ac682f3dbd1ce0592a4f5dc102a49149bf06e2c62a6bde260ab8d52",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_reobserve_cleanup_binding_docker_absence",
+      "line": 16802,
+      "lines": 33,
+      "sha256": "ebc2d38bd27a11ab47ae65ed291e790fb2f8f4039db5ba5a724ba8fef750a396",
+      "target_line": 14510,
+      "target_sha256": "ebc2d38bd27a11ab47ae65ed291e790fb2f8f4039db5ba5a724ba8fef750a396",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_retire_cleanup_binding_authority",
+      "line": 16059,
+      "lines": 120,
+      "sha256": "eff9d139981225821aee261edf115e3ffa39583d3dfc7bf3ff1fa8f2488be642",
+      "target_line": 13760,
+      "target_sha256": "eff9d139981225821aee261edf115e3ffa39583d3dfc7bf3ff1fa8f2488be642",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_robust_remove_runner_temp_tree",
+      "line": 2995,
+      "lines": 153,
+      "sha256": "065ff2fd5de3b10e7bb8cbecee980b4b277b8605190e6df2add3fa02c77b577d",
+      "target_line": 2144,
+      "target_sha256": "065ff2fd5de3b10e7bb8cbecee980b4b277b8605190e6df2add3fa02c77b577d",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_run_fenced_docker_create_issuer",
+      "line": 14219,
+      "lines": 200,
+      "sha256": "8f8fc94a25790730853149a6a32b3590802b815b4e82f16d35bc924ff3429468",
+      "target_line": 11895,
+      "target_sha256": "8f8fc94a25790730853149a6a32b3590802b815b4e82f16d35bc924ff3429468",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_sealed_provider_isolation_image_id",
+      "line": 433,
+      "lines": 16,
+      "sha256": "a631d2613e68872f6815d758405e71b8d1f75b9dd10d16473c8c9481d748ebfc",
+      "target_line": 7726,
+      "target_sha256": "a631d2613e68872f6815d758405e71b8d1f75b9dd10d16473c8c9481d748ebfc",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_transition_docker_create_journal",
+      "line": 14174,
+      "lines": 44,
+      "sha256": "0c0db567e49c531bf397c5fa0aaef324f97fbda2ce531daaece25a5f03c9fd92",
+      "target_line": 11849,
+      "target_sha256": "0c0db567e49c531bf397c5fa0aaef324f97fbda2ce531daaece25a5f03c9fd92",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_unlink_owned_cleanup_record",
+      "line": 15887,
+      "lines": 42,
+      "sha256": "58d8279d701403dc547a6a7f8a0afad7080fefc921f0a4f00af456bf8622ad14",
+      "target_line": 13583,
+      "target_sha256": "58d8279d701403dc547a6a7f8a0afad7080fefc921f0a4f00af456bf8622ad14",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_unlink_private_control_record",
+      "line": 13368,
+      "lines": 18,
+      "sha256": "204f3246bfd01358b702ccd1b3b37528bc83a9b9e3af9e01e9e2ed54cae3cda7",
+      "target_line": 11109,
+      "target_sha256": "204f3246bfd01358b702ccd1b3b37528bc83a9b9e3af9e01e9e2ed54cae3cda7",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validate_private_control_directory_descriptor",
+      "line": 13106,
+      "lines": 32,
+      "sha256": "348d2f23ced8c5d0018526c370010819ebd47d76f2689d1e3f066be7729abb9a",
+      "target_line": 10842,
+      "target_sha256": "348d2f23ced8c5d0018526c370010819ebd47d76f2689d1e3f066be7729abb9a",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_cleanup_binding_record",
+      "line": 14420,
+      "lines": 185,
+      "sha256": "c3ba4d939aed95db357f842be209723c53885e16a43f60c94bb6dda1fd4bc1cc",
+      "target_line": 12097,
+      "target_sha256": "c3ba4d939aed95db357f842be209723c53885e16a43f60c94bb6dda1fd4bc1cc",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_docker_cleanup_root",
+      "line": 12922,
+      "lines": 35,
+      "sha256": "6b90ff2567fcf8a705509e42304e7017dadb78f2ac363ffc7e33f720a8f48746",
+      "target_line": 10654,
+      "target_sha256": "6b90ff2567fcf8a705509e42304e7017dadb78f2ac363ffc7e33f720a8f48746",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_docker_create_journal",
+      "line": 14098,
+      "lines": 75,
+      "sha256": "b7652b27b2eedb952c80e7002adaba7efd58f81aa60a661d7b465e1d4a2f3fc5",
+      "target_line": 11772,
+      "target_sha256": "b7652b27b2eedb952c80e7002adaba7efd58f81aa60a661d7b465e1d4a2f3fc5",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_docker_removal_dispatch",
+      "line": 15084,
+      "lines": 28,
+      "sha256": "9cfbe00839456636093f5b602fc94a064fd4a568641dfa34ff395cea0282ba4f",
+      "target_line": 12768,
+      "target_sha256": "9cfbe00839456636093f5b602fc94a064fd4a568641dfa34ff395cea0282ba4f",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_docker_termination_fence",
+      "line": 12579,
+      "lines": 68,
+      "sha256": "beb751aeadca8bbc3494f4a725edcc8b75db43de29b860fd761ade48ddb929f0",
+      "target_line": 10306,
+      "target_sha256": "beb751aeadca8bbc3494f4a725edcc8b75db43de29b860fd761ade48ddb929f0",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_validated_local_docker_engine_endpoint",
+      "line": 2814,
+      "lines": 10,
+      "sha256": "4b841f5868c0c097ef6af15b41f8a90da0ebe2e607ae0ff3dc5e7075e8b83b34",
+      "target_line": 7744,
+      "target_sha256": "8360b5b5ccc8df74d2e9f7c667fb147de3e8188b43cdde41d582446c05b77a4a",
+      "donor_bytes_preserved": false
+    },
+    {
+      "name": "_write_docker_create_private_result",
+      "line": 13909,
+      "lines": 7,
+      "sha256": "fc38cc92afd2fe9c9593f4f244be22af3d2f9df3a181fbef5802a2ed75ea666a",
+      "target_line": 11578,
+      "target_sha256": "fc38cc92afd2fe9c9593f4f244be22af3d2f9df3a181fbef5802a2ed75ea666a",
+      "donor_bytes_preserved": true
+    },
+    {
+      "name": "_write_private_control_record",
+      "line": 13180,
+      "lines": 78,
+      "sha256": "bb29edb0f85ab50f80c884beffc03942361b8399b5b9b93238f2bca77bd21940",
+      "target_line": 10919,
+      "target_sha256": "bb29edb0f85ab50f80c884beffc03942361b8399b5b9b93238f2bca77bd21940",
+      "donor_bytes_preserved": true
+    }
+  ],
+  "constant_names": [
+    "_DOCKER_BINDING_LOCK_TIMEOUT_SECONDS",
+    "_DOCKER_CLEANUP_BINDING_DIRECTORY",
+    "_DOCKER_CLEANUP_BINDING_SCHEMA",
+    "_DOCKER_CLEANUP_COMPLETION_SCHEMA",
+    "_DOCKER_CLEANUP_INTENT_SCHEMA",
+    "_DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG",
+    "_DOCKER_CREATE_ENVIRONMENT_MAX_BYTES",
+    "_DOCKER_CREATE_HANDOFF_MAX_BYTES",
+    "_DOCKER_CREATE_HANDOFF_SCHEMA",
+    "_DOCKER_CREATE_JOURNAL_NAME",
+    "_DOCKER_CREATE_JOURNAL_SCHEMA",
+    "_DOCKER_CREATE_RESULT_MAX_BYTES",
+    "_DOCKER_CREATE_RESULT_SCHEMA",
+    "_DOCKER_CREATE_TIMEOUT_SECONDS",
+    "_DOCKER_EFFECT_OBSERVATION_FIELDS",
+    "_DOCKER_PRIVATE_CONTROL_MAX_BYTES",
+    "_DOCKER_PROVIDER_START_MARKER",
+    "_DOCKER_PROVIDER_START_SCRIPT",
+    "_DOCKER_REMOVAL_DISPATCH_SCHEMA",
+    "_DOCKER_REMOVAL_ISSUER_ARG",
+    "_DOCKER_REMOVAL_ISSUER_LAUNCHER_ARG",
+    "_DOCKER_TERMINATION_FENCE_FIELDS",
+    "_DOCKER_TERMINATION_FENCE_SCHEMA",
+    "_DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES",
+    "_SEALED_PROVIDER_ISOLATION_ENV"
+  ],
+  "note": "Exact donor cleanup definitions; shared current ordinary-route helpers retained, old ordinary lease explicitly separated. Subsequent integration changes recorded by git diff.",
+  "owned_files": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8"
+    },
+    {
+      "path": "test/api/test_agent_supervisor_grok_cleanup_integration.py",
+      "sha256": "5948a49750f7fdf2b4db18f2611d242b4de1614a275c74a8d9d9665823a0e032"
+    },
+    {
+      "path": "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+      "sha256": "5d3d90d4a3c0dc44eee0f8d829b3d6cf66eb40051993cdc2d90639945f251b84"
+    },
+    {
+      "path": "test/api/test_protected_normal_cleanup_producers.py",
+      "sha256": "4f96267934410e45df09ae8dd14de2ba84ea47eca15a78d7410f49c2f63060f8"
+    },
+    {
+      "path": "test/api/test_protected_watchdog_cleanup_handoff.py",
+      "sha256": "7a1a8b7162de0e9465b5b1be8fb78f6e0d352838f133064e5402acd93062ac9b"
+    }
+  ],
+  "integration_changes": [
+    "Preserve ordinary unsigned Grok/Codex profile implementation behind explicitly named legacy APIs; protected invocations deny before legacy Docker construction.",
+    "Native Codex adapter requires complete durable observation, paired callbacks, signed worker network, prepared cleanup binding and gated command; existing direct argv layout remains rejected.",
+    "Native stream adapter uses anonymous provider stdin, persists running fence, then finishes input.",
+    "Terminal completion, adoption and terminal replay carry cleanup evidence and exact store/reservation. FileNotFoundError is not cleanup authority.",
+    "Created-container recovery denies before Docker until versioned native start-custody agreement exists.",
+    "Only fixed Docker engine is admitted; endpoint is not yet bound by schema for rootless.",
+    "Deduplicate exact .git metadata bind mounts in current ordinary Grok/Codex builders.",
+    "Current fixture tests retain validators and use actual authored command shape, no provider calls.",
+    "Native factory unconditionally raises RuntimeError before paths/sockets/processes; native internal CLI modes unconditionally exit125 before argument parsing or dispatch until owner STOP/crash barrier qualification. No environment escape.",
+    "Initialize route_plan for ordinary no-fallback primary path; actual main no-fallback route regression included.",
+    "Remove native create_inert_container unbound subprocess.run fallback; require actual prepared binding before lock, journal or dispatch."
+  ],
+  "unsupported": [
+    "Native factory and CLI are hard-disabled. Current signed Codex command owner/builder agree only on direct provider argv; no versioned native stdin-gate profile.",
+    "Current protected route has no signed WorkerNetworkProfile factory or plumbing.",
+    "Native Codex create adapter and inherited canonical grammar disagree on top-level entrypoint; old profile remains denied.",
+    "Manager STOP lacks detached durable cleanup observer/proof barrier; no native lifecycle qualification.",
+    "Pinned Docker image is absent; no live Docker/provider tests performed."
+  ],
+  "validation": {
+    "result": "71 passed in 47.25s",
+    "junit_path": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/producer-cleanup-frozen-71.xml",
+    "log_path": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/producer-cleanup-frozen-71.log",
+    "effects": "No Docker or paid provider dispatch; native CLI subprocess tests assert exit125. Private CAS/socket cleanup joins are offline protocol tests.",
+    "diff_check": "passed",
+    "state": "frozen"
+  },
+  "followup_fixture_provenance": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/producer-recovery-fixture-current-provenance.json"
+}

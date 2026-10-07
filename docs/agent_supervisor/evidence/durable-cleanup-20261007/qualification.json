@@ -1,0 +1,243 @@
+{
+  "schema": "supervisor-durable-cleanup-offline-qualification@1",
+  "date": "2026-10-07",
+  "status": "qualified_offline_prerequisite_native_launch_disabled",
+  "baseline": "c733fa1240e3e31c5172ebc35e53f65da4b93891",
+  "datasets_dependency": "271ad796288e17039f036af6a0d003a4628da6ed",
+  "local_artifact_directory": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_implementation_route.py": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "b3702b6e612eec44b6490d9aba43d541818c78463ef639294edeb2b4cc548270",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py": "05079ae7b0a2de96ae709bd6f71df0f3aabbf365dd06d40b753dd7c46cf63673",
+    "test/api/test_agent_supervisor_grok_cleanup_integration.py": "5948a49750f7fdf2b4db18f2611d242b4de1614a275c74a8d9d9665823a0e032",
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py": "83043210fcd78987083901bf2973642ac7e2db1b70d0fedaf6c5d7c42d50c5f8",
+    "test/api/test_agent_supervisor_grok_router_compatibility.py": "5d3ab52e362d9fc23caf85dfec48e71e9a22d69810eebaa2328a03bfab7a982c",
+    "test/api/test_agent_supervisor_worker_census_integration.py": "710c2ded4e97d83e3aa9191dc14c05da3de029493a584e35dab9508920199627",
+    "test/api/test_protected_effect_recovery_cleanup_call.py": "da342254c24d8d24fc8f85570a07313b11a6c72a05224c47e9f41664dc105771",
+    "test/api/test_protected_normal_cleanup_producers.py": "4f96267934410e45df09ae8dd14de2ba84ea47eca15a78d7410f49c2f63060f8",
+    "test/api/test_protected_watchdog_cleanup_handoff.py": "7a1a8b7162de0e9465b5b1be8fb78f6e0d352838f133064e5402acd93062ac9b",
+    "test/api/test_provider_cleanup_audit_observation.py": "ace3702711a7b7735460221a85cb877374b0d5e960cf615477eff48aa3cba71b",
+    "test/api/test_supervisor_current_model_route.py": "1bc62d419479ca5a866390fb4d0bc74e76e7fd3815f9b1507de8b8947a271f75",
+    "test/api/test_terminal_cleanup_observer.py": "f7bd36e6d0fccaebd260b2eac10c483139755aefb439b79578eca542a6466cf9",
+    "test/api/test_agent_supervisor_grok_docker_task_execution.py": "c244d220228f99926cc7026afc86d0cb40b82634e6990a4652279ec85c906a0b",
+    "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+    "test/api/test_native_grok_timeout_custody.py": "a433db70aff0aa4e00374ff7f27d02ffac291c09ebd6b5600e35a84b7555b8e9",
+    "test/api/test_native_provider_custody_observation.py": "e6827f2948de137b309eb3875d2b932285e7d59a81a91fca10cd997de62b9b9b",
+    "test/api/test_supervisor_router_execution_contract.py": "0222c03328317cfb706b1af7f78e42be83bcb157675b38070dda3ca7403adde1"
+  },
+  "final_runs": [
+    {
+      "label": "cleanup-02",
+      "counts": {
+        "tests": 99,
+        "passed": 99,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 78.6814823540044,
+      "source_unchanged": true,
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/cleanup-02.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/cleanup-02-fixtures",
+        "test/api/test_terminal_cleanup_observer.py",
+        "test/api/test_provider_cleanup_audit_observation.py",
+        "test/api/test_agent_supervisor_grok_cleanup_integration.py",
+        "test/api/test_protected_normal_cleanup_producers.py",
+        "test/api/test_protected_watchdog_cleanup_handoff.py",
+        "test/api/test_protected_effect_recovery_cleanup_call.py",
+        "test/api/test_supervisor_current_model_route.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/cleanup-02.duckdb",
+        "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/cleanup-02-resources.json"
+      },
+      "artifacts_sha256": {
+        ".xml": "0b8a4703781e0fff5c9b23a4976800922ddb0d44c38e30ed414860b87cb5e02a",
+        ".log": "badba175e56b9ab243414612d8e50aee924bd736017f78b2d8724893b2cd06c6",
+        ".duckdb": "4a87fdd82652014992f87ce2c31f63fe9d9fba2c16587cef0e7dbb1c48b072f1",
+        "-command.json": "72d9fcff5ae4eff0db27130cde6f8d5a5f5da220b9f14c87a5288ff605cc35cb",
+        "-exit.json": "174997e3a330d8164b714d6613465a0abcf0aa5d286ebc17f899ef63b8ec12d8"
+      }
+    },
+    {
+      "label": "routing-02",
+      "counts": {
+        "tests": 212,
+        "passed": 212,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 97.36184654803947,
+      "source_unchanged": true,
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/routing-02.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/routing-02-fixtures",
+        "test/api/test_grok_container_router.py",
+        "test/api/test_agent_supervisor_grok_docker_task_execution.py",
+        "test/api/test_agent_supervisor_grok_router_compatibility.py",
+        "test/api/test_supervisor_router_execution_contract.py",
+        "test/api/test_native_grok_timeout_custody.py",
+        "test/api/test_native_provider_custody_observation.py",
+        "test/api/test_agent_supervisor_worker_census_integration.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/routing-02.duckdb",
+        "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/routing-02-resources.json"
+      },
+      "artifacts_sha256": {
+        ".xml": "be80eb472780b76604c8ab97028638d1039c04311e6ce953d1ad4f0db61fc513",
+        ".log": "1226564c8eac58cce540b3a89cc7857e54003debac094e4549ac83f0663b1565",
+        ".duckdb": "c6b2f358e7d4c8e0bb29d47c47db95e5553dbe07d9cfdf5db6ad6af91b7db3f0",
+        "-command.json": "7a72a727feb6ed38cd299940aa077668f9199db04091389bc7d5e4d206f118aa",
+        "-exit.json": "d2ce26a2d0ab23338062bc6eb18fa4a05f4a1686d3701ac48dc34f3ddefed807"
+      }
+    },
+    {
+      "label": "ordinary-container-02",
+      "counts": {
+        "tests": 11,
+        "passed": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 18.64042969699949,
+      "source_unchanged": true,
+      "command": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/ordinary-container-02.xml",
+        "--basetemp=/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/ordinary-container-02-fixtures",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::test_docker_codex_boundary_transforms_only_validated_sandbox",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::test_docker_grok_create_is_followed_by_attached_exact_container_start",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::test_docker_grok_create_rejects_untrusted_container_identity",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py::test_docker_codex_fallback_always_closes_its_separate_lease"
+      ],
+      "environment": {
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-gaps-20261007b:/home/barberb/lift_coding/.worktrees/schedule-datasets-20261007:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/ordinary-container-02.duckdb",
+        "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/supervisor-gaps-20261007b/ordinary-container-02-resources.json"
+      },
+      "artifacts_sha256": {
+        ".xml": "728b9554ce2ddec2602d52d44da1c54661f3fffd41fe30c04e8df56640aa7cb5",
+        ".log": "da1da640ad8c41a560bda2def5d44d98ba29f73d92c1799eb14d5d125398d380",
+        ".duckdb": "99d8b12302d7cf504af14f2bf09120b6d54fa8f0bf3fef92fbcf4beb44e6399d",
+        "-command.json": "c23f7f161e02d0b7dfd06dc76e5a8db0fb97539dd8f81aa441dc864761d8c5f0",
+        "-exit.json": "860a347c9f4703874ed100a4ce0edd6a7f76cbfbd5b65c2f1d20d8947d63b0d1"
+      }
+    }
+  ],
+  "failed_frozen_runs": [
+    {
+      "label": "cleanup-01",
+      "counts": {
+        "tests": 99,
+        "passed": 93,
+        "failures": 6,
+        "errors": 0,
+        "skipped": 0
+      },
+      "explanation": "Six recovery fixtures patched a removed capacity helper; removed the obsolete patch without changing production.",
+      "artifacts_sha256": {
+        ".xml": "a9594f8eb0e4787d94a22458332c50185005168edbcd39e2a2a8aefdd8b3890b",
+        ".log": "a3c423151298078c2ff036e78fe01f8d3973a85b88162f0ed69a64df19416840",
+        "-command.json": "fd00dc977a5f80724298e3f268048270c9191f2acba78c05af87e9ef6bd31b3e",
+        "-exit.json": "e6759329e9bf5b5bfef7cccdcf331aad0dc8e875123610c7b416370dd707a8fa"
+      }
+    },
+    {
+      "label": "routing-01",
+      "counts": {
+        "tests": 212,
+        "passed": 211,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "explanation": "Compatibility test called the route resolver without its required explicit default; fixture now requests the legacy route explicitly.",
+      "artifacts_sha256": {
+        ".xml": "66edb02b2b87bd72555f8eed8044c7ebc0e1b428c22dbbb6e5dfcb224ca80adb",
+        ".log": "1f53fe4fcec3b33c06b01c831b1092c39ffb49707481ec396de8306e618fca19",
+        "-command.json": "126b0f51d609877143a94bde1768592d8e30d965f679c2d87c895da7b10206c0",
+        "-exit.json": "d28dfac4548e96078a5ff0addd4b42cb89f48fc3fb63a812ad1a131108ea5afb"
+      }
+    },
+    {
+      "label": "ordinary-container-01",
+      "counts": {
+        "tests": 11,
+        "passed": 10,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "explanation": "Old path-substring assertion rejected its own fixture under /home; replaced with the exact mount-source allowlist.",
+      "artifacts_sha256": {
+        ".xml": "dbc567d8c620fadbb991e3585d48344c70319314d74b95aff93b064d3799257f",
+        ".log": "0e1013083f496007125a66bd84ae2f1bc85748788d39b8b83919616b12df972f",
+        "-command.json": "f8939fc946dfbc6cd889c47de02c3040b380573c640d2eea34d8d8335b18f7ed",
+        "-exit.json": "92ccf6a23f1531362bdf96d874c0f08365313c66b2d35f917ccf19ba4640ab66"
+      }
+    }
+  ],
+  "totals": {
+    "tests": 322,
+    "passed": 322,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "provider_calls": 0,
+  "docker_dispatches": 0,
+  "terminal_bench_score": null,
+  "qualification_limits": [
+    "Docker dispatch and absence are explicit doubles in protocol fixtures.",
+    "Native factory and four internal native CLI modes are unconditionally disabled.",
+    "Created-container recovery cannot start providers until the signed start contract is versioned.",
+    "No lifecycle-safe Docker STOP, protected launch, outer callback settlement, or claim-release qualification.",
+    "Retired broader callback fixtures remain blocked by missing exports and absent integration; they are not counted.",
+    "Local checks do not establish GitHub Actions success or qualify a different datasets/Kit dependency pin."
+  ]
+}
