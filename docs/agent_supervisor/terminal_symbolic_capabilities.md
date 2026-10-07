@@ -1487,3 +1487,13 @@ validation and publication. UNSAT and indeterminate solver outcomes remain
 residuals. The [qualification record](evidence/finite-schedule-20261007/README.md)
 distinguishes authored public indexing, native semantic validation and cleanup
 from unsupported calendar semantics, kernel proofs and benchmark rewards.
+
+## Reviewed spectral candidate (2026-10-07)
+
+The [dominant eigenpair operator](spectral_symbolic_operator.md) computes with a
+fixed numerical recipe and checks conditional adapter lemmas without provider
+calls. Explicit task/source and target-runtime bindings permit an inert native
+staging candidate. Finite numerical qualification is separate from performance:
+the retained local timing attempts failed consistent improvement over NumPy,
+so explicit Doctor selection remains residual and does not promote this
+candidate for the optimization benchmark. General planning remains unchanged.

@@ -1,0 +1,33 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/test
+configfile: pytest.ini
+collected 113 items
+
+test/api/test_spectral_eigen_kernel.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 29%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                     [ 46%][0m
+test/api/test_doctor_spectral_contract.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 73%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                                                                  [ 79%][0m
+test/api/test_spectral_symbolic_qualification.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m               [ 87%][0m
+test/api/test_terminal_spectral_dispatch.py [32m.[0m[32m.[0m[33m                           [ 89%][0m
+test/api/test_terminal_doctor_dispatch.py [32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                   [100%][0m
+
+[33m=============================== warnings summary ===============================[0m
+api/test_spectral_eigen_kernel.py::test_checker_rejects_infinite_residual_products
+  /home/barberb/.local/lib/python3.12/site-packages/numpy/core/numeric.py:2359: RuntimeWarning: invalid value encountered in multiply
+    y = y * ones_like(cond)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/spectral-integration-tests-02.xml -
+============================= slowest 10 durations =============================
+3.53s call     api/test_terminal_doctor_dispatch.py::test_real_automatic_dispatch_publishes_only_candidate_handoff
+1.24s call     api/test_terminal_doctor_dispatch.py::test_secret_guard_unavailability_retains_existing_signed_router_advisory
+0.92s call     api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[unsupported]
+0.90s call     api/test_terminal_doctor_dispatch.py::test_real_residual_retains_model_route_and_native_successors[missing_prover]
+0.89s setup    api/test_doctor_spectral_contract.py::test_target_not_selected_is_residual_without_host_inference
+0.73s setup    api/test_doctor_spectral_contract.py::test_affirmative_proof_needs_exact_scoped_current_unsat_population[analysis_hash]
+0.72s setup    api/test_doctor_spectral_contract.py::test_signed_but_unreviewed_source_or_output_is_residual[spectral_case2]
+0.71s setup    api/test_doctor_spectral_contract.py::test_actual_target_checks_and_smt_only_prepare_validation_candidate
+0.70s setup    api/test_doctor_spectral_contract.py::test_unavailable_target_or_unverified_lemma_has_no_fallback[target]
+0.70s setup    api/test_doctor_spectral_contract.py::test_affirmative_probe_binding_or_authority_tamper_refuses_handoff[target_probe_sha256-1111111111111111111111111111111111111111111111111111111111111111]
+[33m================== [32m113 passed[0m, [33m[1m1 warning[0m[33m in 77.05s (0:01:17)[0m[33m ===================[0m

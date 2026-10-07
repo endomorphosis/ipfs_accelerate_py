@@ -1,0 +1,94 @@
+{
+  "backend": "scipy_dgeev",
+  "checkout": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007",
+  "created_utc": "2026-10-07T12:42:57.298538+00:00",
+  "emitted_candidate_sha256": "55d937a8bcb1d38c7825fda7da2366865bf833d613b5075ebc59c9108364c83b",
+  "ephemeral_fixture_record": {
+    "reason": "The pytest temporary result.json was unavailable when sealing this receipt; no fixture report digest or version readback is asserted. Qualification is supported by source-bound passing tests and retained log.",
+    "retained": false
+  },
+  "focused_tests": {
+    "command": "PYTHONHASHSEED=0 PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007:/home/barberb/lift_coding/.worktrees/ir-supervisor-contracts-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages /home/barberb/.local/bin/python -B -m pytest -q -o addopts= -p no:cacheprovider test/api/test_doctor_spectral_contract.py",
+    "duration_seconds": 42.44,
+    "exit_code": 0,
+    "failed": 0,
+    "log": {
+      "bytes": 63950,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/doctor-spectral-contract-tests-02.log",
+      "sha256": "8d02bd082478b5b77557c9858ea5468a024a13e21372e3d410d7c4f1eddc12ec"
+    },
+    "passed": 37,
+    "skipped": 0
+  },
+  "implementation_boundary": {
+    "benchmark_replacement_qualified": false,
+    "candidate_only": true,
+    "completion_authority": false,
+    "kernel_proved": false,
+    "model_calls": 0,
+    "new_container_launches": 0,
+    "official_target_dependency_qualified": false,
+    "performance_qualified": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "publication_authority": false,
+    "source_commits": 0,
+    "whole_program_proved": false
+  },
+  "known_limits": [
+    "Candidate requires SciPy explicitly; local isolated Python qualification does not qualify official Python3.13/NumPy2.3 task interpreter.",
+    "Local measured recipe is slower than public NumPy for n>1; no task completion or speed improvement claim.",
+    "General and default planning retained; absent target/profile/affirmative bounded reports yields explicit residual, no hidden LLM fallback."
+  ],
+  "owned_source_and_test": [
+    {
+      "bytes": 14021,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/ipfs_accelerate_py/agent_supervisor/runtime/doctor_spectral_contract.py",
+      "sha256": "119c8556e291bd179627f12d0b36950382b624ee5e6f400d35903d1d29c3ae3c"
+    },
+    {
+      "bytes": 18785,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/test/api/test_doctor_spectral_contract.py",
+      "sha256": "393c89c19e5408bc0f96150930fe5460d76ca49b433eba385afec00e6d389ec5"
+    }
+  ],
+  "prior_test_attempt": {
+    "duration_seconds": 35.98,
+    "exit_code": 1,
+    "failed": 2,
+    "failure_scope": "Two authored test snapshots tried deepcopy on immutable mappingproxy; native immutable snapshot capture corrected in tests.",
+    "log": {
+      "bytes": 47161,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-spectral-symbolic-20261007/doctor-spectral-contract-tests-01.log",
+      "sha256": "f85f421758d42753c94a33662b89bb4929d930daabd58919559fda30881d1300"
+    },
+    "passed": 22
+  },
+  "profile": "dominant-eigenpair-f64-small@1",
+  "qualification_scope": [
+    "Authored native TaskIR/admission/Intent fixture only; no hidden evaluation, private provider body or official benchmark execution.",
+    "Real trusted target interpreter -I executes fixed 22 authored numerical fixtures; not an arbitrary source runner.",
+    "Actual SMT report proves exactly 13 conditional ideal-algebra lemmas; no IEEE, LAPACK, Python implementation, kernel, whole-program or timing proof.",
+    "Actual staged candidate materializer writes to allocated detached worktree; signed canonical sources and task revision remain unchanged.",
+    "Forged probe/executable/source/analysis hashes, missing or changed lemma sets, authority fields and pre-handoff state/report drift fail closed."
+  ],
+  "schema": "doctor-spectral-contract-offline-qualification@1",
+  "status": "focused_tests_passed_candidate_only",
+  "trusted_operator_source_bindings": [
+    {
+      "bytes": 16687,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/ipfs_accelerate_py/agent_supervisor/runtime/spectral_eigen_kernel.py",
+      "sha256": "a63e2b74a1923ea26493e2cc26d45c1c08da1c2f1423f141fd2933585b257105"
+    },
+    {
+      "bytes": 8904,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/ipfs_accelerate_py/agent_supervisor/runtime/spectral_target_qualification.py",
+      "sha256": "b0516c2f0db2d8f12f3d5d06fc788c299881e67bd120fe631b82b7d8e826dabe"
+    },
+    {
+      "bytes": 3817,
+      "path": "/home/barberb/lift_coding_worktrees/terminal-spectral-symbolic-20261007/ipfs_accelerate_py/agent_supervisor/analysis/spectral_kernel_proof.py",
+      "sha256": "529835978f49d57bd7234925c1dbe2da159c49ebf3edeca9ebbe8326ded11a32"
+    }
+  ]
+}

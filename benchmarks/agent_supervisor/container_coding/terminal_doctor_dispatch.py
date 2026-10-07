@@ -88,7 +88,8 @@ def _publish_handoff(*, repository: Path, result: dict) -> Path:
 
 def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
                                     admission: dict, task_cid: str,
-                                    contract_profile: str | None = None) -> dict:
+                                    contract_profile: str | None = None,
+                                    target_interpreter: Path | None = None) -> dict:
     """Select from real diagnostics/AST and run native gates without model calls.
 
     Must run while the intent database is file-backed, before the native owner
@@ -104,8 +105,11 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
         raise ValueError("Doctor dispatch requires exact admitted repository and external state")
     if [task.task_cid for task in verified["graph"].tasks] != [task_cid]:
         raise ValueError("Doctor dispatch requires the single admitted benchmark task")
-    if contract_profile not in {None, "wsgi-header-controls@1"}:
+    from ipfs_accelerate_py.agent_supervisor.runtime.doctor_spectral_contract import PROFILE as SPECTRAL_PROFILE
+    if contract_profile not in {None, "wsgi-header-controls@1", SPECTRAL_PROFILE}:
         raise ValueError("unknown reviewed local contract profile")
+    if target_interpreter is not None and contract_profile != SPECTRAL_PROFILE:
+        raise ValueError("target interpreter requires the explicit spectral profile")
     contract_result = None
     from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import decode_intent_requirement_contract
     requirements = (decode_intent_requirement_contract(verified["manifest"])
@@ -113,7 +117,7 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
     if requirements is not None and requirements.get("schema") in {
             "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}:
         if contract_profile is not None:
-            raise ValueError("signed finite data selector conflicts with a header contract profile")
+            raise ValueError("signed finite data selector conflicts with an explicit contract profile")
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_data_contract import (
             prepare_ndjson_contract_candidate, prepare_interval_schedule_candidate,
         )
@@ -140,6 +144,32 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
             task_spec=verified["manifest"]["tasks"][0], doctor_result=contract_result,
             prover_paths={"lean": None, "z3": None})
         return dispatch
+    if contract_profile == SPECTRAL_PROFILE:
+        from ipfs_accelerate_py.agent_supervisor.runtime.doctor_spectral_contract import prepare_spectral_kernel_candidate
+        workflow_state = state / "doctor-spectral-workflow"
+        with IntentRepository(state / "intent.duckdb", install_schema=False) as intent:
+            contract_result = prepare_spectral_kernel_candidate(repository=repository, admission=admission,
+                intent=intent, task_cid=task_cid, state=workflow_state,
+                profile=contract_profile, target_interpreter=target_interpreter)
+        # This reviewed recipe supplies numerical-validation candidates. Its
+        # measured speed has not qualified it for the optimization benchmark.
+        # Retain the inert nested artifact, but do not select it for execution.
+        reasons = contract_result["reason_codes"]
+        if contract_result["status"] == "candidate_ready":
+            reasons = ["spectral_performance_unqualified"]
+        return {"schema": "terminal-doctor-dispatch@1", "status": "residual",
+            "task_cid": task_cid, "route": "model_router", "provider_calls": 0,
+            "analysis_status": "available", "completion_authority": False,
+            "publication_authority": False, "reason_codes": reasons,
+            "residual_successors": 0, "residual_work_proposals": 0,
+            "contract_workflow": contract_result,
+            "result_artifact": str(workflow_state / "result.json"),
+            "spectral_capabilities": {"schema": "terminal-spectral-capabilities@1",
+                "profile": SPECTRAL_PROFILE,
+                "finite_numerical_checks_qualified": contract_result["status"] == "candidate_ready",
+                "conditional_adapter_lemmas_verified": contract_result.get("conditional_algebra", {}).get("all_lemmas_verified") is True,
+                "performance_qualified": False, "benchmark_route_promoted": False,
+                "kernel_proved": False, "completion_authority": False}}
     solver, kernel = _installed_provers()
     if contract_profile is not None:
         from ipfs_accelerate_py.agent_supervisor.analysis.doctor_header_contracts import WsgiHeaderProtocolContract
