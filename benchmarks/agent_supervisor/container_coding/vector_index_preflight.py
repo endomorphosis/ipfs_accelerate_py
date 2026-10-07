@@ -66,7 +66,7 @@ def qualify(repository: Path, output: Path, paths: list[str], query: str) -> dic
         values = [words[term] * weights[term] for term in vocabulary]
         norm = math.sqrt(sum(value * value for value in values))
         if not norm:
-            raise ValueError("query has no vocabulary terms")
+            return [0.0 for _ in values]
         return [value / norm for value in values]
 
     scope = content_identity({"schema": "permitted-vector-inputs@1", "sources": inventory})

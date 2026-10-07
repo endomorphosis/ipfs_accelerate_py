@@ -129,7 +129,7 @@ def _require_single_task_context(prepared):
 def _planning_strategy(contract):
     if contract is None:
         return "direct"
-    if contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4"}:
+    if contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}:
         return "intent_symbolic"
     return "intent_coverage"
 

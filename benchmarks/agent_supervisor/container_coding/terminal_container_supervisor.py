@@ -809,7 +809,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     # requirements. A signed data selector must not inherit the
                     # legacy header fixture's implicit contract nomination.
                     requirements = decode_intent_requirement_contract(verified["manifest"])
-                    if requirements["schema"] == "intent-plan-requirement-contract@4":
+                    if requirements["schema"] in {"intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}:
                         contract_profile = None
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
                     admission=admission, task_cid=task.task_cid,

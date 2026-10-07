@@ -52,7 +52,7 @@ def _vector(text, vocabulary, weights):
     values = [words[term] * weights[term] for term in vocabulary]
     norm = math.sqrt(sum(value * value for value in values))
     if not norm:
-        raise RetrievalRefreshUnavailable("query_has_no_vocabulary_terms")
+        return tuple(0.0 for _ in values)
     return tuple(value / norm for value in values)
 
 

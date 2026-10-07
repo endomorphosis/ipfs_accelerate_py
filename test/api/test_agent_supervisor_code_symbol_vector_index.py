@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index impor
     build_code_symbol_vector_index,
     search_code_symbol_vector_index,
     resolve_code_symbol_ast_facts,
+    validate_code_vector_search_result,
 )
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     build_python_ast_blob_record,
@@ -163,6 +164,67 @@ def test_dimension_normalization_and_incomplete_results_fail_closed() -> None:
     query = CodeVectorQuery.for_snapshot(index, query_vector=(0.0, 1.0))
     with pytest.raises(CodeSymbolVectorIndexIntegrityError, match="incomplete"):
         CodeVectorSearchResult(query, index.index_id, (), complete=False)
+
+
+@pytest.mark.parametrize("zero", [(0.0, 0.0), (-0.0, 0.0)])
+def test_zero_cosine_query_has_complete_replayable_empty_nominations(zero) -> None:
+    index = _index()
+    result = index.search(zero, max_results=1)
+    assert len(index.rows) == 2
+    assert result.hits == () and result.complete is True
+    assert result.searched_row_count == len(index.rows)
+    assert result.query.query_vector == (0.0, 0.0)
+    assert result.query.max_results == 1
+    assert result.query.semantic_authority is result.semantic_authority is False
+    restored = CodeVectorSearchResult.from_dict(result.to_dict())
+    assert restored == result
+    assert search_code_symbol_vector_index(index, restored.query) == restored
+    assert validate_code_vector_search_result(index, restored) == restored
+
+
+def test_zero_query_cannot_forge_hits_row_coverage_or_authority() -> None:
+    index = _index()
+    result = index.search((0.0, 0.0))
+    hit = replace(index.search((1.0, 0.0)).hits[0], query_id=result.query.query_id, score=0.0)
+    forged = replace(result, hits=(hit,))
+    with pytest.raises(CodeSymbolVectorIndexIntegrityError, match="zero cosine query"):
+        validate_code_vector_search_result(index, CodeVectorSearchResult.from_dict(forged.to_dict()))
+    with pytest.raises(CodeSymbolVectorIndexIntegrityError, match="incomplete"):
+        validate_code_vector_search_result(index, replace(result, searched_row_count=0))
+    poisoned = result.to_dict()
+    poisoned["semantic_authority"] = True
+    with pytest.raises(CodeSymbolVectorIndexIntegrityError, match="semantic authority"):
+        CodeVectorSearchResult.from_dict(poisoned)
+    poisoned = result.to_dict()
+    poisoned["query"]["semantic_authority"] = True
+    with pytest.raises(CodeSymbolVectorIndexIntegrityError, match="semantic authority"):
+        CodeVectorSearchResult.from_dict(poisoned)
+
+
+@pytest.mark.parametrize("field,value", [("tree_id", "tree:stale"),
+    ("index_id", "index:stale"), ("config_id", "config:stale"), ("forest_id", "forest:stale")])
+def test_zero_query_still_rejects_stale_roots(field, value) -> None:
+    index = _index()
+    query = CodeVectorQuery.for_snapshot(index, query_vector=(0.0, 0.0))
+    with pytest.raises(CodeSymbolVectorIndexStaleError, match="roots"):
+        search_code_symbol_vector_index(index, replace(query, **{field: value}))
+
+
+@pytest.mark.parametrize("vector", [(2.0, 0.0), (1e-300, 0.0), (0.5, 0.5)])
+def test_zero_query_exception_does_not_relax_nonzero_normalization(vector) -> None:
+    with pytest.raises(CodeSymbolVectorIndexError, match="l2 normalization"):
+        _index().search(vector)
+
+
+@pytest.mark.parametrize("vector", [(0.0,), (float("nan"), 0.0), (float("inf"), 0.0)])
+def test_zero_query_exception_does_not_relax_query_shape_or_finiteness(vector) -> None:
+    with pytest.raises(CodeSymbolVectorIndexError):
+        _index().search(vector)
+
+
+def test_zero_query_exception_does_not_admit_zero_row_embeddings() -> None:
+    with pytest.raises(CodeSymbolVectorIndexError, match="l2 normalization"):
+        _index(vectors=lambda row: (0.0, 0.0))
 
 
 def test_forged_rows_bodies_and_snapshot_identity_are_rejected() -> None:

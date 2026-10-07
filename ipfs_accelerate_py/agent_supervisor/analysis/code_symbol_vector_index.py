@@ -1123,6 +1123,14 @@ def search_code_symbol_vector_index(snapshot: CodeVectorIndexSnapshot | Mapping[
         query = CodeVectorQuery(query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric, query.query_vector, max_results)
     if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
         raise CodeSymbolVectorIndexStaleError("code vector query roots/configuration do not match the current snapshot")
+    # A zero cosine query has no direction (for example, a lexical query with
+    # no indexed vocabulary). It nominates no rows. Keep it replayable against
+    # the complete snapshot without inventing zero-score nearest neighbours.
+    # This exception applies only to the query; indexed row normalization and
+    # all nonzero query normalization checks remain unchanged.
+    if snapshot.config.metric == "cosine" and not any(query.query_vector):
+        return validate_code_vector_search_result(snapshot, CodeVectorSearchResult(
+            query, snapshot.index_id, (), complete=True, searched_row_count=len(snapshot.rows)))
     if snapshot.config.normalization == "l2" and not _is_l2_normalized(query.query_vector):
         raise CodeSymbolVectorIndexError("query vector violates configured l2 normalization")
     ranked = sorted(((_score(snapshot.config.metric, query.query_vector, row.embedding), row) for row in snapshot.rows), key=lambda item: (-item[0], item[1].path, item[1].qualified_symbol, item[1].row_id))
@@ -1150,6 +1158,8 @@ def validate_code_vector_search_result(
         raise CodeSymbolVectorIndexStaleError("code vector result roots/configuration do not match the current snapshot")
     if result.index_id != snapshot.index_id or result.complete is not True or result.searched_row_count != len(snapshot.rows):
         raise CodeSymbolVectorIndexIntegrityError("incomplete or stale code vector result")
+    if query.metric == "cosine" and not any(query.query_vector) and result.hits:
+        raise CodeSymbolVectorIndexIntegrityError("zero cosine query cannot nominate vector hits")
     current = {row.row_id for row in snapshot.rows}
     if len({hit.row_id for hit in result.hits}) != len(result.hits) or any(hit.row_id not in current for hit in result.hits):
         raise CodeSymbolVectorIndexIntegrityError("code vector result contains a row absent from the exact snapshot")

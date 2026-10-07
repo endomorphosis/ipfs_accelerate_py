@@ -145,7 +145,7 @@ def load_intent_requirements_for_instruction(path: Path | None, instruction: Pat
 
 
 def _intent_selection(contract: dict | None) -> dict:
-    strategy = ("intent_symbolic" if contract is not None and contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4"}
+    strategy = ("intent_symbolic" if contract is not None and contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3", "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}
                 else "intent_coverage" if contract is not None else "direct")
     result = {"planning_strategy": strategy,
               "intent_requirement_contract_cid": None, "intent_requirement_contract_sha256": None}

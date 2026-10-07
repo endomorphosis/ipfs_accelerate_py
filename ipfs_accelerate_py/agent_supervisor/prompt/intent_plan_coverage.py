@@ -19,9 +19,10 @@ INTENT_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@1"
 INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@2"
 INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@3"
 INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@4"
+INTENT_SCHEDULE_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@5"
 INTENT_SYMBOLIC_CONTRACT_SCHEMAS = frozenset({
     INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA,
-    INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA,
+    INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA, INTENT_SCHEDULE_REQUIREMENT_CONTRACT_SCHEMA,
 })
 INTENT_PLAN_PROPOSAL_SCHEMA = "intent-plan-proposal@1"
 INTENT_PLAN_PROVIDER_REQUEST_SCHEMA = "intent-plan-provider-request@1"
@@ -171,6 +172,8 @@ def validate_intent_requirement_contract(
         keys.add("source_applicability")
     if value.get("schema") == INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA:
         keys.add("reviewed_data_transform")
+    if value.get("schema") == INTENT_SCHEDULE_REQUIREMENT_CONTRACT_SCHEMA:
+        keys.add("reviewed_interval_schedule")
     _object(value, keys, "intent contract")
     if value["schema"] not in {INTENT_REQUIREMENT_CONTRACT_SCHEMA, *INTENT_SYMBOLIC_CONTRACT_SCHEMAS}:
         raise IntentPlanCoverageError("unsupported intent contract schema")
@@ -246,6 +249,10 @@ def validate_intent_requirement_contract(
         from ..planning.intent_data_transform import validate_reviewed_data_transform
         value["reviewed_data_transform"] = validate_reviewed_data_transform(
             value["reviewed_data_transform"], operations=value["symbolic_operations"]["operations"])
+    if value["schema"] == INTENT_SCHEDULE_REQUIREMENT_CONTRACT_SCHEMA:
+        from ..planning.intent_interval_schedule import validate_reviewed_interval_schedule
+        value["reviewed_interval_schedule"] = validate_reviewed_interval_schedule(
+            value["reviewed_interval_schedule"], operations=value["symbolic_operations"]["operations"])
     return value
 
 
@@ -254,6 +261,7 @@ def build_intent_requirement_contract(
     source_text: str | None = None,
     symbolic_operations: Mapping[str, Any] | None = None,
     reviewed_data_transform: Mapping[str, Any] | None = None,
+    reviewed_interval_schedule: Mapping[str, Any] | None = None,
 ) -> dict:
     """Build a contract from already authored groundings; no effects are inferred."""
     contract = {
@@ -268,6 +276,13 @@ def build_intent_requirement_contract(
             raise IntentPlanCoverageError("reviewed data transformation requires explicit symbolic operations")
         contract.update(schema=INTENT_DATA_REQUIREMENT_CONTRACT_SCHEMA,
                         reviewed_data_transform=reviewed_data_transform)
+    if reviewed_interval_schedule is not None:
+        if reviewed_data_transform is not None:
+            raise IntentPlanCoverageError("reviewed operation selectors are mutually exclusive")
+        if symbolic_operations is None:
+            raise IntentPlanCoverageError("reviewed interval scheduling requires explicit symbolic operations")
+        contract.update(schema=INTENT_SCHEDULE_REQUIREMENT_CONTRACT_SCHEMA,
+                        reviewed_interval_schedule=reviewed_interval_schedule)
     return validate_intent_requirement_contract(contract, source_text=source_text)
 
 

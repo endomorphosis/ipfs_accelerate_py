@@ -39,6 +39,9 @@ _REASONS = frozenset({
     "doctor_task_data_contract_unavailable",
     "finite_data_source_outside_reviewed_profile",
     "finite_data_output_parent_unavailable",
+    "finite_schedule_source_outside_reviewed_profile", "finite_schedule_output_parent_unavailable",
+    *("finite_schedule_solver_" + status for status in
+      ("unsat", "unknown", "timeout", "unavailable", "cancelled", "error")),
 })
 _SUPPORT = {
     ".supervisor-instruction.md": "instruction",
@@ -194,7 +197,8 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
     _require(contract_profile in {None, "wsgi-header-controls@1"}
              and doctor_result.get("task_cid") == task_cid)
     header = doctor_result.get("schema") == "supervisor-header-contract-workflow@1"
-    data = doctor_result.get("schema") == "supervisor-finite-data-contract-workflow@1"
+    schedule = doctor_result.get("schema") == "supervisor-finite-schedule-contract-workflow@1"
+    data = schedule or doctor_result.get("schema") == "supervisor-finite-data-contract-workflow@1"
     _require(header or data or doctor_result.get("schema") == "supervisor-doctor-task-preparation@1")
     analysis = doctor_result.get("analysis", {}) if header or data else doctor_result
     _bounded_mapping(analysis, 64)
@@ -203,7 +207,10 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
         _require(contract_profile == "wsgi-header-controls@1")
     if data:
         _require(contract_profile is None and doctor_result.get("kernel_proved") is False
-                 and doctor_result.get("evidence_kind") == "finite_record_check")
+                 and doctor_result.get("evidence_kind") == ("finite_schedule_check" if schedule else "finite_record_check"))
+        if schedule:
+            _require(doctor_result.get("solver_status", "not_reported") in {
+                "sat", "unsat", "unknown", "timeout", "unavailable", "cancelled", "error", "not_reported"})
     status = doctor_result.get("status")
     _require(status in {"residual", "prepared", "candidate_ready"})
     reasons = doctor_result.get("reason_codes", [])
@@ -241,7 +248,8 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
                  and all(check.get(key) is False for key in (
                      "proof_authority", "publication_authority", "completion_authority")))
     operator = doctor_result.get("operator")
-    selected_workflow = ("reviewed_header_guard" if header else "reviewed_finite_record_projection" if data else
+    selected_workflow = ("reviewed_header_guard" if header else
+        "reviewed_finite_interval_schedule" if schedule else "reviewed_finite_record_projection" if data else
         "not_reported" if operator is None else
         _GENERIC_WORKFLOWS.get(operator, "unrecognized") if type(operator) is str else "unrecognized")
     named_structural = all(type(row) is dict and row.get("validation_key") in {
@@ -278,12 +286,12 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
                 else "not_established_by_this_observation"},
         "contracts": {"requested_profile": contract_profile,
             "selected_profile": "wsgi-header-controls@1" if header else
-                "finite-ndjson-field-projection@1" if data else None,
+                "finite-integer-interval-schedule@1" if schedule else "finite-ndjson-field-projection@1" if data else None,
             "named_structural_check": named_structural, "validation_semantics_verified": False,
             "validation_scope": "named_structural_check_not_verified" if named_structural else "not_classified",
             "validation_count": len(validations), "checks_executed_by_assessment": False,
             "task_behavior_contract": "reviewed_local_header_contract" if header
-                else "reviewed_finite_data_contract" if data else "not_selected",
+                else "reviewed_finite_schedule_contract" if schedule else "reviewed_finite_data_contract" if data else "not_selected",
             "whole_task_behavior_verified": False},
         "operators": {"selected_workflow": selected_workflow,
             "supported_generic_workflows": sorted(_GENERIC_WORKFLOWS.values()),
@@ -307,9 +315,12 @@ def assess_terminal_symbolic_capabilities(*, manifest: Mapping, task_cid: str,
         "execution_authority": False, "publication_authority": False, "completion_authority": False,
     }
     if data:
-        result["finite_data_check"] = {"reported": finite_checked,
-            "scope": "exact_signed_finite_record_correspondence",
+        result["finite_schedule_check" if schedule else "finite_data_check"] = {"reported": finite_checked,
+            "scope": "exact_signed_finite_schedule_feasibility" if schedule else "exact_signed_finite_record_correspondence",
             "kernel_proof": False, "independently_reverified_by_assessment": False}
+    if schedule:
+        result["finite_schedule_check"]["solver_status"] = doctor_result.get("solver_status", "not_reported")
+        result["finite_schedule_check"]["optimality_verified"] = False
     result["observation_sha256"] = hashlib.sha256(_wire(result)).hexdigest()
     _require(len(_wire(result)) <= MAX_REPORT_BYTES)
     return result

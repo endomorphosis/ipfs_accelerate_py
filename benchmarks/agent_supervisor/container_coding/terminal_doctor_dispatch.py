@@ -110,13 +110,19 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
     from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import decode_intent_requirement_contract
     requirements = (decode_intent_requirement_contract(verified["manifest"])
                     if "intent_requirements" in verified["manifest"] else None)
-    if requirements is not None and requirements.get("schema") == "intent-plan-requirement-contract@4":
+    if requirements is not None and requirements.get("schema") in {
+            "intent-plan-requirement-contract@4", "intent-plan-requirement-contract@5"}:
         if contract_profile is not None:
             raise ValueError("signed finite data selector conflicts with a header contract profile")
-        from ipfs_accelerate_py.agent_supervisor.runtime.doctor_data_contract import prepare_ndjson_contract_candidate
+        from ipfs_accelerate_py.agent_supervisor.runtime.doctor_data_contract import (
+            prepare_ndjson_contract_candidate, prepare_interval_schedule_candidate,
+        )
+        schedule = requirements["schema"] == "intent-plan-requirement-contract@5"
+        workflow = prepare_interval_schedule_candidate if schedule else prepare_ndjson_contract_candidate
+        workflow_state = state / ("doctor-schedule-workflow" if schedule else "doctor-data-workflow")
         with IntentRepository(state / "intent.duckdb", install_schema=False) as intent:
-            contract_result = prepare_ndjson_contract_candidate(repository=repository, admission=admission,
-                intent=intent, task_cid=task_cid, state=state / "doctor-data-workflow")
+            contract_result = workflow(repository=repository, admission=admission,
+                intent=intent, task_cid=task_cid, state=workflow_state)
         # The exact data checker can supply a candidate or a bounded residual;
         # the Python-only transaction adds no coverage for this signed contract.
         dispatch = {"schema": "terminal-doctor-dispatch@1", "status": contract_result["status"],
@@ -125,7 +131,7 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
             "publication_authority": False, "reason_codes": contract_result["reason_codes"],
             "residual_successors": 0, "residual_work_proposals": 0,
             "contract_workflow": contract_result,
-            "result_artifact": str(state / "doctor-data-workflow/result.json")}
+            "result_artifact": str(workflow_state / "result.json")}
         if contract_result["status"] == "candidate_ready":
             dispatch.update(route="doctor_contract_candidate", artifact=contract_result["artifact"],
                             sha256=contract_result["sha256"])
