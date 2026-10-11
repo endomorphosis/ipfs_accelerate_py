@@ -9,6 +9,7 @@ input metadata after the same current source and workspace checks.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 import hashlib
 import json
 import os
@@ -17,9 +18,125 @@ import subprocess
 import sys
 import time
 import uuid
+from typing import Callable
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
+MAX_MODEL_PROMPT_BYTES = 256_000
 GROK_PROGRESS_PREFIX = "IPFS_GROK_PROGRESS "
+
+
+@dataclass(frozen=True)
+class PromptTokenCounter:
+    """Owner-bound offline tokenizer; remote tokenizer equivalence is not implied."""
+
+    provider: str
+    model: str
+    tokenizer_id: str
+    tokenizer_revision: str
+    special_token_policy: str
+    count_tokens: Callable[[str], int] = field(repr=False, compare=False)
+
+    def __post_init__(self):
+        for name, value in self.binding().items():
+            if type(value) is not str or not value.strip() or value != value.strip():
+                raise ValueError(f"explicit {name} token-counter binding required")
+        if not callable(self.count_tokens):
+            raise ValueError("token counter requires a callable")
+
+    def binding(self) -> dict:
+        return {name: getattr(self, name) for name in (
+            "provider", "model", "tokenizer_id", "tokenizer_revision", "special_token_policy")}
+
+    def count(self, prompt: str) -> int:
+        count = self.count_tokens(prompt)
+        if type(count) is not int or count < 1:
+            raise ValueError("token counter must return a positive untruncated token count")
+        return count
+
+
+def select_model_prompt(*, native_complete_prompt: str, candidate_complete_prompt: str | None,
+                        provider: str, model: str, token_counter: PromptTokenCounter | None,
+                        max_input_tokens: int | None = None,
+                        native_output_schema: dict | None = None,
+                        semantic_complete_prompt: str | None = None,
+                        candidate_representation: str = "semantic") -> tuple[str, dict]:
+    """Compare complete rendered alternatives without dropping required text.
+
+    Callers verify candidate restoration/freshness and render all workspace,
+    task, dictionary and reply instructions before selection. The declared
+    tokenizer counts each complete user prompt and the separate native output
+    schema. Hidden provider instructions, tool definitions, chat framing and
+    subsequent turns remain outside this local budget and its measurements.
+    """
+    if max_input_tokens is not None and (type(max_input_tokens) is not int or max_input_tokens < 1):
+        raise ValueError("complete prompt token budget must be a positive integer")
+    if token_counter is not None and (not isinstance(token_counter, PromptTokenCounter)
+            or token_counter.provider != provider or token_counter.model != model):
+        raise ValueError("token counter differs from the pinned provider/model")
+    if candidate_representation not in {"semantic", "semantic_metadata"}:
+        raise ValueError("unsupported prompt candidate representation")
+    rendered = {"native": native_complete_prompt}
+    if semantic_complete_prompt is not None:
+        if candidate_representation != "semantic_metadata":
+            raise ValueError("a separate semantic baseline requires a metadata candidate")
+        rendered["semantic"] = semantic_complete_prompt
+    if candidate_complete_prompt is not None:
+        rendered[candidate_representation] = candidate_complete_prompt
+    candidates = {}
+    for name, text in rendered.items():
+        if type(text) is not str or not text.strip():
+            raise ValueError("complete prompt must be nonempty literal text")
+        raw = text.encode("utf-8")
+        candidates[name] = {"model_prompt_sha256": hashlib.sha256(raw).hexdigest(),
+                            "model_prompt_bytes": len(raw), "content_tokens": None,
+                            "input_tokens": None}
+    schema_text = (json.dumps(native_output_schema, sort_keys=True, separators=(",", ":"),
+                              ensure_ascii=False, allow_nan=False)
+                   if native_output_schema is not None else None)
+    if schema_text is not None and len(schema_text.encode()) > MAX_MODEL_PROMPT_BYTES:
+        raise ValueError("native output schema exceeds its byte bound")
+    schema_tokens = None
+    status, error_type = "unavailable", None
+    if token_counter is not None:
+        try:
+            counts = {name: token_counter.count(text) for name, text in rendered.items()}
+            schema_tokens = token_counter.count(schema_text) if schema_text is not None else 0
+        except Exception as error:
+            status = "failed"
+            error_type = type(error).__name__ if type(error).__name__ in RUNNER_FAILURE_TYPES else "other"
+        else:
+            status = "measured"
+            for name, count in counts.items():
+                candidates[name].update(content_tokens=count, input_tokens=count + schema_tokens)
+    if max_input_tokens is not None and status != "measured":
+        raise ValueError("complete prompt token budget requires a working pinned local counter")
+    selected, reason = "native", "semantic_not_requested"
+    if candidate_complete_prompt is not None:
+        reason = "native_not_larger" if status == "measured" else "tokenizer_" + status
+        if status == "measured":
+            for name, candidate in candidates.items():
+                if (candidate["input_tokens"] < candidates[selected]["input_tokens"]
+                        and candidate["model_prompt_bytes"] <= MAX_MODEL_PROMPT_BYTES):
+                    selected, reason = name, "candidate_strictly_fewer_content_tokens"
+    chosen = candidates[selected]
+    if chosen["model_prompt_bytes"] > MAX_MODEL_PROMPT_BYTES:
+        raise ValueError("model prompt with all required instructions exceeds its byte bound")
+    if max_input_tokens is not None and chosen["input_tokens"] > max_input_tokens:
+        raise ValueError("model prompt with all required instructions exceeds its token budget")
+    receipt = {
+        "schema": "supervisor-model-prompt-selection@1", "selected_representation": selected,
+        "selection_reason": reason, "candidates": candidates, "measurement_status": status,
+        "measurement_error_type": error_type,
+        "tokenizer_binding": token_counter.binding() if token_counter is not None else None,
+        "count_scope": "rendered_user_prompt_and_separate_native_output_schema",
+        "native_output_schema_tokens": schema_tokens,
+        "native_output_schema_sha256": hashlib.sha256(schema_text.encode()).hexdigest() if schema_text else None,
+        "selected_content_tokens": chosen["content_tokens"], "selected_input_tokens": chosen["input_tokens"],
+        "max_input_tokens": max_input_tokens, "max_prompt_bytes": MAX_MODEL_PROMPT_BYTES,
+        "provider_framing_measured": False, "provider_tokenizer_equivalence_verified": False,
+        "total_session_token_savings": None, "completion_authority": False,
+    }
+    return rendered[selected], receipt
 
 
 def _grok_progress_emitter(invocation_id: str):
@@ -56,6 +173,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "semantic_metadata_view",
     "semantic_metadata_census",
+    "prompt_tokenizer", "prompt_selection",
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
     "semantic_response_decode", "coding_reply_validation", "unclassified",
@@ -73,6 +191,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py",
     "semantic_metadata_census.py",
+    "local_prompt_tokenizer.py",
 })
 
 
@@ -218,7 +337,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
-        public_instruction_task_cid: str = "", budget_profile: str | None = None) -> tuple[str, dict]:
+        public_instruction_task_cid: str = "", budget_profile: str | None = None,
+        prompt_token_counter: PromptTokenCounter | None = None,
+        prompt_tokenizer_artifact: Path | None = None, prompt_tokenizer_sha256: str = "",
+        max_input_tokens: int | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
@@ -255,6 +377,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("metadata census requires the explicit common-bindings coding view")
     if not prompt.strip() or len(prompt.encode()) > 256_000:
         raise ValueError("implementation prompt exceeds its byte bound")
+    failure_phase = "prompt_tokenizer"
+    tokenizer_source = None
+    if type(prompt_tokenizer_sha256) is not str:
+        raise ValueError("exact local tokenizer artifact binding required")
+    if prompt_tokenizer_artifact is not None or prompt_tokenizer_sha256:
+        if prompt_tokenizer_artifact is None or not prompt_tokenizer_sha256:
+            raise ValueError("exact local tokenizer artifact binding required")
+        if prompt_token_counter is not None:
+            raise ValueError("choose one owner token-counter binding")
+        from .local_prompt_tokenizer import load_owner_prompt_tokenizer
+        local = load_owner_prompt_tokenizer(artifact=prompt_tokenizer_artifact,
+            expected_sha256=prompt_tokenizer_sha256, provider=provider, model=model)
+        prompt_token_counter = PromptTokenCounter(**local.binding(), count_tokens=local.count)
+        tokenizer_source = local.provenance()
     failure_phase = "planning_contract"
     response_format = None
     task_contract = None
@@ -294,6 +430,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     residual_receipt = None
     residual_advisory = ""
     router_prompt = prompt
+    required_suffix = ""
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -323,6 +460,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
             repository=semantic_repository, task_cid=doctor_residual_task_cid, prompt=prompt, workspace=root)
         router_prompt += residual_advisory
+        required_suffix += residual_advisory
     failure_phase = "public_instruction"
     instruction_receipt = None
     instruction_args = (public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid)
@@ -337,6 +475,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         # Preserve the literal requirements after semantic encoding. Native
         # capsule identity remains the stdin identity, not this projection.
         router_prompt += instruction
+        required_suffix += instruction
     failure_phase = "model_prompt"
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
                                                 semantic_transport=encoded is not None)
@@ -346,6 +485,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         from .coding_reply_contract import apply_coding_reply_contract
         model_prompt, coding_reply_receipt = apply_coding_reply_contract(
             model_prompt=model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+    semantic_model_prompt = model_prompt
+    semantic_reply_receipt = coding_reply_receipt
     metadata_receipt = None
     metadata_native_reply = None
     if semantic_metadata_view != "legacy":
@@ -374,6 +515,45 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
+    prompt_selection = None
+    metadata_candidate_receipt = None
+    if prompt_token_counter is not None or max_input_tokens is not None:
+        failure_phase = "prompt_selection"
+        native_router_prompt = prompt + required_suffix
+        native_model_prompt, native_advisory = render_model_prompt(
+            prompt=native_router_prompt, purpose=purpose, workspace=root)
+        from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
+        native_model_prompt, native_reply_receipt = apply_coding_reply_contract(
+            model_prompt=native_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+        output_schema = (coding_completion_schema() if native_reply_receipt is not None
+                         else codex_planning_schema)
+        if response_format is not None:
+            from ipfs_accelerate_py.cli_runtime.grok_structured_output import native_schema_projection
+            output_schema, _, _ = native_schema_projection(
+                response_format["json_schema"]["schema"], task_contract=task_contract)
+        representation = ("semantic_metadata" if metadata_receipt is not None
+                          and metadata_receipt["selected_mode"] == "common-bindings@1" else "semantic")
+        model_prompt, prompt_selection = select_model_prompt(
+            native_complete_prompt=native_model_prompt,
+            candidate_complete_prompt=model_prompt if encoded is not None else None,
+            provider=provider, model=model, token_counter=prompt_token_counter,
+            max_input_tokens=max_input_tokens, native_output_schema=output_schema,
+            semantic_complete_prompt=semantic_model_prompt if representation == "semantic_metadata" else None,
+            candidate_representation=representation)
+        if prompt_selection["selected_representation"] == "native":
+            router_prompt, advisory = native_router_prompt, native_advisory
+            coding_reply_receipt = native_reply_receipt
+            encoded = None
+            # The earlier proxy receipt describes an evaluated candidate; it
+            # must not attest metadata transport that the tokenizer rejected.
+            metadata_candidate_receipt = metadata_receipt
+            metadata_receipt = None
+            metadata_native_reply = None
+        elif prompt_selection["selected_representation"] == "semantic" and representation == "semantic_metadata":
+            coding_reply_receipt = semantic_reply_receipt
+            metadata_candidate_receipt = metadata_receipt
+            metadata_receipt = None
+            metadata_native_reply = None
     if len(model_prompt.encode()) > 256_000:
         raise ValueError("model prompt with workspace contract exceeds its byte bound")
     # Native provider children must never inherit a typed owner token, private
@@ -427,6 +607,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "completion_authority": False, "settlement_authority": False,
             "publication_authority": False, "required_fact_omission_authority": False,
         }
+        if prompt_selection is not None:
+            receipt["prompt_selection"] = prompt_selection
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -478,6 +660,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["semantic_metadata_view"] = metadata_receipt
     if metadata_native_reply is not None:
         receipt["semantic_metadata_native_coding_reply_contract"] = metadata_native_reply
+    if metadata_candidate_receipt is not None:
+        receipt["semantic_metadata_candidate"] = metadata_candidate_receipt
+    if prompt_selection is not None:
+        receipt["prompt_selection"] = prompt_selection
+    if tokenizer_source is not None:
+        receipt["prompt_tokenizer_source"] = tokenizer_source
     failure_phase = "provider_invocation"
     provider_options = {}
     if codex_planning_schema is not None:
@@ -656,6 +844,10 @@ def main():
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--budget-profile")
     parser.add_argument("--max-output-tokens", type=int, default=4096)
+    parser.add_argument("--max-input-tokens", type=int,
+                        help="Local budget for rendered user prompt and native output schema; requires a bound tokenizer")
+    parser.add_argument("--prompt-tokenizer-artifact", type=Path)
+    parser.add_argument("--prompt-tokenizer-sha256")
     parser.add_argument("--reasoning-effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
@@ -675,6 +867,11 @@ def main():
     parser.add_argument("--public-instruction-sha256", default="")
     parser.add_argument("--public-instruction-task-cid", default="")
     args = parser.parse_args()
+    if ((args.prompt_tokenizer_artifact is None) != (args.prompt_tokenizer_sha256 is None)
+            or args.prompt_tokenizer_sha256 == ""):
+        parser.error("both tokenizer binding arguments require nonempty values")
+    if args.max_input_tokens is not None and args.max_input_tokens < 1:
+        parser.error("max-input-tokens must be positive")
     try:
         prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
         output, _ = run(prompt=prompt, provider=args.provider, model=args.model,
@@ -693,7 +890,10 @@ def main():
                         doctor_residual_task_cid=args.doctor_residual_task_cid,
                         public_instruction_artifact=args.public_instruction_artifact,
                         public_instruction_sha256=args.public_instruction_sha256,
-                        public_instruction_task_cid=args.public_instruction_task_cid)
+                        public_instruction_task_cid=args.public_instruction_task_cid,
+                        prompt_tokenizer_artifact=args.prompt_tokenizer_artifact,
+                        prompt_tokenizer_sha256=args.prompt_tokenizer_sha256 or "",
+                        max_input_tokens=args.max_input_tokens)
     except Exception as error:
         try:
             diagnostic = _runner_failure_diagnostic(error)

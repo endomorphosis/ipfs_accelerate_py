@@ -14,6 +14,9 @@ import tempfile
 from typing import Sequence
 import uuid
 
+LEGACY_SELECTOR = "lexical-query-symbol-name@1"
+INDEXED_SELECTOR = "duckdb-query-symbol-name@1"
+
 
 def _encoded(value, *, pretty=False):
     return json.dumps(
@@ -100,7 +103,8 @@ def _doctor_for_scope(*, sources, manifest, scope_cid, repository_id, program_pa
 
 
 def _worker_payload(*, base, sources, manifest, required, state, bundle, view, provider,
-                    worker_query, worker_capsule_limit, worker_max_bytes, context_input_tokens):
+                    worker_query, worker_capsule_limit, worker_max_bytes, context_input_tokens,
+                    worker_selector=LEGACY_SELECTOR):
     from .semantic_capsule_selection import select_worker_capsules
     from ..semantic_state.context_pack import pack_context
     from ..context.context_contracts import ContextBudget
@@ -108,14 +112,25 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
     selected, scope_cid = tuple(sorted(sources)), base["scope_cid"]
     deferred = set(base.get("task_data_projection", {}).get("raw_source_fetch_required", {}))
     full_capsule_count = len(state.symbols)
+    ranking = None
+    candidate_snapshot = None
+    if worker_query and worker_selector == INDEXED_SELECTOR:
+        from .semantic_candidate_index import build_candidate_rows, rank_candidate_ids
+
+        rows = build_candidate_rows(symbols=state.symbols, bundle=bundle, scope_cid=scope_cid)
+        ranking = rank_candidate_ids(rows=rows, repository_id=state.repository_id,
+            scope_cid=scope_cid, semantic_root_cid=view.root.root_cid, query=worker_query)
+        candidate_snapshot = {"schema": "supervisor-semantic-candidates@1", "rows": rows}
+    selection_policy = {} if ranking is None else {"ranked_symbol_ids": ranking}
     capsules, admissions, selected_symbols = select_worker_capsules(
         bundle=bundle, view=view, provider=provider, symbols=state.symbols,
         sources=sources, required=required, worker_query=worker_query,
-        worker_capsule_limit=worker_capsule_limit, worker_max_bytes=worker_max_bytes)
+        worker_capsule_limit=worker_capsule_limit, worker_max_bytes=worker_max_bytes,
+        **selection_policy)
     projection = None
     if worker_query:
         projection = {"schema": "supervisor-semantic-worker-projection@1",
-            "selector": "lexical-query-symbol-name@1", "query": worker_query,
+            "selector": worker_selector, "query": worker_query,
             "max_capsules": worker_capsule_limit, "max_bytes": worker_max_bytes,
             "full_capsule_count": full_capsule_count, "selected_capsule_count": len(capsules),
             "omitted_capsule_count": full_capsule_count - len(capsules),
@@ -125,6 +140,8 @@ def _worker_payload(*, base, sources, manifest, required, state, bundle, view, p
             "omission_reason": "explicit bounded worker projection; full source and capsule index retained",
             "raw_required_caveat": "Read exact repository source before editing; omitted raw bytes are not substituted or proved equivalent by capsules.",
             "semantic_equivalence_claimed": False, "completion_authority": False}
+        if candidate_snapshot is not None:
+            projection["candidate_snapshot_cid"] = cid_for_payload(candidate_snapshot)
     raw_scope_payload = {"schema": "required-source-set@1", "sources": {p: manifest[p] for p in required}}
     raw_scope = cid_for_payload(raw_scope_payload)
     delta_payload = {"schema": "initial-context-scan@1", "scope_cid": scope_cid}
@@ -211,6 +228,7 @@ def prepare_semantic_context(
     worker_query: str = "",
     worker_capsule_limit: int = 8,
     worker_max_bytes: int = 32768,
+    worker_selector: str = LEGACY_SELECTOR,
     max_payload_bytes: int = 2_000_000,
     _refresh_lineage: dict | None = None,
 ) -> dict:
@@ -247,6 +265,9 @@ def prepare_semantic_context(
     selected = tuple(sorted(set(paths)))
     required = tuple(sorted(set(required_raw_paths)))
     program = _program_paths(program_paths, selected)
+    if (worker_selector not in (LEGACY_SELECTOR, INDEXED_SELECTOR)
+            or (worker_query and worker_selector == INDEXED_SELECTOR and program is None)):
+        raise ValueError("indexed selection requires an explicit replayable program scope")
     if type(defer_task_data) is not bool or (defer_task_data and not worker_query):
         raise ValueError("deferred task data requires an explicit bounded worker projection")
     if not objective.strip() or not task_id.strip():
@@ -360,7 +381,8 @@ def prepare_semantic_context(
         base=base, sources=sources, manifest=manifest, required=required,
         state=state, bundle=bundle, view=view, provider=provider,
         worker_query=worker_query, worker_capsule_limit=worker_capsule_limit,
-        worker_max_bytes=worker_max_bytes, context_input_tokens=context_input_tokens)
+        worker_max_bytes=worker_max_bytes, context_input_tokens=context_input_tokens,
+        worker_selector=worker_selector)
     capsules = payload["capsules"]
     if (len(compact) > max_payload_bytes or packed.budget_exceeded
             or (projection is not None and len(compact) > worker_max_bytes)):
@@ -405,10 +427,20 @@ def prepare_semantic_context(
     if world.records_for_decision(task_id=task_id)["n"] != 1:
         raise RuntimeError("world context record did not hydrate")
     meta = SupervisorMetaIndex(output / "metadata.duckdb", output / "metadata-lake")
-    for kind, locator, ref in [
+    catalogs = [
         ("capsule", blocks, view.root.capsule_index_cid),
         ("world_model", output / "world.duckdb", record["record_cid"]),
-    ]:
+    ]
+    if projection is not None and worker_selector == INDEXED_SELECTOR:
+        from .semantic_candidate_index import build_candidate_rows, rank_candidate_ids
+
+        rows = build_candidate_rows(symbols=state.symbols, bundle=bundle, scope_cid=scope_cid)
+        rank_candidate_ids(rows=rows, repository_id=state.repository_id, scope_cid=scope_cid,
+            semantic_root_cid=root_cid, query=worker_query, database_path=meta.duckdb_path)
+        catalogs.append(("ast", meta.duckdb_path, projection["candidate_snapshot_cid"]))
+        snapshot = {"schema": "supervisor-semantic-candidates@1", "rows": rows}
+        (blocks / projection["candidate_snapshot_cid"]).write_bytes(canonicalize_artifact(snapshot))
+    for kind, locator, ref in catalogs:
         catalog = meta.register_catalog(
             kind=kind,
             locator_ref=str(locator),
@@ -515,7 +547,7 @@ def _validate_program_payload(payload, *, sources=None, repository=None):
         deferred = set(expected_data["raw_source_fetch_required"])
     if projection is not None and (
             type(projection) is not dict or projection.get("schema") != "supervisor-semantic-worker-projection@1"
-            or projection.get("selector") != "lexical-query-symbol-name@1"
+            or projection.get("selector") not in (LEGACY_SELECTOR, INDEXED_SELECTOR)
             or projection.get("semantic_equivalence_claimed") is not False
             or projection.get("completion_authority") is not False
             or type(projection.get("query")) is not str or not projection["query"]
@@ -558,7 +590,8 @@ def _validate_program_payload(payload, *, sources=None, repository=None):
         required=required, state=state, bundle=bundle, view=view, provider=provider,
         worker_query=policy.get("query", ""), worker_capsule_limit=policy.get("max_capsules", 8),
         worker_max_bytes=policy.get("max_bytes", 32768),
-        context_input_tokens=payload["preparation_bounds"]["context_input_tokens"])
+        context_input_tokens=payload["preparation_bounds"]["context_input_tokens"],
+        worker_selector=policy.get("selector", LEGACY_SELECTOR))
     if _encoded(rebuilt) != _encoded(payload) or packed.budget_exceeded:
         raise ValueError("explicit semantic producer capsules or context packing differ")
     return program
@@ -617,7 +650,8 @@ def _load_semantic_payload(
     if projection is not None and (
         not isinstance(projection, dict)
         or projection.get("schema") != "supervisor-semantic-worker-projection@1"
-        or projection.get("selector") != "lexical-query-symbol-name@1"
+        or projection.get("selector") not in (LEGACY_SELECTOR, INDEXED_SELECTOR)
+        or (projection.get("selector") == INDEXED_SELECTOR and not explicit)
         or projection.get("semantic_equivalence_claimed") is not False
         or projection.get("completion_authority") is not False
         or not isinstance(projection.get("query"), str)
@@ -802,6 +836,7 @@ def resolve_semantic_worker_context(
         worker_query=previous.get("worker_projection", {}).get("query", ""),
         worker_capsule_limit=previous.get("worker_projection", {}).get("max_capsules", 8),
         worker_max_bytes=previous.get("worker_projection", {}).get("max_bytes", 32768),
+        worker_selector=previous.get("worker_projection", {}).get("selector", LEGACY_SELECTOR),
         **program_kwargs,
     )
     refreshed_artifact = (output / "worker-context.json").relative_to(root).as_posix()
