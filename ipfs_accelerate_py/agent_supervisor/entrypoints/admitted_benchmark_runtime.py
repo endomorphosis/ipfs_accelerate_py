@@ -480,6 +480,21 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime._startup_trace_truncated = False
             runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
             runtime._verify_context(verified)
+            numerical_policy = None
+            if refresh_context_on_completion:
+                from ..runtime.task_context_bundle import read_task_context_historical_selection
+                task = verified["graph"].tasks[0]
+                selected = read_task_context_historical_selection(repository=repository,
+                    artifact=runtime.context_bundle["artifact"],
+                    expected_sha256=runtime.context_bundle["sha256"],
+                    task_cid=task.task_cid, task_id=task.task_key)
+                if "numerical_formalization" in selected:
+                    from ..runtime.published_numerical import bind_policy
+                    numerical_root = runtime.state / "published-numerical"
+                    numerical_root.mkdir(mode=0o700)
+                    numerical_policy = bind_policy(repository=repository,
+                        receipt=selected["numerical_formalization"],
+                        manifest=admission["manifest"]["payload"], output_root=numerical_root)
             if refresh_source384_on_completion:
                 from ..runtime.task_context_bundle import read_task_context_historical_selection
                 task = verified["graph"].tasks[0]
@@ -619,6 +634,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         "preparation_timeout_seconds": 180.,
                         "requires_independent_manifest": True,
                         "proof_authority": False, "completion_authority": False})
+            if numerical_policy is not None:
+                runtime.manifest["context_refresh_policy"].update(
+                    schema="admitted-context-refresh-policy@3", numerical_formalization=numerical_policy)
             if finite_execution_scope is not None:
                 runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
                 runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
@@ -1421,25 +1439,34 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             try:
                 numerical_historical = next((item for item in result.get("context_observation", {}).get(
                     "numerical_formalization", []) if item["task_cid"] == task.task_cid), None)
-                if numerical_historical is not None:
+                numerical_policy = policy.get("numerical_formalization")
+                if numerical_historical is not None and numerical_policy is None:
                     refreshed.append(numerical_historical)
                     continue
                 historical = next((item for item in result.get("context_observation", {}).get("source384", [])
                     if item["task_cid"] == task.task_cid), None)
                 source384_policy = policy.get("source384")
                 if historical is not None and source384_policy is None:
-                    refreshed.append(historical)
+                    refreshed.append({**numerical_historical, "reason": "source384_successor_not_prepared"}
+                        if numerical_historical is not None else historical)
                     continue
+                refresh_options = {}
+                if source384_policy is not None or numerical_policy is not None:
+                    refresh_options["deadline_monotonic"] = min(
+                        self._replay_lifetime_deadline,
+                        self._replay_work_scope.deadline_monotonic
+                            if self._replay_work_scope is not None else float("inf"))
+                if source384_policy is not None:
+                    refresh_options["source384_timeout_seconds"] = source384_policy["preparation_timeout_seconds"]
+                if numerical_policy is not None:
+                    refresh_options["numerical_policy"] = numerical_policy
                 cached_refresh = task.task_cid in self._published_context
                 if cached_refresh:
                     refresh_phase = "cache_reload"
                     cached = self._published_context[task.task_cid]
                     context = load_published_task_context(server=self.server, admission=self.admission,
                         artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"],
-                        **({"deadline_monotonic": min(self._replay_work_scope.deadline_monotonic,
-                                                      self._replay_lifetime_deadline),
-                            "source384_timeout_seconds": source384_policy["preparation_timeout_seconds"]}
-                           if source384_policy is not None else {}))
+                        **refresh_options)
                 else:
                     count = self._context_refresh_attempts.get(task.task_cid, 0)
                     if count >= policy["max_attempts_per_task"]:
@@ -1466,11 +1493,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     context = refresh_published_task_context(server=self.server, admission=self.admission,
                         predecessor_bundle=self.context_bundle, task_cid=task.task_cid, output=output,
                         retrieval_rebuilder=rebuilder,
-                        **({"source384_output": Path(source384_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid)),
-                            "source384_timeout_seconds": source384_policy["preparation_timeout_seconds"],
-                            "deadline_monotonic": min(self._replay_work_scope.deadline_monotonic,
-                                                      self._replay_lifetime_deadline)}
-                           if source384_policy is not None else {}))
+                        **({"source384_output": Path(source384_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
+                           if source384_policy is not None else {}),
+                        **({"numerical_output": Path(numerical_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
+                           if numerical_policy is not None else {}), **refresh_options)
                     self._published_context[task.task_cid] = context
                 refreshed.append({"task_cid": task.task_cid, "status": "refreshed",
                     "refresh_artifact": context["refresh_artifact"], "refresh_sha256": context["refresh_sha256"],
@@ -1497,6 +1523,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 if "source384_refresh" in context:
                     refreshed[-1]["source384_refresh"] = json.loads(json.dumps(context["source384_refresh"]))
                     refreshed[-1]["source384_refresh_reused"] = cached_refresh
+                    refreshed[-1]["requires_independent_manifest"] = True
+                if "numerical_refresh" in context:
+                    refreshed[-1]["numerical_refresh"] = json.loads(json.dumps(context["numerical_refresh"]))
+                    refreshed[-1]["numerical_refresh_reused"] = cached_refresh
                     refreshed[-1]["requires_independent_manifest"] = True
             except Exception as error:
                 # Retain task success and shutdown availability. A failed or

@@ -35,7 +35,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract")
+TRANSLATION_FIELDS = ("router_prompt_sha256", "router_prompt_bytes", "semantic_translation", "doctor_residual_context", "public_instruction", "coding_reply_contract", "semantic_metadata_view", "semantic_metadata_native_coding_reply_contract", "source_formalization_context")
 
 
 def _sha(raw: bytes) -> str:
@@ -56,6 +56,8 @@ def _base(status="unknown", reason="observation_unavailable") -> dict:
         "world_scope": "sealed historical capture; claims may supersede its intent revision",
         "input_scope": "router task prompt; provider harness/system context is outside this digest",
         "raw_prompts_exported": False, "provider_calls": 0,
+        "proof_authority": False, "formalization_authority": False,
+        "source_obligations_discharged": 0,
         "execution_authority": False, "completion_authority": False,
         "task_correctness_established": False}
 
@@ -150,6 +152,29 @@ def _capsule_paths(root_fd: int) -> list[str]:
     return result
 
 
+def _formalization_receipt(value: dict) -> dict:
+    """Check the closed dispatch observation without asserting freshness now."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import _observation
+    if type(value) is not dict:
+        raise ValueError("invalid source formalization dispatch observation")
+    kinds = value.get("context_kinds")
+    allowed = ("source384-candidate-context", "numerical-formalization-context")
+    if (type(kinds) is not list or not kinds or kinds != [kind for kind in allowed if kind in kinds]
+            or type(value.get("owner_validation_inherited")) is not bool
+            or type(value.get("chunks")) is not int or not 1 <= value["chunks"] <= 6
+            or type(value.get("source_files")) is not int or not 0 <= value["source_files"] <= 320):
+        raise ValueError("invalid source formalization dispatch population")
+    payload = dict(task_id=_identity(value.get("task_id")), task_cid=_identity(value.get("task_cid")),
+        context_bundle={"sha256": _digest(value.get("context_bundle_sha256"))},
+        contexts=[{"kind": kind} for kind in kinds])
+    expected = _observation(payload, "", value["chunks"], range(value["source_files"]),
+                            inherited=value["owner_validation_inherited"])
+    expected["worker_evidence_sha256"] = _digest(value.get("worker_evidence_sha256"))
+    if not _same_json(value, expected):
+        raise ValueError("invalid source formalization dispatch contract")
+    return value
+
+
 def _token_selection_receipt(metadata: dict, item: dict) -> None:
     """Validate recorded @2 arithmetic; a receipt cannot authenticate its counter."""
     base_fields = {"schema", "view_receipt_sha256", "selected_mode", "fallback_reason",
@@ -232,6 +257,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         raise ValueError("non-coding router receipt")
     result = {key: item[key] for key in RECEIPT_FIELDS}
     result.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    if "source_formalization_context" in result:
+        _formalization_receipt(result["source_formalization_context"])
     _identity(result["invocation_id"])
     location = result["workspace"]
     if not isinstance(location, str) or len(location.encode()) > 4096:
@@ -370,11 +397,21 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     return result
 
 
-def _model_projection(*, rendered: str, receipt: dict, repository: Path | None, token_counter=None):
+def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
+                      formalization: dict | None = None, token_counter=None):
     """Reconstruct historical provider bytes without granting freshness."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
+    recorded = receipt.get("source_formalization_context")
+    if formalization is not None or recorded is not None:
+        expected_dispatch = dict(formalization) if formalization is not None else None
+        if expected_dispatch is not None and recorded is not None:
+            expected_dispatch.update(owner_validation_inherited=recorded["owner_validation_inherited"],
+                owner_private_state_replayed_here=not recorded["owner_validation_inherited"])
+        checks["source_formalization_dispatch"] = (
+            expected_dispatch is not None and recorded is not None
+            and _same_json(recorded, expected_dispatch))
     if translated:
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_router_translation import replay_semantic_router_prompt_for_audit
         if repository is None:
@@ -383,10 +420,10 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None, 
             transport_schema=receipt["semantic_translation"].get("transport_schema",
                                                                "supervisor-semantic-router-input@1"))
         router_prompt = encoded.provider_prompt
-        checks = {
+        checks.update({
             "semantic_translation_cid": encoded.table.translation_cid == receipt["semantic_translation"]["translation_cid"],
             "semantic_translation_schema": encoded.receipt["schema"] == receipt["semantic_translation"]["schema"],
-        }
+        })
     residual = receipt.get("doctor_residual_context")
     if residual is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_context import load_doctor_residual_advisory
@@ -493,7 +530,92 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None, 
     return model, advisory, checks
 
 
-def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
+def _historical_formalization(*, rendered: str, expected: dict, prepared: dict):
+    """Join selected receipt bytes, required prompt evidence and signed inputs.
+
+    The independent preparation result establishes whether advice was selected.
+    A prompt cannot nominate itself as the expected population. A rebound
+    bundle may retain the same task/receipts under another artifact identity;
+    both exact bundle digests are checked, without changing world-state checks.
+    No source file, index owner or neural inference is replayed here.
+    """
+    from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import (
+        _observation, _parts, _relative,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
+        _worker_evidence, read_task_context_historical_selection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.context.context_contracts import canonical_context_json_bytes
+
+    keys = ("source384_context", "numerical_formalization")
+    nominated = {key: expected[key] for key in keys if key in expected}
+    parsed = _parts(rendered)
+    binding = expected.get("context_bundle")
+    if binding is None:
+        if nominated or parsed is not None:
+            raise ValueError("formalization requires an independently selected task bundle")
+        return None, None
+    if type(binding) is not dict:
+        raise ValueError("invalid expected context bundle")
+    root = Path(prepared["repository"])
+    if not root.is_absolute() or root.resolve(strict=True) != root:
+        raise ValueError("canonical historical formalization repository required")
+    task_id, task_cid = prepared["spec"]["task_key"], expected["task_cid"]
+
+    def selected(reference):
+        value = read_task_context_historical_selection(repository=root,
+            artifact=reference["artifact"], expected_sha256=_digest(reference["sha256"]),
+            task_cid=task_cid, task_id=task_id)
+        return {key: value[key] for key in keys if key in value}
+
+    original = selected(binding)
+    if not _same_json(original, nominated):
+        raise ValueError("retained formalization selection differs from preparation")
+    if not original:
+        if parsed is not None:
+            raise ValueError("native prompt contains unselected formalization evidence")
+        return None, None
+    if parsed is None:
+        raise ValueError("native prompt omitted selected formalization evidence")
+    payload, text, chunks = parsed
+    dispatched = payload["context_bundle"]
+    if not _same_json(selected(dispatched), original):
+        raise ValueError("dispatched formalization bundle changed selected task receipts")
+    evidence = _worker_evidence(original, repository=root, artifact=dispatched["artifact"],
+        expected_sha256=dispatched["sha256"], task_cid=task_cid, task_id=task_id)
+    if canonical_context_json_bytes(evidence).decode() != text:
+        raise ValueError("native formalization differs from retained selected receipts")
+    sources = {}
+    signed_sources = prepared["manifest"]["payload"]["sources"]
+    for receipt in original.values():
+        population = receipt.get("source_hashes")
+        if type(population) is not dict or len(population) > 256:
+            raise ValueError("invalid historical formalization source population")
+        for name, digest in population.items():
+            _relative(name)
+            if (_digest(digest) != signed_sources[name]["sha256"]
+                    or name in sources and sources[name] != digest):
+                raise ValueError("formalization source differs from signed captured input")
+            sources[name] = digest
+    if len(sources) > 320:
+        raise ValueError("historical formalization source population exceeds bound")
+    dispatch = _observation(evidence, text, chunks, sources)
+    observed = dict(schema="terminal-historical-source-formalization-observation@1",
+        task_id=task_id, task_cid=task_cid,
+        expected_context_bundle_sha256=binding["sha256"],
+        dispatched_context_bundle_sha256=dispatched["sha256"],
+        worker_evidence_sha256=_sha(text.encode()), chunks=chunks, source_files=len(sources),
+        contexts=[dict(kind=row["kind"], receipt_sha256=row["receipt_reference"]["receipt_sha256"],
+            summary_sha256=row["summary_sha256"], source_hashes_sha256=row["source_hashes_sha256"])
+            for row in evidence["contexts"]],
+        historical_receipt_bindings_verified=True, current_sources_checked=False,
+        neural_inference_replayed=False, proof_authority=False, formalization_authority=False,
+        execution_authority=False, completion_authority=False, source_semantics_verified=False,
+        whole_program_semantics_verified=False, source_obligations_discharged=0)
+    return observed, dispatch
+
+
+def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str, dict | None]:
     from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
         ContextCapsule, canonical_context_json_bytes,
     )
@@ -501,6 +623,7 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
 
     capsule = ContextCapsule.from_dict(_json(raw))
     rendered = render_context_capsule(capsule)
+    formalization, dispatch = _historical_formalization(rendered=rendered, expected=expected, prepared=prepared)
     wire = _json(rendered.encode())
     contexts, chunks = {}, {}
     for kind in KINDS:
@@ -593,7 +716,9 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
             disposition=retrieval["disposition"], embedding_calls=0)
     if len(tasks) == 1:
         result["local_contract_cid"] = _identity(tasks[0].get("body", {}).get("local_planning_contract_cid"))
-    return result, rendered
+    if formalization is not None:
+        result["source_formalization_context"] = formalization
+    return result, rendered, dispatch
 
 
 def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root: Path) -> dict:
@@ -633,7 +758,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
             return result
         for relative in paths:
             try:
-                observed, rendered = _capsule(_read_at(root_fd, relative), expected=expected, prepared=prepared)
+                observed, rendered, formalization = _capsule(_read_at(root_fd, relative), expected=expected, prepared=prepared)
                 result["capsules"].append(observed)
                 if not observed["all_context_checks_passed"]:
                     continue
@@ -642,7 +767,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
                             or observed["native_prompt_bytes"] != receipt["native_prompt_bytes"]):
                         continue
                     model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
-                        repository=Path(prepared["repository"]) if prepared.get("repository") else None)
+                        repository=Path(prepared["repository"]) if prepared.get("repository") else None,
+                        formalization=formalization)
                     result["matches"].append({"capsule_id": observed["capsule_id"],
                         "invocation_id": receipt["invocation_id"],
                         "workspace_sha256": _sha(receipt["workspace"].encode()),
@@ -691,6 +817,13 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             # provider. Never infer a missing provider from the selected mode.
             if row.get("coding_reply_contract") is not None:
                 fields += ("provider",)
+            metadata = row.get("semantic_metadata_view")
+            if (type(metadata) is dict
+                    and metadata.get("schema") == "supervisor-semantic-metadata-selection@2"):
+                # Preserve the caller's exact identities for counter binding.
+                # Neither the selection receipt nor the child creates a trusted
+                # counter, and missing identities must remain missing.
+                fields += ("provider", "model")
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()
         if len(rows) > MAX_RECEIPTS or len(request) > MAX_REQUEST_BYTES:

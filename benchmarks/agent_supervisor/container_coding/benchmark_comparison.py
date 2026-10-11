@@ -209,6 +209,75 @@ def _input_observation(raw):
     return result
 
 
+def _formalization_audit_observations(audit):
+    """Bound reported historical delivery facts without copying candidate text."""
+    capsules, matches, invocations = (audit.get(key, []) for key in ("capsules", "matches", "invocations"))
+    if (type(capsules) is not list or len(capsules) > 32
+            or type(matches) is not list or len(matches) > 32 * 16
+            or type(invocations) is not list or len(invocations) > 16):
+        return []
+    false_fields = ("current_sources_checked", "neural_inference_replayed", "proof_authority",
+        "formalization_authority", "execution_authority", "completion_authority",
+        "source_semantics_verified", "whole_program_semantics_verified")
+    digest_fields = ("expected_context_bundle_sha256", "dispatched_context_bundle_sha256",
+                     "worker_evidence_sha256")
+    fields = {"schema", "task_id", "task_cid", *digest_fields, "chunks", "source_files", "contexts",
+        "historical_receipt_bindings_verified", *false_fields, "source_obligations_discharged"}
+    context_fields = {"kind", "receipt_sha256", "summary_sha256", "source_hashes_sha256"}
+    kinds = ("source384-candidate-context", "numerical-formalization-context")
+    digest = lambda value: type(value) is str and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+    identity = lambda value: type(value) is str and re.fullmatch(r"[A-Za-z0-9_:./-]{1,512}", value) is not None
+    result = []
+    for capsule in capsules:
+        if type(capsule) is not dict:
+            continue
+        value = capsule.get("source_formalization_context")
+        if (type(value) is not dict or set(value) != fields
+                or value["schema"] != "terminal-historical-source-formalization-observation@1"
+                or not identity(capsule.get("capsule_id"))
+                or sum(type(row) is dict and row.get("capsule_id") == capsule["capsule_id"] for row in capsules) != 1
+                or any(not identity(value[key]) for key in ("task_id", "task_cid"))
+                or value["task_cid"] != capsule.get("task_cid")
+                or any(not digest(value[key]) for key in digest_fields)
+                or type(value["chunks"]) is not int or not 1 <= value["chunks"] <= 6
+                or type(value["source_files"]) is not int or not 0 <= value["source_files"] <= 320
+                or value["historical_receipt_bindings_verified"] is not True
+                or any(value[key] is not False for key in false_fields)
+                or type(value["source_obligations_discharged"]) is not int or value["source_obligations_discharged"] != 0):
+            continue
+        contexts = value["contexts"]
+        if (type(contexts) is not list or not 1 <= len(contexts) <= 2
+                or any(type(row) is not dict or set(row) != context_fields
+                    or row["kind"] not in kinds
+                    or any(not digest(row[key]) for key in context_fields - {"kind"}) for row in contexts)
+                or [row["kind"] for row in contexts] != [kind for kind in kinds if any(row["kind"] == kind for row in contexts)]):
+            continue
+        matched = []
+        for match in matches:
+            if type(match) is not dict or not identity(match.get("invocation_id")):
+                continue
+            checks = match.get("model_input_checks")
+            invocation = [row for row in invocations if type(row) is dict
+                          and row.get("invocation_id") == match["invocation_id"]]
+            if (capsule.get("all_context_checks_passed") is True
+                    and match.get("capsule_id") == capsule["capsule_id"]
+                    and digest(capsule.get("native_prompt_sha256"))
+                    and match.get("native_prompt_sha256") == capsule["native_prompt_sha256"]
+                    and type(capsule.get("native_prompt_bytes")) is int
+                    and type(match.get("native_prompt_bytes")) is int
+                    and 0 < match["native_prompt_bytes"] == capsule["native_prompt_bytes"] <= 262144
+                    and match.get("model_input_verified") is True
+                    and type(checks) is dict and checks.get("source_formalization_dispatch") is True
+                    and all(check is True for check in checks.values())
+                    and len(invocation) == 1 and invocation[0].get("native_input_verified") is True
+                    and invocation[0].get("model_input_verified") is True):
+                matched.append(match["invocation_id"])
+        result.append({**value, "contexts": [dict(row) for row in contexts],
+            "capsule_id": capsule["capsule_id"], "reported_model_input_verified": bool(matched),
+            "matched_invocation_ids": sorted(set(matched))})
+    return result
+
+
 def _audit_observation(report):
     audit = _mapping(report.get("context_input_audit"))
     return {
@@ -217,6 +286,7 @@ def _audit_observation(report):
             "any_native_input_verified", "any_model_input_verified", "all_observed_coding_inputs_verified")},
         **{key: _count(audit.get(key)) for key in ("coding_receipts_seen", "usable_coding_receipts")},
         "seconds": _number(audit.get("seconds")),
+        "source_formalization": _formalization_audit_observations(audit),
         "invocations": [{
             **{key: _text(item.get(key)) for key in ("invocation_id", "status", "reason")},
             **{key: _boolean(item.get(key)) for key in ("native_input_verified", "model_input_verified")},

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+from pathlib import Path
 import sys
 import types
 import pytest
@@ -110,12 +111,14 @@ def test_opted_in_runtime_refreshes_only_after_native_stop(scenario, tmp_path, l
 
 
 @pytest.mark.parametrize("selected_domain", ["source384", "numerical", "combined"])
-def test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch(
+def test_formalization_publication_preserves_selection_and_admitted_refresh(
         scenario, tmp_path, monkeypatch, selected_domain):
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
-        write_task_context_bundle, load_task_context_nomination,
+        write_task_context_bundle, load_task_context_nomination, load_task_context_selection,
     )
-    from ipfs_accelerate_py.agent_supervisor.runtime.published_task_context import refresh_published_task_context
+    from ipfs_accelerate_py.agent_supervisor.runtime.published_task_context import (
+        refresh_published_task_context, load_published_task_context,
+    )
 
     root = scenario["repository"]
     baseline_sha = hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()
@@ -161,6 +164,16 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
             server=owner.server, source=owner.source, implement=False, timeout_ms=30_000,
             context_bundle=bundle, refresh_context_on_completion=True)
         try:
+            if numeric:
+                policy = runtime.manifest["context_refresh_policy"]["numerical_formalization"]
+                assert runtime.manifest["context_refresh_policy"]["schema"] == "admitted-context-refresh-policy@3"
+                assert policy["source_hashes"] == {"answer.py": baseline_sha}
+                assert policy["manifest_cid"] == local.content_identity(admission["manifest"]["payload"])
+                assert Path(policy["output_root"]).is_relative_to(runtime.state)
+                assert Path(policy["output_root"]).stat().st_mode & 0o777 == 0o700
+                assert policy["requires_independent_manifest"] is True
+                assert policy["proof_authority"] is policy["dispatch_authority"] is False
+                assert policy["model_inference_calls"] == policy["provider_calls"] == 0
             assert runtime.start().succeeded
             assert runtime.observe()["published_context"][0]["status"] == "pending_completion"
             assert bool(checks) is learned
@@ -201,26 +214,71 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
             stopped = runtime.stop()
             assert stopped.succeeded and stopped.data["old_tree_fenced"] is True
             assert not runtime.process.snapshot(runtime.profile).members
-            unavailable = runtime.refresh_after_stop()[0]
-            assert unavailable["status"] == "successor_unavailable"
-            assert all(unavailable[key] == value for key, value in selected_receipts.items())
-            assert "context_bundle" not in unavailable
-            assert runtime._published_context == runtime._context_refresh_attempts == {}
-            # Direct refresh has the same explicit refusal and writes no v1 successor.
+            successor = runtime.refresh_after_stop()[0]
+            if numeric and not learned:
+                assert successor["status"] == "refreshed", successor
+                assert successor["numerical_refresh_reused"] is False
+                assert successor["requires_independent_manifest"] is True
+                fresh = runtime._published_context[task.task_cid]
+                receipt_now = fresh["numerical_formalization"]
+                assert receipt_now["source_hashes"] == {"answer.py": hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()}
+                assert receipt_now["source_hashes"]["answer.py"] != baseline_sha
+                assert receipt_now["output"] != selected_receipts["numerical_formalization"]["output"]
+                assert fresh["numerical_refresh"]["source_obligations_discharged"] == 0
+                assert fresh["numerical_refresh"]["proof_authority"] is False
+                assert fresh["semantic"]["ducklake"]["status"] == "projected"
+                assert fresh["world"]["metadata"]["status"] == "projected"
+                fresh_selection = load_task_context_selection(repository=root,
+                    artifact=fresh["context_bundle"]["artifact"], expected_sha256=fresh["context_bundle"]["sha256"],
+                    task_cid=task.task_cid, task_id=task.task_alias)
+                assert fresh_selection["numerical_formalization"] == receipt_now
+                assert fresh_selection["worker_evidence"]["contexts"][0]["kind"] == "numerical-formalization-context"
+                monkeypatch.setattr(numerical, "prepare_numerical_context", lambda **kwargs: pytest.fail("cached numerical successor regenerated"))
+                again = runtime.refresh_after_stop()[0]
+                assert again["status"] == "refreshed" and again["numerical_refresh_reused"] is True
+                assert runtime._context_refresh_attempts == {task.task_cid: 1}
+                arguments = dict(server=owner.server, admission=admission,
+                    artifact=fresh["refresh_artifact"], expected_sha256=fresh["refresh_sha256"])
+                with pytest.raises(ValueError, match="selected refresh policy"):
+                    load_published_task_context(**arguments)
+                with pytest.raises(ValueError, match="policy differs"):
+                    load_published_task_context(**arguments, numerical_policy={**policy, "profile": "changed"})
+                # Rehashing a derivative cannot silently remove a family that
+                # was selected in the immutable predecessor nomination.
+                dropped = {k: v for k, v in fresh.items() if k not in {
+                    "numerical_formalization", "numerical_refresh", "numerical_refresh_policy", "refresh_artifact", "refresh_sha256"}}
+                omitted = root / ".runtime/omitted-numerical.json"
+                omitted.write_bytes(json.dumps(dropped, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+                with pytest.raises(ValueError, match="cannot omit or add"):
+                    load_published_task_context(server=owner.server, admission=admission,
+                        artifact=omitted.relative_to(root).as_posix(), expected_sha256=hashlib.sha256(omitted.read_bytes()).hexdigest())
+            else:
+                assert successor["status"] == "successor_unavailable"
+                assert all(successor[key] == value for key, value in selected_receipts.items())
+                assert successor["reason"] == "source384_successor_not_prepared"
+                assert "context_bundle" not in successor
+                assert runtime._published_context == runtime._context_refresh_attempts == {}
+                if numeric:
+                    assert list(Path(policy["output_root"]).iterdir()) == []
+            # Direct refresh without a selected policy still refuses rather
+            # than dropping numerical advice or inventing a refresh policy.
             direct = refresh_published_task_context(server=owner.server, admission=admission,
                 predecessor_bundle=bundle, task_cid=task.task_cid, output=root / ".runtime/no-successor")
-            assert direct == unavailable
+            assert direct["status"] == "successor_unavailable"
+            assert direct["reason"] == ("numerical_successor_not_prepared" if numeric else "source384_successor_not_prepared")
+            assert all(direct[key] == value for key, value in selected_receipts.items())
+            assert "context_bundle" not in direct
             assert not (root / ".runtime/no-successor").exists()
             if numeric:
                 # A requested Source384 rebuild does not authorize dropping
                 # the separately selected numerical interpretation. This
                 # short-circuits before writes or inference even when both
                 # receipts were selected.
-                direct = refresh_published_task_context(server=owner.server, admission=admission,
+                mixed = refresh_published_task_context(server=owner.server, admission=admission,
                     predecessor_bundle=bundle, task_cid=task.task_cid,
                     output=root / ".runtime/no-mixed-successor",
                     source384_output=tmp_path / "no-model-successor")
-                assert direct == unavailable
+                assert mixed == direct
                 assert not (root / ".runtime/no-mixed-successor").exists()
                 assert not (tmp_path / "no-model-successor").exists()
             assert owner.source.get_task(task.task_cid) == completed_task
