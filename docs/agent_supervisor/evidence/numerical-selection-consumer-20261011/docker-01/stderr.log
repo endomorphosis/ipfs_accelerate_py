@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/importlib/metadata/__init__.py", line 397, in from_name
+    return next(cls.discover(name=name))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/qualification/import_probe.py", line 5, in <module>
+    print(json.dumps({'schema':'numerical-container-import-probe@1','python':sys.version,'packages':{n:importlib.metadata.version(n) for n in ('torch','numpy','sentence-transformers','transformers','tokenizers','duckdb')},'torch_runtime':torch.__version__,'cuda_available':torch.cuda.is_available(),'owner_file':native.__file__,'checkpoint_bytes':__import__('pathlib').Path('/models/checkpoint.json').stat().st_size,'provider_calls':0,'training_steps':0,'inference_executed':False}))
+                                                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/importlib/metadata/__init__.py", line 889, in version
+    return distribution(distribution_name).version
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/importlib/metadata/__init__.py", line 862, in distribution
+    return Distribution.from_name(distribution_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/importlib/metadata/__init__.py", line 399, in from_name
+    raise PackageNotFoundError(name)
+importlib.metadata.PackageNotFoundError: No package metadata was found for sentence-transformers

@@ -1,0 +1,17 @@
+{
+  "exit_code": 1,
+  "seconds": 2.315507506020367,
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/docker-01/import_probe.py": "ddc9d5da242b99f764a16bd0d8cbe7f107ef08b566b34a1d09a14ec9f522330a",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03"
+  },
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/docker-01/import_probe.py": "ddc9d5da242b99f764a16bd0d8cbe7f107ef08b566b34a1d09a14ec9f522330a",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03"
+  },
+  "hashes_unchanged": true
+}

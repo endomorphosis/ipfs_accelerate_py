@@ -1,0 +1,2 @@
+logic tree pin compiler=/code/datasets/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/code/datasets/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/code/datasets/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/code/datasets/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/code/datasets/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/code/datasets/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py

@@ -1,0 +1,42 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "benchmarks/agent_supervisor/container_coding/test_learned_numerical_driver_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py::test_selected_decoders_abstain_before_consumption_for_empty_retrieval",
+    "benchmarks/agent_supervisor/container_coding/test_formalization_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-learned-numerical-20261011/driver-guards/qualification-01.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-learned-numerical-20261011/driver-guards/qualification-01-cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-learned-numerical-20261011/driver-guards/qualification-01-seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_hashes_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_learned_numerical_driver_selection.py": "8e8f56f53b52adaec5fbeda7ba37338027d3c3222f1e14e50bc0a7e73861584f",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py": "9b66b074d5b196267c41304bdd9a6bfd8b9963b360a656e1fad28a4a5d05e841",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_formalization_resource_profile.py": "4f2693b7883bb60020f1229925dbe922049b6c89ab7188fcb9fb9697e9607531",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "99e57a82866832fc4961a5b8daf240ddd45a0e74e196bd1e5f66fa60dcca9578",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "f62046ce1b8773dfc535fd1a7410017f59903a41139813a6be21b3bfd5f60f33",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "71114faa5e3403f7a42635599a79cd8361cbc4670637f71453e5d21ade90390a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "9ef67389a1e48727f43d266255661ca87a2ada119967e9d62591bb75ca5cdf7a"
+  },
+  "scope": "Driver selection/forwarding and native empty-scope guards; no learned inference/training/provider calls"
+}

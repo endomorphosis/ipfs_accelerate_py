@@ -1,0 +1,42 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "tests/integration/logic/software_contracts/test_codebase_numerical_selection_384.py",
+    "--maxfail=1",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/datasets-budget-01/junit.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/datasets-budget-01/pytest-cache",
+    "-k",
+    "long_formalization_budget or already_cancelled"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-formalization-audit-20261011/postmerge-comparison/seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1",
+    "NUMERICAL_SELECTION384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json",
+    "IPFS_DATASETS_AUTO_INSTALL_TEST_DEPS": "0",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/tests/integration/logic/software_contracts/test_codebase_numerical_selection_384.py": "1d1a634ddfb72509d9120ea6c062be5d2705fb953c12c80671625c45e6379b8f"
+  }
+}

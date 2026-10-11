@@ -3,6 +3,50 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Learned numerical checkpoint consumption, 2026-10-11
+
+The separately published experimental NumPy checkpoint now has an explicit
+shared datasets inference owner and supervisor consumer. Actual cached GTE CPU
+embeddings and the unchanged learned head produce advisory candidate IR from
+captured original modules. Preparation records unsupported files, selection
+limits and inputs above 512 tokens. Predictions are preserved, including
+mismatches; only source-aligned CALL fragments receive independent projection
+references. This remains a narrow `argmax`/`argmin` grammar and discharges zero
+source obligations.
+
+The supervisor builds and verifies native world/metadata DuckLakes, includes the
+bounded candidate summary before goal planning, and transports it through task
+bundle `@5` to required coding-worker evidence and `llm_router`. All three
+families—Source384, deterministic numerical and learned numerical—can be
+retained together. Current owner validation and historical delivery auditing do
+not repeat neural inference. Tampering with source, checkpoint, configuration or
+receipt is rejected before provider dispatch. Historical delivery survives an
+expected code edit; current-source dispatch rejects the same stale observation.
+
+Container selection is explicit and full-arm only. Learned-only selection no
+longer enables legacy training, conflicting training declarations are rejected,
+and the existing extended formalization budget reaches the shared worker.
+Portable archives separately bind model/config/embedding assets and actual
+producer bytes. The no-index arm records learned inference as disabled. See the
+[configuration and scope guide](../../benchmarks/agent_supervisor/container_coding/NUMERICAL_SELECTION_384.md).
+
+After native STOP, learned observations remain historical. A learned successor
+has no admitted refresh policy yet, so mixed selections retain every family and
+return `successor_unavailable` before any partial regeneration.
+
+The [qualification ledger](evidence/numerical-selection-consumer-20261011/qualification.json)
+records 541 distinct passing checks across seven successful suites, with zero
+skips. Three final merged suites passed 252 checks. It distinguishes actual
+cached checkpoint inference, native stores and lifecycle
+checks from authored planning/provider replies and tiny archive fixtures. The
+offline Docker compatibility probe verified the checkpoint and all nine GTE
+assets, but cached image `ipfs-supervisor-preview-worker:20261005-r3` lacks
+`sentence-transformers`, `transformers` and `tokenizers`; it executed no model.
+The new archive declares these dependencies. Installing them and qualifying
+actual container inference remain pending. No new live Terminal Bench score,
+token-efficiency comparison, training or Hugging Face upload occurred. Grok
+authentication was not reprobed.
+
 ## Historical formalization audit and numerical successors, 2026-10-11
 
 The final benchmark input audit now joins the independently retained task
@@ -53,9 +97,9 @@ numerical stores, and actual owner lifecycle checks. Five post-merge suites pass
 439 distinct tests with zero skips against datasets revision `7fc3f57a9`; the
 successor suite separately deselects one pre-existing real-checkpoint test.
 No new Terminal Bench score
-or token-efficiency comparison is claimed. The experimental learned NumPy
-checkpoint adapter remains separate and unimplemented; the existing learned
-checkpoint is unchanged. Grok authentication has not been reprobed.
+or token-efficiency comparison is claimed. At that revision, the experimental
+learned NumPy checkpoint adapter remained separate and unimplemented; the
+existing learned checkpoint was unchanged. Grok authentication was not reprobed.
 
 Numerical refresh retains the original runtime deadline. It checks that deadline
 around synchronous native projection and validation calls, rejecting an expired

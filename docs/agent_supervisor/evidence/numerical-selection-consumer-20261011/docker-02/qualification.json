@@ -1,0 +1,64 @@
+{
+  "exit_code": 0,
+  "seconds": 2.1299483639886603,
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/docker-02/import_probe.py": "ee4d07fe37bed9d4c8a320b6036641eff0f688aefcd73a0222791c37b41029d4"
+  },
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-adapter-20261011/docker-02/import_probe.py": "ee4d07fe37bed9d4c8a320b6036641eff0f688aefcd73a0222791c37b41029d4"
+  },
+  "hashes_unchanged": true,
+  "observation": {
+    "schema": "numerical-container-compatibility@1",
+    "python": "3.12.15 (main, Oct  1 2026, 21:42:26) [GCC 12.2.0]",
+    "packages": {
+      "torch": {
+        "version": "2.13.0+cpu",
+        "module_found": true
+      },
+      "numpy": {
+        "version": "2.4.6",
+        "module_found": true
+      },
+      "sentence-transformers": {
+        "version": null,
+        "module_found": false
+      },
+      "transformers": {
+        "version": null,
+        "module_found": false
+      },
+      "tokenizers": {
+        "version": null,
+        "module_found": false
+      },
+      "duckdb": {
+        "version": "1.5.5",
+        "module_found": true
+      }
+    },
+    "missing_dependencies": [
+      "sentence-transformers",
+      "transformers",
+      "tokenizers"
+    ],
+    "torch_runtime": "2.13.0+cpu",
+    "cuda_available": false,
+    "owner_file": "/code/datasets/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py",
+    "checkpoint_file_sha256": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+    "checkpoint_compatible": true,
+    "embedding_asset_count": 9,
+    "embedding_assets_verified": true,
+    "inference_available": false,
+    "provider_calls": 0,
+    "training_steps": 0,
+    "inference_executed": false,
+    "proof_authority": false
+  }
+}

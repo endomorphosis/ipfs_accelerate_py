@@ -9,8 +9,11 @@ world and metadata DuckLakes, planning summary, task bundle and coding worker.
 
 This checkpoint supports a narrow source grammar: one plain function in its
 original module, with imports, returning a direct unshadowed `numpy.argmax` or
-`numpy.argmin` call on one of one to four parameters. It is not a general NumPy
-decoder. It uses the frozen Legal384 projection and a learned ridge head. A
+`numpy.argmin` call on one of one to four parameters. Parameters must be
+unannotated and positional, without defaults or decorators, and the function
+must contain a single return. Nested calls, assignments and keyword arguments
+are unsupported. It is not a general NumPy decoder. It uses the frozen Legal384
+projection and a learned ridge head. A
 source-aligned candidate may reference independently generated program, FOL and
 Lean artifacts. Mismatches retain the actual prediction and withhold those
 references; no deterministic repair replaces a prediction. These are advisory

@@ -1,0 +1,33 @@
+{
+  "exit_code": 0,
+  "counts": {
+    "tests": 101,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "wall_seconds": 46.39956760592759,
+  "source_before": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "029059f111646f7c65c6b5ea43be56ea3e07ab46421474a0303b7e771200c04a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "309a46429c1d747e2482e59dd1a2dd9379d08d99c81199e7acf32015edb0394a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_selection_deployment.py": "783bb142599f7b0b76c263c10d98daac16d1b828fe3540727749fc98cd816a55",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_deployment.py": "7b6342489620be7ade384081b5e993c4901117ee8ab64e5ac56da0a6ce474dfe",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py": "e68252d5ea5ec0e705a300ab190c34610cc0258a6a2497aa9c7d9ca567d2431a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py": "b9c7ef55bf42ef44e97943156ac34a552f03d97860485457021a1ef285761567"
+  },
+  "source_after": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "029059f111646f7c65c6b5ea43be56ea3e07ab46421474a0303b7e771200c04a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "309a46429c1d747e2482e59dd1a2dd9379d08d99c81199e7acf32015edb0394a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_numerical_selection_deployment.py": "783bb142599f7b0b76c263c10d98daac16d1b828fe3540727749fc98cd816a55",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": "9a65112e741894fa5c704b054114bee90f2702d32ddc5985ba5d29dff2a5e226",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_deployment.py": "7b6342489620be7ade384081b5e993c4901117ee8ab64e5ac56da0a6ce474dfe",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py": "e68252d5ea5ec0e705a300ab190c34610cc0258a6a2497aa9c7d9ca567d2431a",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_config.py": "b9c7ef55bf42ef44e97943156ac34a552f03d97860485457021a1ef285761567"
+  },
+  "hashes_unchanged": true
+}
