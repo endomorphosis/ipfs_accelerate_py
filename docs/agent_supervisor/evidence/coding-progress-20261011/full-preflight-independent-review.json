@@ -1,0 +1,207 @@
+{
+  "archive_members_reexpanded_by_reviewer": false,
+  "artifact_sha256": {
+    "command": "243b8da5408b3b3fb6bf3c95444af6671c52fed7145b97a5ab6a4edaa2980f97",
+    "exit": "302e0db40e451c9cdc167bfce889410e7652e5e90f454032da629998db78f68f",
+    "identity": "a8754a9bd054309e547ea7e1695b07a8f658b285475cbe717ff1644fddb17a83",
+    "inference": "20c017069aa4e63e34cc4aeb0cda4ab5efb7525ef1cbb3d5c79299ec12ba96c2",
+    "native": "609d0fa5c4755986cda1044d69d4d3cbf9da3fa38e9693b43b174e27148055cf",
+    "preparation": "7e64dd4c5cde0107b91b0eeadef7b0e07c4eefe55d99bfd992fdf55098c126ba",
+    "qualification": "3842ef604b8b35d3dbbaaee4f54a5940d76f6e48605d6472fe05fe85372e7a51",
+    "result": "6fc4c9679aa08a6a6cbafef1eec324804adb6bf1f3b7105e74ed8f51b1d8c3e1",
+    "spec": "0d13228a7a6a33d12bb3a76296f9ef06dba5f8ea3843015fe0867684ad1f1300"
+  },
+  "benchmark_result": false,
+  "blockers": [],
+  "cold_owner_recovery_qualified": false,
+  "container_cleanup": {
+    "absence_samples": [
+      {
+        "exact_container_absent": true,
+        "return_code": 0
+      },
+      {
+        "exact_container_absent": true,
+        "return_code": 0
+      }
+    ],
+    "attempted": true,
+    "container_id": "4a3d72f56eb4a6f2aa9cc6d3912db292e0b688d63a9ec4c8efd7f749deb3f8cf",
+    "harbor_stop_succeeded": true,
+    "succeeded": true
+  },
+  "credentials_or_hidden_verifier_files_read": false,
+  "indexes": {
+    "full_capsules": 8,
+    "indexed_symbols": 4,
+    "learned_embeddings": false
+  },
+  "intent_preplanning_status": "fail_open_no_checkpoint",
+  "lifecycle": {
+    "healthy_samples": 2,
+    "heartbeat_owner_read_sequences": [
+      24,
+      31
+    ],
+    "isolated_worker_cleanup_returncode": 0,
+    "native_tree_member_counts": [
+      3,
+      3
+    ],
+    "remaining_native_processes": 0,
+    "remaining_worker_processes": 0,
+    "start": "succeeded",
+    "stop": "succeeded",
+    "task_state": {
+      "revision": 3,
+      "status": "in_progress"
+    },
+    "worker_counts": [
+      2,
+      2
+    ],
+    "worker_uid": 1001,
+    "workers_after_finally": 0
+  },
+  "limitations": [
+    "Provider-free authored graph plus native lifecycle/context qualification; no model-generated plan, benchmark verifier, task success, or new score.",
+    "Source384 checkpoint inference ran, but all four learned candidates remain unsupported; deterministic numerical contracts do not expand neural source coverage.",
+    "All41 numerical obligations remain pending. Initial/admitted summary equality is verified; this run does not submit it to a live planner.",
+    "Retrieval remains lexical, IntentIR has no selected checkpoint, protected Docker and cold-owner qualification remain open.",
+    "Native cleanup is supported by retained process and exact-container observations. This reviewer does not start Docker or rerun inference."
+  ],
+  "live_model_planning_exercised": false,
+  "native_protected_docker_qualified": false,
+  "native_seconds": 27.43997810408473,
+  "numerical": {
+    "admitted_context_matches_initial": true,
+    "compound_contract_count": 2,
+    "families_with_artifacts": [
+      "first_order",
+      "higher_order",
+      "program"
+    ],
+    "functions": 4,
+    "hydration": {
+      "catalog_count": 3,
+      "ducklake_catalogs": 3,
+      "ducklake_links": 3,
+      "ducklake_verified": true,
+      "world_record_cid": "bafkreihrbc45gnnnjhynitznex7536y6ml6ye3b4zzfwpxbogtzpzttaky"
+    },
+    "initial_admitted_rebound_observations_equal": true,
+    "live_planner_delivery_verified": false,
+    "partial_or_unsupported_functions": 2,
+    "pending_obligation_count": 41,
+    "producers": {
+      "consumer": "c179f6add222c985a8ec56151053c5fea121ab71e2b63a087cc947c4d39ce6ef",
+      "grammar": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "projections": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b"
+    },
+    "profile": "python-numerical-structure@1",
+    "proof_authority": false,
+    "receipt_sha256": "9844745c051c3c13ff2a73edbaa556d00ad5433b6af57dc334c91896b2c72aec",
+    "source_hashes": {
+      "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "source_obligations_discharged": 0,
+    "structurally_complete_functions": 2,
+    "summary_bytes": 4878,
+    "summary_sha256": "3878cd50f617e84e3053bf46059ef39e0e765c1a6353b2375af2c47bd31d69c8",
+    "worker_delivery_verified": false
+  },
+  "official_verifier_executed": false,
+  "preflight_seconds": 218.2051702849567,
+  "provider_calls": 0,
+  "qualified_bundle_join_verified": true,
+  "raw_logs_or_prompts_exported": false,
+  "recorder_seconds": 230.6390731179854,
+  "resources": {
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 20480
+  },
+  "reviewer_docker_calls": 0,
+  "reviewer_model_or_source_execution": false,
+  "reviewer_provider_calls": 0,
+  "schema": "independent-full-supervisor-preflight-review@1",
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 4
+      },
+      "file_dispositions": {
+        "inventoried": 2
+      },
+      "files": 2,
+      "functions": 4,
+      "selected_units": 4,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 4
+      }
+    },
+    "device": "cpu",
+    "embedding_dimensions": 384,
+    "inference_executed": true,
+    "inference_sha256": "20c017069aa4e63e34cc4aeb0cda4ab5efb7525ef1cbb3d5c79299ec12ba96c2",
+    "model_loads": 1,
+    "native_worker_executed": true,
+    "neural_inference_replayed": false,
+    "proof_authority": false,
+    "runtime_checkpoint_sha256": "e077986eecdcdc4eb5f244a95a8591bc759a89af31e2a18adff1a20935ff2d7f",
+    "source_head": {
+      "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeerasfouufmdrygkqccw3cbowr4f5u3nkplnie74wgvi4ckwr2kckegq",
+      "generation": 1,
+      "manifest_cid": "baguqeeramcvpjrk6vdaqr4f3xhl4fvvgbe7bkryritdrmzbixhebtfeaz3oa",
+      "receipt_cid": "baguqeera2gtimj5vg4orsyyev37jh3on6b2em7hv2ffi5tmulmvxnrpwxawa",
+      "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeerasfouufmdrygkqccw3cbowr4f5u3nkplnie74wgvi4ckwr2kckegq"
+    },
+    "source_semantics_verified": false,
+    "training_steps": 0,
+    "version_id": "sha256:0fdcf87d0926425cc88e81940cdcf0c47ba491d760e79b183a7ee71757847716"
+  },
+  "source_archive_population_current": true,
+  "source_binding": {
+    "archive_sha256": "10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1",
+    "complete_source_population_sha256": "ad9635a651c5b2ea6376b962db4681c5f0791bc74522ba5d29b6d94327eda9d9",
+    "critical_source_sha256": {
+      "source/benchmarks/agent_supervisor/container_coding/terminal_native_preflight.py": "b2689c06cbb5a755311da29d651d205791b903340efe0102eea3cd04634461b6",
+      "source/benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py": "550b56e162eea672cc9b0c3e1699dee6ce982128e46d4c48fdbabd7cdbfea0a4",
+      "source/ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+      "source/ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py": "7a4b0329e6d5b1b4dc79649415cdf0972ac79c8fbb956845ba2e56bbfd588526",
+      "source/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": "bb1c4fa73cae66c79d8a5e57d5a94ddad705d342ce5cacbc7ed67432b83241f8"
+    },
+    "manifest_sha256": "9b5068ca7b57186fa0c8dbab224c69a089328d52b955c9569f4d72a7312fc679",
+    "source_file_counts": {
+      "datasets": 8096,
+      "kit": 1299,
+      "source": 2838
+    }
+  },
+  "source_heads": {
+    "datasets": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+    "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "source": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c"
+  },
+  "source_obligations_discharged": 0,
+  "status": "passed",
+  "worker_context": {
+    "intent_freshness_checked_by_worker": false,
+    "prompt_bytes": 60012,
+    "prompt_sha256": "15f7f2dfd5f072af42672fe6c82dba6f1ed3db7bb6bf06a324b5a27316d484d5",
+    "required_context_kinds": [
+      "code-retrieval-context",
+      "intent-world-context",
+      "semantic-context"
+    ],
+    "source_sha256": {
+      "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    "task_completed": false
+  }
+}

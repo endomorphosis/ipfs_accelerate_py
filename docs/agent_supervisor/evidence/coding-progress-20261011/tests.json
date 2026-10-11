@@ -1,0 +1,574 @@
+{
+  "aggregation_docker_calls": 0,
+  "aggregation_provider_calls": 0,
+  "aggregation_test_invocations": 0,
+  "caveats": [
+    "Do not add per-run counts or parser aggregate63 to claim a deduplicated total.",
+    "legacy.xml remains a failed107-case run with4 failures; all4 later pass in router.xml.",
+    "runner-01 passed163 cases while grok_stream_capture.py changed; its135 neighbor identities now pass in neighbors-final with stable selected producer/test hashes. The earlier source-changing record remains historical.",
+    "Only selected source/test paths were hashed; this is not a complete transitive dependency attestation.",
+    "Numerical hashes were retained after pytest around public-source/Lake qualification, not captured before pytest.",
+    "XML-only router and consumer results lack independent per-run source snapshots; current HEAD is not retroactive run provenance.",
+    "Parser63 is an observed terminal aggregate without retained XML/log/nodeids or before-test hashes.",
+    "Lake acceptance checks generated syntax and conditional mathematical declarations; no NumPy/source semantic proof or benchmark score follows."
+  ],
+  "failure_history": [
+    {
+      "canonical_identity": "accelerate:test/test_llm_router_grok_cli.py::test_agent_route_readiness_accepts_positive_login_status",
+      "failed_in": [
+        "tests/legacy.xml"
+      ],
+      "later_passing_in": [
+        "tests/router.xml"
+      ],
+      "resolved_by_later_retained_pass": true
+    },
+    {
+      "canonical_identity": "accelerate:test/test_llm_router_grok_cli.py::test_agent_route_readiness_negative_auth_text_outranks_zero_exit",
+      "failed_in": [
+        "tests/legacy.xml"
+      ],
+      "later_passing_in": [
+        "tests/router.xml"
+      ],
+      "resolved_by_later_retained_pass": true
+    },
+    {
+      "canonical_identity": "accelerate:test/test_llm_router_grok_cli.py::test_grok_cli_command_template_preserves_prompt_as_one_argument",
+      "failed_in": [
+        "tests/legacy.xml"
+      ],
+      "later_passing_in": [
+        "tests/router.xml"
+      ],
+      "resolved_by_later_retained_pass": true
+    },
+    {
+      "canonical_identity": "accelerate:test/test_llm_router_grok_cli.py::test_grok_cli_discovery_survives_systemd_minimal_path",
+      "failed_in": [
+        "tests/legacy.xml"
+      ],
+      "later_passing_in": [
+        "tests/router.xml"
+      ],
+      "resolved_by_later_retained_pass": true
+    }
+  ],
+  "generated_at_utc": "2026-10-11T04:55:15.736198+00:00",
+  "helper_sha256": "89f271c593dc402834a6bfa6c23d1d78ab6c400dc88ee6de278c282f8eac4f11",
+  "identity_method": "Reconstruct file::name from JUnit classname/name; normalize only api.* and test_llm_router_grok_cli to test/ prefix; separate accelerate/datasets/artifact owners. These are normalized JUnit identities, not separately collected pytest nodeids.",
+  "live_benchmark_success_claimed": false,
+  "parser_metadata_only": {
+    "count_basis": "pytest terminal summary from completed execution tool session23534",
+    "current_matches_recorded_after": true,
+    "current_source_hashes": {
+      "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+      "test/api/test_grok_stream_capture.py": "7c65f9d2f4045a357b3991d745d2c69c2519c7131fc2c0259d971d3e6ec90ca3"
+    },
+    "exit_code_observed": 0,
+    "failed_observed": 0,
+    "included_in_unique_xml_count": false,
+    "nodeid_artifact_available": false,
+    "passed_observed": 63,
+    "path": "tests/parser-qualification.json",
+    "seconds_reported": 2.52,
+    "sha256": "97c19f8645855e190bac8fa9d7666ab67f89aa026ca2fd920b08caf77b9dc6bf",
+    "source_hashes_before_tests_recorded": false,
+    "source_sha256_measured_after_tests": {
+      "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+      "test/api/test_grok_stream_capture.py": "7c65f9d2f4045a357b3991d745d2c69c2519c7131fc2c0259d971d3e6ec90ca3"
+    },
+    "xml_available": false
+  },
+  "proof_authority": false,
+  "public_generated_lean": [
+    {
+      "compound_contract_count": 1,
+      "executable_sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+      "functions": 1,
+      "lake_executed": true,
+      "lake_result_path": "numerical/eigen.py.lake.json",
+      "lake_result_sha256": "d810a0cd8b6bb1c89164810df6d2de80b5a9826735818032661f13f7b2098a0c",
+      "lake_status": "passed",
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "pending_obligation_count": 16,
+      "report_sha256": "904c9a915b926835b7c09e340b8279598d89c7fc2323d3509a7fa9d31c0735af",
+      "source_obligations_discharged": 0,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "structurally_complete_functions": 1,
+      "toolchain": "leanprover/lean4:v4.34.1"
+    },
+    {
+      "compound_contract_count": 1,
+      "executable_sha256": "f80f50cbab5322e35bcb0bf88937e22e9d908b5e4e336e83ddfc30eb1506aacf",
+      "functions": 3,
+      "lake_executed": true,
+      "lake_result_path": "numerical/eval.py.lake.json",
+      "lake_result_sha256": "60ac5581d8c4b982c62f2a30109082a770b7ef73eeed28f7ff8869df32c62d89",
+      "lake_status": "passed",
+      "lean_source_sha256": "173334d65ca586e5b986cf567b60757ece5501e3544ff32358dc404b02cb1dbb",
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "pending_obligation_count": 25,
+      "report_sha256": "1eb6be10f6f0b864c29b303b5e51fb0da1c2e33af6e443efa62cb8f243e05366",
+      "source_obligations_discharged": 0,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "structurally_complete_functions": 1,
+      "toolchain": "leanprover/lean4:v4.34.1"
+    }
+  ],
+  "schema": "supervisor-coding-progress-retained-test-qualification@2",
+  "scope": "Metadata-only consolidation of retained tests; not a new test invocation or live benchmark qualification.",
+  "source_heads_after": {
+    "accelerate": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c",
+    "datasets": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52"
+  },
+  "source_heads_before": {
+    "accelerate": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c",
+    "datasets": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52"
+  },
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "supersedes_metadata_record": {
+    "historical_record_preserved": true,
+    "path": "tests/qualification.json",
+    "sha256": "d06964684ec4b68522791bcc8d5bd75cdd16534a94db5cc8f710ef91ccbd0c72"
+  },
+  "test_runs": [
+    {
+      "canonical_identity_set_sha256": "a46f6a2bd43712d17785b841eb9ac29ce61ad3903ab20c2fe2fbcdad678479cc",
+      "counts": {
+        "errors": 0,
+        "failed": 4,
+        "passed": 103,
+        "skipped": 0,
+        "tests": 107
+      },
+      "module_case_counts": {
+        "accelerate:test/api/test_grok_structured_output.py": 71,
+        "accelerate:test/test_llm_router_grok_cli.py": 36
+      },
+      "path": "tests/legacy.xml",
+      "sha256": "be7f6cd84d70a50f97b7d206d356c0bc377ba06e59d6caf817b3b7d7f72699e1",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "status": "no_per_run_source_hash_record"
+      },
+      "timestamp": "2026-10-11T04:37:06.701159+00:00",
+      "wholly_passing": false
+    },
+    {
+      "canonical_identity_set_sha256": "a4aa769546a39605f448a2e3f4efc2b5587a1ff72c0649866419be03dd898a92",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 240,
+        "skipped": 0,
+        "tests": 240
+      },
+      "module_case_counts": {
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": 24,
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": 92,
+        "accelerate:test/api/test_grok_stream_router.py": 17,
+        "accelerate:test/api/test_grok_structured_output.py": 71,
+        "accelerate:test/test_llm_router_grok_cli.py": 36
+      },
+      "new_passing_identities_in_chronological_order": 240,
+      "path": "tests/router.xml",
+      "repeated_passing_identities_in_chronological_order": 0,
+      "sha256": "25f10b100fab6d121e4eaec4dcfb3eb4bf078e53992e92dd7a55c06ab61b6c57",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "status": "no_per_run_source_hash_record"
+      },
+      "timestamp": "2026-10-11T04:41:31.435601+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "a25dddefd67cbd66ee31bf9a7c49ca9cbabee1688706e9a2db490201a5db14a0",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 163,
+        "skipped": 0,
+        "tests": 163
+      },
+      "module_case_counts": {
+        "accelerate:test/api/test_grok_container_router.py": 132,
+        "accelerate:test/api/test_grok_structured_plan_roundtrip.py": 3,
+        "accelerate:test/api/test_router_implementation_runner.py": 28
+      },
+      "new_passing_identities_in_chronological_order": 163,
+      "path": "runner-tests/runner-01-results.xml",
+      "repeated_passing_identities_in_chronological_order": 0,
+      "sha256": "a3ca19c14d9022ce5d35bc2164e1a9eca15131f8419eddd5dd4bb77c69c1233d",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "current_matches_recorded_after": false,
+        "current_source_hashes": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        },
+        "record_path": "runner-tests/runner-01-qualification.json",
+        "record_sha256": "5dd5b57b0702570375891778e56f3554fd5acec500ba1ae95c0989d7104984d2",
+        "recorded_hashes_unchanged": false,
+        "snapshot_scope": "Selected producer/test/helper files immediately before and after pytest.",
+        "source_hashes_after": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "f5a20ce75e916113660cb55668d978b98fee0188b54d0b21849cb182bb2f771d",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        },
+        "source_hashes_before": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "665b99cdc85667d510a3a5bf9f52f045d58dff4e252df4364b2ca82e427c36cf",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        }
+      },
+      "timestamp": "2026-10-11T04:42:38.275013+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "c3709f899af042398581d5136f32f9b214a6a11d6ba7c47c39178a8404f88122",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 164,
+        "skipped": 0,
+        "tests": 164
+      },
+      "module_case_counts": {
+        "datasets:tests/unit/logic/security_ir/test_code_logic_projection.py": 20,
+        "datasets:tests/unit/logic/software_verification/test_numerical_logic.py": 36,
+        "datasets:tests/unit/logic/software_verification/test_numerical_source.py": 42,
+        "datasets:tests/unit/logic/software_verification/test_numerical_value_contracts.py": 66
+      },
+      "new_passing_identities_in_chronological_order": 164,
+      "path": "numerical/initial-tests.xml",
+      "repeated_passing_identities_in_chronological_order": 0,
+      "sha256": "9f0583c502398c83047d335c8827523d521f6c63725b4acae83613d6df177073",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "current_matches_recorded_after": true,
+        "current_source_hashes": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+        },
+        "record_path": "numerical/qualification.json",
+        "record_sha256": "1439d0af8fa923f67c5b91972ed276e4737196d10d863dcfaf9fda0df7e640fa",
+        "recorded_hashes_unchanged": true,
+        "snapshot_scope": "After pytest, around public source replay/Lake qualification; not a before-pytest snapshot.",
+        "source_hashes_after": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+        },
+        "source_hashes_before": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+        }
+      },
+      "timestamp": "2026-10-11T04:43:21.956902+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "f0c55ef3466a48b7af2c614d386f8dab56a0955cd40f03a650be90cbccff0c20",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 116,
+        "skipped": 0,
+        "tests": 116
+      },
+      "module_case_counts": {
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": 17,
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py": 43,
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": 56
+      },
+      "new_passing_identities_in_chronological_order": 116,
+      "path": "tests/numerical-consumer.xml",
+      "repeated_passing_identities_in_chronological_order": 0,
+      "sha256": "2fa24cc5ed930db77b02a22d52c4872a664b3656119b37e4edb33b868774bcf0",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "status": "no_per_run_source_hash_record"
+      },
+      "timestamp": "2026-10-11T04:43:50.378561+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "9609fb22fc90369e94959bf67fa25534f381cf2e44af3fad9470de498583c594",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 41,
+        "skipped": 0,
+        "tests": 41
+      },
+      "module_case_counts": {
+        "accelerate:benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": 24,
+        "accelerate:test/api/test_grok_stream_router.py": 17
+      },
+      "new_passing_identities_in_chronological_order": 0,
+      "path": "tests/router-final.xml",
+      "repeated_passing_identities_in_chronological_order": 41,
+      "sha256": "ccf443b0adf47e5ffc81fe0f6d20ecccb8fed431fcbf26e2a46df8cdd027fb76",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "status": "no_per_run_source_hash_record"
+      },
+      "timestamp": "2026-10-11T04:45:33.216471+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "d428d6ba5d506989e189af682c63257a8d91f28b96492ba645ebd7bc855cf759",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 28,
+        "skipped": 0,
+        "tests": 28
+      },
+      "module_case_counts": {
+        "accelerate:test/api/test_router_implementation_runner.py": 28
+      },
+      "new_passing_identities_in_chronological_order": 0,
+      "path": "runner-tests/runner-02-results.xml",
+      "repeated_passing_identities_in_chronological_order": 28,
+      "sha256": "1c442cb57f93f01433269ef70c4b73d06e701c4d9ff335621f0b263e549051e4",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "current_matches_recorded_after": true,
+        "current_source_hashes": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        },
+        "record_path": "runner-tests/runner-02-qualification.json",
+        "record_sha256": "bfbc961d530ff5dfa5368ef4e8a47ae623ccf5e5721a72fd414de9b761633c64",
+        "recorded_hashes_unchanged": true,
+        "snapshot_scope": "Selected producer/test/helper files immediately before and after pytest.",
+        "source_hashes_after": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        },
+        "source_hashes_before": {
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_router_implementation_runner.py": "b1d550f82396fd3832d0ba758f441da2fb8c04b334fa8685a929d65451a59458"
+        }
+      },
+      "timestamp": "2026-10-11T04:45:37.690301+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "0c8d6fbc7aefcbdb85b954f9a24e928eee0f8b782fb238a0f34c1f66fc4c6928",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 64,
+        "skipped": 0,
+        "tests": 64
+      },
+      "module_case_counts": {
+        "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_build_binding.py": 36,
+        "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_host_environment.py": 15,
+        "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_probe_helpers.py": 13
+      },
+      "new_passing_identities_in_chronological_order": 64,
+      "path": "runner-tests/diagnostic-01-results.xml",
+      "repeated_passing_identities_in_chronological_order": 0,
+      "sha256": "46ee2d4897322744a3ff51cb102ec037d0d4d8387ebf8ef8c041b89c7d32bdb9",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "current_matches_recorded_after": true,
+        "current_source_hashes": {
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/Dockerfile": "b9bf28b0453f7cde6cf03f8c5bd621e2a7e79e6abe33bc3930def456253ad90e",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/add_one.py": "287bd351d93e108a1647b8503acbc1d1e6a1e6e07ca151b9b0c0e1d7b5b4485d",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/check.py": "23b70f62569683982512330f8773f4db27fdeea0f201f57b1733d420f742d188",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/run_tiny_probe.py": "ab86bf9bb5876688aadd3180803e46dbf340833ebec2ff385590a83506bbfb6a",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_build_binding.py": "953d0b1c3ca5ecb0279abd9bb5355c70d00094bcad2679af4e28e407a2d5e8af",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_host_environment.py": "798edb32198b214d0098a752a83e62b6fe0deed44d05bf24135f09319d627e38",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_probe_helpers.py": "1efb50e8c03df6872bc16b76d8fb8a902710ed14c43f2830737931485fbb7f3c",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/verify_output.py": "66c8793e34f4ee292a9168e18367d0a1ed3e5430bd1f7026122add9b226dc144",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/worker_probe.py": "143c9b9b679b5fc116ddf1a5094ac4da3f1b7e96f79f817b550ece63b3b44a87",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f"
+        },
+        "record_path": "runner-tests/diagnostic-01-qualification.json",
+        "record_sha256": "28b8383b4555f4d0eb79ebefbced4af459ad209f40dfd6f2437add75b00cc346",
+        "recorded_hashes_unchanged": true,
+        "snapshot_scope": "Selected producer/test/helper files immediately before and after pytest.",
+        "source_hashes_after": {
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/Dockerfile": "b9bf28b0453f7cde6cf03f8c5bd621e2a7e79e6abe33bc3930def456253ad90e",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/add_one.py": "287bd351d93e108a1647b8503acbc1d1e6a1e6e07ca151b9b0c0e1d7b5b4485d",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/check.py": "23b70f62569683982512330f8773f4db27fdeea0f201f57b1733d420f742d188",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/run_tiny_probe.py": "ab86bf9bb5876688aadd3180803e46dbf340833ebec2ff385590a83506bbfb6a",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_build_binding.py": "953d0b1c3ca5ecb0279abd9bb5355c70d00094bcad2679af4e28e407a2d5e8af",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_host_environment.py": "798edb32198b214d0098a752a83e62b6fe0deed44d05bf24135f09319d627e38",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_probe_helpers.py": "1efb50e8c03df6872bc16b76d8fb8a902710ed14c43f2830737931485fbb7f3c",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/verify_output.py": "66c8793e34f4ee292a9168e18367d0a1ed3e5430bd1f7026122add9b226dc144",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/worker_probe.py": "143c9b9b679b5fc116ddf1a5094ac4da3f1b7e96f79f817b550ece63b3b44a87",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f"
+        },
+        "source_hashes_before": {
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/Dockerfile": "b9bf28b0453f7cde6cf03f8c5bd621e2a7e79e6abe33bc3930def456253ad90e",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/add_one.py": "287bd351d93e108a1647b8503acbc1d1e6a1e6e07ca151b9b0c0e1d7b5b4485d",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/environment/check.py": "23b70f62569683982512330f8773f4db27fdeea0f201f57b1733d420f742d188",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/run_tiny_probe.py": "ab86bf9bb5876688aadd3180803e46dbf340833ebec2ff385590a83506bbfb6a",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_build_binding.py": "953d0b1c3ca5ecb0279abd9bb5355c70d00094bcad2679af4e28e407a2d5e8af",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_host_environment.py": "798edb32198b214d0098a752a83e62b6fe0deed44d05bf24135f09319d627e38",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/test_probe_helpers.py": "1efb50e8c03df6872bc16b76d8fb8a902710ed14c43f2830737931485fbb7f3c",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/verify_output.py": "66c8793e34f4ee292a9168e18367d0a1ed3e5430bd1f7026122add9b226dc144",
+          "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/diagnostic/worker_probe.py": "143c9b9b679b5fc116ddf1a5094ac4da3f1b7e96f79f817b550ece63b3b44a87",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f"
+        }
+      },
+      "timestamp": "2026-10-11T04:48:08.331564+00:00",
+      "wholly_passing": true
+    },
+    {
+      "canonical_identity_set_sha256": "5ece176945b52ca71366c7ab848c239bec191ef9830b0153bd595936b389df23",
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 135,
+        "skipped": 0,
+        "tests": 135
+      },
+      "module_case_counts": {
+        "accelerate:test/api/test_grok_container_router.py": 132,
+        "accelerate:test/api/test_grok_structured_plan_roundtrip.py": 3
+      },
+      "new_passing_identities_in_chronological_order": 0,
+      "path": "runner-tests/neighbors-final-results.xml",
+      "repeated_passing_identities_in_chronological_order": 135,
+      "sha256": "8d304c3f31921cc83f81639c0242e0be2be27ca02f693590e0cdc1b9c8d18169",
+      "source_binding": {
+        "complete_transitive_dependency_capture": false,
+        "current_matches_recorded_after": true,
+        "current_source_hashes": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325"
+        },
+        "record_path": "runner-tests/neighbors-final-qualification.json",
+        "record_sha256": "c3c9d3f06287627dd88642f6bb82ce6eb39e260f651ac704da848be0b9a7e655",
+        "recorded_hashes_unchanged": true,
+        "snapshot_scope": "Selected producer/test/helper files immediately before and after pytest.",
+        "source_hashes_after": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325"
+        },
+        "source_hashes_before": {
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+          "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+          "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "7bc6a06501d5ba9d9357581f6b980a00cb3972c9b4ede006a332f39c127b06d9",
+          "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+          "ipfs_accelerate_py/cli_runtime/grok_native_usage.py": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+          "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+          "ipfs_accelerate_py/llm_router.py": "a515a7ec573f38e6bab3dbeb129f7a12d865b3dc48059b9afd5b0df87a9dda4f",
+          "test/api/test_grok_container_router.py": "a7e7182a9550e25ae96d8d2d83397b11386c30b110a6b9f244eae3ae75798321",
+          "test/api/test_grok_structured_plan_roundtrip.py": "a108f4fec43b098fe312952d24dc844cbfa6653d6668b5f73e5d9c7546a9b325"
+        }
+      },
+      "timestamp": "2026-10-11T04:54:42.043162+00:00",
+      "wholly_passing": true
+    }
+  ],
+  "totals": {
+    "all_xml_case_executions": {
+      "errors": 0,
+      "failed": 4,
+      "passed": 1054,
+      "skipped": 0,
+      "tests": 1058
+    },
+    "initially_failed_identities": 4,
+    "later_passed_failed_identities": 4,
+    "numerical_passing_identities_with_subsequent_producer_snapshot": 164,
+    "passing_identities_only_in_known_source_changed_run": 0,
+    "passing_identities_outside_known_source_changed_only_run": 747,
+    "passing_identities_without_per_run_source_hashes": 356,
+    "repeated_executions_in_wholly_passing_xml": 204,
+    "stable_selected_source_snapshots_before_and_after_tests": 227,
+    "unique_passing_identity_set_sha256": "14a75d1c6b0e11805f15edef3df90f41d2d06079ed698e10b0c5e86ed2445428",
+    "unique_passing_xml_identities": 747,
+    "unresolved_failed_identities": 0,
+    "wholly_passing_xml_case_executions": 951
+  },
+  "unique_identity_counts_by_module": {
+    "accelerate:benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": 24,
+    "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": 17,
+    "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py": 43,
+    "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": 56,
+    "accelerate:benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": 92,
+    "accelerate:test/api/test_grok_container_router.py": 132,
+    "accelerate:test/api/test_grok_stream_router.py": 17,
+    "accelerate:test/api/test_grok_structured_output.py": 71,
+    "accelerate:test/api/test_grok_structured_plan_roundtrip.py": 3,
+    "accelerate:test/api/test_router_implementation_runner.py": 28,
+    "accelerate:test/test_llm_router_grok_cli.py": 36,
+    "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_build_binding.py": 36,
+    "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_host_environment.py": 15,
+    "artifact:artifacts/supervisor-coding-progress-20261011/diagnostic/test_probe_helpers.py": 13,
+    "datasets:tests/unit/logic/security_ir/test_code_logic_projection.py": 20,
+    "datasets:tests/unit/logic/software_verification/test_numerical_logic.py": 36,
+    "datasets:tests/unit/logic/software_verification/test_numerical_source.py": 42,
+    "datasets:tests/unit/logic/software_verification/test_numerical_value_contracts.py": 66
+  }
+}

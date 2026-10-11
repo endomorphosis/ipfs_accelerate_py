@@ -3,6 +3,97 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Coding progress and numerical value contracts, 2026-10-11
+
+Supervisor `bfda2ab7e079` enables bounded `streaming-json` observations for Grok
+coding through the shared `llm_router`; planning keeps its existing JSON/schema
+transport. The collector independently records final events, direct process exit,
+and stdout/stderr EOF. It distinguishes a running-process timeout from an exited
+process whose descendant still holds a pipe. An `end_turn` event cannot override
+the deadline. Malformed, truncated, ambiguous, cancelled or incomplete responses
+cannot be returned as successful text. The returned text is the last segment
+delimited by native per-response usage events; final accounting uses only the
+terminal envelope, never a sum of intermediate usage records.
+
+Progress contains fixed event/tool/status buckets, byte counts, monotonic timing
+offsets and closed outcome fields. It exports no model text, tool arguments,
+arbitrary labels or stderr contents. Event origin remains unauthenticated.
+Callbacks are throttled to five seconds plus a final observation; cancellation
+still propagates through owned-child cleanup. The runner binds advisory records
+to its invocation and preserves the final snapshot in the benchmark receipt and
+comparison. Progress grants no execution, proof, completion, retry or settlement
+authority. Archive compatibility now also binds the shared router and capture
+producers. An additional router regression exposed and fixed explicit command
+templates being replaced by an installed native CLI during discovery.
+
+Datasets `fecc4ecbf2b6` adds a conservative ProgramIR contract connecting the
+tuple returned by `numpy.linalg.eig`, the index from `argmax(abs(values))`, and
+the returned value and matching vector column. Unsupported control flow,
+rebindings, mutation or ambiguous value relationships cause abstention. Seven
+pending requirements cover runtime interpretation, dimensions, value/column
+correspondence, magnitude selection, nonzero output, finiteness and approximate
+residuals. No floating-point tolerance or NumPy refinement is assumed.
+
+The supervisor preserves bounded compound contracts and their source roles in
+the planner summary, with complete omission counts, through the existing native
+world/metadata DuckLake stores and deterministic replay. Both public numerical
+modules passed actual Lean 4.34.1 `lake build`: two matched contracts, four sampled
+functions (two structurally complete and two partial), **41 pending source
+obligations and zero discharged**. Lean checks definitions and explicit
+conditional mathematics; it does not prove the Python/NumPy implementation.
+This extension performs no model inference or training and does not change the
+previously unsupported Source384 candidates.
+
+A subsequent provider-free full-supervisor preflight qualified this same archive
+in the actual task environment: **218.21 seconds** inside the driver, 230.64
+seconds including the recorder. Source384 actually loaded its pinned checkpoint
+once and decoded four candidates, all still unsupported by its scalar source
+contract. Numerical hydration retained one world record and three catalog/link
+pairs across the native lakes; the admitted summary exactly matched the initial
+summary, including both compound contracts and the count of 41 pending obligations.
+Native START and STOP succeeded, heartbeat reads advanced from 24 to 31, no native
+or worker processes remained, and the exact container was absent twice. This
+preflight made zero provider calls and grants no live planner/worker-delivery,
+task-completion, protected nested-Docker or cold-owner recovery qualification.
+
+A fresh archive (`10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1`)
+passed the authored Docker router diagnostic: one Grok 4.7 call, four turns,
+**15.50 seconds** in the provider invocation, and five independent output checks
+passed. The full diagnostic including setup took 332.31 seconds. Its 88 stream
+frames included 61 text events, four per-response usage events, three tool calls
+and one terminal event. No frames were malformed, oversized or unknown. One tool
+name fell into the unknown bucket; the effective tool allowlist remains
+unverified. The final event arrived at 11.59 seconds and process exit at 15.33
+seconds; both pipes reached EOF. This directly confirms that a terminal model
+event and process exit are distinct observations, without diagnosing the older
+30-minute failures. Five initial/periodic/final observations reached the callback.
+
+The terminal envelope reported 23,008 tokens (12,734 input, 9,856 cached input,
+418 output). Usage completeness was not reported and billing was not verified;
+these are observed counters, not a complete cost or token-savings result. The
+protected checker remained unchanged; the exact owned container was absent in
+two subsequent observations. All source, archive, helper and run-spec bindings
+were unchanged. This diagnostic uses the router and isolated worker boundary,
+not the full supervisor planning lifecycle or the official Terminal Bench
+verifier. The previous benchmark scores remain unchanged.
+
+The [closed qualification](evidence/coding-progress-20261011/qualification.json)
+joins the frozen source/archive identities, live diagnostic, cleanup and local
+checks. The [test census](evidence/coding-progress-20261011/tests.json) contains
+747 unique passing JUnit identities after targeted reruns resolved all four
+initial failures. It distinguishes repeated executions and the source-hash
+evidence available for each run; this is not one monolithic final-HEAD test run.
+The parser's separate 63 passing cases are excluded from that deduplicated count
+because only its terminal summary and after-test hashes were retained. The
+[numerical qualification](evidence/coding-progress-20261011/numerical.json) and
+[independent review](evidence/coding-progress-20261011/numerical-independent-review.json)
+retain the two actual public-source Lake results and their pending-proof scope.
+The [independent live diagnostic audit](evidence/coding-progress-20261011/tiny-stream-independent-review.json)
+rechecks the closed stream, source/archive bindings, five checks and cleanup.
+The [independent full-supervisor preflight audit](evidence/coding-progress-20261011/full-preflight-independent-review.json)
+verifies checkpoint inference, context persistence, native lifecycle and cleanup,
+while retaining the unsupported candidates and pending obligations.
+
 ## Long-budget Docker pilot and planner delivery, 2026-10-11
 
 A fresh archive at supervisor `f9dcf5f80121`, datasets `db432c5a93a2`, and kit

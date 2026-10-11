@@ -1,0 +1,149 @@
+{
+  "datasets_head_after": "e6a9a93b14b220a946ec53de559255716cf53f42",
+  "datasets_head_before": "e6a9a93b14b220a946ec53de559255716cf53f42",
+  "helper_sha256": "71351d12b7d285dcc082514211d076473083835607ceb12bb44828eaf98299c9",
+  "producer_and_test_hashes_after": {
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+  },
+  "producer_and_test_hashes_before": {
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_sources": [
+    {
+      "compound_contract_assessments": [
+        {
+          "function_id": "function:2",
+          "reason": null,
+          "status": "matched_syntax_only"
+        }
+      ],
+      "compound_contract_count": 1,
+      "compound_contract_ids": [
+        "numerical-contract:0036a2a80f854cf5c649405487b5ba86"
+      ],
+      "functions": 1,
+      "lake_executed": true,
+      "lake_file": "eigen.py.lake.json",
+      "lake_status": "passed",
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "model_inference_executed": false,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "pending_obligation_count": 16,
+      "per_function": [
+        {
+          "function_id": "function:2",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        }
+      ],
+      "proof_authority": false,
+      "report_file": "eigen.py.report.json",
+      "report_sha256": "904c9a915b926835b7c09e340b8279598d89c7fc2323d3509a7fa9d31c0735af",
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_replay_passed": true,
+      "source_semantics_verified": false,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+      "structurally_complete_functions": 1,
+      "training_performed": false
+    },
+    {
+      "compound_contract_assessments": [
+        {
+          "function_id": "function:243",
+          "reason": "incomplete_or_unsupported_function",
+          "status": "not_matched"
+        },
+        {
+          "function_id": "function:6",
+          "reason": null,
+          "status": "matched_syntax_only"
+        },
+        {
+          "function_id": "function:81",
+          "reason": "incomplete_or_unsupported_function",
+          "status": "not_matched"
+        }
+      ],
+      "compound_contract_count": 1,
+      "compound_contract_ids": [
+        "numerical-contract:7796ed25a89bda54c2deb0061d8228f5"
+      ],
+      "functions": 3,
+      "lake_executed": true,
+      "lake_file": "eval.py.lake.json",
+      "lake_status": "passed",
+      "lean_source_sha256": "173334d65ca586e5b986cf567b60757ece5501e3544ff32358dc404b02cb1dbb",
+      "model_inference_executed": false,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "pending_obligation_count": 25,
+      "per_function": [
+        {
+          "function_id": "function:6",
+          "name_truncated": false,
+          "pending_obligation_count": 16,
+          "qualified_name": "ref_solution",
+          "status": "structurally_complete",
+          "structurally_complete": true,
+          "unsupported_construct_count": 0
+        },
+        {
+          "function_id": "function:81",
+          "name_truncated": false,
+          "pending_obligation_count": 9,
+          "qualified_name": "test_eigen_pair",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 1
+        },
+        {
+          "function_id": "function:243",
+          "name_truncated": false,
+          "pending_obligation_count": 0,
+          "qualified_name": "test_speedup",
+          "status": "partial",
+          "structurally_complete": false,
+          "unsupported_construct_count": 4
+        }
+      ],
+      "proof_authority": false,
+      "report_file": "eval.py.report.json",
+      "report_sha256": "1eb6be10f6f0b864c29b303b5e51fb0da1c2e33af6e443efa62cb8f243e05366",
+      "source_executed": false,
+      "source_obligations_discharged": 0,
+      "source_replay_passed": true,
+      "source_semantics_verified": false,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+      "structurally_complete_functions": 1,
+      "training_performed": false
+    }
+  ],
+  "schema": "numerical-value-contract-qualification@1",
+  "scope": "Public source structural def-use joins and generated Lean syntax/conditional mathematics; no NumPy semantic proof.",
+  "source_execution_calls": 0,
+  "source_obligations_discharged": 0,
+  "test_result_sha256": "9f0583c502398c83047d335c8827523d521f6c63725b4acae83613d6df177073",
+  "test_results": {
+    "errors": "0",
+    "failures": "0",
+    "hostname": "spark-b271",
+    "name": "pytest",
+    "skipped": "0",
+    "tests": "164",
+    "time": "5.666",
+    "timestamp": "2026-10-11T04:43:21.956902+00:00"
+  },
+  "training_performed": false
+}

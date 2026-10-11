@@ -1,0 +1,607 @@
+{
+  "archive_sha256": "10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1",
+  "build_seconds": 34.02562976698391,
+  "build_sources_unchanged": true,
+  "completion_authority": false,
+  "credential_contents_exported": false,
+  "diagnostic": {
+    "cleanup": {
+      "attempted": true,
+      "container_id": "83ab1f5b0c92af9e9c50c17c26f33af07f21330838b238bcc5281971d416c206",
+      "samples": [
+        {
+          "absent": true,
+          "observed_at_ns": 1791694468972575670
+        },
+        {
+          "absent": true,
+          "observed_at_ns": 1791694469085143692
+        }
+      ],
+      "succeeded": true
+    },
+    "effective_toolset_verified": false,
+    "full_supervisor_lifecycle": false,
+    "max_turns": 4,
+    "model": "grok-4.7",
+    "native_outcome": {
+      "classification_source": "stop_reason",
+      "completion_authority": false,
+      "envelope_observed": true,
+      "error_observed": false,
+      "error_subtype": "unknown",
+      "process_outcome": "returned",
+      "raw_provider_data_exported": false,
+      "reason_code": "end_turn",
+      "schema": "native-grok-outcome@1",
+      "stop_reason": "end_turn"
+    },
+    "native_usage": {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "dollar_cost": null,
+      "observed_final_usage_records": 1,
+      "raw_provider_data_exported": false,
+      "schema": "native-grok-final-usage@1",
+      "task_complete_observed": true,
+      "totals_scope": "native_final_envelope",
+      "usage": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 9856,
+        "input_tokens": 12734,
+        "output_tokens": 418,
+        "reasoning_output_tokens": 248,
+        "total_tokens": 23008
+      },
+      "usage_available": true,
+      "usage_complete_observed": null,
+      "usage_observation_sha256": "4e8b8f5bb349ad64c5ed04ef02376221be07da98c6234528eff75d874a1252de"
+    },
+    "official_benchmark_verifier": false,
+    "output_check": {
+      "benchmark_result": false,
+      "checker_unchanged": true,
+      "evaluated_cases": 5,
+      "output_bytes": 41,
+      "output_exists": true,
+      "output_sha256": "eb03dcb53008b66099f4a3324d5335b3cf0a3e93fefc7836afbb6a9eb88cfbdd",
+      "proof_authority": false,
+      "schema": "authored-grok-output-check@1",
+      "test_exit": 0
+    },
+    "passed": true,
+    "progress_callbacks": {
+      "completion_authority": false,
+      "first_snapshot_seconds": 0.06921398895792663,
+      "last_snapshot_seconds": 15.401754355989397,
+      "observation_only": true,
+      "settlement_authority": false,
+      "snapshot_count": 5
+    },
+    "provider": "grok_cli",
+    "provider_calls": 1,
+    "provider_seconds": 15.497575400979258,
+    "stream": {
+      "callback_errors": 0,
+      "completion_authority": false,
+      "discarded_text_bytes": 77,
+      "duration_seconds": 15.33300867502112,
+      "event_counts": {
+        "auto_compact": 0,
+        "available_commands": 8,
+        "end": 1,
+        "error": 0,
+        "max_turns_reached": 0,
+        "plan": 0,
+        "text": 61,
+        "thought": 4,
+        "tool_call": 3,
+        "tool_call_update": 7,
+        "unknown": 0,
+        "usage": 4
+      },
+      "event_origin_authenticated": false,
+      "events_after_final": 0,
+      "execution_authority": false,
+      "final_envelope_observed": true,
+      "final_event_seconds": 11.590488934074529,
+      "final_event_type": "end",
+      "final_reason_code": "end_turn",
+      "first_event_seconds": 0.12431750108953565,
+      "first_stderr_seconds": null,
+      "first_stdout_seconds": 0.12431750108953565,
+      "frames": 88,
+      "last_event_seconds": 11.590488934074529,
+      "last_stderr_seconds": null,
+      "last_stdout_seconds": 11.590488934074529,
+      "malformed_frames": 0,
+      "non_object_frames": 0,
+      "observation_only": true,
+      "oversized_frames": 0,
+      "process_exit_observed": true,
+      "process_exit_seconds": 15.332948178984225,
+      "proof_authority": false,
+      "raw_provider_data_exported": false,
+      "response_usable": true,
+      "retained_text_bytes": 108,
+      "returncode": 0,
+      "schema": "native-grok-stream-progress@1",
+      "stderr_bytes": 0,
+      "stderr_eof": true,
+      "stdout_bytes": 11843,
+      "stdout_eof": true,
+      "stream_complete": true,
+      "stream_tainted": false,
+      "text_bytes": 185,
+      "text_scope": "last_usage_delimited_text_segment",
+      "text_truncated": false,
+      "timed_out": false,
+      "timeout_phase": "none",
+      "tool_name_counts": {
+        "grep": 0,
+        "list_dir": 0,
+        "read_file": 1,
+        "run_terminal_cmd": 0,
+        "search_replace": 1,
+        "todo_write": 0,
+        "unknown": 1
+      },
+      "tool_status_counts": {
+        "completed": 3,
+        "failed": 0,
+        "in_progress": 1,
+        "pending": 3,
+        "unknown": 3
+      },
+      "transport": "streaming-json",
+      "unknown_events": 0
+    },
+    "timeout_seconds": 90,
+    "total_seconds": 332.3056379139889,
+    "unchanged": {
+      "archive_unchanged": true,
+      "helpers_unchanged": true,
+      "run_spec_unchanged": true,
+      "sources_unchanged": true
+    }
+  },
+  "evidence_sha256": {
+    "build/build-exit.json": "5eadf539e8a37a16dd61ef4493baf2be5d5ee813dbff64b747f7c111652fbdd4",
+    "build/bundle-identity.json": "a8754a9bd054309e547ea7e1695b07a8f658b285475cbe717ff1644fddb17a83",
+    "build/preflight/native-start-stop-result.json": "609d0fa5c4755986cda1044d69d4d3cbf9da3fa38e9693b43b174e27148055cf",
+    "build/preflight/result.json": "6fc4c9679aa08a6a6cbafef1eec324804adb6bf1f3b7105e74ed8f51b1d8c3e1",
+    "build/qualified-bundle.json": "3842ef604b8b35d3dbbaaee4f54a5940d76f6e48605d6472fe05fe85372e7a51",
+    "diagnostic/run01/result.json": "c0a63c384a68bd7ccd258fb43e71d5290bb6244f16aa7176cc419613dd7e6562",
+    "numerical/qualification.json": "1439d0af8fa923f67c5b91972ed276e4737196d10d863dcfaf9fda0df7e640fa",
+    "review/numerical-independent-review.json": "06f999bbcd8df2292b7e5bad503478b7dc4e6849aef41c19e8381581178a95e1",
+    "review/tiny-stream-diagnostic.json": "253a4b6bccf6908793fa0238046bde5a072d23a5c3b24614769bc65e90b76c04",
+    "runner-tests/diagnostic-01-qualification.json": "28b8383b4555f4d0eb79ebefbced4af459ad209f40dfd6f2437add75b00cc346",
+    "runner-tests/runner-02-qualification.json": "bfbc961d530ff5dfa5368ef4e8a47ae623ccf5e5721a72fd414de9b761633c64",
+    "tests/parser-qualification.json": "97c19f8645855e190bac8fa9d7666ab67f89aa026ca2fd920b08caf77b9dc6bf",
+    "tests/qualification-v2.json": "b84f068d7c68f9547afa24908646bd0ef4828f86ec287b1e067cf5bab7eb0377"
+  },
+  "full_supervisor_preflight": {
+    "cold_owner_recovery_qualified": false,
+    "container_cleanup": {
+      "absence_samples": [
+        {
+          "exact_container_absent": true,
+          "return_code": 0
+        },
+        {
+          "exact_container_absent": true,
+          "return_code": 0
+        }
+      ],
+      "attempted": true,
+      "container_id": "4a3d72f56eb4a6f2aa9cc6d3912db292e0b688d63a9ec4c8efd7f749deb3f8cf",
+      "harbor_stop_succeeded": true,
+      "succeeded": true
+    },
+    "driver_seconds": 218.2051702849567,
+    "heartbeat_read_sequences": [
+      24,
+      31
+    ],
+    "native_protected_docker_qualified": false,
+    "native_start_status": "succeeded",
+    "native_stop_status": "succeeded",
+    "numerical_formalization": {
+      "admitted_context_matches_initial": true,
+      "completion_authority": false,
+      "execution_authority": false,
+      "hydration": {
+        "catalog_count": 3,
+        "ducklake_catalogs": 3,
+        "ducklake_links": 3,
+        "ducklake_verified": true,
+        "world_record_cid": "bafkreihrbc45gnnnjhynitznex7536y6ml6ye3b4zzfwpxbogtzpzttaky"
+      },
+      "live_planner_delivery_verified": false,
+      "model_inference_calls": 0,
+      "producers": {
+        "consumer": "c179f6add222c985a8ec56151053c5fea121ab71e2b63a087cc947c4d39ce6ef",
+        "grammar": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "projections": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b"
+      },
+      "profile": "python-numerical-structure@1",
+      "proof_authority": false,
+      "provider_calls": 0,
+      "provider_free": true,
+      "receipt_sha256": "9844745c051c3c13ff2a73edbaa556d00ad5433b6af57dc334c91896b2c72aec",
+      "schema": "terminal-numerical-provider-free-observation@1",
+      "source_hashes": {
+        "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+        "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "summary": {
+        "autoencoder_coverage_changed": false,
+        "completion_authority": false,
+        "compound_contract_count": 2,
+        "compound_contracts": [
+          {
+            "contract_id": "numerical-contract:0036a2a80f854cf5c649405487b5ba86",
+            "function_id": "function:2",
+            "kind": "selected_eigenpair",
+            "path": "eigen.py",
+            "pending_obligation_kinds": [
+              "selected_eigenpair_runtime_interpretation",
+              "selected_eigenpair_dimensions",
+              "selected_eigenpair_value_column",
+              "selected_eigenpair_magnitude_selection",
+              "selected_eigenpair_nonzero",
+              "selected_eigenpair_finite",
+              "selected_eigenpair_approximate_residual"
+            ],
+            "proof_authority": false,
+            "roles": {
+              "eig_expression": "expr:29",
+              "input_expression": "expr:27",
+              "returned_value_expression": "expr:54",
+              "returned_vector_expression": "expr:70",
+              "selection_expression": "expr:46"
+            },
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eigen.py"
+            ],
+            "span_ids": [
+              "span:32",
+              "span:49",
+              "span:75"
+            ],
+            "status": "pending"
+          },
+          {
+            "contract_id": "numerical-contract:7796ed25a89bda54c2deb0061d8228f5",
+            "function_id": "function:6",
+            "kind": "selected_eigenpair",
+            "path": "eval.py",
+            "pending_obligation_kinds": [
+              "selected_eigenpair_runtime_interpretation",
+              "selected_eigenpair_dimensions",
+              "selected_eigenpair_value_column",
+              "selected_eigenpair_magnitude_selection",
+              "selected_eigenpair_nonzero",
+              "selected_eigenpair_finite",
+              "selected_eigenpair_approximate_residual"
+            ],
+            "proof_authority": false,
+            "roles": {
+              "eig_expression": "expr:32",
+              "input_expression": "expr:30",
+              "returned_value_expression": "expr:57",
+              "returned_vector_expression": "expr:73",
+              "selection_expression": "expr:49"
+            },
+            "source_obligations_discharged": 0,
+            "source_ref_ids": [
+              "source:eval.py"
+            ],
+            "span_ids": [
+              "span:35",
+              "span:52",
+              "span:78"
+            ],
+            "status": "pending"
+          }
+        ],
+        "execution_authority": false,
+        "families_with_artifacts": [
+          "first_order",
+          "higher_order",
+          "program"
+        ],
+        "files": 2,
+        "functions": 4,
+        "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Read source before editing.",
+        "model_inference_calls": 0,
+        "omitted_compound_contract_summaries": 0,
+        "omitted_function_summaries": 0,
+        "omitted_obligation_summaries": 33,
+        "partial_or_unsupported_functions": 2,
+        "pending_obligation_count": 41,
+        "pending_obligations": [
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:293ef6fae216a5ebce55c001043d76af",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "matrix_shape",
+            "obligation_id": "numerical:a0d0f4836a386f59f45de38ddd0ed3dd",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "eigenpair_residual",
+            "obligation_id": "numerical:0c42cc95aae03f9b1ed2dab3a560ef82",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:44",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:4d6e7f581f3a66d0269b22cf2dc8d26d",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:46",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:2d3b5d383860f2db77dadf81224242eb",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:46",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "selection",
+            "obligation_id": "numerical:8d90140bb486c38ae77a53c5693a503c",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:54",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "index_safety",
+            "obligation_id": "numerical:6b7fa0f89f467d7bc0b767dc7d634d6b",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:70",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "slice_safety",
+            "obligation_id": "numerical:fbb2402decfd9b58c20de00b45eadb24",
+            "path": "eigen.py",
+            "status": "pending"
+          }
+        ],
+        "per_function": [
+          {
+            "function_id": "function:2",
+            "name_truncated": false,
+            "path": "eigen.py",
+            "pending_obligation_count": 16,
+            "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:6",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 16,
+            "qualified_name": "ref_solution",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:81",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 9,
+            "qualified_name": "test_eigen_pair",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 1
+          },
+          {
+            "function_id": "function:243",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 0,
+            "qualified_name": "test_speedup",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 4
+          }
+        ],
+        "profile": "python-numerical-structure@1",
+        "proof_authority": false,
+        "provider_calls": 0,
+        "schema": "terminal-numerical-formalization-planning-summary@1",
+        "source_obligations_discharged": 0,
+        "source_semantics_verified": false,
+        "source_tree_id": "baguqeeraanfjei4wydhtho3ymct5ff3frqntxrehd24k7ru4v3mctkugvksq",
+        "structurally_complete_functions": 2,
+        "training_steps": 0,
+        "whole_program_semantics_verified": false
+      },
+      "summary_sha256": "3878cd50f617e84e3053bf46059ef39e0e765c1a6353b2375af2c47bd31d69c8",
+      "training_steps": 0,
+      "whole_program_semantics_verified": false,
+      "worker_delivery_verified": false
+    },
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "recorder_seconds": 230.6390731179854,
+    "remaining_native_processes": 0,
+    "remaining_worker_processes": 0,
+    "source384": {
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "completion_authority": false,
+      "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "execution_authority": false,
+      "formalization_authority": false,
+      "inference_bytes": 119717,
+      "inference_executed": true,
+      "inference_sha256": "20c017069aa4e63e34cc4aeb0cda4ab5efb7525ef1cbb3d5c79299ec12ba96c2",
+      "model_loads": 1,
+      "native_worker_executed": true,
+      "neural_inference_replayed": false,
+      "proof_authority": false,
+      "schema": "local-preflight-source384-inference-observation@1",
+      "source_head": {
+        "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeerasfouufmdrygkqccw3cbowr4f5u3nkplnie74wgvi4ckwr2kckegq",
+        "generation": 1,
+        "manifest_cid": "baguqeeramcvpjrk6vdaqr4f3xhl4fvvgbe7bkryritdrmzbixhebtfeaz3oa",
+        "receipt_cid": "baguqeera2gtimj5vg4orsyyev37jh3on6b2em7hv2ffi5tmulmvxnrpwxawa",
+        "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeerasfouufmdrygkqccw3cbowr4f5u3nkplnie74wgvi4ckwr2kckegq"
+      },
+      "training_steps": 0,
+      "version_id": "sha256:0fdcf87d0926425cc88e81940cdcf0c47ba491d760e79b183a7ee71757847716"
+    },
+    "source384_coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 4
+      },
+      "file_dispositions": {
+        "inventoried": 2
+      },
+      "files": 2,
+      "functions": 4,
+      "selected_units": 4,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 4
+      }
+    },
+    "source_binding_unchanged": true,
+    "task_completion_expected": false
+  },
+  "manifest_sha256": "9b5068ca7b57186fa0c8dbab224c69a089328d52b955c9569f4d72a7312fc679",
+  "native_codex_baseline_rerun": false,
+  "new_terminal_bench_score": false,
+  "numerical": {
+    "autoencoder_coverage_changed": false,
+    "compound_contracts": 2,
+    "model_inference_calls": 0,
+    "native_lake_builds_passed": 2,
+    "partial_functions": 2,
+    "pending_obligations": 41,
+    "public_files": 2,
+    "runtime_numpy_semantics_verified": false,
+    "sampled_functions": 4,
+    "source_obligations_discharged": 0,
+    "structurally_complete_functions": 2,
+    "training_steps": 0
+  },
+  "previous_qualification_sha256": "31f0a3e49a341a65ffe92ee08a0cc433303d4b5a7860af28723094879aefd37e",
+  "previous_terminal_bench_results_unchanged": true,
+  "proof_authority": false,
+  "raw_provider_data_exported": false,
+  "schema": "supervisor-stream-and-value-contract-qualification@2",
+  "source_heads": {
+    "datasets": {
+      "head": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+      "root": "/home/barberb/lift_coding/.worktrees/numerical-value-contracts-20261011"
+    },
+    "kit": {
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "root": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "head": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c",
+      "root": "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011"
+    }
+  },
+  "testing": {
+    "limitations": [
+      "Do not add per-run counts or parser aggregate63 to claim a deduplicated total.",
+      "legacy.xml remains a failed107-case run with4 failures; all4 later pass in router.xml.",
+      "runner-01 passed163 cases while grok_stream_capture.py changed; its135 neighbor identities now pass in neighbors-final with stable selected producer/test hashes. The earlier source-changing record remains historical.",
+      "Only selected source/test paths were hashed; this is not a complete transitive dependency attestation.",
+      "Numerical hashes were retained after pytest around public-source/Lake qualification, not captured before pytest.",
+      "XML-only router and consumer results lack independent per-run source snapshots; current HEAD is not retroactive run provenance.",
+      "Parser63 is an observed terminal aggregate without retained XML/log/nodeids or before-test hashes.",
+      "Lake acceptance checks generated syntax and conditional mathematical declarations; no NumPy/source semantic proof or benchmark score follows."
+    ],
+    "parser": {
+      "count_basis": "pytest terminal summary from completed execution tool session23534",
+      "current_matches_recorded_after": true,
+      "current_source_hashes": {
+        "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+        "test/api/test_grok_stream_capture.py": "7c65f9d2f4045a357b3991d745d2c69c2519c7131fc2c0259d971d3e6ec90ca3"
+      },
+      "exit_code_observed": 0,
+      "failed_observed": 0,
+      "included_in_unique_xml_count": false,
+      "nodeid_artifact_available": false,
+      "passed_observed": 63,
+      "path": "tests/parser-qualification.json",
+      "seconds_reported": 2.52,
+      "sha256": "97c19f8645855e190bac8fa9d7666ab67f89aa026ca2fd920b08caf77b9dc6bf",
+      "source_hashes_before_tests_recorded": false,
+      "source_sha256_measured_after_tests": {
+        "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+        "test/api/test_grok_stream_capture.py": "7c65f9d2f4045a357b3991d745d2c69c2519c7131fc2c0259d971d3e6ec90ca3"
+      },
+      "xml_available": false
+    },
+    "totals": {
+      "all_xml_case_executions": {
+        "errors": 0,
+        "failed": 4,
+        "passed": 1054,
+        "skipped": 0,
+        "tests": 1058
+      },
+      "initially_failed_identities": 4,
+      "later_passed_failed_identities": 4,
+      "numerical_passing_identities_with_subsequent_producer_snapshot": 164,
+      "passing_identities_only_in_known_source_changed_run": 0,
+      "passing_identities_outside_known_source_changed_only_run": 747,
+      "passing_identities_without_per_run_source_hashes": 356,
+      "repeated_executions_in_wholly_passing_xml": 204,
+      "stable_selected_source_snapshots_before_and_after_tests": 227,
+      "unique_passing_identity_set_sha256": "14a75d1c6b0e11805f15edef3df90f41d2d06079ed698e10b0c5e86ed2445428",
+      "unique_passing_xml_identities": 747,
+      "unresolved_failed_identities": 0,
+      "wholly_passing_xml_case_executions": 951
+    }
+  },
+  "token_savings_claimed": false
+}

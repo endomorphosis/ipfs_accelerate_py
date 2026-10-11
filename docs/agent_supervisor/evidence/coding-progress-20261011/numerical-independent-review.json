@@ -1,0 +1,86 @@
+{
+  "benchmark_performance_evidence": false,
+  "blockers": [],
+  "checks": {
+    "authority": "All source proof/completion/execution authority remains false, source obligations discharged remains zero, numerical profile does not expand learned Source384 coverage.",
+    "conditional_math": "selected_column_contract assumes every eigensystem column satisfies nonzero, finite and approximate-residual conditions plus a selection premise. It proves the conditional selected instance only; it establishes none of those premises for source execution. The comparison relation and arithmetic are parameters.",
+    "matching": "Requires structurally complete function, one CFG block, exactly two assignments then return; four distinct parameter/local symbols; declared NumPy imports; one eig result unpacked into ordered values/vectors; argmax(abs(values)); same selected index and full unstrided vector column. Extra effects/control flow or mismatches abstain.",
+    "projection_scope": "Seven source-bound FOL predicates; six corresponding Lean definition bindings. Existing SMT route handles only reviewed abstract index/shape templates; compound NumPy semantics are not silently translated into trusted SMT assumptions.",
+    "replay": "Consumer persists source and producer hashes, full reports and bounded planning summary; validation re-formalizes exact source/path, compares all report bytes, recomputes summary, rejoins world/metadata records, and rechecks source/producers after replay.",
+    "runtime_identity": "Declared imports and matching syntax do not prove callable identity, array types, effects, exceptions, aliasing, floating-point behavior, or tolerance. These remain explicit pending obligations.",
+    "summary_accounting": "Consumer counts full contract population, selects available per-report bounded rows, and records both upstream and consumer truncation. Dropped rows increment omitted counts; whole summary is capped at8192 bytes."
+  },
+  "datasets_head_observed": "e6a9a93b14b220a946ec53de559255716cf53f42",
+  "datasets_validation": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 164
+    },
+    "new_value_contract_cases": 66,
+    "qualification_sha256": "1439d0af8fa923f67c5b91972ed276e4737196d10d863dcfaf9fda0df7e640fa",
+    "recorded_before_after_source_hashes_match_current": true,
+    "test_xml_sha256": "9f0583c502398c83047d335c8827523d521f6c63725b4acae83613d6df177073",
+    "tests_executed_by_reviewer": false
+  },
+  "limitations": [
+    "Read-only review does not rerun tests or native compilers. Recorded test/compile receipts are independently joined where stated.",
+    "This grammar intentionally abstains outside one narrow source pattern. Unmodeled library runtime semantics and other logic families remain open.",
+    "No source correctness, automatic repair, speedup, token saving, or new benchmark score is established by these additions."
+  ],
+  "proof_authority": false,
+  "provider_calls_by_reviewer": 0,
+  "public_input_closed_native_receipts": [
+    {
+      "compound_contract_count": 1,
+      "lake_backend_executed": true,
+      "lake_receipt_sha256": "d810a0cd8b6bb1c89164810df6d2de80b5a9826735818032661f13f7b2098a0c",
+      "lake_returncode": 0,
+      "lake_status": "passed",
+      "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+      "pending_obligation_count": 16,
+      "report_sha256": "904c9a915b926835b7c09e340b8279598d89c7fc2323d3509a7fa9d31c0735af",
+      "source_obligations_discharged": 0,
+      "source_replay_passed": true,
+      "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "compound_contract_count": 1,
+      "lake_backend_executed": true,
+      "lake_receipt_sha256": "60ac5581d8c4b982c62f2a30109082a770b7ef73eeed28f7ff8869df32c62d89",
+      "lake_returncode": 0,
+      "lake_status": "passed",
+      "lean_source_sha256": "173334d65ca586e5b986cf567b60757ece5501e3544ff32358dc404b02cb1dbb",
+      "pending_obligation_count": 25,
+      "report_sha256": "1eb6be10f6f0b864c29b303b5e51fb0da1c2e33af6e443efa62cb8f243e05366",
+      "source_obligations_discharged": 0,
+      "source_replay_passed": true,
+      "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "review_method": "read_only_source_and_closed_receipts",
+  "reviewer": "pilot_resume",
+  "schema": "independent-numerical-value-contract-review@1",
+  "source_bytes_unchanged_during_review": true,
+  "source_executed_by_reviewer": false,
+  "source_hashes": {
+    ".worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "9eaea35b243abd08348be2b7b75fdb30e94b84064fb5bdb9ccca31a5aed9ad6b",
+    ".worktrees/numerical-value-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+    ".worktrees/numerical-value-contracts-20261011/tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771",
+    ".worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "23eb391f59b53ccd4a640d077a867d82adb62ba916f9272f5caefd70b0a37818",
+    ".worktrees/supervisor-coding-progress-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "c179f6add222c985a8ec56151053c5fea121ab71e2b63a087cc947c4d39ce6ef"
+  },
+  "supervisor_head_observed": "a22e795a5d604451442d38697e59bcd456ed3a25",
+  "supervisor_validation": {
+    "counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 116
+    },
+    "source_before_after_binding_in_this_xml": false,
+    "test_xml_sha256": "2fa24cc5ed930db77b02a22d52c4872a664b3656119b37e4edb33b868774bcf0",
+    "tests_executed_by_reviewer": false
+  }
+}
