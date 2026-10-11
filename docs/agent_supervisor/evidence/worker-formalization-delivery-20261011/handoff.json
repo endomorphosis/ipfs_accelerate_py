@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "test/api/test_source_formalization_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py",
+    "--disable-warnings",
+    "--maxfail=1",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/owner-handoff-final/result.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "exit_code": 0,
+  "schema": "source-formalization-owner-worker-handoff-qualification@1",
+  "scope": "Real temporary Git worktrees, regular files and sealed Linux memfd. UID/boundary/owner selection controlled in handoff unit tests. Generated WORKER_ENTRY parser executes with controlled boundary/router. Actual distinct-UID Docker qualification is separate; no provider/model calls.",
+  "seconds": 20.801803078968078,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "d856d530a150604a89b635946f43177394c9a365fbeb7708a5b3a900dac54ed8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "test/api/test_source_formalization_context.py": "8d101363f4491e13bc24c87314fab3708ecd8e52a9de767afa01b0c8f14de6a4"
+  },
+  "source_sha256_after": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "d856d530a150604a89b635946f43177394c9a365fbeb7708a5b3a900dac54ed8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "test/api/test_source_formalization_context.py": "8d101363f4491e13bc24c87314fab3708ecd8e52a9de767afa01b0c8f14de6a4"
+  }
+}

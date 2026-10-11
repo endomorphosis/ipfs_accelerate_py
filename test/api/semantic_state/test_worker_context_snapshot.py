@@ -4,6 +4,7 @@ The bundle parser and context compiler are real. Native Source384 validation and
 individual artifact readers are controlled seams; no model/provider executes.
 """
 from types import SimpleNamespace
+import hashlib
 import json
 import subprocess
 import pytest
@@ -30,7 +31,10 @@ def context(tmp_path,monkeypatch):
   'code retrieval artifact':'retrieval.json','code retrieval sha256':'r'*64,
   'world context artifact':'world.json','world context sha256':'w'*64,'world context repository':'repo:1'}
  receipt_output=tmp_path/'source384';receipt_output.mkdir()
- receipt={'schema':'terminal-source384-repository-context@1','repository':str(root),'output':str(receipt_output)}
+ receipt={'schema':'terminal-source384-repository-context@1','repository':str(root),'output':str(receipt_output),
+  'source_hashes':{'todo.md':hashlib.sha256((root/'todo.md').read_bytes()).hexdigest()},
+  'summary':{'schema':'authored-source384-summary@1','candidate_samples':[],
+   'proof_authority':False,'source_semantics_verified':False}}
  (receipt_output/'receipt.json').write_bytes(json.dumps(receipt,sort_keys=True,separators=(',',':')).encode())
  prepared={'schema':'supervisor-task-context-preparation@1','task_cid':task.canonical_task_cid,'task_id':task.task_id,
   'metadata':metadata,'source384_context':receipt}
@@ -43,19 +47,24 @@ def context(tmp_path,monkeypatch):
   {'schema':'intent-world@1','semantic_root_cid':'root:new','component_status':{'symbol_root':'current'},
    'execution_authority':False,'completion_authority':False})
  monkeypatch.setattr(world,'minify_intent_world_worker_context',lambda value:value)
- return SimpleNamespace(daemon=daemon,task=task,root=root,reads=reads,validations=validations,metadata=metadata)
+ return SimpleNamespace(daemon=daemon,task=task,root=root,reads=reads,validations=validations,metadata=metadata,receipt=receipt)
 
 def test_initial_compilation_validates_bundle_once_and_preserves_artifact_order(context):
  c=context;result=c.daemon._compile_implementation_context(c.task,attempt=1)
  assert len(c.validations)==1
  assert [name for name,_ in c.reads]==['semantic','retrieval','world']
  assert sorted(item.kind for item in result.capsule.evidence if item.kind.endswith('context'))==[
-  'code-retrieval-context','intent-world-context','semantic-context']
+  'code-retrieval-context','intent-world-context','semantic-context','source-formalization-context']
  calls=dict(c.reads)
  assert calls['semantic']['expected_sha256']=='s'*64
  assert calls['retrieval']['expected_sha256']=='r'*64
  assert calls['world']['expected_sha256']=='w'*64 and calls['world']['repository_id']=='repo:1'
  assert c.task.metadata=={'Provider role':'deterministic-only'}
+ formal=json.loads(''.join(item.summary for item in result.capsule.evidence if item.kind=='source-formalization-context'))
+ assert formal['task_id']==c.task.task_id and formal['task_cid']==c.task.canonical_task_cid
+ assert formal['context_bundle']==c.daemon._task_context_nomination_bundle
+ assert formal['contexts'][0]['summary']==c.receipt['summary']
+ assert formal['proof_authority'] is False and formal['source_obligations_discharged']==0
 
 def test_next_actual_compilation_revalidates_stale_source_before_artifact_loads(context,monkeypatch):
  c=context;c.daemon._compile_implementation_context(c.task,attempt=1)
@@ -88,6 +97,25 @@ def test_actual_snapshot_is_detached_read_only(context):
  c.task.metadata['Provider role']='changed'
  assert snapshot['provider role']=='deterministic-only'
  assert c.daemon._task_metadata_snapshot(c.task)['provider role']=='changed'
+
+def test_formalization_only_bundle_cannot_reuse_previous_retry_capsule(context,monkeypatch):
+ c=context
+ base=c.daemon._compile_implementation_context(c.task,attempt=1)
+ c.task.metadata.clear()
+ prepared={'schema':'supervisor-task-context-preparation@1','task_cid':c.task.canonical_task_cid,
+  'task_id':c.task.task_id,'metadata':{},'source384_context':c.receipt}
+ c.daemon._task_context_nomination_bundle=bundles.write_task_context_bundle(
+  repository=c.root,prepared=[prepared],output=c.root/'formalization-only.json')
+ key=c.daemon._canonical_ref(c.task)
+ c.daemon._implementation_diagnostics={key:SimpleNamespace(prior_decision_id='decision:prior')}
+ monkeypatch.setattr(c.daemon,'_implementation_parent',lambda task:(base.capsule,'decision:prior'))
+ monkeypatch.setattr(c.daemon,'_load_implementation_retry_state',lambda task:None)
+ monkeypatch.setattr(c.daemon,'_implementation_cancel_requested',lambda:False)
+ monkeypatch.setattr(c.daemon,'_fresh_retry_context_matches_diagnostic',lambda *a,**k:True)
+ class FreshCompilation(Exception):pass
+ def fresh(*args):raise FreshCompilation
+ monkeypatch.setattr(c.daemon,'_compile_implementation_retry_context',fresh)
+ with pytest.raises(FreshCompilation):c.daemon._build_implementation_prompt(c.task,attempt=2)
 
 @pytest.mark.parametrize('kind',['semantic','retrieval','world'])
 def test_each_direct_consumer_still_loads_live_bundle(context,kind):

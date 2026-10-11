@@ -18,12 +18,17 @@ def raw(value):
 
 @pytest.fixture
 def case(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import _sources
+
     repository = tmp_path / "repository"
     repository.mkdir()
     output = tmp_path / "private"
     output.mkdir()
     # An authored complete signed population exceeds the obsolete inline bound.
     sources = {f"modules/module_{i:03d}.py": hashlib.sha256(str(i).encode()).hexdigest() for i in range(256)}
+    (repository / "modules").mkdir()
+    for i, path in enumerate(sources):
+        (repository / path).write_text(str(i))
     receipt = dict(schema="terminal-source384-repository-context@1", repository=str(repository),
         output=str(output), source_hashes=sources,
         source_inventory=[dict(path=p, sha256=h, source_cid="cid:" + h, disposition="captured")
@@ -34,6 +39,7 @@ def case(tmp_path, monkeypatch):
     calls = []
     module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context")
     module.validate_source384_context = lambda **kw: calls.append(deepcopy(kw))
+    module._sources = _sources
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return types.SimpleNamespace(repository=repository, output=output, receipt=receipt, calls=calls,
                                  validator=module)

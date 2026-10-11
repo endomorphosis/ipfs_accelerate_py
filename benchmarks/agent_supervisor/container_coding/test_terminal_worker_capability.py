@@ -49,13 +49,15 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     assert value['schema'] == 'terminal-router-worker-capability@3'
     assert value['budget_profile_max_timeout_seconds'] == {FORMALIZATION_SOURCE384_PROFILE: 1800}
     assert value['worker_child_custody_schema'] == 'terminal-worker-child-custody@1'
-    assert len(value['source_sha256']) == 10
+    assert len(value['source_sha256']) == 11
     assert any(name.endswith('/native_cli_subreaper.py') for name in value['source_sha256'])
     assert any(name.endswith('/terminal_output_observation.py') for name in value['source_sha256'])
+    assert any(name.endswith('/source_formalization_context.py') for name in value['source_sha256'])
 
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
-    'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py'])
+    'llm_router.py', 'grok_stream_capture.py', 'cli_metadata.py', 'grok_native_usage.py',
+    'source_formalization_context.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

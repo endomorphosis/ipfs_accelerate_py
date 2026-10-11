@@ -1,0 +1,37 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[numerical]",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[combined]",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/seam-02.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/seam-02-cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/seam-02-seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": "ecfca0fd74152dce1ef52157eaa5b1d8c9e8b7b5de3be5b0a5f96dfc5255974e",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "7eee545dd03d0c910beba97f549d399620352923090f095252af2c87835231e7",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": "78cc9fb896945da6d2b8aa6d60a08b59ebdb48ea03ea9e793a524140f9aa4de3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "0462a9b405cda1df787317784996e05a3b484534e1f2f2294266f886c7da5609"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "exit_code": 0,
+  "seconds": 81.40393213392235,
+  "source_after": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "dc016a187cea99b210e4f65dc9cc082bc462e740b5af5bff3eae79f3a454dab0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "6aff8fed59365fdf3191dad6fb26056f1f24cbdaa6a112c4bea58127f8b14b08",
+    "test/integration/test_admitted_context_refresh.py": "a5ee4b83daa01c00575d6bc17401a441196d24ee9ba90748990b1aa701a3baef"
+  },
+  "sources_unchanged": true
+}

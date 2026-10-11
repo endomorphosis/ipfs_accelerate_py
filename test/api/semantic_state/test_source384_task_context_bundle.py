@@ -14,9 +14,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime import task_context_bundle as b
 def validator(monkeypatch):
     # Exercise the production import/API while this control isolates the bundle
     # contract from model loading. Native receipt verification has separate tests.
+    from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import _sources
+
     module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context")
     calls = []
     module.validate_source384_context = lambda **kwargs: calls.append(deepcopy(kwargs))
+    module._sources = _sources
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module, calls
 
@@ -45,6 +48,18 @@ def _rewrite(root, bundle, payload):
 
 def _write_legacy(*, repository, prepared, output):
     # Retained @2 envelopes remain readable after writers move to references.
+    source = b"def authored():\n    return 1\n"
+    (repository / "authored.py").write_bytes(source)
+    for item in prepared:
+        retained = repository.parent / (repository.name + "-" + item["task_id"] + "-source384")
+        retained.mkdir()
+        receipt = dict(schema="terminal-source384-repository-context@1", repository=str(repository),
+            output=str(retained), source_hashes={"authored.py": hashlib.sha256(source).hexdigest()},
+            summary=dict(schema="terminal-source384-planning-summary@1", candidate_samples=[],
+                         proof_authority=False, completion_authority=False),
+            proof_authority=False, completion_authority=False)
+        (retained / "receipt.json").write_bytes(bundles._raw(receipt))
+        item["source384_context"] = receipt
     payload = {"schema": bundles.SOURCE384_SCHEMA, "completion_authority": False,
         "tasks": [{key: item[key] for key in ("task_cid", "task_id", "metadata", "source384_context")}
                   for item in prepared]}

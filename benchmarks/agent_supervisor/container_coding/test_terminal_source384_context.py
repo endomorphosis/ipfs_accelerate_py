@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 import pytest
 
@@ -16,6 +17,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_initial_contex
 from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original, _proposal_json
 from benchmarks.agent_supervisor.container_coding.test_terminal_initial_context import _version
 from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as owner
+from test.api.test_semantic_router_integration import provider  # noqa: F401
 
 
 @pytest.fixture
@@ -36,12 +38,13 @@ def selected_config(tmp_path):
     return path
 
 
-def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(original, selected_config, monkeypatch):
+def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(original, selected_config, monkeypatch, provider):
     from ipfs_datasets_py.logic.software_contracts import codebase_source_units_384 as native
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_nomination
     root, instruction, state = original
     prepared = prep.prepare(repository=root, instruction=instruction, state=state)
-    result = prep.initial_context(state=state, source384_config=selected_config)
+    result = prep.initial_context(state=state, source384_config=selected_config,
+                                  numerical_formalization_profile="python-numerical-structure@1")
     receipt = result["source384_context"]
     inference = json.loads((Path(receipt["output"]) / "inference.json").read_bytes())
     assert inference["native_worker_executed"] is True
@@ -81,12 +84,65 @@ def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(origi
     bundle = context["context_bundle"]
     payload = json.loads((root / bundle["artifact"]).read_text())
     task = payload["tasks"][0]
-    assert payload["schema"] == "supervisor-task-context-nominations@3"
+    assert payload["schema"] == "supervisor-task-context-nominations@4"
     options = dict(repository=root, artifact=bundle["artifact"], expected_sha256=bundle["sha256"],
                    task_id=task["task_id"], task_cid=task["task_cid"])
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import read_task_context_historical_selection
     assert read_task_context_historical_selection(**options)["source384_context"] == receipt
     assert load_task_context_nomination(**options)
+    # Observe the actual compiled worker capsule through the shared router and
+    # reversible codec. Only the remote provider is authored; the model-backed
+    # Source384 receipt, numerical projections, lakes and both validators are real.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalTask, TodoImplementationDaemon
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as worker_router
+    from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
+    daemon = TodoImplementationDaemon(todo_path=root / ".runtime/worker.todo.md", repo_root=root,
+        state_path=state / "worker/tasks.json", strategy_path=state / "worker/strategy.json",
+        events_path=state / "worker/events.jsonl", task_header_prefix="## TB-")
+    daemon._task_context_nomination_bundle = bundle
+    portal = PortalTask(task_id=task["task_id"], canonical_task_cid=task["task_cid"],
+        title="Retained public task", status="ready", completion="manual", priority="P2",
+        track="implementation", outputs=["bottle.py", "report.jsonl"], validation=[],
+        acceptance="Current source observations", metadata={"database task cid": task["task_cid"]})
+    try:
+        prompt = daemon._build_implementation_prompt(portal, attempt=1)
+        wire, _ = json.JSONDecoder().raw_decode(prompt)
+        refs = [row for row in wire["evidence"] if row["kind"] == "source-formalization-context"]
+        formal = json.loads("".join(row["summary"] for row in refs))
+        assert len(formal["contexts"]) == 2
+        assert all(row["metadata"]["required"] for row in refs)
+        assert formal["contexts"][0]["summary"]["candidate_samples"] == samples
+        assert formal["contexts"][1]["summary"]["source_unit_links"]
+        workspace = state / "allocated-worker"
+        subprocess.run(["git", "-C", str(root), "worktree", "add", "--detach", "-q", str(workspace)], check=True)
+        for name in receipt["source_hashes"]:
+            target = workspace / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root / name, target)
+        monkeypatch.chdir(workspace)
+        monkeypatch.setenv("CODEX_HOME", str(state / "empty-worker-home"))
+        output, invocation = worker_router.run(prompt=prompt, provider="codex_cli", model="pinned",
+            timeout=1, max_output_tokens=128, semantic_repository=root)
+        _, observed = provider
+        assert output == "literal summary" and len(observed) == 1
+        encoded = codec.encode_semantic_router_prompt(prompt=prompt, repository=root)
+        model_prompt, advisory = worker_router.render_model_prompt(prompt=encoded.provider_prompt,
+            purpose="coding", workspace=workspace, semantic_transport=True)
+        assert model_prompt == observed[0][0]
+        assert samples[0]["candidate_sha256"] in model_prompt
+        for link in formal["contexts"][1]["summary"]["source_unit_links"]:
+            assert link["unit_id"] in model_prompt and link["link_report_sha256"] in model_prompt
+        assert codec.restore_semantic_router_prompt(provider_prompt=model_prompt[len(advisory):],
+            table=encoded.table, repository=root) == prompt
+        observation = invocation["source_formalization_context"]
+        assert observation["workspace_source_current"] is True
+        assert observation["context_kinds"] == ["source384-candidate-context", "numerical-formalization-context"]
+        assert observation["neural_inference_replayed"] is False
+        assert observation["proof_authority"] is False
+        assert invocation["model_prompt_sha256"] == hashlib.sha256(model_prompt.encode()).hexdigest()
+        assert invocation["usage"]["prompt_tokens"] == 123  # Authored provider accounting only.
+    finally:
+        daemon.close_event_runtime()
     # Real source/model/receipt changes must fail at the canonical worker seam.
     checkpoint = Path(json.loads(selected_config.read_text())["checkpoint_path"])
     for path in (root / "bottle.py", checkpoint, selected_config,

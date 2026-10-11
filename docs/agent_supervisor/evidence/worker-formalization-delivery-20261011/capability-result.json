@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "seconds": 17.077759320964105,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "ae571383e9ed5c37fbdfe1d84e2f6c841c0bbea563ababef9d27c5fbf671f38b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "ece362d28dfbe7ef5a7250131582b08801e874f471e85c3076436f4455ecb2fa",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9070328629d9c68c5142746aa57f2566097118ee413a651cef764f79500ff0f3"
+  },
+  "sources_unchanged": true
+}

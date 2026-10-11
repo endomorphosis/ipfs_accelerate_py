@@ -52,7 +52,7 @@ def implementation_timeout_limit(budget_profile=None):
 # type names, caller paths and locals never enter the child-reported record.
 RUNNER_FAILURE_PHASES = frozenset({
     "runner_initialization", "argument_validation", "planning_contract",
-    "container_boundary", "workspace_identity", "semantic_context",
+    "container_boundary", "workspace_identity", "semantic_context", "source_formalization_context",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "semantic_metadata_view",
     "semantic_metadata_census",
@@ -73,6 +73,7 @@ RUNNER_FAILURE_FILES = frozenset({
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     "semantic_metadata_view.py",
     "semantic_metadata_census.py",
+    "source_formalization_context.py",
 })
 
 
@@ -211,6 +212,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
         semantic_repository: Path | None = None,
+        source_formalization_handoff: Path | None = None,
+        source_formalization_handoff_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
         census_only: bool = False,
@@ -313,6 +316,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
                                                transport_schema=semantic_transport_schema)
         router_prompt = encoded.provider_prompt
+    failure_phase = "source_formalization_context"
+    from .source_formalization_context import validate_source_formalization_context
+    formalization_receipt = validate_source_formalization_context(
+        prompt=prompt, repository=semantic_repository, workspace=root,
+        boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
+        handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
     failure_phase = "doctor_residual"
     residual_args = (doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid)
     if any(residual_args):
@@ -500,6 +509,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "completion_authority": False,
             "settlement_authority": False,
         }}
+    if formalization_receipt is not None:
+        receipt["source_formalization_context"] = formalization_receipt
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
         # singleton followed by its explicit denial requests zero planning
@@ -661,6 +672,8 @@ def main():
     parser.add_argument("--container-boundary", type=Path)
     parser.add_argument("--container-boundary-sha256", default="")
     parser.add_argument("--semantic-repository", type=Path)
+    parser.add_argument("--source-formalization-handoff", type=Path)
+    parser.add_argument("--source-formalization-handoff-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
@@ -684,6 +697,8 @@ def main():
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
+                        source_formalization_handoff=args.source_formalization_handoff,
+                        source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         census_only=args.semantic_metadata_census_only,
