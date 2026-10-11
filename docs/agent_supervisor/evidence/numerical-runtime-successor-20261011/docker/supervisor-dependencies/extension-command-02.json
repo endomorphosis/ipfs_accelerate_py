@@ -1,0 +1,13 @@
+{
+  "command": [
+    "docker",
+    "exec",
+    "numerical-runtime-supervisor-20261011-04",
+    "/opt/ipfs-supervisor/venv/bin/python",
+    "-I",
+    "-B",
+    "-c",
+    "import duckdb,json,hashlib,pathlib,os\nc=duckdb.connect(':memory:');c.execute('SET autoinstall_known_extensions=false');c.execute('SET autoload_known_extensions=false');c.execute('LOAD ducklake')\nq=c.execute(\"SELECT * FROM duckdb_extensions() WHERE extension_name IN ('ducklake','parquet')\")\nrows=[dict(zip([d[0] for d in q.description],row)) for row in q.fetchall()]\nfor row in rows:\n p=pathlib.Path(row.get('install_path',''))\n if p.is_file():row['sha256']=hashlib.sha256(p.read_bytes()).hexdigest();row['bytes']=p.stat().st_size\nprint(json.dumps(dict(uid=os.geteuid(),gid=os.getegid(),duckdb=duckdb.__version__,extensions=rows),default=str))\n"
+  ],
+  "returncode": 0
+}

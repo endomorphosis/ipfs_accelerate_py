@@ -1,0 +1,21 @@
+{
+  "command": [
+    "docker",
+    "build",
+    "--pull=false",
+    "--network=none",
+    "--tag",
+    "ipfs-supervisor-numerical-dev:20261011-r2",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/supervisor-dependencies/build-context"
+  ],
+  "base_image_id": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+  "files": {
+    "Dockerfile": "afdc7b8275865365db1452ba39a39a4005488fbf6ffcfcfecefebda29bc4b12d",
+    "requirements.lock": "d881971b49458a448b3ccce64b148905ab50287b6a3a4bd48f7595910927f91f",
+    "wheels/referencing-0.37.0-py3-none-any.whl": "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231",
+    "wheels/jsonschema-4.26.0-py3-none-any.whl": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce",
+    "wheels/rpds_py-2026.9.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "2693b2728bbcc48d09a981a356954b0c47c53ff25b545856f28a889ea619f69a",
+    "wheels/jsonschema_specifications-2025.9.1-py3-none-any.whl": "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe",
+    "wheels/attrs-26.1.0-py3-none-any.whl": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+  }
+}

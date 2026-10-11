@@ -1,0 +1,38 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "numerical-runtime-resolve-20261011-01",
+    "--user",
+    "0",
+    "--mount",
+    "type=bind,src=/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011,dst=/qualification",
+    "--entrypoint",
+    "/opt/ipfs-supervisor/venv/bin/python",
+    "sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+    "-m",
+    "pip",
+    "--isolated",
+    "install",
+    "--dry-run",
+    "--report",
+    "/qualification/resolution.json",
+    "--only-binary=:all:",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--disable-pip-version-check",
+    "-r",
+    "/qualification/requirements.txt"
+  ],
+  "base_image_id": "sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+  "requirements": [
+    "sentence-transformers==5.4.1",
+    "transformers==4.52.1",
+    "safetensors==0.7.0",
+    "numpy==1.26.4"
+  ],
+  "producer": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+  "producer_sha256": "a9033d6cb3db6ca1da808f75ca44a0b7adf7b6d4434bdcda9557a36cf2a2715d"
+}

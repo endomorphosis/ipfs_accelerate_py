@@ -1,0 +1,338 @@
+{
+  "version": "1",
+  "pip_version": "25.0.1",
+  "install": [
+    {
+      "download_info": {
+        "url": "file:///tmp/supervisor-dev-wheels/jsonschema-4.26.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce",
+          "hashes": {
+            "sha256": "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "jsonschema",
+        "version": "4.26.0",
+        "summary": "An implementation of JSON Schema validation for Python",
+        "description": "==========\njsonschema\n==========\n\n|PyPI| |Pythons| |CI| |ReadTheDocs| |Precommit| |Zenodo|\n\n.. |PyPI| image:: https://img.shields.io/pypi/v/jsonschema.svg\n   :alt: PyPI version\n   :target: https://pypi.org/project/jsonschema/\n\n.. |Pythons| image:: https://img.shields.io/pypi/pyversions/jsonschema.svg\n   :alt: Supported Python versions\n   :target: https://pypi.org/project/jsonschema/\n\n.. |CI| image:: https://github.com/python-jsonschema/jsonschema/workflows/CI/badge.svg\n  :alt: Build status\n  :target: https://github.com/python-jsonschema/jsonschema/actions?query=workflow%3ACI\n\n.. |ReadTheDocs| image:: https://readthedocs.org/projects/python-jsonschema/badge/?version=stable&style=flat\n   :alt: ReadTheDocs status\n   :target: https://python-jsonschema.readthedocs.io/en/stable/\n\n.. |Precommit| image:: https://results.pre-commit.ci/badge/github/python-jsonschema/jsonschema/main.svg\n   :alt: pre-commit.ci status\n   :target: https://results.pre-commit.ci/latest/github/python-jsonschema/jsonschema/main\n\n.. |Zenodo| image:: https://zenodo.org/badge/3072629.svg\n   :alt: Zenodo DOI\n   :target: https://zenodo.org/badge/latestdoi/3072629\n\n\n``jsonschema`` is an implementation of the `JSON Schema <https://json-schema.org>`_ specification for Python.\n\n.. code:: python\n\n    >>> from jsonschema import validate\n\n    >>> # A sample schema, like what we'd get from json.load()\n    >>> schema = {\n    ...     \"type\" : \"object\",\n    ...     \"properties\" : {\n    ...         \"price\" : {\"type\" : \"number\"},\n    ...         \"name\" : {\"type\" : \"string\"},\n    ...     },\n    ... }\n\n    >>> # If no exception is raised by validate(), the instance is valid.\n    >>> validate(instance={\"name\" : \"Eggs\", \"price\" : 34.99}, schema=schema)\n\n    >>> validate(\n    ...     instance={\"name\" : \"Eggs\", \"price\" : \"Invalid\"}, schema=schema,\n    ... )                                   # doctest: +IGNORE_EXCEPTION_DETAIL\n    Traceback (most recent call last):\n        ...\n    ValidationError: 'Invalid' is not of type 'number'\n\nIt can also be used from the command line by installing `check-jsonschema <https://github.com/python-jsonschema/check-jsonschema>`_.\n\nFeatures\n--------\n\n* Full support for `Draft 2020-12 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft202012Validator>`_, `Draft 2019-09 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft201909Validator>`_, `Draft 7 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft7Validator>`_, `Draft 6 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft6Validator>`_, `Draft 4 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft4Validator>`_ and `Draft 3 <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/validators/#jsonschema.validators.Draft3Validator>`_\n\n* `Lazy validation <https://python-jsonschema.readthedocs.io/en/latest/api/jsonschema/protocols/#jsonschema.protocols.Validator.iter_errors>`_ that can iteratively report *all* validation errors.\n\n* `Programmatic querying <https://python-jsonschema.readthedocs.io/en/latest/errors/>`_ of which properties or items failed validation.\n\n\nInstallation\n------------\n\n``jsonschema`` is available on `PyPI <https://pypi.org/project/jsonschema/>`_. You can install using `pip <https://pip.pypa.io/en/stable/>`_:\n\n.. code:: bash\n\n    $ pip install jsonschema\n\n\nExtras\n======\n\nTwo extras are available when installing the package, both currently related to ``format`` validation:\n\n    * ``format``\n    * ``format-nongpl``\n\nThey can be used when installing in order to include additional dependencies, e.g.:\n\n.. code:: bash\n\n    $ pip install jsonschema'[format]'\n\nBe aware that the mere presence of these dependencies – or even the specification of ``format`` checks in a schema – do *not* activate format checks (as per the specification).\nPlease read the `format validation documentation <https://python-jsonschema.readthedocs.io/en/latest/validate/#validating-formats>`_ for further details.\n\nAbout\n-----\n\nI'm Julian Berman.\n\n``jsonschema`` is on `GitHub <https://github.com/python-jsonschema/jsonschema>`_.\n\nGet in touch, via GitHub or otherwise, if you've got something to contribute, it'd be most welcome!\n\nIf you feel overwhelmingly grateful, you can also `sponsor me <https://github.com/sponsors/Julian/>`_.\n\nAnd for companies who appreciate ``jsonschema`` and its continued support and growth, ``jsonschema`` is also now supportable via `TideLift <https://tidelift.com/subscription/pkg/pypi-jsonschema?utm_source=pypi-jsonschema&utm_medium=referral&utm_campaign=readme>`_.\n\n\nRelease Information\n-------------------\n\nv4.26.0\n=======\n\n* Decrease import time by delaying importing of ``urllib.request`` (#1416).\n",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "data validation",
+          "json",
+          "json schema",
+          "jsonschema",
+          "validation"
+        ],
+        "author_email": "Julian Berman <Julian+jsonschema@GrayVines.com>",
+        "license_expression": "MIT",
+        "license_file": [
+          "COPYING"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Intended Audience :: Developers",
+          "Operating System :: OS Independent",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Topic :: File Formats :: JSON",
+          "Topic :: File Formats :: JSON :: JSON Schema"
+        ],
+        "requires_dist": [
+          "attrs>=22.2.0",
+          "jsonschema-specifications>=2023.03.6",
+          "referencing>=0.28.4",
+          "rpds-py>=0.25.0",
+          "fqdn; extra == 'format'",
+          "idna; extra == 'format'",
+          "isoduration; extra == 'format'",
+          "jsonpointer>1.13; extra == 'format'",
+          "rfc3339-validator; extra == 'format'",
+          "rfc3987; extra == 'format'",
+          "uri-template; extra == 'format'",
+          "webcolors>=1.11; extra == 'format'",
+          "fqdn; extra == 'format-nongpl'",
+          "idna; extra == 'format-nongpl'",
+          "isoduration; extra == 'format-nongpl'",
+          "jsonpointer>1.13; extra == 'format-nongpl'",
+          "rfc3339-validator; extra == 'format-nongpl'",
+          "rfc3986-validator>0.1.0; extra == 'format-nongpl'",
+          "rfc3987-syntax>=1.1.0; extra == 'format-nongpl'",
+          "uri-template; extra == 'format-nongpl'",
+          "webcolors>=24.6.0; extra == 'format-nongpl'"
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Homepage, https://github.com/python-jsonschema/jsonschema",
+          "Documentation, https://python-jsonschema.readthedocs.io/",
+          "Issues, https://github.com/python-jsonschema/jsonschema/issues/",
+          "Funding, https://github.com/sponsors/Julian",
+          "Tidelift, https://tidelift.com/subscription/pkg/pypi-jsonschema?utm_source=pypi-jsonschema&utm_medium=referral&utm_campaign=pypi-link",
+          "Changelog, https://github.com/python-jsonschema/jsonschema/blob/main/CHANGELOG.rst",
+          "Source, https://github.com/python-jsonschema/jsonschema"
+        ],
+        "provides_extra": [
+          "format",
+          "format-nongpl"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "file:///tmp/supervisor-dev-wheels/referencing-0.37.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231",
+          "hashes": {
+            "sha256": "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "referencing",
+        "version": "0.37.0",
+        "summary": "JSON Referencing + Python",
+        "description": "===============\n``referencing``\n===============\n\n|PyPI| |Pythons| |CI| |ReadTheDocs| |pre-commit|\n\n.. |PyPI| image:: https://img.shields.io/pypi/v/referencing.svg\n  :alt: PyPI version\n  :target: https://pypi.org/project/referencing/\n\n.. |Pythons| image:: https://img.shields.io/pypi/pyversions/referencing.svg\n  :alt: Supported Python versions\n  :target: https://pypi.org/project/referencing/\n\n.. |CI| image:: https://github.com/python-jsonschema/referencing/workflows/CI/badge.svg\n  :alt: Build status\n  :target: https://github.com/python-jsonschema/referencing/actions?query=workflow%3ACI\n\n.. |ReadTheDocs| image:: https://readthedocs.org/projects/referencing/badge/?version=stable&style=flat\n   :alt: ReadTheDocs status\n   :target: https://referencing.readthedocs.io/en/stable/\n\n.. |pre-commit| image:: https://results.pre-commit.ci/badge/github/python-jsonschema/referencing/main.svg\n  :alt: pre-commit.ci status\n  :target: https://results.pre-commit.ci/latest/github/python-jsonschema/referencing/main\n\n\nAn implementation-agnostic implementation of JSON reference resolution.\n\nSee `the documentation <https://referencing.readthedocs.io/>`_ for more details.\n",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "asyncapi",
+          "json",
+          "jsonschema",
+          "openapi",
+          "referencing"
+        ],
+        "author_email": "Julian Berman <Julian+referencing@GrayVines.com>",
+        "license_expression": "MIT",
+        "license_file": [
+          "COPYING"
+        ],
+        "classifier": [
+          "Development Status :: 3 - Alpha",
+          "Intended Audience :: Developers",
+          "Operating System :: OS Independent",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Topic :: File Formats :: JSON",
+          "Topic :: File Formats :: JSON :: JSON Schema"
+        ],
+        "requires_dist": [
+          "attrs>=22.2.0",
+          "rpds-py>=0.7.0",
+          "typing-extensions>=4.4.0; python_version < '3.13'"
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Documentation, https://referencing.readthedocs.io/",
+          "Homepage, https://github.com/python-jsonschema/referencing",
+          "Issues, https://github.com/python-jsonschema/referencing/issues/",
+          "Funding, https://github.com/sponsors/Julian",
+          "Tidelift, https://tidelift.com/subscription/pkg/pypi-referencing?utm_source=pypi-referencing&utm_medium=referral&utm_campaign=pypi-link",
+          "Changelog, https://referencing.readthedocs.io/en/stable/changes/",
+          "Source, https://github.com/python-jsonschema/referencing"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "file:///tmp/supervisor-dev-wheels/attrs-26.1.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+          "hashes": {
+            "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "attrs",
+        "version": "26.1.0",
+        "summary": "Classes Without Boilerplate",
+        "description": "<p align=\"center\">\n  <a href=\"https://www.attrs.org/\">\n    <img src=\"https://raw.githubusercontent.com/python-attrs/attrs/main/docs/_static/attrs_logo.svg\" width=\"35%\" alt=\"attrs\" />\n  </a>\n</p>\n\n\n*attrs* is the Python package that will bring back the **joy** of **writing classes** by relieving you from the drudgery of implementing object protocols (aka [dunder methods](https://www.attrs.org/en/latest/glossary.html#term-dunder-methods)).\nTrusted by NASA for [Mars missions since 2020](https://github.com/readme/featured/nasa-ingenuity-helicopter)!\n\nIts main goal is to help you to write **concise** and **correct** software without slowing down your code.\n\n\n## Sponsors\n\n*attrs* would not be possible without our [amazing sponsors](https://github.com/sponsors/hynek).\nEspecially those generously supporting us at the *The Organization* tier and higher:\n\n<!-- sponsor-break-begin -->\n\n<p align=\"center\">\n\n<!-- [[[cog\nimport pathlib, tomllib\n\nfor sponsor in tomllib.loads(pathlib.Path(\"pyproject.toml\").read_text())[\"tool\"][\"sponcon\"][\"sponsors\"]:\n      print(f'<a href=\"{sponsor[\"url\"]}\"><img title=\"{sponsor[\"title\"]}\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/{sponsor[\"img\"]}\" width=\"190\" /></a>')\n]]] -->\n<a href=\"https://www.variomedia.de/\"><img title=\"Variomedia AG\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/Variomedia.svg\" width=\"190\" /></a>\n<a href=\"https://tidelift.com/?utm_source=lifter&utm_medium=referral&utm_campaign=hynek\"><img title=\"Tidelift\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/Tidelift.svg\" width=\"190\" /></a>\n<a href=\"https://kraken.tech/\"><img title=\"Kraken Tech\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/Kraken.svg\" width=\"190\" /></a>\n<a href=\"https://privacy-solutions.org/\"><img title=\"Privacy Solutions\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/Privacy-Solutions.svg\" width=\"190\" /></a>\n<a href=\"https://filepreviews.io/\"><img title=\"FilePreviews\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/FilePreviews.svg\" width=\"190\" /></a>\n<a href=\"https://www.testmuai.com/?utm_medium=sponsor&utm_source=structlog\"><img title=\"TestMu AI\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/TestMu-AI.svg\" width=\"190\" /></a>\n<a href=\"https://polar.sh/\"><img title=\"Polar\" src=\"https://www.attrs.org/en/26.1.0/_static/sponsors/Polar.svg\" width=\"190\" /></a>\n<!-- [[[end]]] -->\n\n</p>\n\n<!-- sponsor-break-end -->\n\n<p align=\"center\">\n   <strong>Please consider <a href=\"https://github.com/sponsors/hynek\">joining them</a> to help make <em>attrs</em>’s maintenance more sustainable!</strong>\n</p>\n\n<!-- teaser-end -->\n\n## Example\n\n*attrs* gives you a class decorator and a way to declaratively define the attributes on that class:\n\n<!-- code-begin -->\n\n```pycon\n>>> from attrs import asdict, define, make_class, Factory\n\n>>> @define\n... class SomeClass:\n...     a_number: int = 42\n...     list_of_numbers: list[int] = Factory(list)\n...\n...     def hard_math(self, another_number):\n...         return self.a_number + sum(self.list_of_numbers) * another_number\n\n\n>>> sc = SomeClass(1, [1, 2, 3])\n>>> sc\nSomeClass(a_number=1, list_of_numbers=[1, 2, 3])\n\n>>> sc.hard_math(3)\n19\n>>> sc == SomeClass(1, [1, 2, 3])\nTrue\n>>> sc != SomeClass(2, [3, 2, 1])\nTrue\n\n>>> asdict(sc)\n{'a_number': 1, 'list_of_numbers': [1, 2, 3]}\n\n>>> SomeClass()\nSomeClass(a_number=42, list_of_numbers=[])\n\n>>> C = make_class(\"C\", [\"a\", \"b\"])\n>>> C(\"foo\", \"bar\")\nC(a='foo', b='bar')\n```\n\nAfter *declaring* your attributes, *attrs* gives you:\n\n- a concise and explicit overview of the class's attributes,\n- a nice human-readable `__repr__`,\n- equality-checking methods,\n- an initializer,\n- and much more,\n\n*without* writing dull boilerplate code again and again and *without* runtime performance penalties.\n\n---\n\nThis example uses *attrs*'s modern APIs that have been introduced in version 20.1.0, and the *attrs* package import name that has been added in version 21.3.0.\nThe classic APIs (`@attr.s`, `attr.ib`, plus their serious-business aliases) and the `attr` package import name will remain **indefinitely**.\n\nCheck out [*On The Core API Names*](https://www.attrs.org/en/latest/names.html) for an in-depth explanation!\n\n\n### Hate Type Annotations!?\n\nNo problem!\nTypes are entirely **optional** with *attrs*.\nSimply assign `attrs.field()` to the attributes instead of annotating them with types:\n\n```python\nfrom attrs import define, field\n\n@define\nclass SomeClass:\n    a_number = field(default=42)\n    list_of_numbers = field(factory=list)\n```\n\n\n## Data Classes\n\nOn the tin, *attrs* might remind you of `dataclasses` (and indeed, `dataclasses` [are a descendant](https://hynek.me/articles/import-attrs/) of *attrs*).\nIn practice it does a lot more and is more flexible.\nFor instance, it allows you to define [special handling of NumPy arrays for equality checks](https://www.attrs.org/en/stable/comparison.html#customization), allows more ways to [plug into the initialization process](https://www.attrs.org/en/stable/init.html#hooking-yourself-into-initialization), has a replacement for `__init_subclass__`, and allows for stepping through the generated methods using a debugger.\n\nFor more details, please refer to our [comparison page](https://www.attrs.org/en/stable/why.html#data-classes), but generally speaking, we are more likely to commit crimes against nature to make things work that one would expect to work, but that are quite complicated in practice.\n\n\n## Project Information\n\n- [**Changelog**](https://www.attrs.org/en/stable/changelog.html)\n- [**Documentation**](https://www.attrs.org/)\n- [**PyPI**](https://pypi.org/project/attrs/)\n- [**Source Code**](https://github.com/python-attrs/attrs)\n- [**Contributing**](https://github.com/python-attrs/attrs/blob/main/.github/CONTRIBUTING.md)\n- [**Third-party Extensions**](https://github.com/python-attrs/attrs/wiki/Extensions-to-attrs)\n- **Get Help**: use the `python-attrs` tag on [Stack Overflow](https://stackoverflow.com/questions/tagged/python-attrs)\n\n\n### *attrs* for Enterprise\n\nAvailable as part of the [Tidelift Subscription](https://tidelift.com/?utm_source=lifter&utm_medium=referral&utm_campaign=hynek).\n\nThe maintainers of *attrs* and thousands of other packages are working with Tidelift to deliver commercial support and maintenance for the open source packages you use to build your applications.\nSave time, reduce risk, and improve code health, while paying the maintainers of the exact packages you use.\n\n## Release Information\n\n### Backwards-incompatible Changes\n\n- Field aliases are now resolved *before* calling `field_transformer`, so transformers receive fully populated `Attribute` objects with usable `alias` values instead of `None`.\n  The new `Attribute.alias_is_default` flag indicates whether the alias was auto-generated (`True`) or explicitly set by the user (`False`).\n  [#1509](https://github.com/python-attrs/attrs/issues/1509)\n\n\n### Changes\n\n- Fix type annotations for `attrs.validators.optional()`, so it no longer rejects tuples with more than one validator.\n  [#1496](https://github.com/python-attrs/attrs/issues/1496)\n- The `attrs.validators.disabled()` contextmanager can now be nested.\n  [#1513](https://github.com/python-attrs/attrs/issues/1513)\n- Frozen classes can set `on_setattr=attrs.setters.NO_OP` in addition to `None`.\n  [#1515](https://github.com/python-attrs/attrs/issues/1515)\n- It's now possible to pass *attrs* **instances** in addition to *attrs* **classes** to `attrs.fields()`.\n  [#1529](https://github.com/python-attrs/attrs/issues/1529)\n\n\n\n---\n\n[Full changelog →](https://www.attrs.org/en/stable/changelog.html)\n",
+        "description_content_type": "text/markdown",
+        "keywords": [
+          "attribute",
+          "boilerplate",
+          "class"
+        ],
+        "author_email": "Hynek Schlawack <hs@ox.cx>",
+        "license_expression": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Typing :: Typed"
+        ],
+        "requires_python": ">=3.9",
+        "project_url": [
+          "Documentation, https://www.attrs.org/",
+          "Changelog, https://www.attrs.org/en/stable/changelog.html",
+          "GitHub, https://github.com/python-attrs/attrs",
+          "Funding, https://github.com/sponsors/hynek",
+          "Tidelift, https://tidelift.com/subscription/pkg/pypi-attrs?utm_source=pypi-attrs&utm_medium=pypi"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "file:///tmp/supervisor-dev-wheels/jsonschema_specifications-2025.9.1-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe",
+          "hashes": {
+            "sha256": "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1",
+        "summary": "The JSON Schema meta-schemas and vocabularies, exposed as a Registry",
+        "description": "=============================\n``jsonschema-specifications``\n=============================\n\n|PyPI| |Pythons| |CI| |ReadTheDocs|\n\nJSON support files from the `JSON Schema Specifications <https://json-schema.org/specification.html>`_ (metaschemas, vocabularies, etc.), packaged for runtime access from Python as a `referencing-based Schema Registry <https://referencing.readthedocs.io/en/stable/api/#referencing.Registry>`_.\n\n.. |PyPI| image:: https://img.shields.io/pypi/v/jsonschema-specifications.svg\n  :alt: PyPI version\n  :target: https://pypi.org/project/jsonschema-specifications/\n\n.. |Pythons| image:: https://img.shields.io/pypi/pyversions/jsonschema-specifications.svg\n  :alt: Supported Python versions\n  :target: https://pypi.org/project/jsonschema-specifications/\n\n.. |CI| image:: https://github.com/python-jsonschema/jsonschema-specifications/workflows/CI/badge.svg\n  :alt: Build status\n  :target: https://github.com/python-jsonschema/jsonschema-specifications/actions?query=workflow%3ACI\n\n.. |ReadTheDocs| image:: https://readthedocs.org/projects/jsonschema-specifications/badge/?version=stable&style=flat\n  :alt: ReadTheDocs status\n  :target: https://jsonschema-specifications.readthedocs.io/en/stable/\n",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "data validation",
+          "json",
+          "json schema",
+          "jsonschema",
+          "validation"
+        ],
+        "author_email": "Julian Berman <Julian+jsonschema-specifications@GrayVines.com>",
+        "license_expression": "MIT",
+        "license_file": [
+          "COPYING"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Intended Audience :: Developers",
+          "Operating System :: OS Independent",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Topic :: File Formats :: JSON",
+          "Topic :: File Formats :: JSON :: JSON Schema"
+        ],
+        "requires_dist": [
+          "referencing>=0.31.0"
+        ],
+        "requires_python": ">=3.9",
+        "project_url": [
+          "Documentation, https://jsonschema-specifications.readthedocs.io/",
+          "Homepage, https://github.com/python-jsonschema/jsonschema-specifications",
+          "Issues, https://github.com/python-jsonschema/jsonschema-specifications/issues/",
+          "Funding, https://github.com/sponsors/Julian",
+          "Tidelift, https://tidelift.com/subscription/pkg/pypi-jsonschema-specifications?utm_source=pypi-jsonschema-specifications&utm_medium=referral&utm_campaign=pypi-link",
+          "Source, https://github.com/python-jsonschema/jsonschema-specifications"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "file:///tmp/supervisor-dev-wheels/rpds_py-2026.9.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+        "archive_info": {
+          "hash": "sha256=2693b2728bbcc48d09a981a356954b0c47c53ff25b545856f28a889ea619f69a",
+          "hashes": {
+            "sha256": "2693b2728bbcc48d09a981a356954b0c47c53ff25b545856f28a889ea619f69a"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "rpds-py",
+        "version": "2026.9.1",
+        "summary": "Python bindings to Rust's persistent data structures (rpds)",
+        "description": "===========\n``rpds.py``\n===========\n\n|PyPI| |Pythons| |CI|\n\n.. |PyPI| image:: https://img.shields.io/pypi/v/rpds-py.svg\n  :alt: PyPI version\n  :target: https://pypi.org/project/rpds-py/\n\n.. |Pythons| image:: https://img.shields.io/pypi/pyversions/rpds-py.svg\n  :alt: Supported Python versions\n  :target: https://pypi.org/project/rpds-py/\n\n.. |CI| image:: https://github.com/crate-py/rpds/workflows/CI/badge.svg\n  :alt: Build status\n  :target: https://github.com/crate-py/rpds/actions?query=workflow%3ACI\n\n.. |ReadTheDocs| image:: https://readthedocs.org/projects/referencing/badge/?version=stable&style=flat\n   :alt: ReadTheDocs status\n   :target: https://referencing.readthedocs.io/en/stable/\n\n\nPython bindings to the `Rust rpds crate <https://docs.rs/rpds/>`_ for persistent data structures.\n\nWhat's here is quite minimal (in transparency, it was written initially to support replacing ``pyrsistent`` in the `referencing library <https://github.com/python-jsonschema/referencing>`_).\nIf you see something missing (which is very likely), a PR is definitely welcome to add it.\n\nInstallation\n------------\n\nThe distribution on PyPI is named ``rpds.py`` (equivalently ``rpds-py``), and thus can be installed via e.g.:\n\n.. code:: sh\n\n    $ pip install rpds-py\n\nNote that if you install ``rpds-py`` from source, you will need a Rust toolchain installed, as it is a build-time dependency.\nAn example of how to do so in a ``Dockerfile`` can be found `here <https://github.com/bowtie-json-schema/bowtie/blob/e77fd93598cb6e7dc1b8b1f53c00e5aa410c201a/implementations/python-jsonschema/Dockerfile#L1-L8>`_.\n\nIf you believe you are on a common platform which should have wheels built (i.e. and not need to compile from source), feel free to file an issue or pull request modifying the GitHub action used here to build wheels via ``maturin``.\n\nUsage\n-----\n\nMethods in general are named similarly to their ``rpds`` counterparts (rather than ``pyrsistent``\\ 's conventions, though probably a full drop-in ``pyrsistent``\\ -compatible wrapper module is a good addition at some point).\n\n.. code:: python\n\n    >>> from rpds import HashTrieMap, HashTrieSet, List\n\n    >>> m = HashTrieMap({\"foo\": \"bar\", \"baz\": \"quux\"})\n    >>> m.insert(\"spam\", 37) == HashTrieMap({\"foo\": \"bar\", \"baz\": \"quux\", \"spam\": 37})\n    True\n    >>> m.remove(\"foo\") == HashTrieMap({\"baz\": \"quux\"})\n    True\n\n    >>> s = HashTrieSet({\"foo\", \"bar\", \"baz\", \"quux\"})\n    >>> s.insert(\"spam\") == HashTrieSet({\"foo\", \"bar\", \"baz\", \"quux\", \"spam\"})\n    True\n    >>> s.remove(\"foo\") == HashTrieSet({\"bar\", \"baz\", \"quux\"})\n    True\n\n    >>> L = List([1, 3, 5])\n    >>> L.push_front(-1) == List([-1, 1, 3, 5])\n    True\n    >>> L.rest == List([3, 5])\n    True\n\n",
+        "description_content_type": "text/x-rst; charset=UTF-8",
+        "keywords": [
+          "data structures",
+          "rust",
+          "persistent"
+        ],
+        "author_email": "Julian Berman <Julian+rpds@GrayVines.com>",
+        "license_expression": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 3 - Alpha",
+          "Intended Audience :: Developers",
+          "Operating System :: OS Independent",
+          "Programming Language :: Rust",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy"
+        ],
+        "requires_python": ">=3.11",
+        "project_url": [
+          "Documentation, https://rpds.readthedocs.io/",
+          "Funding, https://github.com/sponsors/Julian",
+          "Homepage, https://github.com/crate-py/rpds",
+          "Issues, https://github.com/crate-py/rpds/issues/",
+          "Source, https://github.com/crate-py/rpds",
+          "Tidelift, https://tidelift.com/subscription/pkg/pypi-rpds-py?utm_source=pypi-rpds-py&utm_medium=referral&utm_campaign=pypi-link",
+          "Upstream, https://github.com/orium/rpds"
+        ]
+      }
+    }
+  ],
+  "environment": {
+    "implementation_name": "cpython",
+    "implementation_version": "3.12.15",
+    "os_name": "posix",
+    "platform_machine": "aarch64",
+    "platform_release": "6.17.0-1014-nvidia",
+    "platform_system": "Linux",
+    "platform_version": "#14-Ubuntu SMP PREEMPT_DYNAMIC Tue Mar 17 19:01:40 UTC 2026",
+    "python_full_version": "3.12.15",
+    "platform_python_implementation": "CPython",
+    "python_version": "3.12",
+    "sys_platform": "linux"
+  }
+}

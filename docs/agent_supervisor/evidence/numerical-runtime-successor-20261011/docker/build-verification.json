@@ -1,0 +1,21 @@
+{
+  "schema": "numerical-development-image-verification@1",
+  "installed_wheels_exactly_match_resolved_hashes": true,
+  "wheel_count": 16,
+  "wheel_bytes": 77314771,
+  "downloaded_packages_only": true,
+  "model_downloads": 0,
+  "credential_mounts": 0,
+  "base_preserved": true,
+  "artifacts": {
+    "build-context/requirements.lock": "c9058f08e0c22c080cc943c8461b36f591bea5e5bf1b25acf349d7743b6f2a60",
+    "build-context/Dockerfile": "961e7dd492a35ccdec99d5aca6888bad48e48aaaaab033ecc3f0a305adcf703d",
+    "installed-packages.json": "7092bd77257ee9baefc2fe98407ad06be09a1e2806761bd3bebdc03148f67876",
+    "installed-wheels.json": "6e802735716dca005bb3e44ccf90306507823746d0a33fb966b0f835061c3cc0",
+    "resolution.json": "9e0f3a83e9b02289f5801fe33fded4b7eee8d2e3c8503f1d4a4f637fb01198d2",
+    "wheel-manifest.json": "78595c6a0423704519c5f61d3a8ed6125db6c9bc4efe206dd3ae3fd07f000da0",
+    "build-command.json": "eae28bbfa19895c2318f58de4e8989418fdee6e1c616a7765f3e26001a9d4edd",
+    "build-qualification.json": "271128d54c462c082a49870b31f67ed35632642fb4d566be90f9c1ae14800651",
+    "derived-image.json": "3e60f3e953db2c77d8ee0db2ad710ff85bb0bb29802a927e5cde2c0c65fa085d"
+  }
+}

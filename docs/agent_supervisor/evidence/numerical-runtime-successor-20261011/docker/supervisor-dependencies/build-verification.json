@@ -1,0 +1,24 @@
+{
+  "schema": "numerical-supervisor-development-image-verification@1",
+  "installed_wheels_exactly_match_resolved_hashes": true,
+  "wheel_count": 5,
+  "wheel_bytes": 576434,
+  "dependency_failure": "supervisor-02/terminal_planner_contract.py:63 missing jsonschema",
+  "base_image_preserved": true,
+  "model_downloads": 0,
+  "artifacts": {
+    "requirements.txt": "9cba6d4508d006391ab899893990d5ac5d03b4811a0f71f152c5883897ee8120",
+    "resolution.json": "b7ffb147d2f1a2f21e503604da06afd6b5617a3241fa3e78370475094fa999c8",
+    "resolve-command.json": "840a6e705b5904e48d6c29651410f6a08a84036db405c1bbd78e4e88397e0bca",
+    "wheel-manifest.json": "c09c11d5870c600f4fbdbfff437b68662d1455e2a8e0fc56efb6a7dcb06b9059",
+    "build-context/requirements.lock": "d881971b49458a448b3ccce64b148905ab50287b6a3a4bd48f7595910927f91f",
+    "build-context/Dockerfile": "afdc7b8275865365db1452ba39a39a4005488fbf6ffcfcfecefebda29bc4b12d",
+    "build-command.json": "097fba5ccfbfcfa45e9987dfacf8c488a991ffb34f011c95d7411e340688d019",
+    "build-qualification.json": "49192b692735b54897e7a75babbce932a22ce442471241b1f0c8f9b7eeb35c34",
+    "derived-image.json": "c70256e3c5f848d3010f6ebd94285085ea70a713a3d845ee6897c3e2defa0fb3",
+    "installed-packages.json": "383b2e82680bec4fe31425b866004f1f2d90b1f3801950b2424a2064c69f95f8",
+    "installed-wheels.json": "d3c60487e972c2b69af955c632262037004ac90c42e5e33f75eb8470ce725b82",
+    "extension-command-02.json": "274d0350b1e75d2cc8b97b3479313b67ffb543ada87626f2b8f4247d29d35fda",
+    "extension-observation-02.json": "0ae8f0e07710c6766ba8c7234d7af36eab4287f63d9c52011a6bffa2641d25c3"
+  }
+}

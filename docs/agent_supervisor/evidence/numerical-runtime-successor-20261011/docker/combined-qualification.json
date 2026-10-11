@@ -1,0 +1,106 @@
+{
+  "schema": "numerical-and-supervisor-container-qualification@1",
+  "passed": true,
+  "shared_d_owner": {
+    "qualification": "qualification.json",
+    "image_id": "sha256:3198b1b627d4084887f01a88eeaba4c6190d0d86a36dbb4892cf569ea1f83bf6",
+    "scope": "shared_ipfs_datasets_py_owner_cpu_inference_and_cached_replay_in_container",
+    "native_inference_seconds": 6.393546912935562,
+    "cached_replay_seconds": 0.8958760920213535,
+    "stale_source_refused": true
+  },
+  "supervisor_pipeline": {
+    "qualification": "supervisor-05/qualification.json",
+    "image_tag": "ipfs-supervisor-numerical-dev:20261011-r2",
+    "image_id": "sha256:771900c18b663b33a5bf96e066346b2d5c842506523efb167aebe8d3a99b5c07",
+    "scope": "supervisor_consumer_planner_router_and_historical_audit_with_authored_provider_replies_in_container",
+    "counts": {
+      "tests": 3,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0
+    },
+    "container_seconds": 47.497718881000765,
+    "cpu_limit": 5,
+    "memory_limit_gib": 12,
+    "source_hashes_unchanged": true,
+    "account_registry": "fresh_uid1000_private_tmpfs",
+    "provider_replies": "authored_test_fixture",
+    "live_provider_calls": 0,
+    "training_steps": 0,
+    "model_downloads": 0,
+    "benchmark_score": null,
+    "proof_authority": false
+  },
+  "initial_failures_preserved": {
+    "supervisor-01": "readonly account registry; supplied dedicated private writable tmpfs",
+    "supervisor-02": "required jsonschema absent; added declared jsonschema/referencing pins plus exact locked transitives",
+    "supervisor-03": "3CPU/8GiB below owner lane capacity; selected5CPU/12GiB without changing scheduler",
+    "supervisor-04": "child -P import path absent; set explicit readonly code roots in PYTHONPATH"
+  },
+  "shared_d_owner_base_image_unchanged": true,
+  "ephemeral_containers_removed": true,
+  "full_live_supervisor_benchmark_executed": false,
+  "artifacts": {
+    "qualification.json": "2c39e4b170ae184bd83949933df770b5ab71516527724ea504254c1d66037715",
+    "build-verification.json": "14eecce2c547221373523339b44d10dff82129ac1adfbb071b9f98230b65a8db",
+    "supervisor-dependencies/build-verification.json": "1c74d2d9a2ad047cc2c24d23411d48e252a084aa9508aac5ddc913be01e48c91",
+    "supervisor-dependencies/build-context/Dockerfile": "afdc7b8275865365db1452ba39a39a4005488fbf6ffcfcfecefebda29bc4b12d",
+    "supervisor-dependencies/build-context/requirements.lock": "d881971b49458a448b3ccce64b148905ab50287b6a3a4bd48f7595910927f91f",
+    "supervisor-dependencies/wheel-manifest.json": "c09c11d5870c600f4fbdbfff437b68662d1455e2a8e0fc56efb6a7dcb06b9059",
+    "supervisor-dependencies/installed-wheels.json": "d3c60487e972c2b69af955c632262037004ac90c42e5e33f75eb8470ce725b82",
+    "supervisor-dependencies/installed-packages.json": "383b2e82680bec4fe31425b866004f1f2d90b1f3801950b2424a2064c69f95f8",
+    "supervisor-dependencies/build-qualification.json": "49192b692735b54897e7a75babbce932a22ce442471241b1f0c8f9b7eeb35c34",
+    "supervisor-dependencies/derived-image.json": "c70256e3c5f848d3010f6ebd94285085ea70a713a3d845ee6897c3e2defa0fb3",
+    "supervisor-dependencies/extension-observation-02.json": "0ae8f0e07710c6766ba8c7234d7af36eab4287f63d9c52011a6bffa2641d25c3",
+    "supervisor_pytest_entry.py": "30b8b440114ffc76f9763c314212aa5fe7ba9a5503bff0a733a9d9c02b75db16",
+    "run_supervisor_qualification.py": "478aff2e51b48dfdb1ca2c3503d8e991b22717e70f642976dba77ec41a5aef3a",
+    "audit-child-import-diagnostic.json": "c3fb4879b0494c8691a79aa485c77529b572c8fc16e2f1571db96f9ae8e4043c",
+    "supervisor-01/qualification.json": "e1ba0d078df7db4aaed909ac17f0efa5d63c917722a16ade0c64c418601e849e",
+    "supervisor-01/command.json": "59076a2d8791344b1d25f149d3a6fc9ab4346c1b0a10530c5f5f9cc8e9f32b65",
+    "supervisor-01/results/junit.xml": "719a9f16eaea80f305096f87c2d3f6c11a6511bc7cc12d787e4f7dacadaada72",
+    "supervisor-02/qualification.json": "e7fb75318e5b82465b31ece23020d2b0c948ffabcfdfee15112826b3aae277fa",
+    "supervisor-02/command.json": "4532c208024f955dc6c63a62ece09d5033b1f930232d3c1f0e350e6b27d1e6de",
+    "supervisor-02/results/junit.xml": "68f4814a60cda45f22d12af88aca6626e97bbc4f0f32676da84c08ccd98fc2e4",
+    "supervisor-03/qualification.json": "bf6bd1557be5132fc50d05ab8d535063ff75f619e527c69f98f697b1c4e69ef9",
+    "supervisor-03/command.json": "c92642b81d45b2b9e9f07593e7ea21a9589213b2a9819c500704a91c0feedf4f",
+    "supervisor-03/results/junit.xml": "fd471c778cd8ba2804ff43cbe93b47b1bf1421bb05605e4f0dd6277dfc0c568c",
+    "supervisor-04/qualification.json": "d31658ce7e6fb94aeccd0ec8bb41c4e0775b0627c6105801d4d07fb284c35375",
+    "supervisor-04/command.json": "ca450e8410e68afb9d266248ceb463535b2207d9a7c45f81e541eae64e617c83",
+    "supervisor-04/results/junit.xml": "58da4503a5bfb0445ebe2a92f4c9145221cd881abd48ebbb6e85d0650d32cda6",
+    "supervisor-05/qualification.json": "68cf500f694387a1e04cb36396bd11c38acdd28e5462bf1220d23f6c023773cb",
+    "supervisor-05/command.json": "f8eb6570555d8f14d8b3bdd50cdb83796982bb693e9e863e25d79b012ca574b5",
+    "supervisor-05/results/junit.xml": "8ab1689beb73771865013b97d77e1e90dd6f01fe34297e63976ce3f6edc0c577"
+  },
+  "ducklake_extension": {
+    "extension_name": "ducklake",
+    "extension_version": "d8a1881e",
+    "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
+    "bytes": 32143862,
+    "install_path": "/home/supervisor/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension"
+  },
+  "development_image_recipes": {
+    "r1": {
+      "dockerfile": "build-context/Dockerfile",
+      "dockerfile_sha256": "961e7dd492a35ccdec99d5aca6888bad48e48aaaaab033ecc3f0a305adcf703d",
+      "lock": "build-context/requirements.lock",
+      "lock_sha256": "c9058f08e0c22c080cc943c8461b36f591bea5e5bf1b25acf349d7743b6f2a60",
+      "wheel_manifest": "wheel-manifest.json",
+      "wheel_count": 16
+    },
+    "r2": {
+      "dockerfile": "supervisor-dependencies/build-context/Dockerfile",
+      "dockerfile_sha256": "afdc7b8275865365db1452ba39a39a4005488fbf6ffcfcfecefebda29bc4b12d",
+      "lock": "supervisor-dependencies/build-context/requirements.lock",
+      "lock_sha256": "d881971b49458a448b3ccce64b148905ab50287b6a3a4bd48f7595910927f91f",
+      "wheel_manifest": "supervisor-dependencies/wheel-manifest.json",
+      "additional_wheel_count": 5
+    }
+  },
+  "datasets_cleanup_committed_identity": {
+    "commit": "fd4be4da2a3976a8e40f47d7337cebb6332c95f3",
+    "path": "ipfs_datasets_py/logic/backends/codebase_process.py",
+    "sha256": "297f9b0c88501abd33181c259d302f2f9d67c48b651884aca58a45fe6107ad34",
+    "matches_qualified_working_tree": true
+  }
+}

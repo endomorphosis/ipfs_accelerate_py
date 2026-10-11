@@ -1,0 +1,32 @@
+{
+  "command": [
+    "docker",
+    "build",
+    "--pull=false",
+    "--network=none",
+    "--tag",
+    "ipfs-supervisor-numerical-dev:20261011-r1",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/build-context"
+  ],
+  "base_image_id": "sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+  "files": {
+    "Dockerfile": "961e7dd492a35ccdec99d5aca6888bad48e48aaaaab033ecc3f0a305adcf703d",
+    "requirements.lock": "c9058f08e0c22c080cc943c8461b36f591bea5e5bf1b25acf349d7743b6f2a60",
+    "wheels/sentence_transformers-5.4.1-py3-none-any.whl": "a6d640fc363849b63affb8e140e9d328feabab86f83d58ac3e16b1c28140b790",
+    "wheels/joblib-1.6.0-py3-none-any.whl": "3dbbf9f6e4b592a2357b854608e980fe6390d131d7a82f011a377ef2ebef7aba",
+    "wheels/threadpoolctl-3.7.0-py3-none-any.whl": "cd8b60b5641b45c67bbf73c64c843235fc2d8a480c87389f52f5dbee893b86be",
+    "wheels/safetensors-0.7.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "e07d91d0c92a31200f25351f4acb2bc6aff7f48094e13ebb1d0fb995b54b6542",
+    "wheels/narwhals-2.27.1-py3-none-any.whl": "d057df13f5852b8e157596e82eb5e955fad267425df5e420e0ee9863da483b31",
+    "wheels/pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl": "9149cad251584d5fb4981be1ecde53a1ca46c891a79788c0df828d2f166bda28",
+    "wheels/tokenizers-0.21.4-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "39b376f5a1aee67b4d29032ee85511bbd1b99007ec735f7f35c8a2eb104eade5",
+    "wheels/huggingface_hub-0.36.2-py3-none-any.whl": "48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270",
+    "wheels/transformers-4.52.1-py3-none-any.whl": "604b2bb357c480dc5883b7944e8562c967f6b06f63dfb6a1c4665d13d067148f",
+    "wheels/numpy-1.26.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl": "9fad7dcb1aac3c7f0584a5a8133e3a43eeb2fe127f47e3632d43d677c66c102b",
+    "wheels/tqdm-4.70.1-py3-none-any.whl": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+    "wheels/regex-2026.9.29-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl": "f93bc1c3486ef3747e07c9d7c1d0a147b8fbaab975f80e348aed6f71309dfaca",
+    "wheels/hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl": "fcfd6c22418e57dd5b3aea649e813b2e2cfb2aebf317b210d90f1fe4b3018b52",
+    "wheels/cloudpickle-3.1.2-py3-none-any.whl": "9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a",
+    "wheels/scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl": "e4c20a6c017d820faa7ac8c783e3d0c6a9a2e297bf9f55332ca17cdf7fd4d04d",
+    "wheels/scipy-1.17.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl": "e19ebea31758fac5893a2ac360fedd00116cbb7628e650842a6691ba7ca28a21"
+  }
+}

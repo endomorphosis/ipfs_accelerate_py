@@ -1,0 +1,26 @@
+{
+  "returncode": 1,
+  "error": null,
+  "seconds": 17.275228973012418,
+  "source_before": {
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/inference_probe.py": "d1790d77611ad90bd48088f237e81c1299024a1e2b666d37cac75f0fa61169f8",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_context.py": "e429b78a322b3946d0aab0f07a75dcdc50c63f3f8d6bf00f84870ee6b005ab58",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41"
+  },
+  "source_after": {
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-runtime-20261011/inference_probe.py": "d1790d77611ad90bd48088f237e81c1299024a1e2b666d37cac75f0fa61169f8",
+    "/home/barberb/lift_coding/artifacts/supervisor-numerical-training-20261011/release/checkpoint.json": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03",
+    "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_selection_context.py": "2851d5ed5636eed71a29a59b81d39fbffddb75c52e76034f61ba685ca8d3efd8",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384.py": "3bb7decd669b6baf5cc10e02eaad502f21806502d35e9b1ccbdd29caa4d49e48",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/software_contracts/codebase_numerical_selection_384_worker.py": "1cdf03271b28c2a6055660152085a847dde03ba6d467ea54ae0bcc1abbc10d89",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855",
+    "/home/barberb/lift_coding/.worktrees/formalization-datasets-20261011/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41"
+  },
+  "source_hashes_unchanged": false,
+  "container_removed": true,
+  "results": {}
+}
