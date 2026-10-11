@@ -56,23 +56,50 @@ def _catalog_observation(stdout: bytes, stderr: bytes, returncode: int) -> dict:
     clean = lambda raw: re.sub(r"\x1b\[[0-9;]*m", "", raw.decode("utf-8", errors="replace"))
     out, err = clean(stdout), clean(stderr)
     text = (out + "\n" + err).lower()
-    if re.search(r"\b(?:not (?:authenticated|signed in|logged in)|authentication (?:failed|required)|"
-                 r"unauthorized|invalid (?:access )?token|expired (?:access )?token)\b", text):
+    if re.search(r"\b(?:not (?:authenticated|signed in|logged in)|authentication (?:failed|required|rejected)|"
+                 r"unauthorized|invalid (?:access )?token|expired (?:access )?token|"
+                 r"(?:access )?token (?:is )?(?:invalid|expired)|auth recovery exhausted|"
+                 r"re-authentication required|api-key auth is disabled|"
+                 r"grok_deployment_key is invalid or expired)\b", text):
         return dict(result, status="unauthenticated", reason="authentication_refused")
     if returncode != 0:
         return dict(result, reason="native_command_failed")
     if err.strip():
         return dict(result, reason="unexpected_diagnostic")
     lines = [line.strip() for line in out.splitlines() if line.strip()]
+    model_pattern = r"grok-[a-z0-9][a-z0-9.-]{0,95}"
+    declared_default = None
+    # Pinned CLI1.0.46 metadata observations include this exact public preamble.
+    # It is a catalog shape, not authentication authority. Do not accept arbitrary
+    # account text, missing/reordered fields, or a default absent from the rows.
+    if lines and lines[0] == "You are logged in with grok.com.":
+        if len(lines) < 4:
+            return result
+        default = re.fullmatch(r"Default model: (" + model_pattern + r")", lines[1])
+        if default is None or lines[2] != "Available models:":
+            return result
+        declared_default = default[1]
+        lines = lines[2:]
     if not lines or lines[0].lower() != "available models:":
         return result
     models = []
+    marked_defaults = []
     for line in lines[1:]:
-        match = re.fullmatch(r"(?:[-*] )?(grok-[a-z0-9][a-z0-9.-]{0,95})(?: \(default\))?", line)
-        if match is None or match[1] in models or len(models) >= 128:
+        match = re.fullmatch(r"(?:(?P<marker>[-*]) )?(?P<model>" + model_pattern
+                            + r")(?P<default> \(default\))?", line)
+        if match is None or match["model"] in models or len(models) >= 128:
             return result
-        models.append(match[1])
+        if declared_default is not None and (
+                match["marker"] not in {"-", "*"}
+                or (match["marker"] == "*") != bool(match["default"])):
+            return result
+        models.append(match["model"])
+        if match["default"]:
+            marked_defaults.append(match["model"])
     if not models:
+        return result
+    if len(marked_defaults) > 1 or (declared_default is not None
+            and marked_defaults != [declared_default]):
         return result
     selected = "grok-4.7" in models
     return dict(result, status="ready" if selected else "unavailable",

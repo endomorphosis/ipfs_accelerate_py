@@ -130,8 +130,12 @@ def test_grok_negative_probe_refuses_setup_after_worker_boundary_without_model_c
     assert not agent.auth_json.exists()
 
 
-def test_grok_setup_accepts_ready_catalog_only_after_isolated_boundary(tmp_path, monkeypatch):
-    agent = _agent(tmp_path, GROK_PROFILE, "full")
+@pytest.mark.parametrize("arm", ["full", "no-index"])
+@pytest.mark.parametrize("catalog", [b"Available models:\n  grok-4.7\n",
+    b"You are logged in with grok.com.\n\nDefault model: grok-4.7\n\nAvailable models:\n"
+    b"  * grok-4.7 (default)\n  - grok-fixture-a\n  - grok-fixture-b\n  - grok-fixture-c\n"])
+def test_grok_setup_accepts_ready_catalog_only_after_isolated_boundary(tmp_path, monkeypatch, arm, catalog):
+    agent = _agent(tmp_path, GROK_PROFILE, arm)
     events = []
 
     class Environment:
@@ -140,7 +144,7 @@ def test_grok_setup_accepts_ready_catalog_only_after_isolated_boundary(tmp_path,
             assert kwargs["user"] == "benchmarkworker"
             assert kwargs["env"]["HOME"] == "/opt/ipfs-supervisor/worker-home"
             events.append("readiness")
-            ready = grok._catalog_observation(b"Available models:\n  grok-4.7\n", b"", 0)
+            ready = grok._catalog_observation(catalog, b"", 0)
             return SimpleNamespace(return_code=0, stdout=json.dumps(ready), stderr="")
 
     environment = Environment()
