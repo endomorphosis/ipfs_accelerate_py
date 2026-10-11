@@ -194,19 +194,27 @@ def _unique(pairs):
 
 def _verify_predecessor(*, root, result):
     bundle = result["predecessor_bundle"]
-    if "source384_context" in result:
-        selected = read_task_context_historical_selection(repository=root, artifact=bundle["artifact"],
-            expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    selected = read_task_context_historical_selection(repository=root, artifact=bundle["artifact"],
+        expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    families = ("source384_context", "numerical_formalization")
+    if any((key in selected) != (key in result) for key in families):
+        raise ValueError("published context cannot omit or add a selected formalization family")
+    if "source384_context" in selected:
         from .source384_repository_context import validate_historical_source384_selection
         previous_source384 = validate_historical_source384_selection(repository=root,
             expected_receipt=selected["source384_context"])
         if result["source384_context"]["successor_lineage"]["predecessor_receipt_sha256"] != hashlib.sha256(
                 _json(previous_source384).encode()).hexdigest():
             raise ValueError("Source384 predecessor lineage differs from selected bundle")
-        metadata = selected["metadata"]
-    else:
-        metadata = load_task_context_nomination(repository=root, artifact=bundle["artifact"],
-            expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    if "numerical_formalization" in selected:
+        from .published_numerical import validate_predecessor
+        if "numerical_refresh_policy" not in result or "numerical_refresh" not in result:
+            raise ValueError("numerical successor requires its selected policy and lineage")
+        validate_predecessor(repository=root, predecessor_receipt=selected["numerical_formalization"],
+            policy=result["numerical_refresh_policy"])
+    elif "numerical_refresh_policy" in result or "numerical_refresh" in result:
+        raise ValueError("unselected numerical successor policy or lineage")
+    metadata = selected["metadata"]
     _, semantic = _load_semantic_payload(repository=root,
         artifact=metadata["semantic context artifact"], expected_sha256=metadata["semantic context sha256"],
         task_id=result["task_id"], verify_sources=False)
@@ -475,7 +483,9 @@ def _refresh_empty_retrieval(*, root, metadata, context, payload, task_id, outpu
 def refresh_published_task_context(*, server, admission, predecessor_bundle,
                                    task_cid: str, output: Path,
                                    retrieval_rebuilder=None, source384_output: Path | None = None,
-                                   source384_timeout_seconds: float = 90., deadline_monotonic=None) -> dict:
+                                   source384_timeout_seconds: float = 90., deadline_monotonic=None,
+                                   numerical_policy: dict | None = None,
+                                   numerical_output: Path | None = None) -> dict:
     """Build fresh source/intent evidence after actual canonical completion.
 
     An optional trusted local ``retrieval_rebuilder`` receives keyword args
@@ -503,13 +513,21 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         "task_cid": task_cid, "task_id": binding["task_id"],
     })
     checkpoint()
-    # Numerical projections have no independently admitted regeneration policy
-    # yet. Preserve the whole selected advice instead of producing a successor
-    # bundle that silently drops its numerical component. In a mixed selection
-    # this also prevents unnecessary Source384 inference before that gap closes.
-    if "numerical_formalization" in selected:
+    if (numerical_policy is None) != (numerical_output is None):
+        raise ValueError("numerical successor requires both the selected policy and fresh output")
+    if numerical_policy is not None and "numerical_formalization" not in selected:
+        raise ValueError("numerical successor requires the selected predecessor")
+    if numerical_policy is not None:
+        from .published_numerical import validate_manifest
+        validate_manifest(policy=numerical_policy, manifest=admission["manifest"]["payload"])
+    # Every selected family must have a rebuild policy before any work starts;
+    # a mixed successor cannot silently drop an unavailable component.
+    if "numerical_formalization" in selected and numerical_policy is None:
         return _numerical_successor_unavailable(binding, predecessor_bundle, selected)
     if "source384_context" in selected and source384_output is None:
+        if "numerical_formalization" in selected:
+            return {**_numerical_successor_unavailable(binding, predecessor_bundle, selected),
+                "reason": "source384_successor_not_prepared"}
         return _source384_successor_unavailable(binding, predecessor_bundle, selected["source384_context"])
     source384 = None
     source384_deadline = None
@@ -550,6 +568,15 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     permitted = set(task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["scope_paths"])
     if not set(previous["manifest"]) <= permitted:
         raise ValueError("predecessor semantic scope exceeds the signed task scope")
+    numerical = None
+    if numerical_policy is not None:
+        from .published_numerical import prepare_successor
+        numerical = prepare_successor(repository=root,
+            predecessor_receipt=selected["numerical_formalization"], policy=numerical_policy,
+            output=numerical_output, publication_binding=binding, deadline_monotonic=deadline_monotonic)
+        checkpoint()
+        if _owner_state(server=server, admission=admission, task_cid=task_cid)[1] != binding:
+            raise ValueError("publication changed during numerical successor preparation")
     if source384_output is not None:
         from .source384_repository_context import prepare_source384_successor_context
         predecessor = selected["source384_context"]
@@ -705,6 +732,9 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     if source384 is not None:
         result["source384_context"] = source384
         result["source384_refresh"] = _source384_refresh_observation(source384)
+    if numerical is not None:
+        result.update(numerical)
+        result["numerical_refresh_policy"] = numerical_policy
     # Source and intent rechecks precede publication of the new nomination.
     checkpoint()
     _verify_predecessor(root=root, result=result)
@@ -830,6 +860,17 @@ def _verify_current(*, server, admission, root, result, source384_timeout_second
         checkpoint()
         if result.get("source384_refresh") != _source384_refresh_observation(receipt):
             raise ValueError("published Source384 observation differs from current advisory receipt")
+    if "numerical_formalization" in result:
+        from .published_numerical import validate_manifest, validate_successor
+        validate_manifest(policy=result["numerical_refresh_policy"], manifest=admission["manifest"]["payload"])
+        selected = read_task_context_historical_selection(repository=root,
+            artifact=result["predecessor_bundle"]["artifact"],
+            expected_sha256=result["predecessor_bundle"]["sha256"],
+            task_cid=result["task_cid"], task_id=result["task_id"])
+        validate_successor(repository=root, predecessor_receipt=selected["numerical_formalization"],
+            policy=result["numerical_refresh_policy"], receipt=result["numerical_formalization"],
+            observation=result["numerical_refresh"], publication_binding=binding,
+            deadline_monotonic=deadline_monotonic)
     if _owner_state(server=server, admission=admission, task_cid=result["task_cid"])[1] != binding:
         raise ValueError("publication changed during refreshed context verification")
     checkpoint()
@@ -837,7 +878,8 @@ def _verify_current(*, server, admission, root, result, source384_timeout_second
 
 
 def load_published_task_context(*, server, admission, artifact: str, expected_sha256: str,
-                                deadline_monotonic=None, source384_timeout_seconds=90.) -> dict:
+                                deadline_monotonic=None, source384_timeout_seconds=90.,
+                                numerical_policy: dict | None = None) -> dict:
     """Revalidate an immutable successor before planning or cache reuse."""
     started = time.monotonic()
     if deadline_monotonic is not None and (type(deadline_monotonic) not in (int, float)
@@ -860,24 +902,30 @@ def load_published_task_context(*, server, admission, artifact: str, expected_sh
             or any(result.get(key) is not False for key in (
                 "execution_authority", "completion_authority", "canonical_task_mutated", "launch_nomination_mutated"))):
         raise ValueError("published context schema/authority differs")
+    if ("numerical_formalization" in result) != (numerical_policy is not None):
+        raise ValueError("published numerical successor requires the selected refresh policy")
+    if numerical_policy is not None and result.get("numerical_refresh_policy") != numerical_policy:
+        raise ValueError("published numerical successor policy differs from admission")
     _verify_predecessor(root=root, result=result)
     checkpoint()
     arguments = dict(repository=root, artifact=result["context_bundle"]["artifact"],
         expected_sha256=result["context_bundle"]["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    if "source384_context" in result or "numerical_formalization" in result:
+        selected = read_task_context_historical_selection(**arguments)
+        if any(selected.get(key) != result.get(key) for key in ("source384_context", "numerical_formalization")):
+            raise ValueError("formalization successor bundle differs from refresh receipt")
+        metadata = selected["metadata"]
+        source_remaining = None
+    else:
+        metadata = load_task_context_nomination(**arguments)
+        source_remaining = None
     if "source384_context" in result:
         if (type(source384_timeout_seconds) not in (int, float) or not math.isfinite(source384_timeout_seconds)
                 or not 0 < source384_timeout_seconds <= 180):
             raise ValueError("bounded Source384 successor reload timeout required")
-        selected = read_task_context_historical_selection(**arguments)
-        if selected.get("source384_context") != result["source384_context"]:
-            raise ValueError("Source384 successor bundle differs from refresh receipt")
-        metadata = selected["metadata"]
         source_remaining = started + source384_timeout_seconds - time.monotonic()
         if source_remaining <= 0:
             raise TimeoutError("published Source384 reload deadline expired")
-    else:
-        metadata = load_task_context_nomination(**arguments)
-        source_remaining = None
     if metadata != {key.lower(): value for key, value in result["metadata"].items()}:
         raise ValueError("successor bundle differs from the refresh result")
     checkpoint()

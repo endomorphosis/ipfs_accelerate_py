@@ -21,6 +21,9 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
     "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_numerical.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
 )
 DATASET_PATHS = (
     "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",

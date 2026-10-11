@@ -3,6 +3,54 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Historical formalization audit and numerical successors, 2026-10-11
+
+The final benchmark input audit now joins the independently retained task
+selection, its exact Source384 and numerical receipt bytes, the required worker
+evidence chunks, and the router's dispatch observation. Selected evidence cannot
+be omitted merely by recomputing the prompt digest. The audit uses the original
+captured source hashes, so an expected code edit does not invalidate historical
+delivery. It does not assert that the old source is still current, replay neural
+inference, or establish the correctness of the generated code. An equivalent
+bundle renomination must retain the same task and receipt population. World
+snapshot checks remain strict; a future audit of the separate warm-preflight
+diagnostic will need an independently nominated rebound world snapshot.
+
+Comparison reports retain bounded per-family receipt, summary, and source-map
+digests. They mark recorded model-input delivery only when the capsule, dispatch
+observation, reconstructed input, and invocation checks agree. Candidate text
+and formulas are not copied into the comparison record, and delivery is not a
+claim of task success or token savings.
+
+An explicitly enabled post-completion context refresh now includes an already
+selected deterministic numerical profile. Before START, the runtime signs a
+policy binding the original receipt, producer versions, Python file population,
+and private output root. After verified completion and native STOP, it regenerates
+reports, function links, summaries, and native world/metadata lakes for those same
+files. New output files remain outside that inherited index scope and are listed
+explicitly. A subsequent independently admitted task can choose a new scope.
+
+Fresh successors retain their predecessor and completed-publication bindings.
+The owner checks the accepted source transition before and after preparation;
+cached reload checks current source and artifact bytes without regenerating the
+reports. A mixed Source384/numerical selection requires both refresh policies
+before either component starts. Without the Source384 policy, both original
+receipts remain historical and the combined successor stays unavailable.
+The launch nomination and completed task remain unchanged. This adds no model
+training, inference, provider calls, or discharged proof obligations to numerical
+refresh, and a successor still requires an independent launch manifest.
+
+The [qualification record](evidence/formalization-audit-successor-20261011/qualification.json)
+separates real cached checkpoint inference, authored provider responses, native
+numerical stores, and actual owner lifecycle checks. No new Terminal Bench score
+or token-efficiency comparison is claimed. The experimental learned NumPy
+checkpoint adapter remains separate and unimplemented; the existing learned
+checkpoint is unchanged. Grok authentication has not been reprobed.
+
+Numerical refresh retains the original runtime deadline. It checks that deadline
+around synchronous native projection and validation calls, rejecting an expired
+result; it does not forcibly interrupt an individual native call at the deadline.
+
 ## Task-bound formalization delivery to coding workers, 2026-10-11
 
 Selected Source384 candidate IR and deterministic numerical function links now
@@ -26,9 +74,9 @@ and workspace bindings, and current source bytes. This keeps owner-only stores
 private while carrying their bounded observation across the worker boundary.
 The archive capability now binds the handoff validator's source bytes as well.
 
-Completed publication preserves the original numerical receipt as a historical
-observation. Fresh numerical successor generation has no admitted policy yet,
-so post-STOP refresh explicitly returns `successor_unavailable` with
+At this qualification's revision, completed publication preserved the original
+numerical receipt as a historical observation. Fresh numerical successor
+generation had no admitted policy, so post-STOP refresh returned `successor_unavailable` with
 `numerical_current=false`. A combined selection retains both receipts and does
 not start Source384 regeneration or produce a successor bundle that drops the
 numerical component. This derivative limitation does not undo independently
@@ -42,9 +90,11 @@ projections and DuckLake reloads, worker capsule and router transport, invocatio
 handoff checks, tamper refusal and publication/STOP behavior. Authored model or
 provider seams are identified separately from pinned checkpoint inference.
 These observations grant no proof, formalization, execution or completion
-authority: **zero source obligations are discharged**. The final historical
-benchmark audit still needs explicit validation of the new formalization
-evidence kind beyond its existing complete-prompt byte accounting.
+authority: **zero source obligations are discharged**. At that revision, the
+final historical benchmark audit did not yet validate the new formalization
+evidence kind beyond its complete-prompt byte accounting. The subsequent
+[audit and successor qualification](evidence/formalization-audit-successor-20261011/qualification.json)
+addresses these two gaps.
 
 This change consumes the existing selected Source384 checkpoint; it does not
 enable the separate experimental learned NumPy selection checkpoint or expand

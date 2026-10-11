@@ -167,9 +167,11 @@ def test_actual_header_checkpoint_successor_after_native_publication(case, selec
                 "live_benchmark": False}, sort_keys=True))
 
 
-def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_path, monkeypatch):
+@pytest.mark.parametrize("with_numerical", [False, True])
+def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_path, monkeypatch, with_numerical):
     """Actual owner and lifecycle; the numerical result is an explicit handoff seam."""
     monkeypatch.setenv("IPFS_DATASETS_PROOF_RESOURCE_PROFILE", "local-benchmark@1")
+    monkeypatch.setenv("IPFS_DATASETS_RESOURCE_SCHEDULER_PATH", str(tmp_path / "resource-scheduler.sqlite3"))
     root = scenario["repository"]
     admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
     with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
@@ -178,10 +180,18 @@ def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_pa
         external = tmp_path / "old-source384"
         external.mkdir()
         receipt = {"schema": source384.HEADER_SCHEMA, "output": str(external), "repository": str(root),
-            "completion_authority": False}
+            "completion_authority": False,
+            "source_hashes": {name: row["sha256"] for name, row in admission["manifest"]["payload"]["sources"].items()},
+            "summary": {"schema": "authored-source384-summary@1", "candidate_samples": [], "proof_authority": False}}
         (external / "receipt.json").write_bytes(source384._raw(receipt))
+        extra = {}
+        if with_numerical:
+            from ipfs_accelerate_py.agent_supervisor.runtime import numerical_formalization_context as numerical
+            extra["numerical_formalization"] = numerical.prepare_numerical_context(repository=root,
+                source_hashes={"answer.py": hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()},
+                output=tmp_path / "old-numerical", profile=numerical.PROFILE)
         bundle = write_task_context_bundle(repository=root, prepared=[{
-            "schema": "supervisor-task-context-preparation@1", **selected, "source384_context": receipt}],
+            "schema": "supervisor-task-context-preparation@1", **selected, "source384_context": receipt, **extra}],
             output=root / ".runtime/source384-launch.json")
         monkeypatch.setattr(source384, "validate_source384_context", lambda **kwargs: receipt)
         calls = []
@@ -192,11 +202,17 @@ def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_pa
             assert not kwargs["source384_output"].is_relative_to(root)
             assert 0 < kwargs["source384_timeout_seconds"] <= 180
             assert kwargs["deadline_monotonic"] <= deadline
+            if with_numerical:
+                assert kwargs["numerical_policy"] == runtime.manifest["context_refresh_policy"]["numerical_formalization"]
+                assert kwargs["numerical_output"].parent == Path(kwargs["numerical_policy"]["output_root"])
+                assert kwargs["numerical_output"].is_relative_to(runtime.state)
             return {"refresh_artifact": ".runtime/authored-result", "refresh_sha256": "a" * 64,
                 "context_bundle": {"artifact": ".runtime/authored-bundle", "sha256": "b" * 64},
                 "semantic_root_cid": "authored:semantic", "world_snapshot_cid": "authored:world",
                 "retrieval": {"status": "unavailable"}, "source_scope": {}, "task_revision": 4,
-                "source384_refresh": {"schema": "authored-call-through", "completion_authority": False}}
+                "source384_refresh": {"schema": "authored-call-through", "completion_authority": False},
+                **({"numerical_refresh": {"schema": "authored-call-through", "proof_authority": False}}
+                   if with_numerical else {})}
         monkeypatch.setattr(published, "refresh_published_task_context", refresh)
         monkeypatch.setattr(published, "load_published_task_context", lambda **kwargs: cached)
         deadline = time.monotonic() + 180.
@@ -205,7 +221,8 @@ def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_pa
                 server=owner.server, source=owner.source, implement=False, timeout_ms=30_000,
                 context_bundle=bundle, refresh_context_on_completion=True, refresh_source384_on_completion=True)
         try:
-            assert runtime.manifest["context_refresh_policy"]["schema"] == "admitted-context-refresh-policy@2"
+            assert runtime.manifest["context_refresh_policy"]["schema"] == (
+                "admitted-context-refresh-policy@3" if with_numerical else "admitted-context-refresh-policy@2")
             assert runtime.start().succeeded
             task = owner.source.get_task(attempt.task_cid)
             transition = native_published_transition(scenario, tmp_path, owner, attempt)
@@ -220,6 +237,8 @@ def test_signed_runtime_calls_source384_refresh_only_after_stop(scenario, tmp_pa
             cached = runtime._published_context[task.task_cid]
             second = runtime.observe()["published_context"][0]
             assert second["source384_refresh_reused"] is True and len(calls) == 1
+            if with_numerical:
+                assert first["numerical_refresh_reused"] is False and second["numerical_refresh_reused"] is True
         finally:
             if runtime.process.snapshot(runtime.profile).members:
                 assert runtime.stop().succeeded
