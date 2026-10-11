@@ -3,6 +3,51 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Source assertion requirements, 2026-10-11
+
+Datasets `7286ee17f` now exposes numerical source assertions as pending
+requirements linked to their exact ProgramIR commands, predicate expressions,
+source spans and versioned assignment definitions. Tuple component paths and
+right-hand-side dependencies survive rebinding. The records retain predicate
+polarity, argument order, keyword names and unknown effects. Unsupported control
+flow or statements stop extraction; a deferred assertion failure message permits
+predicate extraction while the function remains partially translated.
+
+These records describe a local assertion if execution reaches it with assertions
+enabled. They establish neither execution nor truth, and do not become global or
+callee postconditions. Library identities, NumPy comparison defaults and runtime
+truthiness remain unresolved. The shared ProgramIR and first-order projections
+retain these requirements, and Lean emits definitions with explicit interpretation
+parameters. This change performs no model training and does not expand learned
+Source384 coverage.
+
+Supervisor `a5d7a6322` persists the records through its world and metadata lakes,
+replays their source bindings, and supplies them before goal decomposition. The
+first integration test exposed the planner's six-level nesting limit. The
+consumer now flattens operand lists and refers to full assignment records by
+identity, preserving the existing limit. An exact request-payload check verifies
+the assertion summary survives planning and admitted-context reuse.
+
+On the public `largest-eigenval` sources, all four assertions and both compound
+contracts fit in a **7,804-byte** planner summary. Both native lakes reopened and
+source replay passed. The full index contains **45 pending obligations, zero
+discharged**; the bounded summary retains eight obligation rows and accounts for
+37 omitted rows. The assertions preserve the actual not-allclose-to-zero,
+not-NaN, not-Inf and allclose-residual checks. They do not invent a dominance test,
+vector-finiteness check, tolerance or norm threshold.
+
+**202 datasets tests and 20 supervisor context tests passed**, including native
+Lean positive/negative tests, source-replay tampering, omission accounting and
+exact planner delivery. Both generated public-source Lean modules also compiled.
+These checks qualify formalization and integration, not Python correctness or
+benchmark success. The separate streaming benchmark uses the previously frozen
+archive and therefore does not contain this assertion extension.
+
+The [datasets qualification](evidence/numerical-assertions-20261011/datasets-qualification.json),
+[consumer test history](evidence/numerical-assertions-20261011/consumer-tests.json)
+and [public-source context qualification](evidence/numerical-assertions-20261011/public-context.json)
+retain source hashes, test scope, exact summary contents and pending-proof limits.
+
 ## Coding progress and numerical value contracts, 2026-10-11
 
 Supervisor `bfda2ab7e079` enables bounded `streaming-json` observations for Grok

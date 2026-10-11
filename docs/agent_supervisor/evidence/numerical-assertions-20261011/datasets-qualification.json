@@ -1,0 +1,268 @@
+{
+  "prior_evidence_preserved": "../final-qualification.json",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public": {
+    "datasets_head_after": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+    "datasets_head_before": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+    "helper_sha256": "3fd3446bc35441d14aaf3b30500ed4f99d7ca6b0d04f01833bd54cc8aea02f77",
+    "producer_and_test_hashes_after": {
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/tests/unit/logic/software_verification/test_numerical_assertion_requirements.py": "515b3b93b749f99d5e1dd07e027fe775cca09cb0dbe5ad3a2ca15219bbdec4f8"
+    },
+    "producer_and_test_hashes_before": {
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/tests/unit/logic/software_verification/test_numerical_assertion_requirements.py": "515b3b93b749f99d5e1dd07e027fe775cca09cb0dbe5ad3a2ca15219bbdec4f8"
+    },
+    "proof_authority": false,
+    "provider_calls": 0,
+    "public_sources": [
+      {
+        "assertion_predicates": [],
+        "assertion_requirement_count": 0,
+        "assertion_summary_count": 0,
+        "compound_contract_assessments": [
+          {
+            "function_id": "function:2",
+            "reason": null,
+            "status": "matched_syntax_only"
+          }
+        ],
+        "compound_contract_count": 1,
+        "compound_contract_ids": [
+          "numerical-contract:0036a2a80f854cf5c649405487b5ba86"
+        ],
+        "functions": 1,
+        "lake_executed": true,
+        "lake_file": "eigen.py.lake.json",
+        "lake_status": "passed",
+        "lean_source_sha256": "3b15a14e1ec469d9f6c618766ec43edda88edfcc764c68dfbb964f3a302d4a32",
+        "model_inference_executed": false,
+        "omitted_assertion_requirement_summaries": 0,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+        "pending_obligation_count": 16,
+        "per_function": [
+          {
+            "function_id": "function:2",
+            "name_truncated": false,
+            "pending_obligation_count": 16,
+            "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          }
+        ],
+        "proof_authority": false,
+        "report_file": "eigen.py.report.json",
+        "report_sha256": "786b65b7ce4b9a8d3d6ad38431a81a17223d0141685efd26a3aab326360a5a3f",
+        "source_executed": false,
+        "source_obligations_discharged": 0,
+        "source_replay_passed": true,
+        "source_semantics_verified": false,
+        "source_sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+        "structurally_complete_functions": 1,
+        "training_performed": false
+      },
+      {
+        "assertion_predicates": [
+          {
+            "argument_expression_ids": [
+              "expr:140",
+              "expr:142"
+            ],
+            "call_expression_id": "expr:144",
+            "callee_resolution": "declared_import",
+            "imported_callee": "numpy.allclose",
+            "keyword_names": [],
+            "operator": "not"
+          },
+          {
+            "argument_expression_ids": [
+              "expr:155"
+            ],
+            "call_expression_id": "expr:157",
+            "callee_resolution": "declared_import",
+            "imported_callee": "numpy.isnan",
+            "keyword_names": [],
+            "operator": "not"
+          },
+          {
+            "argument_expression_ids": [
+              "expr:168"
+            ],
+            "call_expression_id": "expr:170",
+            "callee_resolution": "declared_import",
+            "imported_callee": "numpy.isinf",
+            "keyword_names": [],
+            "operator": "not"
+          },
+          {
+            "argument_expression_ids": [
+              "expr:227",
+              "expr:233"
+            ],
+            "call_expression_id": "expr:235",
+            "callee_resolution": "declared_import",
+            "imported_callee": "numpy.allclose",
+            "keyword_names": [],
+            "operator": "call"
+          }
+        ],
+        "assertion_requirement_count": 4,
+        "assertion_summary_count": 4,
+        "compound_contract_assessments": [
+          {
+            "function_id": "function:243",
+            "reason": "incomplete_or_unsupported_function",
+            "status": "not_matched"
+          },
+          {
+            "function_id": "function:6",
+            "reason": null,
+            "status": "matched_syntax_only"
+          },
+          {
+            "function_id": "function:81",
+            "reason": "incomplete_or_unsupported_function",
+            "status": "not_matched"
+          }
+        ],
+        "compound_contract_count": 1,
+        "compound_contract_ids": [
+          "numerical-contract:7796ed25a89bda54c2deb0061d8228f5"
+        ],
+        "functions": 3,
+        "lake_executed": true,
+        "lake_file": "eval.py.lake.json",
+        "lake_status": "passed",
+        "lean_source_sha256": "3208073c5b6528cd75f035eab5002f8c670c418f5ae7aa30c4ed8293162079e1",
+        "model_inference_executed": false,
+        "omitted_assertion_requirement_summaries": 0,
+        "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+        "pending_obligation_count": 29,
+        "per_function": [
+          {
+            "function_id": "function:6",
+            "name_truncated": false,
+            "pending_obligation_count": 16,
+            "qualified_name": "ref_solution",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:81",
+            "name_truncated": false,
+            "pending_obligation_count": 13,
+            "qualified_name": "test_eigen_pair",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 1
+          },
+          {
+            "function_id": "function:243",
+            "name_truncated": false,
+            "pending_obligation_count": 0,
+            "qualified_name": "test_speedup",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 4
+          }
+        ],
+        "proof_authority": false,
+        "report_file": "eval.py.report.json",
+        "report_sha256": "91f15fe1e7149b3ec190d81dc51154cef977147c4d248e8315ff5a58d26664d4",
+        "source_executed": false,
+        "source_obligations_discharged": 0,
+        "source_replay_passed": true,
+        "source_semantics_verified": false,
+        "source_sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139",
+        "structurally_complete_functions": 1,
+        "training_performed": false
+      }
+    ],
+    "schema": "numerical-assertion-requirement-qualification@1",
+    "scope": "Public assertion predicates and structural def-use joins with generated Lean syntax/conditional mathematics; no NumPy semantic proof or global/callee postcondition.",
+    "source_execution_calls": 0,
+    "source_obligations_discharged": 0,
+    "test_result_sha256": "37d29acccec4fae2e6d5881cdd8fd615cf82441d1ebe0fec7f9e0f6a6bf78c4a",
+    "test_results": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "spark-b271",
+      "name": "pytest",
+      "skipped": "0",
+      "tests": "202",
+      "time": "5.621",
+      "timestamp": "2026-10-11T05:28:05.224012+00:00"
+    },
+    "training_performed": false
+  },
+  "schema": "assertion-summary-depth-qualification@1",
+  "source_obligations_discharged": 0,
+  "source_semantics_verified": false,
+  "tests": {
+    "commands_sha256": "676c63d2a481de3c80a934728a72b22cb16edf173546d05e7995402c3a8c958b",
+    "docker_calls": 0,
+    "duration_seconds": 6.133348878938705,
+    "helper_sha256": "cd54454f433645af49f86bf5e44a03cfc916fef9166056786ca3fd114be6765a",
+    "metadata_correction": "Copied helper inherited prior-run labels; corrected labels only, preserving raw receipt and test/source hashes.",
+    "previous_run_retained": "../initial-tests.xml and ../final-tests.xml",
+    "proof_authority": false,
+    "provider_calls": 0,
+    "raw_runner_receipt_sha256": "f2de2572bf87f85d612459580d8e6cb76e5825e5f80b55c9ea889c0bdd35634c",
+    "repeated_run_reason": "Qualified source change: add compact definition IDs and a regression for flat planner references.",
+    "returncode": 0,
+    "schema": "authored-numerical-assertion-tests@1",
+    "source_heads_after": {
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+      "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c"
+    },
+    "source_heads_before": {
+      "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+      "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c"
+    },
+    "source_obligations_discharged": 0,
+    "sources_after": {
+      "ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+      "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "tests/unit/logic/security_ir/test_code_logic_projection.py": "3fd1ace0a98291dcda2955d415257b9e77964bede708754fe8d8a8d2873ad19f",
+      "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py": "515b3b93b749f99d5e1dd07e027fe775cca09cb0dbe5ad3a2ca15219bbdec4f8",
+      "tests/unit/logic/software_verification/test_numerical_logic.py": "1398c81baf4b047fd95bdbfa5cb1e4a094ec2d801e3ecceec3b02cb2b5e51850",
+      "tests/unit/logic/software_verification/test_numerical_source.py": "03e956a25e24196037d879ddf5fe4185f129e5c8e77291c34ab5ae48c13738c3",
+      "tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+    },
+    "sources_before": {
+      "ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+      "ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+      "ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+      "tests/unit/logic/security_ir/test_code_logic_projection.py": "3fd1ace0a98291dcda2955d415257b9e77964bede708754fe8d8a8d2873ad19f",
+      "tests/unit/logic/software_verification/test_numerical_assertion_requirements.py": "515b3b93b749f99d5e1dd07e027fe775cca09cb0dbe5ad3a2ca15219bbdec4f8",
+      "tests/unit/logic/software_verification/test_numerical_logic.py": "1398c81baf4b047fd95bdbfa5cb1e4a094ec2d801e3ecceec3b02cb2b5e51850",
+      "tests/unit/logic/software_verification/test_numerical_source.py": "03e956a25e24196037d879ddf5fe4185f129e5c8e77291c34ab5ae48c13738c3",
+      "tests/unit/logic/software_verification/test_numerical_value_contracts.py": "e74e926ef320ba3239d07d5548903aa8f4fdd325a0d24241c031d72e6c88c771"
+    },
+    "sources_unchanged": true,
+    "suites": [
+      {
+        "errors": "0",
+        "failures": "0",
+        "hostname": "spark-b271",
+        "name": "pytest",
+        "skipped": "0",
+        "tests": "202",
+        "time": "5.621",
+        "timestamp": "2026-10-11T05:28:05.224012+00:00"
+      }
+    ],
+    "xml_sha256": "37d29acccec4fae2e6d5881cdd8fd615cf82441d1ebe0fec7f9e0f6a6bf78c4a"
+  },
+  "unique_test_identities": 202
+}

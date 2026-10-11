@@ -1,0 +1,126 @@
+{
+  "caveats": [
+    "Counts are deduplicated JUnit classname/name identities from separate targeted runs, not one final-HEAD full test invocation.",
+    "The61 neighbor tests passed before final flattening;20 context tests passed with the final consumer producer."
+  ],
+  "earlier_stage_neighbor_passing_identities": 61,
+  "fixes": [
+    "Flatten assertion argument lists and replace nested definition rows with source-bound IDs to respect native planner depth6.",
+    "Exact planner-payload test handles existing string constraints alongside object summaries."
+  ],
+  "new_terminal_bench_score": null,
+  "provider_calls": 0,
+  "public_source_qualification_sha256": "9a8fef1070e3f25dabb9ec8420bbe30c665d3e37bf0688e8c6ead3619a9922ec",
+  "recorded_at": "2026-10-11T05:35:36.521052+00:00",
+  "schema": "numerical-assertion-consumer-tests@1",
+  "source_heads": {
+    "datasets": "7286ee17f300a7d90741eb19900dd36939eb40b3",
+    "supervisor": "a5d7a6322f6aefaa7f9ce47b7d94df95228c148c"
+  },
+  "source_obligations_discharged": 0,
+  "status": "passed_after_targeted_fixes",
+  "test_runs": [
+    {
+      "command": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "--color=no",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/consumer/tests-01.xml"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011",
+      "failed": 1,
+      "failures": [
+        "benchmarks.agent_supervisor.container_coding.test_terminal_numerical_context::test_assertion_summary_reaches_planner_before_goals"
+      ],
+      "passed": 80,
+      "seconds": 103.98809439898469,
+      "source_after": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "575335c11f401aa4e3b59e0f8ccd2bdfc7503c5904680156b1277042db70ac11",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "c721d085f152908a72969a9b8411c96109ee3b88422b118c644d0a43ee9d5acc",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "dc72e88757e6348a73a19aa31883660a9b4cfd0a3629a9bb1e96b69fcee4ed1b"
+      },
+      "source_before": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "575335c11f401aa4e3b59e0f8ccd2bdfc7503c5904680156b1277042db70ac11",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "c721d085f152908a72969a9b8411c96109ee3b88422b118c644d0a43ee9d5acc",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "dc72e88757e6348a73a19aa31883660a9b4cfd0a3629a9bb1e96b69fcee4ed1b"
+      },
+      "source_unchanged": true,
+      "xml_sha256": "ab1a692563c95075dd66f06bda7a173777f37340ede9eb862d102d57b6e5b6de"
+    },
+    {
+      "command": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "--color=no",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/consumer/tests-02.xml"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011",
+      "failed": 1,
+      "failures": [
+        "benchmarks.agent_supervisor.container_coding.test_terminal_numerical_context::test_assertion_summary_reaches_planner_before_goals"
+      ],
+      "passed": 19,
+      "seconds": 30.006255740998313,
+      "source_after": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "e9c7e4212872629128ea1e919213a8880bf38b1ee80d522519dbac370be9494c",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "eb9ed38c493fc5629bdcd5c6613d7572b19a7be5003d941341dd74625690e402"
+      },
+      "source_before": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "e9c7e4212872629128ea1e919213a8880bf38b1ee80d522519dbac370be9494c",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "eb9ed38c493fc5629bdcd5c6613d7572b19a7be5003d941341dd74625690e402"
+      },
+      "source_unchanged": true,
+      "xml_sha256": "924eaed7d31cd05fae91addfe6a2ec9ac4a20a0e576f3038d2a06e21c4b88726"
+    },
+    {
+      "command": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "--color=no",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py::test_assertion_summary_reaches_planner_before_goals",
+        "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/consumer/tests-03.xml"
+      ],
+      "cwd": "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011",
+      "failed": 0,
+      "failures": [],
+      "passed": 1,
+      "seconds": 17.261464517912827,
+      "source_after": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "34019481db4a8b15b39778e3ef4efc425435d31bb1c42d45a3d64721216c2218",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "eb9ed38c493fc5629bdcd5c6613d7572b19a7be5003d941341dd74625690e402"
+      },
+      "source_before": {
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_logic.py": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-contracts-20261011/ipfs_datasets_py/logic/software_verification/numerical_source.py": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "34019481db4a8b15b39778e3ef4efc425435d31bb1c42d45a3d64721216c2218",
+        "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011/ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py": "eb9ed38c493fc5629bdcd5c6613d7572b19a7be5003d941341dd74625690e402"
+      },
+      "source_unchanged": true,
+      "xml_sha256": "740ab718c205504ad8633b29252df265a41a137c28e5922d7ed0b48e3e2c5464"
+    }
+  ],
+  "unique_passing_identities": 81,
+  "unique_passing_on_final_consumer_producer": 20,
+  "unresolved_test_failures": 0
+}
