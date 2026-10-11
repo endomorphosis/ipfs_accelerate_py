@@ -1,0 +1,45 @@
+{
+  "artifacts": {
+    "create_pilot_spec.py": {
+      "bytes": 8313,
+      "sha256": "d1bf7f3bbe61abbab7f37c236be63788a92cf8b8fa6ba7e5f9c48ecde05b3850"
+    },
+    "grok-pilot-command-spec.json": {
+      "bytes": 9633,
+      "sha256": "69ab6714a0a4f1d0ff05a3ff5182c8f21ee8a7ee10d2627e6a8af664029e8d06"
+    },
+    "helper-tests.xml": {
+      "bytes": 4767,
+      "sha256": "e4a998f9534ca07f40a7634aefb6358900ee5332230de4967e36fa5a3bb2f5f4"
+    },
+    "run_grok_pilot.py": {
+      "bytes": 22907,
+      "sha256": "d325e8b3b9e440a619d1d7cbcc47b295aa7071d6afbec9eb2db924d7a7b244ec"
+    },
+    "test_full_helpers.py": {
+      "bytes": 8133,
+      "sha256": "6736ad7b913b075a52920930e551313fded2608920e34fbc21f166e07c8fb831"
+    }
+  },
+  "command": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/test_full_helpers.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/helper-tests.xml"
+  ],
+  "comparison_claimed": false,
+  "container_calls": 0,
+  "provider_calls": 0,
+  "schema": "single-full-pilot-helper-qualification@1",
+  "scope": "Authored provider-free helper tests and metadata-only spec generation; no Docker or provider invocation",
+  "source_before_hashes_not_captured": true,
+  "test_result": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 27,
+    "skipped": 0
+  }
+}

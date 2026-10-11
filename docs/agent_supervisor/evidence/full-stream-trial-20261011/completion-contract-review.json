@@ -1,0 +1,71 @@
+{
+  "authored_tests_reviewed": {
+    "foreign_attempt_claim_lease_fence_revision_binding_event_and_cleanup_rejected_before_file_reads": true,
+    "foreign_operation_and_owner_internal_operation_rejected": true,
+    "full_and_no_index_arms": true,
+    "input_receipt_not_mutated": true,
+    "producer_to_project_task_to_output_observer_path": true,
+    "real_complete_attempt_receipt_captured_at_CAS_boundary": true,
+    "reviewer_test_runs": 0,
+    "validation_body_private_fields_not_exported": true
+  },
+  "completion_authority": false,
+  "docker_calls": 0,
+  "findings": {
+    "closed_projection_preserves_operation_verbatim": true,
+    "completed_operation_requires_completed_task_status": true,
+    "fencing_token_and_epoch_joins_retained": true,
+    "internal_owner_authority_operation_rejected": "task.database.completion",
+    "legacy_observer_operation_retained": "database_task_completion",
+    "native_producer_operation": "database_complete",
+    "no_completion_settlement_publication_correctness_or_writer_authority_added": true,
+    "only_declared_current_candidate_and_canonical_file_facts_observed": true,
+    "operation_type_requires_exact_string": true,
+    "owner_private_binding_and_finished_event_join_retained": true,
+    "private_attempt_claim_lease_hash_joins_retained": true,
+    "successful_stop_zero_remaining_processes_runtime_close_worker_exit_gates_retained": true,
+    "task_cid_status_revision_match_retained": true,
+    "typed_owner_requires_native_operation_for_database_daemon": true,
+    "unique_coding_invocation_workspace_task_join_retained": true
+  },
+  "historical_trial": {
+    "candidate_or_canonical_output_hashes_reconstructed": false,
+    "completion_operation_projection_remains": "unrecognized",
+    "declared_output_observation_remains": "unavailable",
+    "historical_evidence_modified": false,
+    "reviewed_final_sha256": "80ea3f99fe2c04c14031830c3e18ebbf26f5ee36dd9f826a93b8a9b01c57ed1e"
+  },
+  "proof_authority": false,
+  "provider_calls": 0,
+  "reviewed_files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py": {
+      "bytes": 18246,
+      "sha256": "fe0d6ca0d0195040737d0c71667aef4fe5c541481b0a5bbda1c33438538b8460"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": {
+      "bytes": 19070,
+      "sha256": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": {
+      "bytes": 26489,
+      "sha256": "b48c96faa3e6504aca7d5839e346581ea98d28f2f5a0e9a66c69c56dd7605ac0"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": {
+      "bytes": 23133,
+      "sha256": "5bb355385a5f4f54a3b1b320a102458375e0b74f493af2bf5f6232b1acaf89ee"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": {
+      "bytes": 612071,
+      "sha256": "95ffbe87ccbb811f7cf9281940bf4b9b004e5457087a7878138abe40330465a7"
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3248496,
+      "sha256": "b3702b6e612eec44b6490d9aba43d541818c78463ef639294edeb2b4cc548270"
+    }
+  },
+  "schema": "completion-receipt-contract-independent-review@1",
+  "scope": "Read-only review of two observer modules, their authored tests and native completion producer/owner operation guards. No tests executed by this reviewer.",
+  "source_edits": 0,
+  "source_root": "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011",
+  "status": "reviewed_no_blocker"
+}

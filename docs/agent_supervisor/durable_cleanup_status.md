@@ -3,6 +3,88 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Successful full-supervisor Terminal Bench trial, 2026-10-11
+
+The fresh, single-attempt `largest-eigenval` trial returned **official reward
+1.0**, with no Harbor exception. The full supervisor created two goals and one
+task, completed the task, and successfully stopped and closed its runtime.
+Worker cleanup returned zero, no native processes remained, and the exact
+deployed container was independently observed absent twice. Planning and coding
+used Grok 4.7 through the shared `llm_router`; fallback and retries were disabled.
+
+| Measured stage | Seconds |
+| --- | ---: |
+| Agent setup | 353.44 |
+| Agent execution | 931.49 |
+| Coding provider invocation, included in execution | 765.58 |
+| Official verifier | 9.41 |
+| Outer recorder, including setup and collection | 1,317.10 |
+
+Coding completed in 29 turns. Its terminal event arrived at 732.03 seconds and
+the process exited successfully at 765.36 seconds, a **33.33-second** settlement
+interval. Both pipes reached EOF without timeout or malformed stream frames.
+Twenty-three tool calls remain in the unknown-name bucket, so effective toolset
+verification remains incomplete. The event stream is diagnostic evidence; the
+official verifier supplies the score. This success does not establish the cause
+of earlier timeouts. Other containers were running on the host, so resource
+contention was not controlled.
+
+The run consumed the frozen archive `10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1`
+from supervisor `bfda2ab7e079`, datasets `fecc4ecbf2b6` and kit `8ac00bb1974b`.
+It used four indexed symbols, native DuckLake persistence and four semantic
+worker capsules. The numerical summary was verified at the native planner
+request submitted to the router. Initial indexes were reused; retrieval was
+lexical. Source384 consumed checkpoint `2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5`,
+but all four initial candidates remained unsupported. The deterministic
+numerical context contained two compound contracts and **41 pending source
+obligations, zero discharged**. IntentIR remained fail-open without a checkpoint.
+This trial therefore establishes successful indexed execution, not learned
+numerical formalization, source correctness proofs or complete IR coverage.
+It predates the source-assertion extension below.
+
+| Provider phase | Reported input | Reported cached input | Reported output | Reported total |
+| --- | ---: | ---: | ---: | ---: |
+| Planning | 14,371 | 1,920 | 7,955 | 24,246 |
+| Coding | 114,243 | 1,383,296 | 43,588 | 1,541,127 |
+
+Neither invocation explicitly establishes usage completeness. These are observed
+counters; complete aggregate token usage and verified billing remain unknown.
+No matching no-index or native Codex trial was rerun, and no token savings or
+efficiency advantage is claimed.
+
+Candidate/canonical output hashes were **not retained**: the declared-output
+observer returned `settlement_or_cleanup_unavailable`, and the retained progress
+reported an `unrecognized` receipt operation. Source inspection found that the
+completion producer emits `database_complete`, while the progress whitelist
+admitted only the older `database_task_completion` spelling. The observer also
+omitted the producer's spelling. This diagnostic gap does not
+change the official reward, but this run cannot establish candidate/canonical
+byte equality. Subsequent code fixes cannot reconstruct that historical evidence.
+
+Supervisor `321b782d2` makes the progress projector and output observer share a closed completion-operation
+set containing `database_complete` and the legacy spelling. They still reject the
+owner-internal `task.database.completion` operation and require the same private
+attempt, claim, lease, fence, invocation and cleanup joins. Regressions call the
+real daemon's receipt constructor and then project and observe that receipt.
+**171 distinct tests passed** across the two affected suites: 161 in the first
+fixed run and ten environment-dependent neighbors after correcting the datasets
+import path. Production and test hashes remained unchanged for that rerun. The
+[contract qualification](evidence/full-stream-trial-20261011/completion-contract.json)
+retains the three reproduced pre-fix failures and all rerun details; an
+[independent code review](evidence/full-stream-trial-20261011/completion-contract-review.json)
+confirms the ownership gates remain intact. This fix applies to future runs and
+was not present in the successful trial's frozen archive.
+
+The [trial qualification](evidence/full-stream-trial-20261011/qualification.json),
+[closed result](evidence/full-stream-trial-20261011/result.json),
+[helper qualification](evidence/full-stream-trial-20261011/helper-qualification.json)
+and [reader qualification](evidence/full-stream-trial-20261011/reader-qualification.json)
+retain the frozen source bindings, execution, context, stream, usage and cleanup
+limits. The helper passed 27 authored tests and the closed reader passed 48.
+An [independent review](evidence/full-stream-trial-20261011/independent-review.json)
+rechecked the closed evidence and confirmed the score and lifecycle joins while
+preserving the missing output hashes, incomplete usage and unsupported candidates.
+
 ## Source assertion requirements, 2026-10-11
 
 Datasets `7286ee17f` now exposes numerical source assertions as pending

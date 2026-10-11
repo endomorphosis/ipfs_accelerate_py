@@ -1,0 +1,41 @@
+{
+  "ablation_comparison_claimed": false,
+  "arm": "full",
+  "attempts": 1,
+  "benchmark_suite_completion_claimed": false,
+  "complete_token_score": null,
+  "completion_operation_diagnosis_scope": "Separate source inspection of the producer and consumers; the retained native progress only contains unrecognized. No historical candidate/canonical byte equality can be reconstructed.",
+  "declared_output_observation": {
+    "patch_application_established": false,
+    "reason": "settlement_or_cleanup_unavailable",
+    "status": "unavailable",
+    "task_correctness_established": false,
+    "writer_identity_established": false
+  },
+  "efficiency_advantage_claimed": false,
+  "evidence_sha256": {
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__rgk7YXZ/agent/supervisor-result.json": "c2b2da78765d39ad4b7100a12309ea7e496c3bdd29275e61378f30d218683810",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__rgk7YXZ/result.json": "95f18f6537442bfe1c3066e6ad0e0f20128474cd2fc7db7a82b619a5858eb28b",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/host-observations.jsonl": "3ae1ab3fc7df3d328330d831221fc0875ecf148ab90960ab39e0ed30c344100d",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/pilot-execute-full-exit.json": "41c03d944b50731bd9f22d0dca784325afac6a76e6cdb54d4b51dc3ff5a1ed49",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/final-01.json": "80ea3f99fe2c04c14031830c3e18ebbf26f5ee36dd9f826a93b8a9b01c57ed1e"
+  },
+  "goals_created": 2,
+  "hidden_verifier_or_solution_contents_read": false,
+  "host_observation": {
+    "host_contention_controlled": false,
+    "observed_at": "2026-10-11T05:37:12.522892+00:00",
+    "owned_pilot_present": true,
+    "running_containers": 2,
+    "unrelated_running_containers": 1
+  },
+  "intent_preplanning_status": "fail_open_no_checkpoint",
+  "official_reward": 1.0,
+  "outer_recorder_seconds": 1317.1013657969888,
+  "raw_provider_data_exported": false,
+  "schema": "full-supervisor-stream-trial-publication@1",
+  "source_assertion_extension_in_executed_archive": false,
+  "task": "largest-eigenval",
+  "tasks_created": 1,
+  "verified_dollar_cost": null
+}

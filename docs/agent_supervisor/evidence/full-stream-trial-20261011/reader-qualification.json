@@ -1,0 +1,37 @@
+{
+  "returncode": 0,
+  "seconds": 0.5149196569109336,
+  "before": {
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/review_full_result.py": "51f2188009642904171cb9d63d2fc4bcdbc4b45806b8497954b8173c256f42a7",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/test_review_full_result.py": "8d7ff6aec1db774b85d7ca45189235255a9ff9db2b763400ef2e870fc4c0b47e",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/run_grok_pilot.py": "d325e8b3b9e440a619d1d7cbcc47b295aa7071d6afbec9eb2db924d7a7b244ec",
+    "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/review_pair_results.py": "bbd9f5ee7584b478a063325b488b5a101eb776c3465b79e12e9cfab35fe82d57",
+    "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/run_grok_pilot.py": "c7eb71ed63831d454c6f17ded09c16cd825fe124c8d00234a2ac6583428319ec",
+    "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+    "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "bea10b27b296b2f6ea9dfef6ad1da94251f7318e899f9fb2668ce39726d0a527"
+  },
+  "after": {
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/review_full_result.py": "51f2188009642904171cb9d63d2fc4bcdbc4b45806b8497954b8173c256f42a7",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/test_review_full_result.py": "8d7ff6aec1db774b85d7ca45189235255a9ff9db2b763400ef2e870fc4c0b47e",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/run_grok_pilot.py": "d325e8b3b9e440a619d1d7cbcc47b295aa7071d6afbec9eb2db924d7a7b244ec",
+    "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/review_pair_results.py": "bbd9f5ee7584b478a063325b488b5a101eb776c3465b79e12e9cfab35fe82d57",
+    "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/run_grok_pilot.py": "c7eb71ed63831d454c6f17ded09c16cd825fe124c8d00234a2ac6583428319ec",
+    "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "e84085899c37b8d8dae3012cdaf4b40a81d6832260352d0781062db89e0f1421",
+    "/home/barberb/lift_coding/.worktrees/supervisor-coding-progress-20261011/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "bea10b27b296b2f6ea9dfef6ad1da94251f7318e899f9fb2668ce39726d0a527"
+  },
+  "unchanged": true,
+  "provider_calls": 0,
+  "docker_calls": 0,
+  "suites": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "48",
+      "time": "0.304",
+      "timestamp": "2026-10-11T05:39:03.831373+00:00",
+      "hostname": "spark-b271"
+    }
+  ]
+}

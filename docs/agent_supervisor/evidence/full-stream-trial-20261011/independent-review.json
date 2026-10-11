@@ -1,0 +1,141 @@
+{
+  "checkpoint": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "decoded_units_reported": 4,
+    "inference_artifact_replayed_by_this_review": false,
+    "inference_sha256": "12d79c73f460aa56db24be87542e1b6420cbb9bc398f06ca00641bb5aa8777c8",
+    "live_neural_inference_replayed": false,
+    "manifest_config_checkpoint_and_live_context_hash_join_verified": true,
+    "model_load_count_not_present_in_live_context_receipt": true,
+    "training_steps": 0,
+    "unsupported_candidates": 4
+  },
+  "coding": {
+    "event_origin_authenticated": false,
+    "final_envelope_preceded_exit_seconds": 33.333594217081554,
+    "native_turns_reported": 29,
+    "provider_returned": true,
+    "provider_seconds": 765.5846382339951,
+    "provider_timeout_seconds": 1800,
+    "stream_does_not_establish_task_correctness": true,
+    "stream_frames": 2708,
+    "stream_process_exit_returncode": 0,
+    "stream_timeout": false,
+    "unknown_tool_name_events": 23
+  },
+  "evidence_sha256": {
+    "/home/barberb/lift_coding/artifacts/supervisor-coding-progress-20261011/build/bundle/manifest.json": "9b5068ca7b57186fa0c8dbab224c69a089328d52b955c9569f4d72a7312fc679",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/config.json": "707227881cca53b2d5642b745821653cbbe0386769f12c5ff0fc9f90ac2a1e37",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__rgk7YXZ/agent/worker-boundary/deployment.json": "00677b2b62ccb9967188693ba00eb37986a94945fe5ccf9251806b787b805399",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__rgk7YXZ/result.json": "95f18f6537442bfe1c3066e6ad0e0f20128474cd2fc7db7a82b619a5858eb28b",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/owned-container-absence.json": "73dd2f36d7d5f770601280645919cef2292ce30f61c8fb0386ce9cf81d92b12c",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/preparation.json": "49ab47d166e746fef11d4f701e1b5c89c7a9d44d794ac978d12c28da2b73db3b",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-full-pilot-01/receipt.json": "e168971a6c61546f9c24c1e6db43923f66b3346773591f6ca5c3abec9006824b",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-pilot-command-spec.json": "69ab6714a0a4f1d0ff05a3ff5182c8f21ee8a7ee10d2627e6a8af664029e8d06",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/grok-pilot-frozen-review.json": "ed291dca909aca2218e9e7114d5d5b7f62e178164f576f80505d95a6c5152909",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/pilot-execute-full-command.json": "d562bd36a99ed0793304e20a5e5530fa488e010e4a651ec01e4d864f93bdfc42",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/pilot-execute-full-exit.json": "41c03d944b50731bd9f22d0dca784325afac6a76e6cdb54d4b51dc3ff5a1ed49",
+    "/home/barberb/lift_coding/artifacts/supervisor-stream-pilot-20261011/review/final-01.json": "80ea3f99fe2c04c14031830c3e18ebbf26f5ee36dd9f826a93b8a9b01c57ed1e"
+  },
+  "identity_and_controls": {
+    "archive_sha256": "10f8e35960883b9dd0fdf3d96161960818ab67bf9cb0bb21c5e0c950059bd3c1",
+    "execution_before_after_source_equality_verified": true,
+    "immutable_controls_join_verified": true,
+    "original_task_inputs_unchanged": true,
+    "recorded_host_and_runtime_pins_join_verified": true,
+    "runtime_source_heads": {
+      "datasets": "fecc4ecbf2b6a2c7453af7d2f0d749e2b7d9bc52",
+      "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "source": "bfda2ab7e07982bc776a130a8ed509a55d4ce32c"
+    },
+    "source_files_or_archive_rehashed_by_this_review": false
+  },
+  "lifecycle": {
+    "absence_observations": 2,
+    "container_actions_by_reviewer": 0,
+    "container_id": "8667faa19881f2c36edef82fc95926560eee64ed94adb882c6d87b18fb5dbd46",
+    "exact_deployment_invocation_absence_joins_verified": true,
+    "healthy_native_observation": true,
+    "remaining_processes": 0,
+    "runtime_close_succeeded": true,
+    "start": "succeeded",
+    "stop": "succeeded",
+    "worker_cleanup_returncode": 0
+  },
+  "limits": {
+    "candidate_or_canonical_output_hashes": null,
+    "declared_output_observation": "unavailable",
+    "historical_completion_operation_projection": "unrecognized",
+    "intent_status": "fail_open_no_checkpoint",
+    "native_codex_rerun": false,
+    "no_index_rerun": false,
+    "original_stored_completion_operation_not_exported_in_closed_receipt": true,
+    "performance_advantage_claimed": false,
+    "separate_database_complete_whitelist_fix_not_applied_retroactively": true,
+    "whole_program_proof_claimed": false
+  },
+  "official_result": {
+    "agent_execution_seconds": 931.493088,
+    "native_result_hash_join_verified": true,
+    "no_harbor_exception": true,
+    "reward": 1.0,
+    "setup_seconds": 353.441355,
+    "single_task_single_attempt": true,
+    "task_completed": true,
+    "task_revision": 4,
+    "task_status": "completed"
+  },
+  "planning_context": {
+    "ducklake_catalogs": 3,
+    "ducklake_verified_reported": true,
+    "indexed_descriptor_identity_joins_verified": true,
+    "initial_full_capsules": 8,
+    "initial_indexed_symbols": 4,
+    "learned_retrieval_selected": false,
+    "lexical_retrieval": true,
+    "model_summary_equality_verified": false,
+    "native_request_receipt_invocation_hash_and_byte_joins_verified": true,
+    "numerical_compound_contracts": 2,
+    "numerical_initial_admitted_equality_verified": true,
+    "numerical_pending_obligations": 41,
+    "numerical_producer_hashes_match_manifest": true,
+    "numerical_source_hashes_match_task_input_manifest": true,
+    "raw_request_or_private_lakes_replayed_by_this_review": false,
+    "source_obligations_discharged": 0,
+    "worker_capsules": 4,
+    "worker_numerical_delivery_verified": false
+  },
+  "review_scope": {
+    "closed_json_only": true,
+    "completion_authority": false,
+    "credential_contents_read": false,
+    "docker_calls": 0,
+    "hidden_tests_or_solutions_read": false,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "raw_logs_or_provider_text_read": false,
+    "source_bodies_read": false,
+    "tests_executed": 0
+  },
+  "reviewed_final_sha256": "80ea3f99fe2c04c14031830c3e18ebbf26f5ee36dd9f826a93b8a9b01c57ed1e",
+  "schema": "independent-closed-stream-full-review@1",
+  "status": "reviewed_no_blocker_with_explicit_observation_gaps",
+  "usage": {
+    "complete_aggregate_tokens": null,
+    "complete_usage_verified": false,
+    "dollar_cost": null,
+    "reported_per_invocation_counts_only": [
+      {
+        "phase": "planning",
+        "reported_tokens": 24246,
+        "usage_complete_observed": null
+      },
+      {
+        "phase": "coding",
+        "reported_tokens": 1541127,
+        "usage_complete_observed": null
+      }
+    ],
+    "token_savings_claimed": false
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "artifacts_sha256": {
+    "baseline-01-command.json": "61e400ca79954c1d7e30b490a0b78da6b55830fa4ddedb5893713bc8951802d1",
+    "baseline-01-result.json": "329e8efab641764d0eb155a62e0940bdd0a7b2064723b454e91257f48e8df1d5",
+    "baseline-01.log": "64ee625c8d467ac470d78431628bbb94f106b4949680bc82e07d340e646eb2c6",
+    "baseline-01.xml": "77e4206b47b6ca2a6075ad9ebf21fa41da54b2971d79398f32b00dcfa5b0d155",
+    "fixed-01-command.json": "6bf5301c5432c1ca433cdaa506ad569aa13402c904df896df68d4ead78ad3c7b",
+    "fixed-01-result.json": "ace15259a81bb854701306a83bc01b4f0c88b610013049056e9eea0277a2ab5c",
+    "fixed-01.log": "d769806657245dc7cd253b30148488b503b61013a109ef773e6bd8249e1f251e",
+    "fixed-01.xml": "5472d00960cbd27d07838827ce25e9b9a9b6dee3279ec2f522c53417654d558a",
+    "neighbors-01-command.json": "8ea97cb9a8c1d34cf33239e8800b0e1a3e5f69167402feda25dc0d2552efe9f8",
+    "neighbors-01-result.json": "80aea67e719181e8451d651dff7b0c933982c146c88b4b81c331b9e7add64bfe",
+    "neighbors-01.log": "1422bc34d0d8bebed519d11f6b8eed1f1fc74408c9a664d5fd67322f4d714fd3",
+    "neighbors-01.xml": "99386fdb264d60baf267b34a1e0ca5a158d79130242355fbe4ccc46ad4be3489",
+    "review.json": "0f7582f57f3d5015a9aec4469e85591b1490266f3a7d514ee456df5230d075c4"
+  },
+  "completion_authority": false,
+  "contract": {
+    "actual_daemon_receipt_constructor_invoked": true,
+    "coordinator_and_cas_authority": "authored_test_seams_only",
+    "full_and_no_index_covered": true,
+    "internal_owner_operation_rejected": "task.database.completion",
+    "legacy_operation_retained": "database_task_completion",
+    "native_owner_state_mutation": false,
+    "private_binding_and_finished_event_required": true,
+    "scope": "closed progress projection and post-settlement declared-output byte observation",
+    "stored_receipt_operation": "database_complete"
+  },
+  "datasets_head": "7286ee17f300a7d90741eb19900dd36939eb40b3",
+  "docker_calls": 0,
+  "first_environment_failure_explanation": "Nine neighboring driver cases selected a datasets installation lacking logic.formalization.autoencoder; one -P diagnostic child could not import through the unqualified path. Exactly those ten passed with the existing consumer qualification environment; production and tests were unchanged.",
+  "git_commit_created": false,
+  "historical_output_observation_repaired": false,
+  "historical_review_sha256": "80ea3f99fe2c04c14031830c3e18ebbf26f5ee36dd9f826a93b8a9b01c57ed1e",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "published": false,
+  "schema": "completed-receipt-contract-qualification@1",
+  "source_head": "0fe85c1f3b30bf6bf8650f5bd51af18061dc8163",
+  "source_root": "/home/barberb/lift_coding/.worktrees/numerical-assertion-supervisor-20261011",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py": "fe0d6ca0d0195040737d0c71667aef4fe5c541481b0a5bbda1c33438538b8460",
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "b22ff1ba85b618c0b763bead05d9d00221378398ec53719052935f88573e7cc9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "b48c96faa3e6504aca7d5839e346581ea98d28f2f5a0e9a66c69c56dd7605ac0",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "5bb355385a5f4f54a3b1b320a102458375e0b74f493af2bf5f6232b1acaf89ee",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "95ffbe87ccbb811f7cf9281940bf4b9b004e5457087a7878138abe40330465a7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "b3702b6e612eec44b6490d9aba43d541818c78463ef639294edeb2b4cc548270"
+  },
+  "source_unchanged_during_tests": true,
+  "tests": {
+    "baseline": {
+      "error": 0,
+      "failed": 3,
+      "passed": 20,
+      "skipped": 0
+    },
+    "fixed_first_environment": {
+      "error": 0,
+      "failed": 10,
+      "passed": 161,
+      "skipped": 0
+    },
+    "qualified_environment_failed_neighbors_rerun": {
+      "error": 0,
+      "failed": 0,
+      "passed": 10,
+      "skipped": 0
+    },
+    "unique_final": {
+      "error": 0,
+      "failed": 0,
+      "passed": 171,
+      "skipped": 0
+    }
+  }
+}
