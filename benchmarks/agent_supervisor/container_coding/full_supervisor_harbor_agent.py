@@ -47,6 +47,8 @@ from .terminal_numerical_policy import (
 
 def measured_usage(report: dict) -> dict:
     """Count observed native totals once, retaining provider-specific semantics."""
+    from .native_usage_accounting import native_usage_contract
+
     rows = report.get("provider_invocations", [])
     unique = {}
     for row in rows:
@@ -67,13 +69,15 @@ def measured_usage(report: dict) -> dict:
         (row.get("native_rollout_usage") or {}).get("task_complete_observed") is True
         for row in unique.values()
     ) if unique else False
-    grok = any(row.get("provider") == "grok_cli" for row in unique.values())
-    cache_semantics = [(row.get("native_rollout_usage") or {}).get("cache_included_in_input")
-                       if row.get("provider") == "grok_cli" else True
-                       for row in unique.values()]
+    contracts = [native_usage_contract(row, row.get("native_rollout_usage") or {})
+                 for row in unique.values()]
+    grok = any(row.get("provider") == "grok_cli"
+        or (row.get("native_rollout_usage") or {}).get("schema") == "native-grok-final-usage@1"
+        for row in unique.values())
+    cache_semantics = [contract[2] for contract in contracts]
     result["cache_included_in_input"] = (cache_semantics[0] if cache_semantics
         and all(type(value) is bool and value == cache_semantics[0] for value in cache_semantics)
-        else None) if grok else True
+        else None)
     result["source"] = "observed_native_final_totals" if grok else "observed_native_cumulative_totals"
     if grok:
         writes = [(row.get("native_rollout_usage") or {}).get("usage", {}).get("cache_write_input_tokens")
@@ -85,13 +89,34 @@ def measured_usage(report: dict) -> dict:
         result["usage_complete_observed"] = (False if any(value is False for value in completeness)
             else True if known and all(value is True for value in completeness) else None)
     result["all_invocations_receipted"] = known
+    complete = [contract[0] for contract in contracts]
+    result["native_scoped_usage_complete_observed"] = (
+        False if any(value is False for value in complete)
+        else True if known and all(value is True for value in complete) else None)
+    scopes = {contract[1] for contract in contracts}
+    result["token_count_scope"] = next(iter(scopes)) if len(scopes) == 1 else None
+    if result["token_count_scope"] is None:
+        result["source"] = "observed_native_mixed_or_unknown_totals"
+    result["harbor_usage_exportable"] = (
+        result["native_scoped_usage_complete_observed"] is True
+        and result["token_count_scope"] is not None
+        and type(result["cache_included_in_input"]) is bool
+        and all(type(result.get(key)) is int and result[key] >= 0 for key in (
+            "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
     result["billing_total_verified"] = False
     result["dollar_cost"] = None
     return result
 
 
 def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
-    """Harbor input includes cache; retain native categories in the receipt."""
+    """Export qualified native-scope counters, never infer usage from success.
+
+    Observed incomplete counters remain in the supervisor receipt. A qualified
+    native scope still excludes billing or unreported auxiliary-model usage.
+    """
+    context.n_input_tokens = context.n_cache_tokens = context.n_output_tokens = None
+    if usage.get("harbor_usage_exportable") is not True:
+        return
     value = usage["input_tokens"] if usage.get("cache_included_in_input") is True else None
     if usage.get("cache_included_in_input") is False:
         categories = [usage.get(key) for key in ("input_tokens", "cached_input_tokens",
@@ -99,6 +124,8 @@ def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
         if (all(type(item) is int and item >= 0 for item in categories)
                 and sum(categories[:4]) == categories[4]):
             value = sum(categories[:3])
+    if value is None:
+        return
     context.n_input_tokens = value
     context.n_cache_tokens = usage["cached_input_tokens"]
     context.n_output_tokens = usage["output_tokens"]

@@ -14,6 +14,7 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
     "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
@@ -22,6 +23,12 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
 )
 DATASET_PATHS = (
+    "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+    "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+    "ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py",
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py",
     "ipfs_datasets_py/logic/software_verification/numerical_source.py",
     "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
     "ipfs_datasets_py/logic/software_verification/__init__.py",

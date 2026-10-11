@@ -56,9 +56,33 @@ def _sources(repository, source_hashes):
 
 def _producers():
     from ipfs_datasets_py.logic.software_verification import numerical_logic, numerical_source
+    from ipfs_datasets_py.logic.software_contracts import source_unit_numerical_links
+    from ipfs_datasets_py.logic.formalization.autoencoder import source_function_units, source_screening
+    from ipfs_datasets_py.logic.formalization.autoencoder.security import (
+        source_program_binding_384, security_formula_corpus, security_formalization_evaluation,
+    )
     return {name: _sha(_read(Path(path).resolve(), 2_000_000)) for name, path in (
         ("consumer", __file__), ("grammar", numerical_source.__file__),
-        ("projections", numerical_logic.__file__))}
+        ("projections", numerical_logic.__file__),
+        ("unit_links", source_unit_numerical_links.__file__),
+        ("function_units", source_function_units.__file__),
+        ("unit_span_validation", security_formula_corpus.__file__),
+        ("unit_span_extraction", security_formalization_evaluation.__file__),
+        ("unit_source_screening", source_screening.__file__),
+        ("scalar_source_guard", source_program_binding_384.__file__))}
+
+
+def _function_unit_links(sources, reports):
+    from ipfs_datasets_py.logic.formalization.autoencoder.source_function_units import extract_function_units
+    from ipfs_datasets_py.logic.software_contracts.source_unit_numerical_links import bind_function_unit_logic
+
+    result = {}
+    for path, text in sources.items():
+        raw = text.encode("utf-8")
+        inventory = extract_function_units(source_bytes=raw, source_sha256=_sha(raw), source_path=path)
+        result[path] = bind_function_unit_logic(source_bytes=raw, unit_inventory=inventory,
+                                                numerical_report=reports[path])
+    return result
 
 
 def _planning_assertion(path, row):
@@ -75,7 +99,7 @@ def _planning_assertion(path, row):
         symbol_definition_ids=[definition["definition_id"] for definition in row["symbol_definitions"]])
 
 
-def _summary(reports, tree):
+def _summary(reports, tree, unit_links=None):
     rows, pending, contracts, assertions = [], [], [], []
     contract_count = assertion_count = 0
     for path, report in sorted(reports.items()):
@@ -108,17 +132,32 @@ def _summary(reports, tree):
             "Assertions are local requirements if reached with assertions enabled, not callee postconditions. "
             "Read source before editing."),
         autoencoder_coverage_changed=False, **AUTHORITY)
+    if unit_links is not None:
+        linked = []
+        for path, report in sorted(unit_links.items()):
+            for link in report["links"]:
+                linked.append(dict(path=path, link_report_sha256=report["report_sha256"],
+                    **{key: link[key] for key in ("unit_id", "normalized_body_sha256", "function_id",
+                        "status", "structural_status", "scalar_guard_status", "scalar_guard_reason",
+                        "pending_obligation_count", "compound_contract_count", "assertion_requirement_count")}))
+        result.update(source_unit_link_origin="deterministic_source_projection",
+            source_unit_count=sum(r["unit_count"] for r in unit_links.values()),
+            linked_source_unit_count=sum(r["matched_unit_count"] for r in unit_links.values()),
+            unmatched_source_unit_count=sum(r["unmatched_unit_count"] for r in unit_links.values()),
+            source_unit_links=linked[:4], omitted_source_unit_link_summaries=max(0, len(linked)-4),
+            source_unit_links_establish_learned_coverage=False)
     # Long public names cannot turn a bounded planning constraint into an
     # unbounded prompt. Drop complete rows and account for every omission.
     while len(_bytes(result)) > 8192:
-        key = next((name for name in ("pending_obligations", "per_function", "compound_contracts",
+        key = next((name for name in ("pending_obligations", "per_function", "source_unit_links", "compound_contracts",
                                      "assertion_requirements")
-                    if result[name]), None)
+                    if result.get(name)), None)
         if key is None:
             raise ValueError("numerical planning summary exceeds bound")
         result[key].pop()
         omitted = {"pending_obligations": "omitted_obligation_summaries",
             "per_function": "omitted_function_summaries",
+            "source_unit_links": "omitted_source_unit_link_summaries",
             "compound_contracts": "omitted_compound_contract_summaries",
             "assertion_requirements": "omitted_assertion_requirement_summaries"}[key]
         result[omitted] += 1
@@ -165,6 +204,7 @@ def prepare_numerical_context(*, repository, source_hashes, output, profile):
     sources = _sources(repository, source_hashes)
     producers = _producers()
     reports = {name: formalize_numerical_source(text, path=name) for name, text in sources.items()}
+    unit_links = _function_unit_links(sources, reports)
     output.mkdir(parents=True)
     index = {}
     for i, (name, report) in enumerate(reports.items()):
@@ -172,10 +212,13 @@ def prepare_numerical_context(*, repository, source_hashes, output, profile):
         raw = _bytes(report)
         if len(raw) > 8_000_000:
             raise ValueError("numerical report exceeds consumer bound")
-        index[name] = dict(artifact=artifact, sha256=_write(output / artifact, report))
+        links_artifact = f"unit-links-{i:04d}.json"
+        index[name] = dict(artifact=artifact, sha256=_write(output / artifact, report),
+            unit_links_artifact=links_artifact,
+            unit_links_sha256=_write(output / links_artifact, unit_links[name]))
     _write(output / "reports.json", index)
     tree = content_identity(dict(schema=SCHEMA, sources=source_hashes))
-    summary = _summary(reports, tree)
+    summary = _summary(reports, tree, unit_links)
     _write(output / "planning-summary.json", summary)
     record = _record(repository, source_hashes, producers, index, summary)
     world = ProgramWorldDatabase(output / "world.duckdb", output / "world-lake")
@@ -225,8 +268,17 @@ def validate_numerical_context(*, repository, expected_receipt):
         if _sha(raw) != ref.get("sha256"):
             raise ValueError("numerical report digest differs")
         reports[name] = validate_numerical_logic_report(json.loads(raw), text, path=name)
+    unit_links = _function_unit_links(sources, reports)
+    for i, (name, links) in enumerate(unit_links.items()):
+        ref = index[name]
+        if (set(ref) != {"artifact", "sha256", "unit_links_artifact", "unit_links_sha256"}
+                or ref.get("unit_links_artifact") != f"unit-links-{i:04d}.json"):
+            raise ValueError("numerical unit-link artifact nomination differs")
+        raw = _read(output / ref["unit_links_artifact"])
+        if _sha(raw) != ref.get("unit_links_sha256") or raw != _bytes(links):
+            raise ValueError("numerical unit links differ from exact source replay")
     tree = content_identity(dict(schema=SCHEMA, sources=receipt["source_hashes"]))
-    summary = _summary(reports, tree)
+    summary = _summary(reports, tree, unit_links)
     record = _record(repository, receipt["source_hashes"], receipt["producers"], index, summary)
     if (summary != receipt["summary"] or json.loads(_read(output / "planning-summary.json")) != summary
             or record != receipt["record"] or _hydrate(output, record) != receipt["hydration"]):

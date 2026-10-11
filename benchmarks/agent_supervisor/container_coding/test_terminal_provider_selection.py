@@ -116,7 +116,10 @@ def test_instruction_envelope_preserves_signed_request_budget(original, bound):
 @pytest.mark.parametrize('complete', [True, False, None])
 def test_grok_counters_preserve_native_cache_and_completeness_semantics(complete):
     row = {'invocation_id': 'one', 'provider': 'grok_cli', 'native_rollout_usage': {
-        'usage': {'input_tokens': 10, 'cached_input_tokens': 30, 'output_tokens': 2, 'total_tokens': 42},
+        'schema': 'native-grok-final-usage@1', 'usage_available': True,
+        'totals_scope': 'native_final_envelope',
+        'usage': {'input_tokens': 10, 'cached_input_tokens': 30, 'cache_write_input_tokens': 0,
+                  'output_tokens': 2, 'total_tokens': 42},
         'cache_included_in_input': False, 'usage_complete_observed': complete, 'task_complete_observed': True}}
     observed = measured_usage({'provider_invocations': [row, row]})
     assert observed['input_tokens'] == 10 and observed['total_tokens'] == 42
@@ -128,9 +131,12 @@ def test_grok_counters_preserve_native_cache_and_completeness_semantics(complete
     assert missing['usage_complete_observed'] is (False if complete is False else None)
 
 
-@pytest.mark.parametrize('alteration', [None, 'missing_write', 'unknown_semantics', 'conflicting_total', 'unreceipted'])
+@pytest.mark.parametrize('alteration', [None, 'missing_write', 'unknown_semantics', 'conflicting_total',
+    'unreceipted', 'missing_completeness', 'incomplete', 'boolean_lookalike', 'unfinished', 'unknown_schema'])
 def test_grok_harbor_input_includes_cache_only_with_complete_consistent_counters(alteration):
-    receipt = {'usage': {'input_tokens': 10, 'cached_input_tokens': 30,
+    receipt = {'schema': 'native-grok-final-usage@1', 'usage_available': True,
+               'totals_scope': 'native_final_envelope', 'usage_complete_observed': True,
+               'usage': {'input_tokens': 10, 'cached_input_tokens': 30,
                         'cache_write_input_tokens': 5, 'output_tokens': 2, 'total_tokens': 47},
                'cache_included_in_input': False, 'task_complete_observed': True}
     report = {'provider_invocations': [{'invocation_id': 'one', 'provider': 'grok_cli',
@@ -143,10 +149,57 @@ def test_grok_harbor_input_includes_cache_only_with_complete_consistent_counters
         receipt['usage']['total_tokens'] += 1
     elif alteration == 'unreceipted':
         report['unreceipted_provider_attempt'] = {'phase': 'coding'}
+    elif alteration == 'missing_completeness':
+        del receipt['usage_complete_observed']
+    elif alteration == 'incomplete':
+        receipt['usage_complete_observed'] = False
+    elif alteration == 'boolean_lookalike':
+        receipt['usage_complete_observed'] = 1
+    elif alteration == 'unfinished':
+        receipt['task_complete_observed'] = False
+    elif alteration == 'unknown_schema':
+        receipt['schema'] = 'unknown'
     usage = measured_usage(report)
-    context = AgentContext()
+    context = AgentContext(n_input_tokens=123, n_cache_tokens=100, n_output_tokens=23)
     populate_harbor_usage(context, usage)
     assert context.n_input_tokens == (45 if alteration is None else None)
-    assert context.n_cache_tokens == (None if alteration == 'unreceipted' else 30)
-    assert context.n_output_tokens == (None if alteration == 'unreceipted' else 2)
+    assert context.n_cache_tokens == (30 if alteration is None else None)
+    assert context.n_output_tokens == (2 if alteration is None else None)
     assert usage['input_tokens'] == (None if alteration == 'unreceipted' else 10)
+    assert usage['billing_total_verified'] is False
+
+
+@pytest.mark.parametrize('complete', [True, False, None, 1])
+def test_harbor_codex_cumulative_scope_preserves_native_completion_requirement(complete):
+    row = {'invocation_id': 'one', 'provider': 'codex_cli', 'native_rollout_usage': {
+        'schema': 'native-codex-cumulative-usage@1', 'task_complete_observed': complete,
+        'usage': {'input_tokens': 100, 'cached_input_tokens': 80, 'output_tokens': 10, 'total_tokens': 110}}}
+    usage = measured_usage({'provider_invocations': [row, deepcopy(row)], 'task_completed': True})
+    context = AgentContext()
+    populate_harbor_usage(context, usage)
+    assert usage['total_tokens'] == 110 and usage['provider_calls'] == 1
+    assert context.n_input_tokens == (100 if complete is True else None)
+    assert context.n_cache_tokens == (80 if complete is True else None)
+    assert context.n_output_tokens == (10 if complete is True else None)
+    assert usage['token_count_scope'] == 'native_session_cumulative'
+
+
+def test_harbor_schema_identified_grok_receipt_preserves_cache_semantics():
+    row = {'invocation_id': 'one', 'native_rollout_usage': {
+        'schema': 'native-grok-final-usage@1', 'usage_available': True,
+        'totals_scope': 'native_final_envelope', 'usage_complete_observed': True,
+        'task_complete_observed': True, 'cache_included_in_input': False,
+        'usage': {'input_tokens': 10, 'cached_input_tokens': 30, 'cache_write_input_tokens': 5,
+                  'output_tokens': 2, 'total_tokens': 47}}}
+    usage = measured_usage({'provider_invocations': [row]})
+    context = AgentContext()
+    populate_harbor_usage(context, usage)
+    assert usage['cache_included_in_input'] is False
+    assert usage['cache_write_input_tokens'] == 5
+    assert usage['source'] == 'observed_native_final_totals'
+    assert context.n_input_tokens == 45 and context.n_cache_tokens == 30 and context.n_output_tokens == 2
+    row['provider'] = 'codex_cli'
+    contradictory = measured_usage({'provider_invocations': [row]})
+    populate_harbor_usage(context, contradictory)
+    assert context.n_input_tokens is context.n_cache_tokens is context.n_output_tokens is None
+    assert contradictory['token_count_scope'] is None

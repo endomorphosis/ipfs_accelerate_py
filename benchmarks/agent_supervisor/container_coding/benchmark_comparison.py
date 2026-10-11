@@ -1,9 +1,9 @@
 """Compare retained native Harbor receipts without reading model transcripts.
 
-Counts are observed native cumulative session counters. Complete totals require
-explicit native session completion evidence. Cached input is already included
-in input tokens. Missing or interrupted usage remains unknown; unsuccessful
-trials and setup aborts retain their observed token costs as subtotals.
+Counts retain each provider's native scope and cache semantics. Codex cumulative
+session counters require native completion; Grok final-envelope counters also
+require explicit usage completeness. Neither establishes complete billing.
+Missing or interrupted usage retains observed counters separately from totals.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 
 from benchmarks.agent_supervisor.container_coding.benchmark_controls import compare_controls
+from benchmarks.agent_supervisor.container_coding import native_usage_accounting
 
 BASELINE = "native-codex-harbor-baseline-receipt@1"
 SUPERVISOR = "terminal-full-supervisor-receipt@1"
@@ -301,6 +302,11 @@ def _grok_progress(raw):
         return None
 
 
+def _uniform_boolean(values):
+    values = list(values)
+    return values[0] if values and type(values[0]) is bool and all(value is values[0] for value in values) else None
+
+
 def _invocations(report):
     found = {}
     rows = report.get("provider_invocations", [])
@@ -320,7 +326,7 @@ def _invocations(report):
             continue
         native = _mapping(raw.get("native_rollout_usage"))
         observed = _tokens(native.get("usage"))
-        complete = _boolean(native.get("task_complete_observed"))
+        complete, scope, cache_included = native_usage_accounting.native_usage_contract(raw, native)
         observed_cost = _number(native.get("dollar_cost"))
         found[identity] = (
             raw,
@@ -335,7 +341,12 @@ def _invocations(report):
                 "seconds": _number(raw.get("seconds")),
                 "tokens": {key: value if complete is True else None for key, value in observed.items()},
                 "known_token_subtotals": observed,
-                "native_task_complete_observed": complete,
+                "native_task_complete_observed": _boolean(native.get("task_complete_observed")),
+                "native_usage_complete_observed": complete,
+                "token_count_scope": scope,
+                "cache_included_in_input": cache_included,
+                "observed_counts_are_lower_bounds": scope == "native_session_cumulative",
+                "billing_total_verified": False,
                 "reported_cost_usd": observed_cost if complete is True else None,
                 "known_reported_cost_subtotal_usd": observed_cost,
                 "input_observation": _input_observation(raw),
@@ -381,9 +392,10 @@ def _trial(receipt, raw, *, source):
         calls = len(sessions) if isinstance(sessions, list) and sessions else None
         cost_subtotal = _number(native.get("reported_cost_usd"))
         cost = cost_subtotal if completion is True else None
+        cache_included, lower_bounds = True, True
     else:
         completion = None if unreceipted else _completion(
-            row["native_task_complete_observed"] for row in invocations)
+            row["native_usage_complete_observed"] for row in invocations)
         subtotal = {key: _subtotal(row["known_token_subtotals"][key] for row in invocations) for key in TOKENS}
         tokens = {
             key: None if unreceipted else _sum(row["tokens"][key] for row in invocations)
@@ -392,6 +404,8 @@ def _trial(receipt, raw, *, source):
         calls = len(invocations) if invocations and not unreceipted else None
         cost = None if unreceipted else _sum(row["reported_cost_usd"] for row in invocations)
         cost_subtotal = _subtotal(row["known_reported_cost_subtotal_usd"] for row in invocations)
+        cache_included = _uniform_boolean(row["cache_included_in_input"] for row in invocations)
+        lower_bounds = bool(invocations) and all(row["observed_counts_are_lower_bounds"] for row in invocations)
     return {
         "arm": arm,
         "label": LABELS[arm],
@@ -452,6 +466,9 @@ def _trial(receipt, raw, *, source):
         "observed_provider_invocations": len(invocations) if not baseline else calls,
         "unreceipted_provider_attempt": unreceipted,
         "native_usage_complete_observed": completion,
+        "cache_included_in_input": cache_included,
+        "observed_counts_are_lower_bounds": lower_bounds,
+        "billing_total_verified": False,
         "tokens": tokens,
         "known_token_subtotals": subtotal,
         "reported_cost_usd": cost,
@@ -559,6 +576,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
     return {
         "schema": "terminal-supervision-comparison@1",
         "comparison_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "native_usage_accounting_source_sha256": hashlib.sha256(Path(native_usage_accounting.__file__).read_bytes()).hexdigest(),
         "sources": sources,
         "rows": rows,
         "retained_trial_count": len(rows),
@@ -579,7 +597,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
         "runtime_control_enforcement_verified": False,
         "causal_claim": False,
         "unknown_fields_are_zero": False,
-        "cached_tokens_are_already_in_input": True,
+        "cached_tokens_are_already_in_input": _uniform_boolean(row["cache_included_in_input"] for row in rows),
         "provider_call_count_basis": "native CLI sessions for baseline; router invocations for supervisor; not internal model turns",
         "dollar_cost_basis": "reported provider cost only; Harbor estimates excluded",
         "notes": [
@@ -587,11 +605,12 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows.",
             "Native task completion and the independent original verifier reward are separate outcomes.",
             "Known subtotals preserve observed failed-call costs when complete usage is unavailable.",
-            "Interrupted sessions and legacy receipts without explicit native session completion evidence have unknown complete totals; their observed cumulative counters are lower bounds.",
+            "Codex cumulative counters require native session completion; Grok final-envelope counters additionally require explicit usage completeness and coherent native categories. Unknown receipts retain observations only.",
+            "Grok final-envelope observations are not asserted to be cumulative lower bounds or complete whole-session billing; omitted completeness flags stay unknown.",
             "Runtime archive hashes are reported from retained agent metadata; the comparison source hash identifies this reporting implementation separately.",
             "Initial cold indexing, planning, Doctor and post-publication refresh are inside supervisor agent time; reported phases are observations, not added to total time or nested helper durations.",
             "Prepared context, reported wire measurements, and independently reconstructed model inputs are separate observations; bytes do not establish token savings.",
-            "Native session cumulative totals are counted once; cached input is never added to input again.",
+            "Native counters are counted once per invocation. Codex input includes cache; Grok input excludes cache. Mixed-provider cache semantics are unknown at the comparison level.",
             "A single-task pilot does not establish efficiency, parallelism, or benchmark superiority.",
             "Matching declarations cover task bytes, timeouts, retries, resources and concurrency; they do not establish runtime enforcement. Legacy preparations without frozen controls remain unknown.",
         ],
@@ -611,14 +630,15 @@ def _token_cell(row, key):
     if value is not None:
         return value
     observed = row["known_token_subtotals"][key]
-    return f"≥ {observed} (observed)" if observed is not None else None
+    prefix = "≥ " if row.get("observed_counts_are_lower_bounds") is True else ""
+    return f"{prefix}{observed} (observed)" if observed is not None else None
 
 
 def markdown(comparison: dict) -> str:
     lines = [
         "Retained pilot trials. These observations do not establish a benchmark advantage.",
         "",
-        "Token cells marked ≥ are observed cumulative lower bounds; complete totals remain unknown. Explicit native session completion is required for complete totals, including for legacy receipts. Verifier reward and supervisor task completion do not establish usage completeness.",
+        "Token cells marked ≥ are Codex cumulative lower bounds; complete totals remain unknown. Other cells marked observed do not assert a lower bound. Grok additionally requires explicit usage completeness. Verifier reward and supervisor task completion do not establish usage completeness or billing totals.",
         "",
         "| Arm | Trial | Reward | Native completion | Env setup s | Agent setup s | Agent s | Verifier s | Input | Cached | Output | Total | Outcome |",
         "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -658,7 +678,7 @@ def markdown(comparison: dict) -> str:
         lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     lines += [
         "",
-        "Cached input is already included in input. Missing values remain unknown. Provider-reported dollar costs are unavailable when shown as null in JSON; estimated Harbor costs are excluded.",
+        "Codex input includes cached tokens; Grok input excludes them. Each row retains native categories. Missing values remain unknown. Provider-reported dollar costs are unavailable when shown as null in JSON; estimated Harbor costs are excluded.",
         "",
         "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows. Setup, agent execution, and verification remain separate timings.",
     ]
@@ -666,11 +686,12 @@ def markdown(comparison: dict) -> str:
     calls = [(row, call) for row in supervised for call in row["invocations"]]
     if calls:
         lines += ["", "Provider invocation observations retain failure and timeout information independently of the eventual task outcome.", "",
-                  "| Trial | Invocation | Phase | Status | Error | Timeout s | Native session complete | Input | Cached | Output | Total |",
-                  "|---|---|---|---|---|---:|---|---:|---:|---:|---:|"]
+                  "| Trial | Invocation | Phase | Status | Error | Timeout s | Native session complete | Usage complete | Count scope | Input | Cached | Output | Total |",
+                  "|---|---|---|---|---|---:|---|---|---|---:|---:|---:|---:|"]
         for row, call in calls:
             values = [row["trial"], call["invocation_id"], call["phase"], call["status"],
                 call["error_type"], call["timeout_seconds"], call["native_task_complete_observed"],
+                call["native_usage_complete_observed"], call["token_count_scope"],
                 *(_token_cell(call, key) for key in TOKENS)]
             lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
     archives = [row for row in supervised if row["runtime_archive_sha256"] is not None]

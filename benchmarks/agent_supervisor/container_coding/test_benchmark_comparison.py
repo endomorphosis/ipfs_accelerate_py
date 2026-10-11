@@ -54,9 +54,12 @@ def _baseline(tmp_path):
 def _invocation(identity="call"):
     return {
         "invocation_id": identity,
+        "provider": "codex_cli",
         "phase": "planning",
         "status": "provider_returned",
         "native_rollout_usage": {
+            "schema": "native-codex-cumulative-usage@1",
+            "cache_included_in_input": True,
             "task_complete_observed": True,
             "usage": {
                 "input_tokens": 20,
@@ -68,6 +71,105 @@ def _invocation(identity="call"):
         "raw_model_text": "MUST NOT APPEAR",
         "prompt": "MUST NOT APPEAR",
     }
+
+
+def _grok_invocation(identity="grok-call", complete=None):
+    return {
+        "invocation_id": identity, "phase": "coding", "provider": "grok_cli", "status": "provider_returned",
+        "native_rollout_usage": {
+            "schema": "native-grok-final-usage@1", "usage_available": True,
+            "usage_complete_observed": complete, "task_complete_observed": True,
+            "totals_scope": "native_final_envelope", "cache_included_in_input": False,
+            "billing_total_verified": False, "dollar_cost": None,
+            "usage": {"input_tokens": 10, "cached_input_tokens": 30, "cache_write_input_tokens": 0,
+                      "output_tokens": 2, "total_tokens": 42},
+        },
+    }
+
+
+@pytest.mark.parametrize("complete", [True, False, None])
+def test_grok_session_completion_does_not_replace_usage_completeness(tmp_path, complete):
+    invocation = _grok_invocation(complete=complete)
+    receipt = _receipt(tmp_path, "grok.json", SUPERVISOR, [{
+        "trial": "grok", "reward": {"reward": 1}, "supervisor": {
+            "task_completed": True, "provider_invocations": [invocation, invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    call, = row["invocations"]
+    assert row["official_reward"] == 1 and row["native_task_completed"] is True
+    assert call["native_task_complete_observed"] is True
+    assert call["native_usage_complete_observed"] is complete
+    assert row["native_usage_complete_observed"] is complete
+    assert row["tokens"]["total_tokens"] == (42 if complete is True else None)
+    assert result["arm_totals"]["full"]["tokens"]["total_tokens"] == (42 if complete is True else None)
+    assert row["known_token_subtotals"]["total_tokens"] == 42
+    assert row["provider_calls"] == 1
+    assert call["token_count_scope"] == "native_final_envelope"
+    assert row["cache_included_in_input"] is False
+    assert result["cached_tokens_are_already_in_input"] is None  # Mixed Codex/Grok semantics.
+    assert row["reported_cost_usd"] is None
+    if complete is not True:
+        assert "42 (observed)" in markdown(result)
+        assert "≥ 42" not in markdown(result)
+
+
+@pytest.mark.parametrize("mutation", ["missing_flag", "string_flag", "integer_flag", "wrong_schema",
+    "wrong_scope", "wrong_provider", "missing_write", "missing_total", "inconsistent_total", "cache_semantics",
+    "usage_unavailable"])
+def test_grok_counter_or_completeness_contract_gaps_do_not_create_totals(tmp_path, mutation):
+    invocation = _grok_invocation(complete=True)
+    native = invocation["native_rollout_usage"]
+    if mutation == "missing_flag": native.pop("usage_complete_observed")
+    elif mutation == "string_flag": native["usage_complete_observed"] = "true"
+    elif mutation == "integer_flag": native["usage_complete_observed"] = 1
+    elif mutation == "wrong_schema": native["schema"] = "native-codex-cumulative-usage@1"
+    elif mutation == "wrong_scope": native["totals_scope"] = "arbitrary_scope"
+    elif mutation == "wrong_provider": invocation["provider"] = "codex_cli"
+    elif mutation == "missing_write": native["usage"].pop("cache_write_input_tokens")
+    elif mutation == "missing_total": native["usage"].pop("total_tokens")
+    elif mutation == "inconsistent_total": native["usage"]["total_tokens"] += 1
+    elif mutation == "cache_semantics": native["cache_included_in_input"] = True
+    elif mutation == "usage_unavailable": native["usage_available"] = False
+    receipt = _receipt(tmp_path, "grok-gap.json", SUPERVISOR, [{
+        "trial": "grok-gap", "reward": {"reward": 1}, "supervisor": {
+            "task_completed": True, "provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert all(value is None for value in row["tokens"].values())
+    assert row["native_usage_complete_observed"] is None
+    assert row["known_token_subtotals"]["input_tokens"] == 10
+    assert all(f"≥ {value} (observed)" not in markdown(result) for value in (10, 30, 2, 42, 43))
+
+
+def test_grok_incomplete_call_prevents_pair_total_and_unreceipted_attempt_remains_unknown(tmp_path):
+    planning = _grok_invocation("planning", True)
+    planning["phase"] = "planning"
+    coding = _grok_invocation("coding", False)
+    report = {"provider_invocations": [planning, coding]}
+    receipt = _receipt(tmp_path, "mixed-completeness.json", SUPERVISOR, [{
+        "trial": "mixed-completeness", "supervisor": report}], "full")
+    row = collect(baseline=_baseline(tmp_path), supervisors=[receipt])["rows"][1]
+    assert row["native_usage_complete_observed"] is False
+    assert row["tokens"]["total_tokens"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 84
+    coding["native_rollout_usage"]["usage_complete_observed"] = True
+    report["unreceipted_provider_attempt"] = {"phase": "coding"}
+    receipt = _receipt(tmp_path, "unreceipted-grok.json", SUPERVISOR, [{
+        "trial": "unreceipted-grok", "supervisor": report}], "full")
+    row = collect(baseline=_baseline(tmp_path), supervisors=[receipt])["rows"][1]
+    assert row["native_usage_complete_observed"] is None and row["tokens"]["total_tokens"] is None
+
+
+def test_unidentified_legacy_receipt_does_not_inherit_codex_contract(tmp_path):
+    invocation = _invocation()
+    invocation.pop("provider")
+    invocation["native_rollout_usage"].pop("schema")
+    receipt = _receipt(tmp_path, "unknown-provider.json", SUPERVISOR, [{
+        "trial": "unknown-provider", "supervisor": {"provider_invocations": [invocation]}}], "full")
+    row = collect(baseline=_baseline(tmp_path), supervisors=[receipt])["rows"][1]
+    assert row["native_usage_complete_observed"] is None
+    assert row["tokens"]["total_tokens"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 22
 
 
 def test_stream_progress_survives_comparison_without_becoming_usage_or_completion():

@@ -24,6 +24,28 @@ def inventory():
                       for name, path in policy._producer_paths().items()]}
 
 
+def test_function_unit_extractor_producers_are_bound_by_archive_and_consumer():
+    from ipfs_datasets_py.logic.formalization.autoencoder import source_function_units
+    from ipfs_accelerate_py.agent_supervisor.runtime import numerical_formalization_context
+
+    expected = source_function_units.pins()
+    consumer_names = {
+        "source_function_units.py": "function_units",
+        "security_formula_corpus.py": "unit_span_validation",
+        "security_formalization_evaluation.py": "unit_span_extraction",
+        "source_screening.py": "unit_source_screening",
+    }
+    assert set(expected) == set(consumer_names)
+    actual = numerical_formalization_context._producers()
+    archive = policy._producer_paths()
+    for basename, digest in expected.items():
+        paths = [path for name, path in archive.items()
+                 if name.startswith("datasets/") and path.name == basename]
+        assert len(paths) == 1
+        assert hashlib.sha256(paths[0].read_bytes()).hexdigest() == digest
+        assert actual[consumer_names[basename]] == digest
+
+
 def seal(config):
     return controls.build_controls(config, task_input_sha256={"instruction.md": "a" * 64},
         task=benchmark.TASK, model=benchmark.MODEL, reasoning_effort="high", cli_version=CLI_VERSION)

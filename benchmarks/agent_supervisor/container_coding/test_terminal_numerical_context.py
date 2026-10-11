@@ -58,6 +58,16 @@ def test_actual_projected_context_reopens_both_native_lakes(context):
     assert receipt["hydration"]["ducklake_catalogs"] == receipt["hydration"]["ducklake_links"] == 3
     assert receipt["provider_calls"] == receipt["model_inference_calls"] == 0
     assert len(numerical._bytes(summary)) <= 8192
+    assert summary["source_unit_count"] == summary["linked_source_unit_count"] == 1
+    assert summary["unmatched_source_unit_count"] == 0
+    link = summary["source_unit_links"][0]
+    assert link["scalar_guard_reason"] == "two_distinct_parameters_required"
+    assert summary["source_unit_links_establish_learned_coverage"] is False
+    index = json.loads((numerical.Path(receipt["output"]) / "reports.json").read_bytes())
+    retained = json.loads((numerical.Path(receipt["output"]) / index["sample.py"]["unit_links_artifact"]).read_bytes())
+    assert link["unit_id"] == retained["links"][0]["unit_id"]
+    assert link["function_id"] == retained["links"][0]["function_id"]
+    assert link["link_report_sha256"] == retained["report_sha256"]
 
 
 @pytest.mark.parametrize("mutation", ["source", "report", "lake", "receipt", "producer"])
@@ -76,6 +86,26 @@ def test_stale_source_artifact_lake_receipt_and_producer_rejected(context, monke
             stream.write(b" ")
     with pytest.raises(ValueError):
         numerical.validate_numerical_context(repository=root, expected_receipt=receipt)
+
+
+@pytest.mark.parametrize("owner", ["security_formula_corpus.py", "security_formalization_evaluation.py",
+                                  "source_screening.py"])
+def test_unit_extraction_helper_mutation_invalidates_prepared_context(context, monkeypatch, owner):
+    root, receipt = context
+    read = numerical._read
+    touched = []
+
+    def changed(path, *args, **kwargs):
+        raw = read(path, *args, **kwargs)
+        if numerical.Path(path).name == owner:
+            touched.append(owner)
+            return raw + b"\n# authored changed producer observation\n"
+        return raw
+
+    monkeypatch.setattr(numerical, "_read", changed)
+    with pytest.raises(ValueError, match="artifacts or producers changed"):
+        numerical.validate_numerical_context(repository=root, expected_receipt=receipt)
+    assert touched == [owner]
 
 
 def test_rehashed_forged_formula_still_fails_deterministic_source_replay(context):
@@ -135,6 +165,9 @@ def test_summary_reaches_router_before_goals_and_retains_admitted_index(original
         assert "eigenpair_residual" in prompt
         assert "selected_eigenpair" in prompt
         assert "selected_eigenpair_nonzero" in prompt
+        assert "source_unit_links" in prompt
+        assert "deterministic_source_projection" in prompt
+        assert formal["summary"]["source_unit_links"][0]["unit_id"] in prompt
         assert '"source_semantics_verified":false' in prompt.replace(" ", "")
         return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
     _version(monkeypatch)
@@ -168,6 +201,48 @@ def test_explicit_selection_preserves_legacy_path(original):
     loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
     assert all(s["schema"] != "terminal-numerical-formalization-planning-summary@1" for s in loaded["summaries"])
     assert not (state / "numerical-formalization-selection.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["function", "source", "proof", "missing_artifact"])
+def test_rehashed_unit_link_mutations_fail_source_replay(context, mutation):
+    root, receipt = context
+    output = numerical.Path(receipt["output"])
+    index = json.loads((output / "reports.json").read_bytes())
+    ref = index["sample.py"]
+    path = output / ref["unit_links_artifact"]
+    links = json.loads(path.read_bytes())
+    if mutation == "missing_artifact":
+        ref["unit_links_artifact"] = "report-0000.json"
+    else:
+        if mutation == "function": links["links"][0]["function_id"] = "foreign-function"
+        elif mutation == "source": links["source_sha256"] = "0" * 64
+        else: links["proof_authority"] = True
+        links["report_sha256"] = numerical._sha(numerical._bytes({k: v for k, v in links.items() if k != "report_sha256"}))
+        path.write_bytes(numerical._bytes(links))
+        ref["unit_links_sha256"] = numerical._sha(path.read_bytes())
+    (output / "reports.json").write_bytes(numerical._bytes(index))
+    receipt = deepcopy(receipt)
+    receipt["files"] = numerical._inventory(output)
+    unsigned = {k: v for k, v in receipt.items() if k != "receipt_sha256"}
+    (output / "receipt.json").write_bytes(numerical._bytes(unsigned))
+    receipt["receipt_sha256"] = numerical._sha(numerical._bytes(unsigned))
+    with pytest.raises(ValueError, match="numerical unit.link"):
+        numerical.validate_numerical_context(repository=root, expected_receipt=receipt)
+
+
+def test_unit_summary_accounts_for_unmatched_and_omitted_units():
+    from ipfs_datasets_py.logic.software_verification.numerical_logic import formalize_numerical_source
+    source = "def outer(x):\n    def inner(y):\n        return y\n    return x\n"
+    sources = {f"file_{i}.py": source for i in range(3)}
+    reports = {p: formalize_numerical_source(t, path=p) for p, t in sources.items()}
+    links = numerical._function_unit_links(sources, reports)
+    summary = numerical._summary(reports, "authored-tree", links)
+    assert summary["source_unit_count"] == 6
+    assert summary["linked_source_unit_count"] == summary["unmatched_source_unit_count"] == 3
+    assert len(summary["source_unit_links"]) + summary["omitted_source_unit_link_summaries"] == 6
+    assert len(numerical._bytes(summary)) <= 8192
+    assert summary["autoencoder_coverage_changed"] is False
+    assert summary["source_obligations_discharged"] == 0
 
 
 def test_compound_contract_budget_accounts_for_every_omitted_row():
