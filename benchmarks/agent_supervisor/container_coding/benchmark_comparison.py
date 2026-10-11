@@ -290,6 +290,17 @@ def _subtotal(values):
     return sum(known) if known else None
 
 
+def _grok_progress(raw):
+    value = raw.get("native_grok_progress")
+    if value is None:
+        return None
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
+    try:
+        return validate_grok_stream_progress(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _invocations(report):
     found = {}
     rows = report.get("provider_invocations", [])
@@ -328,6 +339,7 @@ def _invocations(report):
                 "reported_cost_usd": observed_cost if complete is True else None,
                 "known_reported_cost_subtotal_usd": observed_cost,
                 "input_observation": _input_observation(raw),
+                "native_grok_progress": _grok_progress(raw),
             },
         )
     return [item[1] for item in found.values()]

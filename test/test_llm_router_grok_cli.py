@@ -44,6 +44,7 @@ def test_grok_cli_discovery_survives_systemd_minimal_path(
     auth_path.write_text("{}\n", encoding="utf-8")
 
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setattr(llm_router, "_operator_home_dir", lambda: fake_home)
     monkeypatch.setenv(
         "PATH",
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -857,7 +858,7 @@ def test_agent_route_readiness_negative_auth_text_outranks_zero_exit(
     monkeypatch.setattr(
         llm_router,
         "_bounded_agent_cli_probe",
-        lambda command, timeout_seconds: next(probes),
+        lambda command, timeout_seconds, command_prefix=(), environment=None: next(probes),
     )
     readiness = llm_router.probe_grok_codex_agent_route_readiness(
         grok_bin="/provider/grok",
@@ -876,14 +877,14 @@ def test_agent_route_readiness_accepts_positive_login_status(
 ) -> None:
     probes = iter(
         (
-            (0, "Login successful; available model grok-4.5", None),
+            (0, "Login successful; available model grok-4.7", None),
             (0, "Logged in using ChatGPT", None),
         )
     )
     monkeypatch.setattr(
         llm_router,
         "_bounded_agent_cli_probe",
-        lambda command, timeout_seconds: next(probes),
+        lambda command, timeout_seconds, command_prefix=(), environment=None: next(probes),
     )
 
     readiness = llm_router.probe_grok_codex_agent_route_readiness(

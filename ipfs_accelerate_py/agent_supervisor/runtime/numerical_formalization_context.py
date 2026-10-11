@@ -62,13 +62,17 @@ def _producers():
 
 
 def _summary(reports, tree):
-    rows, pending = [], []
+    rows, pending, contracts = [], [], []
+    contract_count = 0
     for path, report in sorted(reports.items()):
         for row in report["summary"]["per_function"]:
             rows.append(dict(path=path, **row))
         for row in report["pending_obligations"]:
             pending.append(dict(path=path, **{key: row[key] for key in (
                 "obligation_id", "kind", "expression_id", "function_ids", "status")}))
+        contract_count += len(report.get("compound_contracts", []))
+        for row in report["summary"].get("compound_contracts", []):
+            contracts.append(dict(path=path, **row))
     summaries = [r["summary"] for r in reports.values()]
     count = sum(r["functions"] for r in summaries)
     result = dict(schema="terminal-numerical-formalization-planning-summary@1",
@@ -79,16 +83,21 @@ def _summary(reports, tree):
         pending_obligation_count=len(pending), per_function=rows[:8],
         pending_obligations=pending[:8], omitted_function_summaries=count-min(len(rows), 8),
         omitted_obligation_summaries=max(0, len(pending)-8),
+        compound_contract_count=contract_count, compound_contracts=contracts[:4],
+        omitted_compound_contract_summaries=contract_count-min(len(contracts), 4),
         interpretation="Structural syntax and pending obligations; NumPy calls remain opaque. Read source before editing.",
         autoencoder_coverage_changed=False, **AUTHORITY)
     # Long public names cannot turn a bounded planning constraint into an
     # unbounded prompt. Drop complete rows and account for every omission.
     while len(_bytes(result)) > 8192:
-        key = "pending_obligations" if result["pending_obligations"] else "per_function"
-        if not result[key]:
+        key = next((name for name in ("pending_obligations", "per_function", "compound_contracts")
+                    if result[name]), None)
+        if key is None:
             raise ValueError("numerical planning summary exceeds bound")
         result[key].pop()
-        omitted = "omitted_obligation_summaries" if key == "pending_obligations" else "omitted_function_summaries"
+        omitted = {"pending_obligations": "omitted_obligation_summaries",
+            "per_function": "omitted_function_summaries",
+            "compound_contracts": "omitted_compound_contract_summaries"}[key]
         result[omitted] += 1
     return result
 

@@ -70,6 +70,24 @@ def _invocation(identity="call"):
     }
 
 
+def test_stream_progress_survives_comparison_without_becoming_usage_or_completion():
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _invocations
+    parser = GrokStreamParser()
+    parser.feed(b'{"type":"tool_call","toolName":"read_file","args":{"path":"private"}}\n',
+                elapsed_seconds=0.1)
+    progress = parser.snapshot()
+    row = {"invocation_id": "call", "phase": "coding", "status": "failed",
+           "native_grok_progress": progress}
+    observed, = _invocations({"provider_invocations": [row]})
+    assert observed["native_grok_progress"] == progress
+    assert observed["native_task_complete_observed"] is None
+    assert all(value is None for value in observed["tokens"].values())
+    assert "private" not in json.dumps(observed)
+    row["native_grok_progress"] = {**progress, "raw_text": "private"}
+    assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
+
+
 def test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof(tmp_path):
     receipt = _receipt(tmp_path, "symbolic.json", SUPERVISOR, [{
         "trial": "symbolic", "reward": {"reward": 1}, "supervisor": {

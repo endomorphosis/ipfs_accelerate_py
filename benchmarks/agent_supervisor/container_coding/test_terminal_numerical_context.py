@@ -39,6 +39,10 @@ def test_actual_projected_context_reopens_both_native_lakes(context):
     assert summary["functions"] == summary["structurally_complete_functions"] == 1
     assert summary["families_with_artifacts"] == ["first_order", "higher_order", "program"]
     assert summary["pending_obligation_count"] > 0
+    assert summary["compound_contract_count"] == 1
+    assert summary["compound_contracts"][0]["kind"] == "selected_eigenpair"
+    assert summary["compound_contracts"][0]["path"] == "sample.py"
+    assert summary["omitted_compound_contract_summaries"] == 0
     assert summary["source_obligations_discharged"] == 0
     assert summary["source_semantics_verified"] is summary["proof_authority"] is False
     assert receipt["hydration"]["ducklake_verified"] is True
@@ -120,6 +124,8 @@ def test_summary_reaches_router_before_goals_and_retains_admitted_index(original
         observed.append(prompt)
         assert "terminal-numerical-formalization-planning-summary@1" in prompt
         assert "eigenpair_residual" in prompt
+        assert "selected_eigenpair" in prompt
+        assert "selected_eigenpair_nonzero" in prompt
         assert '"source_semantics_verified":false' in prompt.replace(" ", "")
         return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
     _version(monkeypatch)
@@ -153,3 +159,16 @@ def test_explicit_selection_preserves_legacy_path(original):
     loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
     assert all(s["schema"] != "terminal-numerical-formalization-planning-summary@1" for s in loaded["summaries"])
     assert not (state / "numerical-formalization-selection.json").exists()
+
+
+def test_compound_contract_budget_accounts_for_every_omitted_row():
+    from ipfs_datasets_py.logic.software_verification.numerical_logic import formalize_numerical_source
+    reports = {f"file_{index:02d}.py": formalize_numerical_source(SOURCE, path=f"file_{index:02d}.py")
+               for index in range(12)}
+    summary = numerical._summary(reports, "authored-tree")
+    assert summary["compound_contract_count"] == 12
+    assert 0 < len(summary["compound_contracts"]) <= 4
+    assert len(summary["compound_contracts"]) + summary["omitted_compound_contract_summaries"] == 12
+    assert len(summary["pending_obligations"]) + summary["omitted_obligation_summaries"] == summary["pending_obligation_count"]
+    assert len(numerical._bytes(summary)) <= 8192
+    assert summary["source_obligations_discharged"] == 0

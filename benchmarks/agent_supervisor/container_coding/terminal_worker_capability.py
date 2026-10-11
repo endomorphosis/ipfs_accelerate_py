@@ -21,6 +21,10 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "ipfs_accelerate_py/llm_router.py",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+    "ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_cli_subreaper.py",
 )

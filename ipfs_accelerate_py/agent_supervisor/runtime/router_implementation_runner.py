@@ -19,6 +19,28 @@ import time
 import uuid
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
+GROK_PROGRESS_PREFIX = "IPFS_GROK_PROGRESS "
+
+
+def _grok_progress_emitter(invocation_id: str):
+    """Keep advisory progress outside native JSON receipt and custody parsers."""
+    def emit(value):
+        try:
+            from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
+            progress = validate_grok_stream_progress(value)
+            receipt = {
+                "schema": "router-implementation-progress@1", "invocation_id": invocation_id,
+                "provider": "grok_cli", "purpose": "coding", "native_grok_progress": progress,
+                "observation_only": True, "completion_authority": False,
+                "settlement_authority": False, "automatic_retry_admitted": False,
+                "provider_dispatch_observed": None,
+            }
+            print(GROK_PROGRESS_PREFIX + json.dumps(receipt, sort_keys=True, allow_nan=False), flush=True)
+        except Exception:
+            # A malformed observation or unavailable sink cannot change the
+            # provider's return, failure, or existing bounded cleanup path.
+            pass
+    return emit
 
 
 def implementation_timeout_limit(budget_profile=None):
@@ -498,6 +520,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if purpose == "coding":
+            provider_options.update(grok_stream_progress=True,
+                                    grok_progress_callback=_grok_progress_emitter(invocation))
         if response_format is not None:
             provider_options["response_format"] = response_format
             from ipfs_accelerate_py.cli_runtime.grok_structured_output import native_schema_projection
@@ -604,6 +629,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
             receipt["native_rollout_usage"] = grok_usage_receipt(observation)
             receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
+            if purpose == "coding" and observation.get("native_grok_progress") is not None:
+                try:
+                    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
+                    receipt["native_grok_progress"] = validate_grok_stream_progress(observation["native_grok_progress"])
+                except Exception:
+                    receipt["native_grok_progress_error"] = "invalid_observation"
             if receipt["native_provider_outcome"]["stop_reason"] != "unknown":
                 receipt["usage"]["stop_reason"] = receipt["native_provider_outcome"]["stop_reason"]
         receipt["seconds"] = time.monotonic() - started

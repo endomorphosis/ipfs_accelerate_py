@@ -172,6 +172,15 @@ def set_last_cli_observation(provider: str, payload: Mapping[str, Any]) -> None:
     if not key:
         return
     clean = sanitize_session_metadata(payload)
+    # The final runner receipt needs the closed transport snapshot intact;
+    # generic session metadata deliberately stringifies arbitrary nested data.
+    # Preserve this one validated protocol object only in the last observation.
+    if "native_grok_progress" in payload:
+        from .grok_stream_capture import validate_grok_stream_progress
+        try:
+            clean["native_grok_progress"] = validate_grok_stream_progress(payload["native_grok_progress"])
+        except (TypeError, ValueError):
+            clean.pop("native_grok_progress", None)
     with _LOCK:
         _LAST[key] = dict(clean)
     _TLS.provider = key

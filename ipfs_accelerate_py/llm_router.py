@@ -4942,6 +4942,14 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD", "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD", "GROK_CLI_CMD",
+    )
+    # Binary discovery returns only argv[0]. Preserve explicit command arguments
+    # and templates instead of silently substituting an installed native CLI.
+    if configured and len(shlex.split(configured)) > 1:
+        return configured
     found = find_grok_cli()
     if found:
         return found
@@ -7972,6 +7980,14 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 structured_cli = executable_name in {"grok", "agent"}
 
             response_format = kwargs.pop("response_format", None)
+            stream_progress = kwargs.pop("grok_stream_progress", False)
+            progress_callback = kwargs.pop("grok_progress_callback", None)
+            if type(stream_progress) is not bool:
+                raise ValueError("grok_stream_progress requires a boolean")
+            if progress_callback is not None and (not stream_progress or not callable(progress_callback)):
+                raise ValueError("grok_progress_callback requires streaming mode and a callable")
+            if stream_progress and (not structured_cli or response_format is not None):
+                raise ValueError("Grok streaming progress requires a structured CLI without response_format")
             response_validator = None
             wire_validator = None
             task_contract = kwargs.pop("grok_task_contract", None)
@@ -8026,8 +8042,17 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             cmd = list(base_parts)
             if model and "--model" not in cmd and "-m" not in cmd:
                 cmd.extend(["--model", model])
+            if stream_progress:
+                formats = []
+                for index, part in enumerate(cmd):
+                    if part == "--output-format":
+                        formats.append(cmd[index + 1] if index + 1 < len(cmd) else None)
+                    elif part.startswith("--output-format="):
+                        formats.append(part.partition("=")[2])
+                if "--" in cmd or formats and formats != ["streaming-json"]:
+                    raise ValueError("custom Grok command conflicts with streaming progress")
             if not any(part == "--output-format" or part.startswith("--output-format=") for part in cmd):
-                cmd.extend(["--output-format", "json"])
+                cmd.extend(["--output-format", "streaming-json" if stream_progress else "json"])
             if "--no-plan" not in cmd:
                 cmd.append("--no-plan")
             if "--no-subagents" not in cmd:
@@ -8129,6 +8154,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 cmd.extend(["--session-id", chat_session_id])
 
             prompt_path = ""
+            stream_observation = None
             try:
                 with tempfile.NamedTemporaryFile(
                     mode="w",
@@ -8146,14 +8172,23 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     if value is not None:
                         env[key] = value
                 try:
-                    proc = subprocess.run(
-                        cmd,
-                        text=True,
-                        capture_output=True,
-                        check=False,
-                        timeout=timeout,
-                        env=env,
-                    )
+                    if stream_progress:
+                        from .cli_runtime.grok_stream_capture import capture_grok_stream
+                        proc = capture_grok_stream(cmd, env=env, timeout=timeout,
+                            progress_callback=progress_callback)
+                        stream_observation = proc.progress
+                        if proc.timed_out:
+                            raise subprocess.TimeoutExpired(cmd, timeout,
+                                output=proc.stdout, stderr="")
+                    else:
+                        proc = subprocess.run(
+                            cmd,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                            timeout=timeout,
+                            env=env,
+                        )
                 except FileNotFoundError as exc:
                     raise LLMRouterError("Grok CLI not found on PATH") from exc
                 except subprocess.TimeoutExpired as exc:
@@ -8165,6 +8200,11 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         extra={"model_id": model, "timed_out": True})
                     observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
                     observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
+                    if stream_observation is not None:
+                        # Stream diagnostics describe the transport only. A final
+                        # event never overrides process timeout or grants retry.
+                        observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
+                        observed["native_grok_progress"] = stream_observation
                     set_last_cli_observation("grok_cli", observed)
                     raise
             finally:
@@ -8174,7 +8214,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     except OSError:
                         pass
 
-            payload = _grok_cli_json_payload(proc.stdout or "")
+            payload = proc.final_payload if stream_progress else _grok_cli_json_payload(proc.stdout or "")
             try:
                 from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
 
@@ -8209,11 +8249,19 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 )
                 observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
                 observed.update(native_grok_observation(payload, exit_code=proc.returncode))
+                if stream_observation is not None:
+                    observed["native_grok_progress"] = stream_observation
+                    if not stream_observation["response_usable"]:
+                        observed["native_grok_task_complete"] = False
                 set_last_cli_observation("grok_cli", observed)
             except Exception:
                 pass
             if proc.returncode != 0:
+                if stream_progress:
+                    raise LLMRouterError("Grok CLI streaming process failed")
                 raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
+            if stream_progress and not stream_observation["response_usable"]:
+                raise LLMRouterError("Grok CLI streaming response is incomplete or invalid")
             if payload is not None and str(payload.get("type") or "").lower() == "error":
                 raise _grok_cli_error(proc.stdout or "", proc.stderr or "")
 
@@ -8261,6 +8309,11 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 except (ValueError, TypeError, RecursionError) as exc:
                     raise LLMRouterError("Grok CLI structured response failed validation") from exc
 
+            if stream_progress:
+                cleaned = _clean_grok_cli_output(proc.response_text)
+                if cleaned:
+                    return cleaned
+                raise LLMRouterError("Grok CLI returned no response text")
             if payload is not None:
                 text = payload.get("text")
                 if isinstance(text, str):

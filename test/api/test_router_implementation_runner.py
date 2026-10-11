@@ -47,6 +47,7 @@ def test_runner_keeps_usage_and_refuses_partial_cli_failure(tmp_path, monkeypatc
 
     def generate(prompt, **kwargs):
         assert kwargs["allow_local_fallback"] is False and kwargs["allow_cross_provider_fallback"] is False
+        assert "grok_stream_progress" not in kwargs and "grok_progress_callback" not in kwargs
         assert kwargs["reasoning_effort"] == "high" and kwargs["model_name"] == "pinned"
         set_last_cli_observation("codex_cli", {"exit_code": exit_code, "prompt_tokens": 15, "completion_tokens": 4})
         return "partial or complete output"
@@ -237,3 +238,140 @@ def test_container_boundary_unit_fixture_preserves_narrow_valid_scope(boundary_f
     observed = boundary_fixture.verify()
     assert observed['worker_uid'] == 1001 and observed['owner_uid'] == 1000
     assert observed['completion_authority'] is False
+
+
+@pytest.fixture
+def grok_progress_workspace(tmp_path, monkeypatch):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.llm_allocation import intelligence_index
+    from ipfs_accelerate_py.agent_supervisor.runtime import container_worker_boundary
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(intelligence_index, "discover_available_providers", lambda: ["grok_cli"])
+    monkeypatch.setattr(intelligence_index, "select_efficient_route", lambda **_:
+        SimpleNamespace(provider="grok_cli", model_name="grok-4.7", catalog_revision="authored"))
+    monkeypatch.setattr(llm_router, "get_llm_provider", lambda *_, **__: object())
+    # Authored dispatch fixture; it mints no container or execution authority.
+    monkeypatch.setattr(container_worker_boundary, "verify_container_worker_boundary", lambda **_: {"fixture": True})
+    return llm_router
+
+
+def _grok_progress_snapshot():
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    return GrokStreamParser().snapshot()
+
+
+def _run_grok_progress(*, purpose="coding"):
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    return runner.run(prompt="authored instruction", provider="grok_cli", model="grok-4.7",
+        timeout=30, max_output_tokens=512, purpose=purpose,
+        **({"container_boundary": Path("/authored/boundary"), "container_boundary_sha256": "a" * 64}
+           if purpose == "coding" else {}))
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_grok_progress_is_prefixed_advisory_and_final_metadata_survives_tls(
+        grok_progress_workspace, monkeypatch, capsys, timeout):
+    import json
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_capacity_custody import execution_observation
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation, get_last_cli_observation
+
+    snapshot = _grok_progress_snapshot()
+    def generate(prompt, **kwargs):
+        assert kwargs["grok_stream_progress"] is True
+        kwargs["grok_progress_callback"](snapshot)
+        metadata = {"native_grok_progress": snapshot}
+        metadata.update({"timed_out": True} if timeout else {"exit_code": 0})
+        # Exercise the real sanitizer/TLS path: nested progress must remain a
+        # validated dictionary rather than a truncated string.
+        set_last_cli_observation("grok_cli", metadata)
+        assert get_last_cli_observation("grok_cli")["native_grok_progress"] == snapshot
+        if timeout:
+            raise subprocess.TimeoutExpired(["authored-provider"], 30)
+        return "authored completed response"
+    monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
+    if timeout:
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_grok_progress()
+    else:
+        output, _ = _run_grok_progress()
+        assert output == "authored completed response"
+    lines = capsys.readouterr().out.splitlines()
+    advisory, final_line = lines
+    assert advisory.startswith(runner.GROK_PROGRESS_PREFIX)
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(advisory)
+    progress = json.loads(advisory[len(runner.GROK_PROGRESS_PREFIX):])
+    final = json.loads(final_line)
+    assert progress["invocation_id"] == final["invocation_id"]
+    assert progress["schema"] == "router-implementation-progress@1" and progress["purpose"] == "coding"
+    assert progress["observation_only"] is True and progress["provider_dispatch_observed"] is None
+    assert all(progress[key] is False for key in (
+        "completion_authority", "settlement_authority", "automatic_retry_admitted"))
+    assert progress["native_grok_progress"] == final["native_grok_progress"] == snapshot
+    assert final["status"] == ("failed" if timeout else "provider_returned")
+    assert final["completion_authority"] is False and final["native_rollout_usage"] is None
+    assert not execution_observation(advisory)["task_execution_observed"]
+
+
+def test_grok_planning_does_not_enable_or_export_coding_progress(grok_progress_workspace, monkeypatch, capsys):
+    import json
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+
+    def generate(prompt, **kwargs):
+        assert "grok_stream_progress" not in kwargs and "grok_progress_callback" not in kwargs
+        set_last_cli_observation("grok_cli", {"exit_code": 0, "native_grok_progress": _grok_progress_snapshot()})
+        return "authored planning response"
+    monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
+    _, receipt = _run_grok_progress(purpose="planning")
+    assert "native_grok_progress" not in receipt
+    assert json.loads(capsys.readouterr().out)["schema"] == "router-implementation-invocation@1"
+
+
+@pytest.mark.parametrize("malformation", ["extra_text", "authority", "foreign_schema", "not_mapping"])
+def test_invalid_grok_callback_payload_cannot_escape_or_change_success(
+        grok_progress_workspace, monkeypatch, capsys, malformation):
+    import json
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+
+    invalid = _grok_progress_snapshot()
+    if malformation == "extra_text": invalid["text"] = "PRIVATE-PROGRESS-CANARY"
+    elif malformation == "authority": invalid["completion_authority"] = True
+    elif malformation == "foreign_schema": invalid["schema"] = "PRIVATE-PROGRESS-CANARY"
+    else: invalid = "PRIVATE-PROGRESS-CANARY"
+    def generate(prompt, **kwargs):
+        kwargs["grok_progress_callback"](invalid)
+        set_last_cli_observation("grok_cli", {"exit_code": 0})
+        return "authored completed response"
+    monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
+    output, receipt = _run_grok_progress()
+    assert output == "authored completed response" and receipt["status"] == "provider_returned"
+    printed = capsys.readouterr().out
+    assert "PRIVATE" not in printed
+    assert json.loads(printed)["schema"] == "router-implementation-invocation@1"
+
+
+def test_progress_stdout_failure_cannot_replace_provider_outcome(grok_progress_workspace, monkeypatch, capsys):
+    import builtins
+    import json
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    from ipfs_accelerate_py.cli_runtime.cli_metadata import set_last_cli_observation
+
+    printed = builtins.print
+    attempts = []
+    def fail_advisory(value, **kwargs):
+        if isinstance(value, str) and value.startswith(runner.GROK_PROGRESS_PREFIX):
+            attempts.append(True)
+            raise OSError("PRIVATE-SINK-CANARY")
+        printed(value, **kwargs)
+    monkeypatch.setattr(runner, "print", fail_advisory, raising=False)
+    def generate(prompt, **kwargs):
+        kwargs["grok_progress_callback"](_grok_progress_snapshot())
+        set_last_cli_observation("grok_cli", {"exit_code": 0})
+        return "authored completed response"
+    monkeypatch.setattr(grok_progress_workspace, "generate_text", generate)
+    _, receipt = _run_grok_progress()
+    assert attempts == [True] and receipt["status"] == "provider_returned"
+    assert json.loads(capsys.readouterr().out)["status"] == "provider_returned"
