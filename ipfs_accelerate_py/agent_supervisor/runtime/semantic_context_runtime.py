@@ -386,7 +386,12 @@ def prepare_semantic_context(
     capsules = payload["capsules"]
     if (len(compact) > max_payload_bytes or packed.budget_exceeded
             or (projection is not None and len(compact) > worker_max_bytes)):
-        raise ValueError("worker context exceeds configured budget")
+        raise ValueError(
+            "worker context exceeds configured budget: "
+            f"payload_bytes={len(compact)}, max_payload_bytes={max_payload_bytes}, "
+            f"worker_max_bytes={worker_max_bytes if projection is not None else None}, "
+            f"selected_capsules={len(capsules)}, pack_budget_exceeded={packed.budget_exceeded}"
+        )
     if any((repository / name).read_bytes() != raw for name, raw in sources.items()):
         raise ValueError("source changed during context preparation")
     output.mkdir(parents=True, exist_ok=False)

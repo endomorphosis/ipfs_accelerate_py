@@ -126,6 +126,12 @@ For a matched capsule-budget experiment, prepare two `--arm full` trials with
 `--semantic-context-profile indexed-default@1` and
 `--semantic-context-profile indexed-compact@1`. Both use current-source DuckDB
 selection and a 32 KiB payload bound; their capsule limits are eight and two.
+Indexed profiles use a short objective bound to the public instruction's SHA-256.
+The complete instruction remains required raw context and the exact retrieval
+query. This avoids repeating long instructions inside the objective and context
+pack while preserving the payload limit and literal task requirements.
+Capsule counts are ceilings: the byte limit can reduce both profiles to the
+same count. Check retained counts before treating a task as a budget comparison.
 The historical default `legacy-bounded@1` retains lexical selection. These
 profiles do not change vector retrieval, intent transport, model settings, or
 task instructions. Use one fresh archive and identical task/resource settings

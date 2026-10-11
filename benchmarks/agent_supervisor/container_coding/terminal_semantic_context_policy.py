@@ -44,6 +44,22 @@ def semantic_context_options(value):
         worker_max_bytes=32768)
 
 
+def semantic_context_objective(value, query):
+    """Keep indexed objectives short while retaining the exact instruction elsewhere.
+
+    The complete public text remains mandatory raw source and the ranking query.
+    This descriptive label binds that text; it never substitutes for its body.
+    Legacy profiles preserve their original whitespace-normalized objective.
+    """
+    validate_semantic_context_profile(value)
+    if type(query) is not str or not query.strip():
+        raise ValueError("semantic context requires its public instruction text")
+    if value == DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+        return " ".join(query.split())
+    return ("Public task in .supervisor-instruction.md; SHA-256 "
+            + hashlib.sha256(query.encode("utf-8")).hexdigest() + ".")
+
+
 def require_semantic_context_archive(manifest, value):
     if validate_semantic_context_profile(value) == DEFAULT_SEMANTIC_CONTEXT_PROFILE:
         return
