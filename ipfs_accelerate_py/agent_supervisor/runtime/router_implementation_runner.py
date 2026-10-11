@@ -17,6 +17,10 @@ import subprocess
 import sys
 import time
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .semantic_metadata_view import SemanticMetadataTokenCounter
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 GROK_PROGRESS_PREFIX = "IPFS_GROK_PROGRESS "
@@ -216,6 +220,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         source_formalization_handoff_sha256: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
@@ -252,6 +257,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
+    if semantic_metadata_token_counter is not None:
+        from .semantic_metadata_view import SemanticMetadataTokenCounter
+        if semantic_metadata_view != "common-bindings@1":
+            raise ValueError("metadata token counter requires the explicit metadata view")
+        if (type(semantic_metadata_token_counter) is not SemanticMetadataTokenCounter
+                or semantic_metadata_token_counter.provider != provider
+                or semantic_metadata_token_counter.model != model):
+            raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
     if census_only and semantic_metadata_view != "common-bindings@1":
@@ -357,6 +370,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             model_prompt=model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
     metadata_receipt = None
     metadata_native_reply = None
+    metadata_census = None
     if semantic_metadata_view != "legacy":
         failure_phase = "semantic_metadata_view"
         from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
@@ -377,10 +391,19 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     != {key: value for key, value in coding_reply_receipt.items() if key not in prompt_fields}):
                 raise ValueError("metadata view changed the coding response contract")
             metadata_native_reply = dict(coding_reply_receipt)
-        selection = select_semantic_metadata_view(view=view, native_complete_prompt=model_prompt,
-            candidate_complete_prompt=candidate_model)
-        metadata_native_complete = model_prompt
-        model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
+        if census_only:
+            # Count each complete input once. Census repeats all representation
+            # checks and selects through the same existing selector.
+            from .semantic_metadata_census import census_semantic_metadata_view
+            metadata_census = census_semantic_metadata_view(view=view,
+                native_complete_prompt=model_prompt, candidate_complete_prompt=candidate_model,
+                token_counter=semantic_metadata_token_counter)
+            if metadata_census["selected_mode"] == "common-bindings@1":
+                model_prompt = candidate_model
+        else:
+            selection = select_semantic_metadata_view(view=view, native_complete_prompt=model_prompt,
+                candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter)
+            model_prompt, metadata_receipt = selection.selected_prompt, selection.receipt
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
     if len(model_prompt.encode()) > 256_000:
@@ -394,9 +417,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation inherited database authority")
     if census_only:
         failure_phase = "semantic_metadata_census"
-        from .semantic_metadata_census import census_semantic_metadata_view
-        census = census_semantic_metadata_view(view=view,
-            native_complete_prompt=metadata_native_complete, candidate_complete_prompt=candidate_model)
+        census = metadata_census
         def digest_json(value):
             if value is None:
                 return None
@@ -404,7 +425,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                              ensure_ascii=False, allow_nan=False).encode("utf-8")
             return hashlib.sha256(raw).hexdigest()
         receipt = {
-            "schema": "router-semantic-metadata-census@1", "purpose": "coding",
+            "schema": ("router-semantic-metadata-census@2" if semantic_metadata_token_counter is not None
+                       else "router-semantic-metadata-census@1"), "purpose": "coding",
             "observation_only": True, "provider": provider,
             "model_sha256": hashlib.sha256(model.encode("utf-8")).hexdigest(),
             "reasoning_effort": reasoning_effort,

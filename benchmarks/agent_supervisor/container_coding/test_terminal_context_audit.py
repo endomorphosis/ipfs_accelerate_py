@@ -551,3 +551,88 @@ def test_legacy_source384_bundle_can_be_historically_joined(formalization, schem
         artifact=binding["artifact"], expected_sha256=binding["sha256"], task_cid="cid:task", task_id="TB-CODE-TASK")
     _rewrite_formalization(formalization, payload)
     assert observe(formalization)["all_observed_coding_inputs_verified"] is True
+
+
+@pytest.fixture
+def metadata_dispatch(tmp_path, monkeypatch):
+    # Reuse the actual router fixture without a module-level circular import:
+    # its legacy audit tests themselves import this module's compiled fixture.
+    from test.api.test_semantic_router_translation import native
+    from test.api.test_semantic_metadata_dispatch import dispatch_case
+    return dispatch_case.__wrapped__(native.__wrapped__(tmp_path), monkeypatch)
+
+
+def _token_counted_receipt(case, reply_mode):
+    from test.api.test_semantic_metadata_token_audit import counter
+    from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+    _, receipt = runner.run(prompt=case["prompt"], provider="codex_cli", model="authored-model",
+        timeout=30, max_output_tokens=4096, semantic_repository=case["repository"],
+        coding_reply_mode=reply_mode, semantic_metadata_view="common-bindings@1",
+        semantic_metadata_token_counter=counter())
+    return {**receipt, "phase": "coding"}
+
+
+@pytest.mark.parametrize("reply_mode", ["legacy", "ordinary-completion@1"])
+def test_token_counted_collector_preserves_caller_identities_without_a_counter(
+        metadata_dispatch, tmp_path, monkeypatch, reply_mode):
+    case = metadata_dispatch
+    receipt = _token_counted_receipt(case, reply_mode)
+    native_run = subprocess.run
+    captured = []
+    # Exercise the collector's actual serialized request with an independent
+    # child running the receipt/parser projection. This fixture's prompt has
+    # one semantic capsule; full final-audit population is covered above.
+    code = """import hashlib, json, sys
+from pathlib import Path
+from benchmarks.agent_supervisor.container_coding import terminal_context_audit as audit
+body = json.load(sys.stdin)
+receipt = audit._receipt(body['receipt'], Path(body['workspace_root']))
+model, _, checks = audit._model_projection(rendered=body['prompt'], receipt=receipt,
+    repository=Path(body['repository']))
+result = audit._base(status='verified_native_input_only', reason='counter_unavailable')
+result.update(received_provider=receipt['provider'], received_model=receipt['model'],
+    reconstructed_model_sha256=hashlib.sha256(model.encode()).hexdigest(), checks=checks)
+print(json.dumps(result))
+"""
+    def child(argv, *, input, **kwargs):
+        assert argv[:4] == [sys.executable, "-B", "-P", "-m"]
+        rows = json.loads(input)
+        captured.extend(rows)
+        body = dict(receipt=rows[0], prompt=case["prompt"], repository=str(case["repository"]),
+                    workspace_root=str(case["workspace"].parent))
+        return native_run([sys.executable, "-B", "-P", "-c", code],
+                          input=json.dumps(body).encode(), **kwargs)
+    monkeypatch.setattr(audit.subprocess, "run", child)
+    result = audit.collect_terminal_context_audit(state=tmp_path / "state", receipts=[receipt],
+        workspace_root=case["workspace"].parent, timeout_seconds=10)
+    assert captured[0]["provider"] == result["received_provider"] == receipt["provider"]
+    assert captured[0]["model"] == result["received_model"] == receipt["model"]
+    assert result["reconstructed_model_sha256"] == receipt["model_prompt_sha256"]
+    assert result["checks"]["semantic_metadata_recorded_prompt_identities"] is True
+    assert result["checks"]["semantic_metadata_token_counter_verified"] is False
+    assert result["checks"]["semantic_metadata_selection_receipt"] is False
+    assert all(check for key, check in result["checks"].items() if key not in {
+        "semantic_metadata_token_counter_verified", "semantic_metadata_selection_receipt"})
+
+
+def test_merged_projection_keeps_formalization_and_uncounted_token_checks(metadata_dispatch):
+    from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import _observation
+    case = metadata_dispatch
+    receipt = _token_counted_receipt(case, "ordinary-completion@1")
+    # Closed authored dispatch observation isolates preservation of both audit
+    # dimensions; receipt ownership/selection is exercised by formalization.
+    expected = _observation(dict(task_id="TASK-1", task_cid="cid:task",
+        context_bundle={"sha256": "a" * 64}, contexts=[{"kind": "numerical-formalization-context"}]),
+        "authored formalization", 1, {"mod.py": "captured"})
+    receipt["source_formalization_context"] = expected
+    parsed = audit._receipt(receipt, case["workspace"].parent)
+    model, _, checks = audit._model_projection(rendered=case["prompt"], receipt=parsed,
+        repository=case["repository"], formalization=expected)
+    assert sha(model) == receipt["model_prompt_sha256"]
+    assert checks["source_formalization_dispatch"] is True
+    assert checks["semantic_metadata_token_counter_verified"] is False
+    assert checks["semantic_metadata_selection_receipt"] is False
+    _, _, changed = audit._model_projection(rendered=case["prompt"], receipt=parsed,
+        repository=case["repository"], formalization={**expected, "task_cid": "cid:foreign"})
+    assert changed["source_formalization_dispatch"] is False
+    assert changed["semantic_metadata_recorded_prompt_identities"] is True

@@ -58,6 +58,69 @@ def invoke(case, **kwargs):
         coding_reply_mode="ordinary-completion@1", **kwargs)
 
 
+def token_counter(count, **kwargs):
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import SemanticMetadataTokenCounter
+    settings = dict(count=count, provider="codex_cli", model="authored-model",
+        tokenizer="authored-counter", tokenizer_revision="fixture@1", qualification="estimate")
+    settings.update(kwargs)
+    return SemanticMetadataTokenCounter(**settings)
+
+
+def test_counter_measures_final_wrappers_and_can_refuse_byte_smaller_input(dispatch_case):
+    case = dispatch_case
+    _, baseline = invoke(case)
+    native_input = case["calls"][-1][0]
+    measured = []
+    values = iter((100, 101))
+    def count(text):
+        measured.append(text)
+        return next(values)
+    _, receipt = invoke(case, semantic_metadata_view="common-bindings@1",
+        semantic_metadata_token_counter=token_counter(count))
+    metadata = receipt["semantic_metadata_view"]
+    assert measured[0] == native_input
+    assert len(measured) == 2
+    assert metadata["candidate_complete_bytes"] < metadata["native_complete_bytes"]
+    assert metadata["selected_mode"] == "legacy"
+    assert case["calls"][-1][0] == native_input
+    assert metadata["selected_complete_tokens"] == 100
+    assert metadata["provider_usage_reported"] is False
+    assert receipt["usage"] == baseline["usage"]  # Preflight counts never become billing.
+    assert receipt["coding_reply_contract"] == baseline["coding_reply_contract"]
+
+
+@pytest.mark.parametrize("settings", [
+    {"provider": "grok_cli"}, {"model": "foreign-model"},
+])
+def test_counter_identity_mismatch_refuses_before_callback_or_provider(dispatch_case, settings):
+    def forbidden(text):
+        pytest.fail("mismatched counter was invoked")
+    with pytest.raises(ValueError, match="pinned provider and model"):
+        invoke(dispatch_case, semantic_metadata_view="common-bindings@1",
+            semantic_metadata_token_counter=token_counter(forbidden, **settings))
+    assert dispatch_case["calls"] == []
+
+
+def test_counter_requires_explicit_metadata_view(dispatch_case):
+    with pytest.raises(ValueError, match="explicit metadata view"):
+        invoke(dispatch_case, semantic_metadata_token_counter=token_counter(len))
+    assert dispatch_case["calls"] == []
+
+
+def test_counter_failure_keeps_native_input_without_leaking_error(dispatch_case):
+    case = dispatch_case
+    invoke(case)
+    native_input = case["calls"][-1][0]
+    def broken(text):
+        raise RuntimeError("PRIVATE_COUNTER_ERROR " + text)
+    _, receipt = invoke(case, semantic_metadata_view="common-bindings@1",
+        semantic_metadata_token_counter=token_counter(broken))
+    assert case["calls"][-1][0] == native_input
+    assert receipt["semantic_metadata_view"]["token_counter_status"] == "failed"
+    assert receipt["semantic_metadata_view"]["selected_complete_tokens"] is None
+    assert "PRIVATE_COUNTER_ERROR" not in json.dumps(receipt)
+
+
 def test_opt_in_preserves_default_input_and_binds_actual_selected_reply(dispatch_case):
     case = dispatch_case
     _, legacy = invoke(case)

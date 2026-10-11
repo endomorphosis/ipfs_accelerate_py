@@ -85,11 +85,105 @@ def _archive_digest(raw):
         char in "0123456789abcdef" for char in value) else None
 
 
+def _semantic_metadata_observation(value):
+    """Project declared representation counts, never usage or tokenizer authority."""
+    unavailable = {"status": "unavailable", "provider_usage_reported": False,
+        "tokenizer_compatibility_verified": False, "complete_run_token_savings_claimed": False}
+    if type(value) is not dict:
+        return unavailable
+    schema = value.get("schema")
+    if type(schema) is not str or schema not in {"supervisor-semantic-metadata-selection@1", "supervisor-semantic-metadata-selection@2"}:
+        return unavailable
+    if (value.get("token_proxy") != "utf8-bytes-ceil-div4@1"
+            or type(value.get("selected_mode")) is not str
+            or value["selected_mode"] not in {"legacy", "common-bindings@1"}):
+        return unavailable
+    result = {**unavailable, "status": "reported", "schema": schema,
+        "selected_mode": value["selected_mode"], "token_proxy": value["token_proxy"],
+        "selection_basis": "byte_proxy", "measurement_scope": "complete-rendered-prompt-text@1"}
+    for field in ("view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"):
+        digest = value.get(field)
+        if type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None:
+            return unavailable
+        result[field] = digest
+    for prefix in ("native", "candidate", "selected"):
+        size, proxy = value.get(prefix + "_complete_bytes"), value.get(prefix + "_complete_proxy_tokens")
+        if (type(size) is not int or not 1 <= size <= 2_000_000
+                or type(proxy) is not int or proxy != (size + 3) // 4):
+            return unavailable
+        result[prefix + "_complete_bytes"], result[prefix + "_complete_proxy_tokens"] = size, proxy
+    chosen = "candidate" if result["selected_mode"] == "common-bindings@1" else "native"
+    if any(result["selected_complete_" + field] != result[chosen + "_complete_" + field]
+           for field in ("sha256", "bytes", "proxy_tokens")):
+        return unavailable
+    reason = value.get("fallback_reason")
+    allowed_reasons = {None, "complete_input_not_smaller_under_bytes_and_proxy"}
+    if schema.endswith("@2"):
+        allowed_reasons = {None, "complete_input_not_smaller_under_bytes_and_token_counter",
+            "complete_input_token_counter_invalid", "complete_input_token_counter_failed"}
+    if type(reason) not in (str, type(None)) or reason not in allowed_reasons:
+        return unavailable
+    if ((chosen == "candidate") != (reason is None)
+            or (chosen == "candidate" and result["candidate_complete_bytes"] >= result["native_complete_bytes"])):
+        return unavailable
+    result["fallback_reason"] = reason
+    if schema.endswith("@1"):
+        return result
+    identity = value.get("token_counter_identity")
+    status = value.get("token_counter_status")
+    if (type(status) is not str or status not in {"counted", "failed", "invalid"}
+            or value.get("selection_basis") != "token_counter"):
+        return unavailable
+    result.update(selection_basis="token_counter", token_counter_status=status,
+        token_counter_identity=None, token_counter_identity_sha256=None,
+        native_complete_tokens=None, candidate_complete_tokens=None, selected_complete_tokens=None)
+    if status == "invalid":
+        return result if (identity is None and value.get("token_counter_identity_sha256") is None
+            and reason == "complete_input_token_counter_invalid"
+            and all(value.get(field) is None for field in (
+                "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens"))) else unavailable
+    if (type(identity) is not dict or identity.get("schema") != "supervisor-semantic-metadata-token-counter@1"
+            or identity.get("measurement_scope") != result["measurement_scope"]
+            or type(identity.get("qualification")) is not str
+            or identity["qualification"] not in {"provider_tokenizer", "estimate"}
+            or identity.get("identity_caller_supplied") is not True
+            or identity.get("provider_usage_verified") is not False):
+        return unavailable
+    safe_identity = {"schema": identity["schema"], "qualification": identity["qualification"],
+        "measurement_scope": result["measurement_scope"], "identity_caller_supplied": True,
+        "provider_usage_verified": False}
+    for field in ("provider", "model", "tokenizer", "tokenizer_revision"):
+        identifier = identity.get(field)
+        if type(identifier) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9._:/@+\\-]{0,255}", identifier) is None:
+            return unavailable
+        safe_identity[field] = identifier
+    digest = value.get("token_counter_identity_sha256")
+    canonical = json.dumps(safe_identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if digest != hashlib.sha256(canonical.encode()).hexdigest():
+        return unavailable
+    result.update(token_counter_identity=safe_identity, token_counter_identity_sha256=digest)
+    if status == "failed":
+        return result if reason == "complete_input_token_counter_failed" and all(value.get(field) is None for field in (
+            "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens")) else unavailable
+    for prefix in ("native", "candidate", "selected"):
+        tokens = value.get(prefix + "_complete_tokens")
+        if type(tokens) is not int or not 1 <= tokens <= 2**63 - 1:
+            return unavailable
+        result[prefix + "_complete_tokens"] = tokens
+    if result["selected_complete_tokens"] != result[chosen + "_complete_tokens"]:
+        return unavailable
+    if reason not in {None, "complete_input_not_smaller_under_bytes_and_token_counter"}:
+        return unavailable
+    if chosen == "candidate" and result["candidate_complete_tokens"] >= result["native_complete_tokens"]:
+        return unavailable
+    return result
+
+
 def _input_observation(raw):
     """Project reported wire measurements without exporting prompt contents."""
     translation = _mapping(raw.get("semantic_translation"))
     residual = _mapping(raw.get("doctor_residual_context"))
-    return {
+    result = {
         **{key: _count(raw.get(key)) for key in (
             "native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes", "workspace_advisory_bytes")},
         **{key: _text(raw.get(key)) for key in (
@@ -110,6 +204,9 @@ def _input_observation(raw):
         "measurements_are_token_savings": False,
         "input_reconstruction_verified_by_receipt_presence": False,
     }
+    if "semantic_metadata_view" in raw:
+        result["semantic_metadata_view"] = _semantic_metadata_observation(raw["semantic_metadata_view"])
+    return result
 
 
 def _formalization_audit_observations(audit):
@@ -140,6 +237,7 @@ def _formalization_audit_observations(audit):
                 or not identity(capsule.get("capsule_id"))
                 or sum(type(row) is dict and row.get("capsule_id") == capsule["capsule_id"] for row in capsules) != 1
                 or any(not identity(value[key]) for key in ("task_id", "task_cid"))
+                or value["task_cid"] != capsule.get("task_cid")
                 or any(not digest(value[key]) for key in digest_fields)
                 or type(value["chunks"]) is not int or not 1 <= value["chunks"] <= 6
                 or type(value["source_files"]) is not int or not 0 <= value["source_files"] <= 320

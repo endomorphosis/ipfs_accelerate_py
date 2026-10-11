@@ -22,6 +22,13 @@ observation, reconstructed input, and invocation checks agree. Candidate text
 and formulas are not copied into the comparison record, and delivery is not a
 claim of task success or token savings.
 
+The audit also preserves the declared provider and model when collecting the
+new token-counted metadata selection receipt. Its independent child process can
+reconstruct the recorded input; it cannot recreate a trusted token counter from
+that receipt. Token verification therefore remains false without an independently
+supplied matching counter. The merged checks retain both this distinction and
+the formalization-to-task binding.
+
 An explicitly enabled post-completion context refresh now includes an already
 selected deterministic numerical profile. Before START, the runtime signs a
 policy binding the original receipt, producer versions, Python file population,
@@ -42,7 +49,10 @@ refresh, and a successor still requires an independent launch manifest.
 
 The [qualification record](evidence/formalization-audit-successor-20261011/qualification.json)
 separates real cached checkpoint inference, authored provider responses, native
-numerical stores, and actual owner lifecycle checks. No new Terminal Bench score
+numerical stores, and actual owner lifecycle checks. Five post-merge suites pass
+439 distinct tests with zero skips against datasets revision `7fc3f57a9`; the
+successor suite separately deselects one pre-existing real-checkpoint test.
+No new Terminal Bench score
 or token-efficiency comparison is claimed. The experimental learned NumPy
 checkpoint adapter remains separate and unimplemented; the existing learned
 checkpoint is unchanged. Grok authentication has not been reprobed.

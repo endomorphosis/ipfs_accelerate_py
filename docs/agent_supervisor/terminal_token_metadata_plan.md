@@ -31,6 +31,12 @@ A Leanstral hidden-layer representation can be evaluated for that role. The
 existing comparison already reused initial indexes with zero new embedding
 calls; a new treatment cannot claim to eliminate those already absent calls.
 Record inference, refresh and training separately from native LLM tokens.
+Reuse the retained embeddings and checkpoints in their existing namespaces:
+IR family, schema/version, decoder task, dimension and token profile. LegalIR,
+SecurityIR, CodebaseIR and IntentIR remain separate; 8D, 384D and 768D ranking
+paths can run in parallel. Their encoder token windows do not identify the
+coding provider's tokenizer. This metadata measurement change creates no new
+checkpoint, embedding or database owner.
 
 ## First implemented treatment: readable shared metadata
 
@@ -57,6 +63,45 @@ and records the fallback. This proxy is byte-derived, not the provider's
 tokenizer. The actual selected reply contract binds the delivered input; the
 undelivered baseline contract is retained separately for reconstruction.
 The audit child independently replays these layers from retained native input.
+
+### Optional token-counted selection and retained observations
+
+The programmatic selector now accepts `SemanticMetadataTokenCounter`, wrapping
+an existing counting callable with its declared provider, model, tokenizer,
+tokenizer revision and qualification (`estimate` or `provider_tokenizer`). The
+existing `CalibratedTokenEstimator.estimate` method can supply that callable.
+The runner's `semantic_metadata_token_counter` argument requires the explicit
+common-bindings route and the pinned provider/model to match before counting
+or provider allocation. This identity is caller-declared; its digest does not
+authenticate tokenizer compatibility.
+
+An injected counter produces `supervisor-semantic-metadata-selection@2`; the
+default byte-proxy path retains its original `@1` receipt exactly. Both complete
+rendered prompt strings include literal workspace, public instruction, Doctor
+and reply instructions. Compact selection requires strictly fewer bytes and
+strictly fewer counted tokens. Invalid or failing counts retain the native
+input with a sanitized reason and no proxy rescue. A failed callback never
+exports its exception text. The receipt binds the complete input digests,
+counter identity and selected count, while provider usage, hidden CLI
+scaffolding and complete-run savings remain unverified.
+
+The offline census accepts the same counter and hashes its textual identities.
+The runner census counts each complete input once and still stops before
+provider discovery. Benchmark comparison retains an allowlisted representation
+observation beside the invocation's native usage; these counts never charge the
+token ledger or substitute for missing usage. Audit replay can check `@2` with
+the same independently supplied counter. Without that callable, it reconstructs
+the recorded selected bytes but leaves counter/selection verification false.
+The subprocess audit has no trusted callable factory and therefore cannot
+qualify an injected counter merely from its receipt.
+
+There is currently no qualified Codex/Grok tokenizer factory in benchmark
+profiles. The CLI keeps its byte-proxy behavior. Before using this opt-in in a
+live trial, qualify a reviewed provider/model/tokenizer/revision factory,
+deterministic replay and its exact measurement scope. Build and qualify a new
+runtime archive containing the changed helpers; existing frozen archives remain
+historical evidence. Then compare complete native sessions. This implementation
+alone establishes no live token savings.
 
 [`semantic_metadata_catalog.py`](../../ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py)
 adds an owner-prepared catalog bridge. It pins a read-only artifact and compares
@@ -130,6 +175,19 @@ benchmark input size, behavior, rewards or cumulative tokens.
    Typed queries should return an exact bounded population with an explicit
    unresolved frontier, source/task bindings and counted response costs. Avoid
    model-facing arbitrary SQL and assumptions about the generic Quack gateway.
+   A source-only audit found reusable verified capsule/index readers, sealed
+   producer-bound source materialization and bounded symbol-query primitives,
+   but no capsule/source operation in the current Quack registry or qualified
+   expansion tool in the coding CLI route. Start with read-only `capsule.get`
+   and `source.get` attached to the existing current owner. Bind host-issued
+   caller grant, task/revision, repository/source scope, root/context, owner
+   generation/fence, request identity and byte/result bounds. Recheck current
+   workspace source after edits on every read. Return exact identities,
+   freshness/admission caveats, completeness, unresolved frontier and a bound
+   continuation; account for the complete encoded response. Qualify actual CLI
+   access, stale/foreign/tampered refusals and oversized responses before moving
+   any required fact out of the prompt. Add ranked `symbol.query` afterward.
+   This qualification reuses existing assets and requires no new training.
 4. **Run a separately versioned matched trial.** First census the qualified
    treatment and retain enough measured input reduction to justify the trial.
    Keep one planning session and one coding session, model/reasoning/resource/
@@ -152,8 +210,11 @@ benchmark input size, behavior, rewards or cumulative tokens.
 ## Decide success from the complete run
 
 Count the final cumulative native input plus output tokens for every retained
-planning, coding, lookup, continuation and repair attempt. Cached input is
-already part of input; reasoning output is already part of output. Do not sum
+planning, coding, lookup, continuation and repair attempt. Use the existing
+native accounting rules: Codex cached input is already a subset of input;
+Grok's normalized final-envelope input excludes separately reported cache
+reads/writes. Preserve that distinction and each receipt's completeness scope.
+Reasoning output is already part of output. Do not sum
 cumulative usage records as independent calls. Preserve failed attempts and
 unknown usage rather than assigning zero.
 

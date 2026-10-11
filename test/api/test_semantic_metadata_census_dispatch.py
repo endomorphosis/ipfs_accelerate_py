@@ -7,7 +7,7 @@ import subprocess
 import pytest
 
 from test.api.test_semantic_router_translation import native  # noqa: F401
-from test.api.test_semantic_metadata_dispatch import dispatch_case, invoke  # noqa: F401
+from test.api.test_semantic_metadata_dispatch import dispatch_case, invoke, token_counter  # noqa: F401
 import ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner as runner
 
 
@@ -28,6 +28,44 @@ def census(case, **kwargs):
     options = dict(semantic_metadata_view="common-bindings@1", census_only=True)
     options.update(kwargs)
     return invoke(case, **options)
+
+
+def test_injected_census_counts_complete_inputs_once_and_hashes_identities(dispatch_case, monkeypatch):
+    case = dispatch_case
+    forbid_provider(monkeypatch)
+    measured = []
+    def count(text):
+        measured.append(text)
+        return len(text)
+    output, receipt = census(case, semantic_metadata_token_counter=token_counter(count))
+    report = receipt["census"]
+    assert len(measured) == 2
+    assert receipt["schema"] == "router-semantic-metadata-census@2"
+    assert report["schema"] == "supervisor-semantic-metadata-census@2"
+    assert report["native_complete_tokens"] == len(measured[0])
+    assert report["candidate_complete_tokens"] == len(measured[1])
+    for text, prefix in zip(measured, ("native", "candidate")):
+        assert report[prefix + "_complete_sha256"] == hashlib.sha256(text.encode()).hexdigest()
+    assert report["token_counter_qualification"] == "estimate"
+    assert report["token_counter_identity_verified"] is False
+    assert report["provider_usage_reported"] is False
+    assert report["cli_scaffolding_measured"] is False
+    assert report["complete_run_token_savings_claimed"] is False
+    assert "authored-model" not in output and "authored-counter" not in output
+    assert report["token_counter_identity_field_sha256"]["model"] == hashlib.sha256(b"authored-model").hexdigest()
+    assert receipt["provider_calls"] == 0 and case["calls"] == []
+
+
+def test_census_source_drift_refuses_before_counting(dispatch_case, monkeypatch):
+    case = dispatch_case
+    forbid_provider(monkeypatch)
+    source = case["repository"] / "mod.py"
+    source.write_text(source.read_text() + "\n# changed current source\n")
+    def forbidden(text):
+        pytest.fail("source drift reached token counting")
+    with pytest.raises(ValueError):
+        census(case, semantic_metadata_token_counter=token_counter(forbidden))
+    assert case["calls"] == []
 
 
 def test_census_binds_actual_model_input_and_never_allocates_provider(dispatch_case, monkeypatch, capsys):

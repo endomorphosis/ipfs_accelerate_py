@@ -1,3 +1,5 @@
+import copy
+import hashlib
 import json
 
 import pytest
@@ -576,3 +578,120 @@ def test_reported_wire_measurements_do_not_imply_successful_input_audit(tmp_path
     assert row["invocations"][0]["input_observation"]["semantic_translation"]["identifier_mappings"] == 10
     assert row["context_input_audit"]["any_model_input_verified"] is False
     assert row["context_input_audit"]["all_observed_coding_inputs_verified"] is False
+
+
+def _metadata_selection(schema="supervisor-semantic-metadata-selection@2", qualification="provider_tokenizer"):
+    value = {"schema": schema, "view_receipt_sha256": "a" * 64,
+        "selected_mode": "common-bindings@1", "fallback_reason": None,
+        "token_proxy": "utf8-bytes-ceil-div4@1", "candidate_only": True,
+        "native_complete_sha256": "b" * 64, "native_complete_bytes": 1000,
+        "native_complete_proxy_tokens": 250, "candidate_complete_sha256": "c" * 64,
+        "candidate_complete_bytes": 800, "candidate_complete_proxy_tokens": 200,
+        "selected_complete_sha256": "c" * 64, "selected_complete_bytes": 800,
+        "selected_complete_proxy_tokens": 200}
+    if schema.endswith("@2"):
+        identity = {"schema": "supervisor-semantic-metadata-token-counter@1",
+            "provider": "codex_cli", "model": "gpt-6.1-sol", "tokenizer": "declared-tokenizer",
+            "tokenizer_revision": "revision-1", "qualification": qualification,
+            "measurement_scope": "complete-rendered-prompt-text@1",
+            "identity_caller_supplied": True, "provider_usage_verified": False}
+        value.update(selection_basis="token_counter", token_counter_status="counted",
+            token_counter_identity=identity,
+            token_counter_identity_sha256=hashlib.sha256(json.dumps(identity, sort_keys=True,
+                separators=(",", ":"), ensure_ascii=False).encode()).hexdigest(),
+            native_complete_tokens=120, candidate_complete_tokens=90, selected_complete_tokens=90)
+    return value
+
+
+def test_absent_metadata_preserves_existing_input_observation_shape():
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _input_observation
+    observed = _input_observation({})
+    assert set(observed) == {"native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes",
+        "workspace_advisory_bytes", "native_prompt_sha256", "router_prompt_sha256", "model_prompt_sha256",
+        "workspace_advisory_sha256", "semantic_translation", "doctor_residual_context",
+        "measurements_are_token_savings", "input_reconstruction_verified_by_receipt_presence"}
+    assert "semantic_metadata_view" not in observed
+
+
+@pytest.mark.parametrize("schema, qualification", [
+    ("supervisor-semantic-metadata-selection@1", "provider_tokenizer"),
+    ("supervisor-semantic-metadata-selection@2", "provider_tokenizer"),
+    ("supervisor-semantic-metadata-selection@2", "estimate"),
+])
+def test_metadata_measurements_survive_comparison_without_charging_native_usage(tmp_path, schema, qualification):
+    before = _invocation()
+    metadata = _metadata_selection(schema, qualification)
+    metadata.update(prompt="MUST NOT APPEAR", raw_source="MUST NOT APPEAR",
+        counter_error="MUST NOT APPEAR", provider_usage_reported=True,
+        complete_run_token_savings_claimed=True)
+    if schema.endswith("@2"):
+        metadata["token_counter_identity"]["source_body"] = "MUST NOT APPEAR"
+    after = {**before, "semantic_metadata_view": metadata}
+    reports = []
+    for label, invocation in (("without", before), ("with", after)):
+        path = _receipt(tmp_path, label + ".json", SUPERVISOR, [{"trial": label,
+            "supervisor": {"provider_invocations": [invocation, copy.deepcopy(invocation)]}}], "full")
+        reports.append(collect(baseline=_baseline(tmp_path), supervisors=[path]))
+    old, new = (report["rows"][1] for report in reports)
+    observed = new["invocations"][0]["input_observation"]["semantic_metadata_view"]
+    assert observed["status"] == "reported"
+    assert observed["selected_complete_bytes"] == 800
+    assert observed["selected_complete_proxy_tokens"] == 200
+    assert observed["provider_usage_reported"] is False
+    assert observed["tokenizer_compatibility_verified"] is False
+    assert observed["complete_run_token_savings_claimed"] is False
+    if schema.endswith("@1"):
+        assert observed["selection_basis"] == "byte_proxy"
+        assert "selected_complete_tokens" not in observed
+    else:
+        assert observed["selection_basis"] == "token_counter"
+        assert observed["selected_complete_tokens"] == 90
+        assert observed["token_counter_identity"]["qualification"] == qualification
+    for field in ("tokens", "known_token_subtotals", "provider_calls", "reported_cost_usd",
+                  "native_usage_complete_observed", "cache_included_in_input"):
+        assert new[field] == old[field]
+    assert new["tokens"]["input_tokens"] == 20  # Includes its 15 cached tokens already.
+    assert new["tokens"]["total_tokens"] == 22 and new["provider_calls"] == 1
+    assert "MUST NOT APPEAR" not in json.dumps(reports[1])
+
+
+@pytest.mark.parametrize("mutation", ["unknown_schema", "list_schema", "list_status", "unknown_qualification",
+    "list_qualification", "unverified_scope", "identity_digest", "boolean_count", "negative_count",
+    "overflow_count", "selected_count", "proxy_count", "caller_flag", "unsafe_identity"])
+def test_malformed_metadata_measurements_remain_unavailable(mutation):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _input_observation
+    metadata = _metadata_selection()
+    identity = metadata["token_counter_identity"]
+    if mutation == "unknown_schema": metadata["schema"] = "unknown-MUST NOT APPEAR"
+    elif mutation == "list_schema": metadata["schema"] = ["MUST NOT APPEAR"]
+    elif mutation == "list_status": metadata["token_counter_status"] = ["MUST NOT APPEAR"]
+    elif mutation == "unknown_qualification": identity["qualification"] = "MUST NOT APPEAR"
+    elif mutation == "list_qualification": identity["qualification"] = ["MUST NOT APPEAR"]
+    elif mutation == "unverified_scope": identity["measurement_scope"] = "MUST NOT APPEAR"
+    elif mutation == "identity_digest": metadata["token_counter_identity_sha256"] = "MUST NOT APPEAR"
+    elif mutation == "boolean_count": metadata["native_complete_tokens"] = True
+    elif mutation == "negative_count": metadata["native_complete_tokens"] = -1
+    elif mutation == "overflow_count": metadata["native_complete_tokens"] = 2**63
+    elif mutation == "selected_count": metadata["selected_complete_tokens"] = 91
+    elif mutation == "proxy_count": metadata["candidate_complete_proxy_tokens"] += 1
+    elif mutation == "caller_flag": identity["identity_caller_supplied"] = 1
+    elif mutation == "unsafe_identity": identity["tokenizer"] = "MUST NOT APPEAR\nsource()"
+    observed = _input_observation({"semantic_metadata_view": metadata})["semantic_metadata_view"]
+    assert observed == {"status": "unavailable", "provider_usage_reported": False,
+        "tokenizer_compatibility_verified": False, "complete_run_token_savings_claimed": False}
+    assert "MUST NOT APPEAR" not in json.dumps(observed)
+
+
+def test_counter_failure_retains_fallback_without_exception_text_or_invented_counts():
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _input_observation
+    metadata = _metadata_selection()
+    metadata.update(token_counter_status="failed", selected_mode="legacy",
+        fallback_reason="complete_input_token_counter_failed", native_complete_tokens=None,
+        candidate_complete_tokens=None, selected_complete_tokens=None, counter_error="MUST NOT APPEAR")
+    for field in ("sha256", "bytes", "proxy_tokens"):
+        metadata["selected_complete_" + field] = metadata["native_complete_" + field]
+    observed = _input_observation({"semantic_metadata_view": metadata})["semantic_metadata_view"]
+    assert observed["status"] == "reported" and observed["token_counter_status"] == "failed"
+    assert observed["selected_mode"] == "legacy"
+    assert observed["selected_complete_tokens"] is None
+    assert "MUST NOT APPEAR" not in json.dumps(observed)

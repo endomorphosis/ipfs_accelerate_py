@@ -5,7 +5,9 @@ import json
 import pytest
 
 from benchmarks.agent_supervisor.container_coding import benchmark_comparison as comparison
-from benchmarks.agent_supervisor.container_coding.test_benchmark_comparison import _receipt, _baseline
+from benchmarks.agent_supervisor.container_coding.test_benchmark_comparison import (
+    _receipt, _baseline, _invocation, _metadata_selection,
+)
 
 
 @pytest.fixture
@@ -22,7 +24,7 @@ def observed():
         whole_program_semantics_verified=False, source_obligations_discharged=0)
     return dict(status="verified_all_observed_model_inputs", any_native_input_verified=True,
         any_model_input_verified=True, all_observed_coding_inputs_verified=True,
-        capsules=[dict(capsule_id="cid:capsule", native_prompt_sha256="1" * 64,
+        capsules=[dict(capsule_id="cid:capsule", task_cid="cid:task", native_prompt_sha256="1" * 64,
             native_prompt_bytes=12000, all_context_checks_passed=True,
             source_formalization_context=context, raw_candidate="MUST NOT APPEAR")],
         matches=[dict(capsule_id="cid:capsule", invocation_id="call-1", native_prompt_sha256="1" * 64,
@@ -37,8 +39,10 @@ def project(value):
 
 def test_compact_reported_delivery_reaches_retained_comparison_without_candidate_text(observed, tmp_path):
     before = deepcopy(observed)
+    invocation = {**_invocation("call-1"), "semantic_metadata_view": _metadata_selection()}
     receipt = _receipt(tmp_path, "formalization.json", comparison.SUPERVISOR,
-        [dict(trial="formalization", supervisor={"context_input_audit": observed})], "full")
+        [dict(trial="formalization", supervisor={"context_input_audit": observed,
+            "provider_invocations": [invocation]})], "full")
     result = comparison.collect(baseline=_baseline(tmp_path), supervisors=[receipt])
     exported = result["rows"][1]["context_input_audit"]["source_formalization"]
     assert len(exported) == 1 and exported[0]["reported_model_input_verified"] is True
@@ -48,6 +52,9 @@ def test_compact_reported_delivery_reaches_retained_comparison_without_candidate
     assert exported[0]["source_obligations_discharged"] == 0
     assert "MUST NOT APPEAR" not in json.dumps(result)
     assert result["benchmark_advantage_claimed"] is False
+    metadata = result["rows"][1]["invocations"][0]["input_observation"]["semantic_metadata_view"]
+    assert metadata["status"] == "reported" and metadata["selection_basis"] == "token_counter"
+    assert metadata["provider_usage_reported"] is metadata["complete_run_token_savings_claimed"] is False
     assert observed == before
 
 
@@ -78,7 +85,8 @@ def test_receipt_or_context_presence_does_not_establish_reported_model_delivery(
 
 
 @pytest.mark.parametrize("change", ["authority", "freshness", "counter_type", "hash", "extra_text", "kind",
-    "duplicate_kind", "duplicate_capsule", "oversize_capsules", "oversize_matches", "missing_schema"])
+    "duplicate_kind", "duplicate_capsule", "oversize_capsules", "oversize_matches", "missing_schema",
+    "foreign_task", "missing_parent_task"])
 def test_malformed_or_unbounded_observation_is_not_projected(observed, change):
     value = observed["capsules"][0]["source_formalization_context"]
     if change == "authority": value["proof_authority"] = True
@@ -91,6 +99,8 @@ def test_malformed_or_unbounded_observation_is_not_projected(observed, change):
     elif change == "duplicate_capsule": observed["capsules"].append(deepcopy(observed["capsules"][0]))
     elif change == "oversize_capsules": observed["capsules"] *= 33
     elif change == "oversize_matches": observed["matches"] *= 513
+    elif change == "foreign_task": value["task_cid"] = "cid:foreign"
+    elif change == "missing_parent_task": del observed["capsules"][0]["task_cid"]
     else: del value["schema"]
     assert project(observed) == []
 

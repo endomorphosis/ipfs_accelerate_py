@@ -8,6 +8,7 @@ admission and the trusted receipt's custody belong to the existing owner.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 import hashlib
 import json
 import math
@@ -20,6 +21,9 @@ TRANSPORT_SCHEMA = "supervisor-semantic-router-input@1"
 VIEW_SCHEMA = "supervisor-semantic-metadata-view@1"
 RECEIPT_SCHEMA = "supervisor-semantic-metadata-view-receipt@1"
 SELECTION_SCHEMA = "supervisor-semantic-metadata-selection@1"
+TOKEN_SELECTION_SCHEMA = "supervisor-semantic-metadata-selection@2"
+TOKEN_COUNTER_SCHEMA = "supervisor-semantic-metadata-token-counter@1"
+TOKEN_MEASUREMENT_SCOPE = "complete-rendered-prompt-text@1"
 TOKEN_PROXY = "utf8-bytes-ceil-div4@1"
 MAX_BYTES = 2_000_000
 MAX_ROWS = 4096
@@ -326,9 +330,78 @@ class SemanticMetadataSelection:
         return _parse(self.receipt_json)
 
 
+@dataclass(frozen=True)
+class SemanticMetadataTokenCounter:
+    """Bind an existing counting callable to its caller-declared identity.
+
+    ``count`` can be an existing ``CalibratedTokenEstimator.estimate`` method.
+    Qualification is either ``provider_tokenizer`` or ``estimate``. This
+    binding does not authenticate a tokenizer or count provider-added messages,
+    tool schemas, cached usage or output tokens. The selector counts only the
+    two complete rendered strings supplied by its existing owner.
+    """
+
+    count: Callable[[str], int]
+    provider: str
+    model: str
+    tokenizer: str
+    tokenizer_revision: str
+    qualification: str
+
+
+def _counter_identity(counter):
+    if type(counter) is not SemanticMetadataTokenCounter or not callable(counter.count):
+        raise SemanticMetadataViewError("typed callable token counter required")
+    identity = {field: _text(getattr(counter, field), "token_counter_" + field)
+                for field in ("provider", "model", "tokenizer", "tokenizer_revision", "qualification")}
+    if any(not value.strip() for value in identity.values()):
+        raise SemanticMetadataViewError("nonblank token counter identity required")
+    if identity["qualification"] not in {"provider_tokenizer", "estimate"}:
+        raise SemanticMetadataViewError("token counter qualification differs")
+    return {"schema": TOKEN_COUNTER_SCHEMA, **identity,
+            "measurement_scope": TOKEN_MEASUREMENT_SCOPE,
+            "identity_caller_supplied": True, "provider_usage_verified": False}
+
+
+def _counter_measurement(counter, native, candidate):
+    # A supplied but unusable counter never silently rescues a compact candidate
+    # with the byte proxy. Counts are published atomically, including on failure.
+    identity = None
+    try:
+        identity = _counter_identity(counter)
+    except (SemanticMetadataViewError, TypeError, ValueError):
+        status = "invalid"
+    else:
+        try:
+            native_tokens, candidate_tokens = counter.count(native), counter.count(candidate)
+            if any(type(value) is not int or not 1 <= value <= 2**63 - 1
+                   for value in (native_tokens, candidate_tokens)):
+                raise SemanticMetadataViewError("invalid complete prompt token count")
+        except Exception:
+            # Counter exceptions can contain prompt text or credentials. Retain
+            # only a stable failure classification, never exception messages.
+            status = "failed"
+        else:
+            return {"token_counter_status": "counted", "token_counter_identity": identity,
+                    "token_counter_identity_sha256": _sha(_json(identity)),
+                    "native_complete_tokens": native_tokens,
+                    "candidate_complete_tokens": candidate_tokens}
+    return {"token_counter_status": status, "token_counter_identity": identity,
+            "token_counter_identity_sha256": _sha(_json(identity)) if identity else None,
+            "native_complete_tokens": None, "candidate_complete_tokens": None}
+
+
 def select_semantic_metadata_view(*, view: SemanticMetadataView, native_complete_prompt: str,
-                                  candidate_complete_prompt: str) -> SemanticMetadataSelection:
-    """Select only a smaller complete input under an explicitly named proxy."""
+                                  candidate_complete_prompt: str,
+                                  token_counter: SemanticMetadataTokenCounter | None = None,
+                                  ) -> SemanticMetadataSelection:
+    """Select a smaller complete input using the supplied counter or named proxy.
+
+    Without a counter, retain the original @1 selection and receipt exactly.
+    With a counter, @2 records its declared identity, qualification and counts;
+    invalid or failed counts select the unmodified native input. Neither case
+    establishes actual provider usage or complete-run token savings.
+    """
     if type(view) is not SemanticMetadataView:
         raise SemanticMetadataViewError("native metadata candidate required")
     if restore_semantic_metadata_view(provider_prompt=view.provider_prompt, receipt=view.receipt) != view.native_prompt:
@@ -342,13 +415,24 @@ def select_semantic_metadata_view(*, view: SemanticMetadataView, native_complete
     if (candidate_complete_prompt != prefix + view.provider_prompt + suffix
             or candidate_complete_prompt.count(view.provider_prompt) != 1):
         raise SemanticMetadataViewError("complete metadata input changed a prefix or suffix")
-    selected = (_byte_count(candidate_complete_prompt) < _byte_count(native_complete_prompt)
-                and _proxy(candidate_complete_prompt) < _proxy(native_complete_prompt))
+    measurement = None
+    bytes_smaller = _byte_count(candidate_complete_prompt) < _byte_count(native_complete_prompt)
+    if token_counter is None:
+        selected = bytes_smaller and _proxy(candidate_complete_prompt) < _proxy(native_complete_prompt)
+        fallback = None if selected else "complete_input_not_smaller_under_bytes_and_proxy"
+    else:
+        measurement = _counter_measurement(token_counter, native_complete_prompt, candidate_complete_prompt)
+        if measurement["token_counter_status"] != "counted":
+            selected = False
+            fallback = "complete_input_token_counter_" + measurement["token_counter_status"]
+        else:
+            selected = bytes_smaller and measurement["candidate_complete_tokens"] < measurement["native_complete_tokens"]
+            fallback = None if selected else "complete_input_not_smaller_under_bytes_and_token_counter"
     chosen = candidate_complete_prompt if selected else native_complete_prompt
     receipt = {
         "schema": SELECTION_SCHEMA, "view_receipt_sha256": _sha(view.receipt_json),
         "selected_mode": "common-bindings@1" if selected else "legacy",
-        "fallback_reason": None if selected else "complete_input_not_smaller_under_bytes_and_proxy",
+        "fallback_reason": fallback,
         "token_proxy": TOKEN_PROXY, "candidate_only": True,
         "native_complete_sha256": _sha(native_complete_prompt), "native_complete_bytes": _byte_count(native_complete_prompt),
         "native_complete_proxy_tokens": _proxy(native_complete_prompt),
@@ -358,4 +442,11 @@ def select_semantic_metadata_view(*, view: SemanticMetadataView, native_complete
         "selected_complete_proxy_tokens": _proxy(chosen),
         **{field: False for field in _FALSE_FIELDS},
     }
+    if measurement is not None:
+        receipt.update(schema=TOKEN_SELECTION_SCHEMA, **measurement,
+                       selection_basis="token_counter", actual_provider_usage_verified=False,
+                       provider_usage_reported=False, cli_scaffolding_measured=False,
+                       complete_run_token_savings_claimed=False,
+                       selected_complete_tokens=(measurement["candidate_complete_tokens"] if selected
+                                                 else measurement["native_complete_tokens"]))
     return SemanticMetadataSelection(chosen, receipt["selected_mode"], _json(receipt))

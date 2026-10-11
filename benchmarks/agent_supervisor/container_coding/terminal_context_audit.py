@@ -175,6 +175,81 @@ def _formalization_receipt(value: dict) -> dict:
     return value
 
 
+def _token_selection_receipt(metadata: dict, item: dict) -> None:
+    """Validate recorded @2 arithmetic; a receipt cannot authenticate its counter."""
+    base_fields = {"schema", "view_receipt_sha256", "selected_mode", "fallback_reason",
+        "token_proxy", "candidate_only", "native_complete_sha256", "native_complete_bytes",
+        "native_complete_proxy_tokens", "candidate_complete_sha256", "candidate_complete_bytes",
+        "candidate_complete_proxy_tokens", "selected_complete_sha256", "selected_complete_bytes",
+        "selected_complete_proxy_tokens", "source_freshness_verified", "program_semantics_proved",
+        "omission_authority", "proof_authority", "execution_authority", "completion_authority",
+        "publication_authority"}
+    token_fields = {"token_counter_status", "token_counter_identity", "token_counter_identity_sha256",
+        "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens",
+        "selection_basis", "actual_provider_usage_verified", "provider_usage_reported",
+        "cli_scaffolding_measured", "complete_run_token_savings_claimed"}
+    if (set(metadata) != base_fields | token_fields
+            or metadata["selection_basis"] != "token_counter"
+            or metadata["token_proxy"] != "utf8-bytes-ceil-div4@1"
+            or any(metadata[key] is not False for key in (
+                "actual_provider_usage_verified", "provider_usage_reported",
+                "cli_scaffolding_measured", "complete_run_token_savings_claimed"))):
+        raise ValueError("invalid token-counted metadata selection schema or usage claim")
+    status = metadata["token_counter_status"]
+    identity = metadata["token_counter_identity"]
+    if type(status) is not str or status not in {"counted", "failed", "invalid"}:
+        raise ValueError("invalid metadata token counter status")
+    for key in ("provider", "model"):
+        value = item.get(key)
+        if type(value) is not str or not value.strip() or len(value.encode()) > 4096:
+            raise ValueError("token-counted metadata requires caller provider/model identity")
+    if status == "invalid":
+        if identity is not None or metadata["token_counter_identity_sha256"] is not None:
+            raise ValueError("invalid counter cannot carry a qualified identity")
+    else:
+        identity_fields = {"schema", "provider", "model", "tokenizer", "tokenizer_revision",
+            "qualification", "measurement_scope", "identity_caller_supplied", "provider_usage_verified"}
+        if (type(identity) is not dict or set(identity) != identity_fields
+                or identity["schema"] != "supervisor-semantic-metadata-token-counter@1"
+                or identity["measurement_scope"] != "complete-rendered-prompt-text@1"
+                or type(identity["qualification"]) is not str
+                or identity["qualification"] not in {"provider_tokenizer", "estimate"}
+                or identity["identity_caller_supplied"] is not True
+                or identity["provider_usage_verified"] is not False):
+            raise ValueError("invalid metadata token counter identity or measurement scope")
+        for key in ("provider", "model", "tokenizer", "tokenizer_revision", "qualification"):
+            value = identity[key]
+            if type(value) is not str or not value.strip() or len(value.encode()) > 4096:
+                raise ValueError("invalid metadata token counter identity field")
+        if any(identity[key] != item[key] for key in ("provider", "model")):
+            raise ValueError("metadata token counter differs from caller provider/model")
+        raw = json.dumps(identity, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False, allow_nan=False).encode()
+        if _digest(metadata["token_counter_identity_sha256"]) != _sha(raw):
+            raise ValueError("metadata token counter identity hash differs")
+    token_keys = ("native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens")
+    if status == "counted":
+        if any(type(metadata[key]) is not int or not 1 <= metadata[key] <= 2**63 - 1
+               for key in token_keys):
+            raise ValueError("invalid complete input token count")
+        selected = (metadata["candidate_complete_bytes"] < metadata["native_complete_bytes"]
+                    and metadata["candidate_complete_tokens"] < metadata["native_complete_tokens"])
+        fallback = None if selected else "complete_input_not_smaller_under_bytes_and_token_counter"
+    else:
+        if any(metadata[key] is not None for key in token_keys):
+            raise ValueError("unavailable counter cannot report token measurements")
+        selected = False
+        fallback = "complete_input_token_counter_" + status
+    chosen = "candidate" if selected else "native"
+    if (metadata["selected_mode"] != ("common-bindings@1" if selected else "legacy")
+            or metadata["fallback_reason"] != fallback
+            or any(metadata["selected_complete_" + field] != metadata[chosen + "_complete_" + field]
+                   for field in ("sha256", "bytes", "proxy_tokens", "tokens"))
+            or any(metadata[arm + "_complete_proxy_tokens"] != (metadata[arm + "_complete_bytes"] + 3) // 4
+                   for arm in ("native", "candidate", "selected"))):
+        raise ValueError("token-counted metadata selection arithmetic differs")
+
+
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
@@ -265,7 +340,10 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     if metadata is not None:
         if (not translated or result["semantic_translation"]["schema"] != "supervisor-semantic-router-encoding@1"
                 or type(metadata) is not dict
-                or metadata.get("schema") != "supervisor-semantic-metadata-selection@1"
+                or type(metadata.get("schema")) is not str
+                or metadata.get("schema") not in {"supervisor-semantic-metadata-selection@1",
+                                                   "supervisor-semantic-metadata-selection@2"}
+                or type(metadata.get("selected_mode")) is not str
                 or metadata.get("selected_mode") not in {"legacy", "common-bindings@1"}
                 or metadata.get("candidate_only") is not True
                 or any(metadata.get(key) is not False for key in (
@@ -278,6 +356,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
                     "native_complete_proxy_tokens", "candidate_complete_proxy_tokens", "selected_complete_proxy_tokens"):
             if type(metadata.get(key)) is not int or not 0 < metadata[key] <= 262_144:
                 raise ValueError("invalid metadata input count")
+        if metadata["schema"] == "supervisor-semantic-metadata-selection@2":
+            _token_selection_receipt(metadata, item)
+            result.update(provider=item["provider"], model=item["model"])
         if (metadata["selected_complete_bytes"] != result["model_prompt_bytes"]
                 or metadata["selected_complete_sha256"] != result["model_prompt_sha256"]):
             raise ValueError("metadata selection differs from actual provider input")
@@ -317,7 +398,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 
 
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
-                      formalization: dict | None = None):
+                      formalization: dict | None = None, token_counter=None):
     """Reconstruct historical provider bytes without granting freshness."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
@@ -401,10 +482,40 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         if reply is not None:
             candidate, candidate_reply = apply_coding_reply_contract(model_prompt=candidate,
                 mode=reply["mode"], purpose="coding", provider="codex_cli")
-        selection = select_semantic_metadata_view(view=view, native_complete_prompt=model,
-            candidate_complete_prompt=candidate)
-        checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
-        model = selection.selected_prompt
+        if metadata["schema"] == "supervisor-semantic-metadata-selection@2":
+            # Reconstruct recorded delivery even when the public audit child
+            # lacks the trusted callable. Never substitute the @1 byte proxy
+            # for an unavailable @2 counter or claim to have replayed it.
+            _token_selection_receipt(metadata, receipt)
+            native = model
+            chosen = candidate if metadata["selected_mode"] == "common-bindings@1" else native
+            checks["semantic_metadata_recorded_prompt_identities"] = (
+                metadata["view_receipt_sha256"] == _sha(view.receipt_json.encode())
+                and all(metadata[arm + "_complete_sha256"] == _sha(text.encode())
+                        and metadata[arm + "_complete_bytes"] == len(text.encode())
+                        for arm, text in (("native", native), ("candidate", candidate), ("selected", chosen))))
+            checks["semantic_metadata_token_counter_verified"] = False
+            checks["semantic_metadata_selection_receipt"] = False
+            if token_counter is not None:
+                from ipfs_accelerate_py.agent_supervisor.runtime.semantic_metadata_view import (
+                    SemanticMetadataTokenCounter,
+                )
+                caller_matches = (type(token_counter) is SemanticMetadataTokenCounter
+                    and token_counter.provider == receipt["provider"]
+                    and token_counter.model == receipt["model"])
+                if caller_matches:
+                    selection = select_semantic_metadata_view(view=view, native_complete_prompt=native,
+                        candidate_complete_prompt=candidate, token_counter=token_counter)
+                    matched = _same_json(metadata, selection.receipt)
+                    checks["semantic_metadata_selection_receipt"] = matched
+                    checks["semantic_metadata_token_counter_verified"] = (
+                        matched and metadata["token_counter_status"] == "counted")
+            model = chosen
+        else:
+            selection = select_semantic_metadata_view(view=view, native_complete_prompt=model,
+                candidate_complete_prompt=candidate)
+            checks["semantic_metadata_selection_receipt"] = _same_json(metadata, selection.receipt)
+            model = selection.selected_prompt
         if reply is not None:
             checks["semantic_metadata_native_reply_contract"] = (
                 _same_json(receipt.get("semantic_metadata_native_coding_reply_contract"), baseline_reply))
@@ -706,6 +817,13 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
             # provider. Never infer a missing provider from the selected mode.
             if row.get("coding_reply_contract") is not None:
                 fields += ("provider",)
+            metadata = row.get("semantic_metadata_view")
+            if (type(metadata) is dict
+                    and metadata.get("schema") == "supervisor-semantic-metadata-selection@2"):
+                # Preserve the caller's exact identities for counter binding.
+                # Neither the selection receipt nor the child creates a trusted
+                # counter, and missing identities must remain missing.
+                fields += ("provider", "model")
             rows.append({key: row[key] for key in fields if key in row})
         request = json.dumps(rows).encode()
         if len(rows) > MAX_RECEIPTS or len(request) > MAX_REQUEST_BYTES:
