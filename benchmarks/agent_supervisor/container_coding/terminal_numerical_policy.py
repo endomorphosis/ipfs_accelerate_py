@@ -8,6 +8,9 @@ PROFILE = "python-numerical-structure@1"
 PROFILES = (PROFILE,)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_observation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_native_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_native_start_preflight.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
     "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",

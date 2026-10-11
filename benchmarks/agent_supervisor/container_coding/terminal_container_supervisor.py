@@ -921,6 +921,13 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         finally:
             report["phases"]["planning_seconds"] = time.monotonic() - before
         report["planning"] = planned
+        if numerical_formalization_profile is not None:
+            from .terminal_numerical_observation import observe_numerical_planning
+            observed = observe_numerical_planning(state=state, report=report,
+                profile=numerical_formalization_profile)
+            report["numerical_planning_observation"] = observed
+            if observed["status"] != "verified":
+                raise RuntimeError("selected numerical experiment lacks verified planner delivery or ablation absence")
         enter_phase("preparation")
         if not planned.get("qualified"):
             raise RuntimeError("planning did not produce a qualified, independently admitted plan")
