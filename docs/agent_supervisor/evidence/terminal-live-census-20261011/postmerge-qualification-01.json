@@ -1,0 +1,198 @@
+{
+  "actual_live_run_not_relabelled_as_postmerge": true,
+  "actual_live_run_source_freeze_sha256": "c4b1ec77e81c6cc61902da03d59fe9d8b6a121a24a6eb13b994bd02abe8cc73c",
+  "all_bound_sources_unchanged": true,
+  "completion_authority_seals": 0,
+  "errors": 0,
+  "failures": 0,
+  "fresh_seal_database": true,
+  "mandatory_AST_plugin": "ipfs_accelerate_py.testing.pytest_ast_seal",
+  "merged_runtime_modules_in_native_AST_catalog": true,
+  "neural_inference_calls": 0,
+  "official_verifier_executed": false,
+  "optional_global_metadata_mirror_selected": false,
+  "original_command_sha256": "689adaeedf6713c939ba4886aaac6e15f3962a8c754d6dee4d090c6d43e9f6b7",
+  "original_exit_receipt_sha256": "fb26a7a2d630f7346a3a7c139c5e8d3328144a6f6e870ed833224af26c9c417c",
+  "passing_source_seals": 218,
+  "preserved_incoming_main": "980b506fac1990e73eb0322ccd5a19d2c2417172",
+  "provider_calls": 0,
+  "schema": "terminal-live-census-postmerge-native-qualification@1",
+  "scope": "authored health/Grok/driver/router controls and three current native owner fixtures; not a live benchmark repeat",
+  "seconds": 98.18,
+  "skipped": 0,
+  "source_body_checks": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "230e68980dd38dfc1e227ac18204734ec98e178ab6d0c42820738c825fc71b82"
+    },
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "9402fbf2f5e0603b3f3bc64a09987388c285b1be1ef7b72bfeee1c4ded626717"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "a2c5ab68fb2c8acfdaba6e1900aa6f89b2b647311964a7dbf1068167b6d83ab7"
+    },
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "e5a054cc8482266f940802fa038e6d978c50b9a77e59bc8f4321ee815b221fe5"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_coding_reply_policy.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "56bf22a418bb2a1ba7ac8b31ad036b536f60b76e743e4e8a4c886dd46a206dbe"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "58c184d08aaf47ea9eeb34f2bba8a438a1b5c2d4313a8dbf5aed865bb5dd8bb9"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "f92e5af139605b0c0bcd6795207bd2287f1b6740f4913c460fbbd5545b575058"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "d1006b5d2d34e27c180cc61599395b4d99be7afabab33ff9896d841bf6d465a2"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_live_census_provenance.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "c2c009b8960674df8752ab1d7ada02b7951f845a4228fb0383913053ef905d9b"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_metadata_preflight.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "b58388d4b22db7c8891263d2cdf2b050f4870072d58f077c88fea21324fb43bb"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "32ecda1acc856ffda013243823e1b92b3eb4cc99588c59cc090d8aa16289ab83"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_transport_policy.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "e7b427977d44baa3d0a00d1a8d543744afd124d764e2eafcf2840c6b5b5004f9"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "ac1c9e31a54be13f0492d98bbd33228e4c1d4468c38d3d7f74a0656172b3cb1b"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "12f38393904f1ff588b709331e1e24c7595223af87f6331459efb381128e84d8"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_grok_readiness.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "3052b56eccc92efce3cc03e445bd287695135fd20a7df6663db29cd44ff36bf5"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "44e6d9cb867beb43c4638349deaf5ad395c7493d64174fe7a53112fa3a86b8fd"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "61db47e026bafb01dd51109bb704093ea838f60a4e561c72819cf3ba9add4ec3"
+    },
+    "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "bb1c4fa73cae66c79d8a5e57d5a94ddad705d342ce5cacbc7ed67432b83241f8"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "0317c332e72eee4ba041e8229433244c662e485e79ae628398eae3d36d379641"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_catalog.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": false,
+      "sha256": "d7f1649e236ab80cf15cce8b2c71b5ca130d98a3b9319ae19e0e8e2ca1bc1e61"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_census.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "525b2ccfdc6763e40ec08fabf40faf0eff9686e6e90696bd005794d0ff4195ef"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "db363617affa53cd9546dc5c9d412dd170be4da65b95a72e562ecd7202ee254e"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "b87b0999789fd38338e2d9664e8dcb09d52037a7a1d5354e4dfe981ea973a3bd"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9"
+    },
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "4c7f3923e14082b49fd1d0d2a0fe6aa27ab4a041e95e5810f136b635dd66b8ec"
+    },
+    "ipfs_accelerate_py/llm_router.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "105ae0c70ab2020e9b558a2be0f37de3f8ccf0a7bf537aa79dc16097ebd7f659"
+    },
+    "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "784f1104df0659ba2a5e9ac740d704f3e9f8bbc8bd84fda06bbeb084877c741c"
+    },
+    "test/api/test_semantic_metadata_census_dispatch.py": {
+      "before_after_equal": true,
+      "native_AST_catalog_matches": true,
+      "sha256": "67b2bfef215fa4a87cf5355937d910b694c5e5c1df54725eaa4f81f534bf55b4"
+    }
+  },
+  "source_head": "df91b5b5d70ae08c265d0929c1a7076cc35449e1",
+  "test_artifacts": {
+    "postmerge-tests-01.log": {
+      "bytes": 351,
+      "sha256": "5147b87ef71d3d733de06a6e289d331b1b22da2b30b4e57254ee6ccfa2d51f1f"
+    },
+    "postmerge-tests-01.xml": {
+      "bytes": 45640,
+      "sha256": "785d40276c4a1f55c2a1b9463559ec63fb2c305a9b04a94a8a3b0e2d42cbb80c"
+    }
+  },
+  "tests": 218,
+  "training_steps": 0
+}

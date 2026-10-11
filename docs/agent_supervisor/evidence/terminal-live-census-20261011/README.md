@@ -65,6 +65,18 @@ configuration. The live helper body is included in the test import closure;
 23 of the 24 frozen runtime bodies intersect that source catalog and all match.
 That intersection is not a claim of exhaustive execution coverage.
 
+The separate [postmerge qualification](postmerge-qualification-01.json) records
+**218 passed, zero failed, errored or skipped**, with 218 fresh mandatory AST
+seals and zero completion-authority seals. It exercises the preserved health
+generation and Grok catalog changes, the census driver/router controls and
+three current native owner fixtures. Both merged runtime modules enter the
+native AST catalog, and bound source bodies match before and after. This is
+compatibility evidence for the publication merge, not a repeat of the live run.
+Its counts overlap prior suites and are not additive.
+The [issued command projection](postmerge-test-command-01.public.json) retains
+the exact selected tests, interpreter, explicit environment and before hashes,
+with local paths replaced by the same named aliases.
+
 The [earlier qualification ledger](test-qualification-02.public.json) preserves
 194 driver/runner passes, 192 cache/resource/archive passes, earlier individual
 suites and historical source transitions. Counts overlap and must not be added
@@ -98,6 +110,12 @@ reduction does not establish complete-run token savings or benchmark success.
 The [updated plan](../../terminal_token_metadata_plan.md) prioritizes current
 accepted formal-status reuse and bounded owner lookup, qualified against current
 sources and unchanged obligations before another complete-token comparison.
+The [source-only next-treatment inventory](formal-status-next-treatment-inventory-01.json)
+identifies the accepted native proof-cache gate, currentness checks and existing
+digest-handle context APIs. Actual accepted receipt availability and repeated
+status coverage remain unknown. Start with a closed owner audit using an already
+admitted owner and complete proof key; default cache constructors can initialize
+state. The inspected Terminal wiring does not yet expose that complete binding.
 Conditional spectral lemmas do not certify the whole eigenvalue task. Existing
 negative complete-token comparison results remain relevant; planning stays in
 the evaluation and every retained attempt contributes to usage accounting.

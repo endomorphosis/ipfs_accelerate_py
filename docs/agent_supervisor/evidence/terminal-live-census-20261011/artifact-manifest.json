@@ -1,8 +1,8 @@
 {
   "artifacts": {
     "README.md": {
-      "bytes": 6208,
-      "sha256": "7b7496c011fc32c897db995a3b327bb55899202ea5365178167bcf1ea0175841"
+      "bytes": 7507,
+      "sha256": "663bc05bd9b739414738d863e5597f9bd6118063bcaf1d48781d380b9818285d"
     },
     "actual-live-census-01.json": {
       "bytes": 1222,
@@ -44,9 +44,29 @@
       "bytes": 40355,
       "sha256": "4f6062b3bc4f4242013df918fbfeca58a939efa7c7b4c4013ad75514db5d816b"
     },
+    "formal-status-next-treatment-inventory-01.json": {
+      "bytes": 14873,
+      "sha256": "123e7509bb132f7dcdfd9a7fbed558eebc6ce536c1c1b1362fbd8c14a51272ba"
+    },
     "owner-boundary-source-review-03.public.json": {
       "bytes": 14069,
       "sha256": "5e031b0c49db8a8e399c537999d29a92e761f7a10a67b967b4bd3740fdf391f1"
+    },
+    "postmerge-qualification-01.json": {
+      "bytes": 9465,
+      "sha256": "002216b17822d8b65deac42a22086eb96dc7301a1785a4e0b0ae4eb88c6f177c"
+    },
+    "postmerge-test-command-01.public.json": {
+      "bytes": 8687,
+      "sha256": "84b338d2bc29db570da3c4974ceb23a75aaae296171e3a2e039b116d40d11bb2"
+    },
+    "postmerge-tests-01.log": {
+      "bytes": 351,
+      "sha256": "5147b87ef71d3d733de06a6e289d331b1b22da2b30b4e57254ee6ccfa2d51f1f"
+    },
+    "postmerge-tests-01.xml": {
+      "bytes": 45640,
+      "sha256": "785d40276c4a1f55c2a1b9463559ec63fb2c305a9b04a94a8a3b0e2d42cbb80c"
     },
     "source-freeze-03.public.json": {
       "bytes": 6411,

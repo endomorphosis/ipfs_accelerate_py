@@ -118,6 +118,13 @@ benchmark input size, behavior, rewards or cumulative tokens.
    offline refusal controls, then census the complete new input. Existing
    conditional spectral lemmas do not certify the whole eigenvalue task or
    qualify an unavailable/slower numerical route for benchmark execution.
+   The [source-only inventory](evidence/terminal-live-census-20261011/formal-status-next-treatment-inventory-01.json)
+   identifies `DoctorProofCacheGate.lookup`, render/commit revalidation and
+   existing proof-context digest handles. The inspected Terminal wiring lacks a
+   complete admitted proof-owner/key binding; actual accepted receipt and
+   repeated-status coverage remain unknown. Begin with a closed owner audit,
+   refuse absent bindings before opening storage, and retain the native input
+   when evidence or measured benefit is absent.
 3. **Qualify a bounded owner lookup for progressive disclosure.** Required facts
    stay inline until the model has an actual qualified expansion interface.
    Typed queries should return an exact bounded population with an explicit

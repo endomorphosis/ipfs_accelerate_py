@@ -157,8 +157,8 @@ planning result matched its router receipt, and current owner/world/source/task
 checks passed after census. The allocated worktree was removed, worker cleanup
 succeeded, and the exact container was independently absent twice. No benchmark
 verifier, candidate implementation, validation or task completion occurred.
-Private prompts, catalogs, provider traces, owner state and weights were not
-published. The [qualification ledger](evidence/terminal-live-census-20261011/README.md)
+Private prompts, catalogs, provider traces, owner state and weights were excluded
+from this evidence package. The [qualification ledger](evidence/terminal-live-census-20261011/README.md)
 preserves the preparation refusal and earlier test/source transitions.
 
 This completes the genuine planned-input census gate. Its modest reduction does

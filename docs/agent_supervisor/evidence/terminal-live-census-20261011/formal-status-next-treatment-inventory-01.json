@@ -1,0 +1,289 @@
+{
+  "accepted_proof_gate": {
+    "accepted_verdict_scope": "ProofVerdict distinguishes proved, disproved, inconclusive, unsupported, error, cancelled; acceptance does not certify a broader obligation or whole benchmark",
+    "authority": "FormalVerificationCache durable owner, federated through DoctorProofCacheGate; peer catalogs and transport hints nominate only",
+    "important_storage_limit": "exact_path pins native owner without relocation; constructor initializes storage and gate lookup may persist observations. Reuse an already admitted owner; never open a guessed/default cache for exploratory reads.",
+    "key_dimensions": "forest/tree/overlay/AST/graph/corpus/goal/premises/translation/solver/kernel/toolchain/registry/policy/budget/sandbox/environment/candidate-tree/assurance",
+    "key_requirement": "tree and candidate-tree logical roots agree; retain canonical CID/profile identities; pseudo-CIDs, double hashing and private material refuse",
+    "lookup": "DoctorProofCacheGate.lookup requires complete DoctorProofCacheKey; delegates to formal lookup with required assurance and CURRENT freshness; canonical receipt reconstruction and assurance rederivation; final owner tombstone/quarantine check after reconstruction",
+    "render_and_commit": "revalidate_for_render and revalidate_for_commit call lookup with corresponding stage, not a saved-hit boolean; Doctor transaction also accepts a cache_binding_probe before mutation and immediate commit"
+  },
+  "blockers_and_limits": [
+    "Actual accepted receipt availability and repeated-population size are unknown by design; source-only inventory cannot confirm largest-eigenval proof acceptance.",
+    "Conditional spectral lemmas do not certify the complete numerical task, numerical route availability or speed.",
+    "Current Terminal task/context does not expose a complete DoctorProofCacheKey owner binding or qualified model-facing formal-status lookup in the inspected wiring.",
+    "Catalog records, claim cache ids, source graphs, embeddings and open Doctor work cannot be accepted proof authority.",
+    "Default cache constructors can initialize or relocate state; future owner lookup needs explicit admitted location and maintained custody.",
+    "A proof card appended beside original repeated status can increase input; replacement and complete-input costs must be measured."
+  ],
+  "boundaries": {
+    "completion_authority": false,
+    "execution_authority": false,
+    "models_or_inference_called": false,
+    "native_owner_apis_invoked": false,
+    "proof_authority": false,
+    "providers_called": false,
+    "runtime_database_rows_read": false,
+    "runtime_prompt_or_provider_body_read": false,
+    "runtime_state_body_read": false,
+    "source_changed_by_inventory": false,
+    "tests_executed": false
+  },
+  "bounded_owner_lookup_hooks": [
+    {
+      "api": "ProofCertificateDatabase.records_for_decision(kind,key_id,receipt_id,limit) / facade with explicit store",
+      "bounds": {
+        "allowed_rows_max": 256,
+        "allowed_rows_min": 1,
+        "default_rows": 64
+      },
+      "meaning": "Typed filtered observational records only, no completion/decision/DuckLake authority; unconfigured is explicit. Nomination/key id cannot certify acceptance."
+    },
+    {
+      "api": "CodeProofQuery properties_satisfied/open/refuted/unsupported/not_measured/stale and proof_delta",
+      "bounds": {
+        "default_results": 256,
+        "hard_max_results": 1024
+      },
+      "meaning": "In-memory typed claim/compilation results with truncation; cache miss is not refutation. _annotate_cache does not resolve accepted receipts from key-id-only data."
+    },
+    {
+      "api": "load_code_retrieval_context and resolve_code_symbol_ast_facts",
+      "bounds": {
+        "each_source_bytes": 2000000,
+        "retrieval_artifact_bytes": 2000000,
+        "retrieval_results_max": 20,
+        "snapshot_bytes": 64000000,
+        "source_paths_max": 64,
+        "source_paths_min": 1
+      },
+      "meaning": "Typed source/task replay and native AST facts; source drift yields stale/no-hits; no proof authority."
+    },
+    {
+      "api": "CodeContractProofContextCompiler.compile/compile_delta",
+      "bounds": {
+        "default_bytes": 12288,
+        "default_items": 256
+      },
+      "meaning": "Pure dependency closure/expansion handles; overflow incomplete, stale parent invalidates delta. Handles alone do not qualify an expansion interface."
+    }
+  ],
+  "existing_authored_control_sources": [
+    {
+      "bytes": 17827,
+      "controls": [
+        "test_warm_exact_hit_revalidates_before_render_and_commit",
+        "test_reject_partial_solver_only_raw_countermodel_stale",
+        "test_wrong_tree_and_binding_mismatch_rejected",
+        "test_negative_hits_and_timeouts_remain_diagnostic",
+        "test_semantic_root_change_invalidates_descendants_and_tombstones"
+      ],
+      "path": "test/api/test_agent_supervisor_doctor_proof_cache.py",
+      "sha256": "09dd9f551f4953dd13b9368f58a93e2d67ac99f14f69f577fe05ea97c0948356"
+    },
+    {
+      "bytes": 8034,
+      "controls": [
+        "test_invalidation_between_formal_operation_and_return_refuses",
+        "test_new_process_cannot_revive_positive_after_durable_refusal",
+        "test_quack_snapshot_cannot_substitute_for_current_owner_transaction"
+      ],
+      "path": "test/api/test_doctor_cache_durable_state.py",
+      "sha256": "40f9e6c1bbe4d7eb5709936834688bbeee797161054de7fea420c51e06034783"
+    },
+    {
+      "bytes": 7957,
+      "controls": [
+        "test_satisfied_proofs_are_digest_handles_only",
+        "test_required_claim_coverage_cannot_be_deferred"
+      ],
+      "path": "test/api/test_agent_supervisor_code_proof_context.py",
+      "sha256": "acebbcb0e3d21dad977945d9d0c7e4527c7a34907f13c616ee00b9553e933a32"
+    }
+  ],
+  "meaningful_refusal_controls": [
+    "missing/foreign complete proof key or owner location refuses before any owner opening",
+    "wrong task, candidate tree, source/dependency, policy/toolchain/assumption/premise/profile binding refuses",
+    "stale/expired/partial/solver-only/raw-countermodel receipt remains diagnostic, never accepted",
+    "canonical reconstruction failure, corrupt/equivocal receipt, quarantine or root tombstone refuses",
+    "root invalidation between reconstruction and return or between render and commit refuses",
+    "catalog nomination or cache-key-id-only result cannot become accepted proof",
+    "cache miss remains open; unsupported/not-measured/stale/unknown remain distinct from disproved",
+    "all six native verdicts retain exact semantics; no whole-task claim from narrower lemma",
+    "required obligation/fact closure overflow yields explicit incomplete fallback, never truncation as complete",
+    "unavailable owner lookup/no measured repeated status yields native input fallback; no omission",
+    "source/task currentness drift after census preparation clears success",
+    "closed audit rejects prompt/private witness/credential/provider/source-body fields and counts lookup input/output costs"
+  ],
+  "narrow_implementation_start": {
+    "acceptance_gate": "Authored refusal controls and fresh AST seal, then complete-input census including planning/lookup costs; inventory grants no live proof/reward/full-run savings claim.",
+    "stage_1": "Closed owner audit adjacent to terminal_live_metadata_census._owner_snapshot/prepare_terminal_live_metadata_census after task/world/context validation; use current admitted roots, already selected native owner, complete proof keys; export counts/bytes/hashes/status/fallback only.",
+    "stage_2": "Only for demonstrated accepted native receipts plus repeated status: apply_cache_lookup/claim_from_receipt and satisfied digest handles; replace exact repeats with property/verdict/assumptions/dependency/residual card; revalidate before render and after consumption. Native input fallback preserved.",
+    "stage_3": "Absent/unsupported/no-benefit stays explicit. Qualify bounded task-bound expansion before required-inline omission; no arbitrary SQL/model-supplied database path."
+  },
+  "observed_utc": "2026-10-11T00:54:32.388884+00:00",
+  "schema": "terminal-formal-status-next-treatment-inventory@1",
+  "scope": "source-only next-treatment inventory; no current runtime accepted-status evidence",
+  "source_bindings": [
+    {
+      "bytes": 80046,
+      "entrypoints": {
+        "DoctorProofCacheGate": 1343,
+        "DoctorProofCacheKey": 481,
+        "invalidate_semantic_root": 1927,
+        "lookup": 1561,
+        "reconstruct_receipt": 1527,
+        "revalidate_for_commit": 1734,
+        "revalidate_for_render": 1727
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "sha256": "28a2f397855a97f2ab0ed0602a54fbe276c91f3635584f2f93a1d1af91fc0b9e"
+    },
+    {
+      "bytes": 110715,
+      "entrypoints": {
+        "FormalVerificationCache": 1264,
+        "constructor exact_path": 1273,
+        "lookup": 2247
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "3b42f38d1c7b5c9841d4f0b845098f11a55858779e9b814d8ecd455904bfb321"
+    },
+    {
+      "bytes": 74508,
+      "entrypoints": {
+        "ProofVerdict": 178
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "06d897f1679e615f18b6cf6fbc6a666515e0826ca87ea0daf89b82d8d2418450"
+    },
+    {
+      "bytes": 56832,
+      "entrypoints": {
+        "apply_cache_lookup": 1253,
+        "selector currentness": 1345
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_claim_contracts.py",
+      "sha256": "5b6e12ee4c0663a699cf62c7050cb5d494365eec80a7c9344832b3a5d92bef37"
+    },
+    {
+      "bytes": 28101,
+      "entrypoints": {
+        "CodeProofQuery": 385,
+        "_annotate_cache": 420,
+        "proof_delta": 565,
+        "properties_open": 438,
+        "properties_satisfied": 429
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_query.py",
+      "sha256": "7cd038d6637411d9524785a9a349c12a372d669b4d731efecadb208ea962a0df"
+    },
+    {
+      "bytes": 31332,
+      "entrypoints": {
+        "build_code_proof_context_references": 230,
+        "compile_code_proof_context_capsule": 479,
+        "compile_code_proof_context_delta": 739,
+        "satisfied proof digest handles": 397
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_context.py",
+      "sha256": "a8b3a6e568a48f9d73af0a4ad52de867bbd1e645f478f75db8b3cd4cc6942897"
+    },
+    {
+      "bytes": 49813,
+      "entrypoints": {
+        "CodeContractProofContextCompiler": 1062,
+        "ProofContextLimits": 185
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/code_contract_proof_context.py",
+      "sha256": "c1f3cbd4751a17c16326eb577861b8322bd01585ed1ff033d9023b06fbdb8c0c"
+    },
+    {
+      "bytes": 16708,
+      "entrypoints": {
+        "records_for_decision explicit store facade": 391,
+        "records_for_decision owner method": 185
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/proof_certificate_database.py",
+      "sha256": "662ccf623c654f115ca4680cc9a15ec058e2957e905035e0cae49b941be79ebf"
+    },
+    {
+      "bytes": 152351,
+      "entrypoints": {
+        "_pre_commit_revalidate": 3442,
+        "pre-mutation cache binding probe": 2332
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transaction.py",
+      "sha256": "6f887bfb1f3cb2c8fe23cf81459b714055346c7c00e1f382fe87ad858ff0bd10"
+    },
+    {
+      "bytes": 8692,
+      "entrypoints": {
+        "ASSEMBLY_ORDER and REQUIRED_KINDS": 24,
+        "required context preservation": 109
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/context/program_world_context.py",
+      "sha256": "eae6e4176cb6764c07694b2ba46978d62ea22ce2cae357c756db5739af99d11e"
+    },
+    {
+      "bytes": 12109,
+      "entrypoints": {
+        "load_code_retrieval_context": 147
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py",
+      "sha256": "4625604d33c042b4fddcfbdce08b63c1ad5547d40fabe91ed8da66ba6ee90d39"
+    },
+    {
+      "bytes": 61676,
+      "entrypoints": {
+        "resolve_code_symbol_ast_facts": 875,
+        "search_code_symbol_vector_index": 1114
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/code_symbol_vector_index.py",
+      "sha256": "3f0fa3fe2bfd40a008447264698abb08e2e3678e28ef653bee3762959705485d"
+    },
+    {
+      "bytes": 23083,
+      "entrypoints": {
+        "completion population distinct from completion verdict": 190
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/intent_world_snapshot.py",
+      "sha256": "7010d80da9422650d7320159074384134527b3b5426a5fa24059ccb4e2244f5c"
+    },
+    {
+      "bytes": 27492,
+      "entrypoints": {
+        "_owner_snapshot": 85,
+        "prepare_terminal_live_metadata_census": 190
+      },
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+      "sha256": "ea94bdd0d47b193ebd0c9e78f4633ed4c0698ca863a7663efc83b0230c8810f8"
+    },
+    {
+      "bytes": 10779,
+      "entrypoints": {
+        "formal status next priority and admission limit": 107
+      },
+      "path": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "sha256": "0cfd2e0008d18fad799f17fbe44f3c6de02fedcaad872880748809e70f3c2d8d"
+    }
+  ],
+  "source_files_unchanged_during_inventory": true,
+  "source_head": "df91b5b5d70ae08c265d0929c1a7076cc35449e1",
+  "source_head_after": "df91b5b5d70ae08c265d0929c1a7076cc35449e1",
+  "status_context_population": {
+    "actual_accepted_receipt_count": null,
+    "actual_repeated_formal_status_count": null,
+    "existing_representations": [
+      "code_proof_context: required open obligations/assumptions/counterexamples/dependency slice/failure traces; satisfied proof digest handles",
+      "code_contract_proof_context: dependency-complete closure; limits overflow is incomplete",
+      "program_world_context: required tests/proofs/policy/authority/raw source cannot be omitted",
+      "intent_world_snapshot: even empty completion_root is an observed population, not completion authority"
+    ],
+    "largest_eigenval_accepted_proof_absent_established": false,
+    "largest_eigenval_accepted_proof_observed": false,
+    "native_population_measured": false,
+    "population_limit": "Source-only availability inventory; no accepted receipt count or repeated-status population measured.",
+    "terminal_native_context_integration": "Terminal helper validates current plan/admission/task/Source384/world/context and constructs native task input. No direct Terminal wiring of CodeProofQuery/code-proof compiler or dedicated formal-status selector found. Generic proof refs/operator status cannot stand in for accepted proof cards."
+  }
+}
