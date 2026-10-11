@@ -16,6 +16,18 @@ The container comparison explicitly pins `codex_cli` / `gpt-6.1-sol` in both
 the supervisor arm and native Codex baseline. That matched-model profile does
 not exercise the general supervisor's Grok route or its fallback.
 
+For a lossless metadata comparison, hold `semantic_context_profile` and the
+selected capsule population constant and vary `semantic_metadata_view` between
+`legacy` and `common-bindings@1`. Opt-in trial receipts include
+`semantic_metadata_dispatch`, which correlates each observed selection receipt
+with the retained exact-input audit. Only `effective_treatment_observed: true`
+establishes that every observed coding input used the factored representation.
+A valid legacy fallback remains a completed attempt in the requested treatment
+arm, with its provider usage included. Missing or conflicting observations do
+not qualify. Compare repeated trials using native total-token counts and official
+task success; prompt bytes and local tokenizer counts alone do not establish
+end-to-end savings.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,
