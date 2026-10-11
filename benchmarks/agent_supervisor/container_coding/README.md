@@ -47,6 +47,32 @@ session, malformed record, invalid latest cumulative snapshot, or counter reset
 cannot inherit an earlier completion signal. Fresh runtime archives are required
 to qualify the new observations in live trials.
 
+For an explicit output-preview experiment, prepare the full Codex arm with
+`--tool-output-policy artifact-preview@1`. The default is `legacy`; default
+configuration and planning inputs retain their existing bytes. The selected
+coding advisory offers a bounded local output-artifact helper, with exact
+retrieval available when more context is needed. Native CLI tools retain their
+normal behavior. The selection is frozen into preparation and requires an
+archive containing the current helper, policy, and invocation/audit sources.
+
+A selected policy does not establish worker adoption or token savings. Check
+the coding invocation's policy receipt and observed helper use separately from
+the declared benchmark selection, and include any retrieval overhead in a
+matched repeated comparison. Native provider token totals and official task
+success remain the outcome measures; preview bytes alone are insufficient.
+
+The opt-in helper requires Linux process and file primitives. Each explicit
+capture runs argv once without stdin or a TTY, and enforces capture, store, and
+time limits. Stdout and stderr remain separate byte streams; their original
+interleaving is not reconstructed. SIGTERM/SIGINT cleanup is bounded; SIGKILL
+or deliberate process-group escape remains covered by the existing worker and
+container cleanup boundary. Native interactive tools remain available.
+
+Complete captures support exact retrieval during that coding invocation. The
+runner removes the temporary artifact store afterward and retains content-free
+counts and binding hashes. These artifacts do not form a persistent proof
+cache. Missing usage or incomplete cleanup remains explicit in qualification.
+
 Other public Terminal-Bench tasks can use the source-bound task profiles in
 [TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
 supervisor pilot records two official passes and one native-execution timeout,

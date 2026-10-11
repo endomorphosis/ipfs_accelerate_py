@@ -676,6 +676,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_context_profile: str = "legacy-bounded@1",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
+        tool_output_policy: str = "legacy",
         resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
@@ -703,6 +704,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original full semantic arm")
     provider_selection = resolve_provider_profile(provider_profile)
+    from .terminal_tool_output_policy import validate_tool_output_policy, tool_output_selection
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=provider_selection["provider"])
+    if metadata_census_only and tool_output_policy != "legacy":
+        raise ValueError("tool output policy requires an executed coding route")
     if type(metadata_census_only) is not bool:
         raise ValueError("explicit Boolean metadata census selection required")
     if metadata_census_only and (arm != "full" or semantic_metadata_view != "common-bindings@1"
@@ -770,6 +775,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **semantic_transport_selection(semantic_transport_schema),
               **semantic_context_selection(semantic_context_profile),
               **coding_reply_selection(coding_reply_mode),
+              **tool_output_selection(tool_output_policy),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
               "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
@@ -1013,6 +1019,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor,
             semantic_transport_schema=semantic_transport_schema,
             coding_reply_mode=coding_reply_mode,
+            **({"tool_output_policy": tool_output_policy} if tool_output_policy != "legacy" else {}),
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
@@ -1267,6 +1274,8 @@ def main():
                         choices=SEMANTIC_CONTEXT_PROFILES)
     parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
+    from .terminal_tool_output_policy import DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES
+    parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES, default=DEFAULT_TOOL_OUTPUT_POLICY)
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE)
     parser.add_argument("--resource-profile", choices=PROFILES)

@@ -299,11 +299,14 @@ def _provider_failure_diagnostic(error: BaseException, *, provider: str) -> dict
 
 
 def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
-                        semantic_transport: bool = False) -> tuple[str, str]:
+                        semantic_transport: bool = False,
+                        tool_output_binding: dict | None = None) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
     if purpose == "planning":
+        if tool_output_binding is not None:
+            raise ValueError("tool output guidance is coding-only")
         return prompt, ""
     location = json.dumps(str(workspace), ensure_ascii=True)
     advisory = (
@@ -321,6 +324,9 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
         + ("Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
            if semantic_transport else "Original native task prompt follows without modification:\n")
     )
+    if tool_output_binding is not None:
+        from .tool_output_policy import validate_binding
+        advisory = validate_binding(tool_output_binding, workspace=workspace) + advisory
     if len(advisory.encode()) > 8192:
         raise ValueError("coding workspace advisory exceeds its byte bound")
     return advisory + prompt, advisory
@@ -332,6 +338,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_repository: Path | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        tool_output_policy: str = "legacy",
         census_only: bool = False,
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
@@ -360,6 +367,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit supported reasoning effort required")
     from .coding_reply_contract import validate_coding_reply_mode
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
+    from .tool_output_policy import validate_policy
+    validate_policy(tool_output_policy, purpose=purpose, provider=provider)
+    if tool_output_policy != "legacy" and census_only:
+        raise ValueError("tool output policy requires an actual coding invocation")
     if semantic_transport_schema not in {"supervisor-semantic-router-input@1",
                                          "supervisor-semantic-router-input@2"}:
         raise ValueError("unsupported semantic transport schema")
@@ -477,8 +488,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         router_prompt += instruction
         required_suffix += instruction
     failure_phase = "model_prompt"
+    tool_output_binding = None
+    if tool_output_policy != "legacy":
+        from .tool_output_policy import create_binding
+        tool_output_binding = create_binding(workspace=root)
     model_prompt, advisory = render_model_prompt(prompt=router_prompt, purpose=purpose, workspace=root,
-                                                semantic_transport=encoded is not None)
+                                                semantic_transport=encoded is not None,
+                                                tool_output_binding=tool_output_binding)
     coding_reply_receipt = None
     if coding_reply_mode != "legacy":
         failure_phase = "coding_reply_contract"
@@ -497,7 +513,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata view differs from the verified semantic transport")
         candidate_router = view.provider_prompt + router_prompt[len(encoded.provider_prompt):]
         candidate_model, candidate_advisory = render_model_prompt(prompt=candidate_router,
-            purpose=purpose, workspace=root, semantic_transport=True)
+            purpose=purpose, workspace=root, semantic_transport=True,
+            tool_output_binding=tool_output_binding)
         if candidate_advisory != advisory:
             raise ValueError("metadata view changed the workspace advisory")
         if coding_reply_mode != "legacy":
@@ -521,7 +538,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         failure_phase = "prompt_selection"
         native_router_prompt = prompt + required_suffix
         native_model_prompt, native_advisory = render_model_prompt(
-            prompt=native_router_prompt, purpose=purpose, workspace=root)
+            prompt=native_router_prompt, purpose=purpose, workspace=root,
+            tool_output_binding=tool_output_binding)
         from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
         native_model_prompt, native_reply_receipt = apply_coding_reply_contract(
             model_prompt=native_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
@@ -656,6 +674,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     }
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
+    if tool_output_binding is not None:
+        receipt["tool_output_policy"] = tool_output_binding
     if metadata_receipt is not None:
         receipt["semantic_metadata_view"] = metadata_receipt
     if metadata_native_reply is not None:
@@ -729,7 +749,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 "response_schema_validated": False,
                 "plan_admitted": False,
             }
+    tool_output_store_identity = None
     try:
+        if tool_output_binding is not None:
+            failure_phase = "tool_output_store"
+            from .tool_output_artifact import create_store
+            created_store = create_store(Path(tool_output_binding["store_path"]))
+            tool_output_store_identity = created_store["store_identity"]
+            failure_phase = "provider_invocation"
         output = generate_text(
             model_prompt, provider=provider, model_name=model, provider_instance=instance, deps=deps,
             allow_local_fallback=False, allow_cross_provider_fallback=False,
@@ -799,6 +826,29 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 }
         raise
     finally:
+        if tool_output_binding is not None:
+            try:
+                from .tool_output_artifact import summarize_store
+                tool_output_binding["usage"] = summarize_store(Path(tool_output_binding["store_path"]))
+            except Exception:
+                # Worker-writable diagnostics cannot mask a provider failure
+                # or grant task/completion authority.
+                tool_output_binding["usage"] = {"status": "unavailable", "helper_operations_observed": None}
+            usage = tool_output_binding["usage"]
+            if "helper_operations_observed" not in usage:
+                usage["helper_operations_observed"] = bool(usage.get("capture_count", 0) or usage.get("read_count", 0))
+            usage["store_cleanup_complete"] = False
+            usage["artifacts_retained_after_invocation"] = None
+            if tool_output_store_identity is not None:
+                try:
+                    from .tool_output_artifact import remove_store
+                    cleanup = remove_store(Path(tool_output_binding["store_path"]),
+                        expected_identity=tool_output_store_identity)
+                    usage["store_cleanup_complete"] = cleanup["removed"] is True
+                    if cleanup["removed"] is True:
+                        usage["artifacts_retained_after_invocation"] = False
+                except Exception:
+                    usage["store_cleanup_error"] = "cleanup_unavailable"
         observation = get_last_cli_observation(provider)
         # Keep native categories intact; do not add cached tokens to input or
         # infer a missing total. Provider failures remain measured attempts.
@@ -856,6 +906,7 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    parser.add_argument("--tool-output-policy", default="legacy", choices=["legacy", "artifact-preview@1"])
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
     parser.add_argument("--coding-reply-mode", default="legacy",
@@ -883,6 +934,7 @@ def main():
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
+                        tool_output_policy=args.tool_output_policy,
                         census_only=args.semantic_metadata_census_only,
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,

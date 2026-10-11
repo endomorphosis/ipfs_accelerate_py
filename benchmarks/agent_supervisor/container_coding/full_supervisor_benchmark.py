@@ -32,6 +32,10 @@ from .terminal_coding_reply_policy import (
     DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES, validate_coding_reply_mode,
     coding_reply_selection, require_coding_reply_archive,
 )
+from .terminal_tool_output_policy import (
+    DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES, validate_tool_output_policy,
+    tool_output_selection, require_tool_output_archive, tool_output_dispatch_observation,
+)
 from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
     semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
@@ -178,6 +182,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                setup_cache_selection: dict | None = None, task_name: str = TASK,
                task_profile: dict | None = None, provider_profile: str | None = None,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+               tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
@@ -188,6 +193,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
@@ -205,6 +211,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    "model_revision": model_revision if arm == "full" else "",
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
+                   **tool_output_selection(tool_output_policy),
                    **numerical_selection(numerical_formalization_profile),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_context_selection(semantic_context_profile)},
@@ -252,6 +259,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             setup_cache_policy: str | None = None, task_name: str = TASK,
             task_profile: Path | None = None, provider_profile: str | None = None,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
+            tool_output_policy: str = DEFAULT_TOOL_OUTPUT_POLICY,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
@@ -261,6 +269,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
+    validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
         transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
     from harbor.models.job.config import JobConfig
@@ -280,6 +289,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_runtime_provider_profile(manifest, provider_profile)
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
+    require_tool_output_archive(manifest, tool_output_policy)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_semantic_context_archive(manifest, semantic_context_profile)
     require_numerical_archive(manifest, numerical_formalization_profile)
@@ -319,6 +329,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
+        tool_output_policy=tool_output_policy,
         semantic_metadata_view=semantic_metadata_view,
         semantic_context_profile=semantic_context_profile,
         numerical_formalization_profile=numerical_formalization_profile,
@@ -351,6 +362,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **({"provider_profile": selected_provider["id"]} if provider_profile is not None else {}),
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
+              **tool_output_selection(tool_output_policy),
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_context_selection(semantic_context_profile),
               **numerical_observation(numerical_formalization_profile, arm),
@@ -500,6 +512,12 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_reply_mode = validate_coding_reply_mode(
         config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
         arm=prepared["arm"])
+    tool_output = validate_tool_output_policy(
+        prepared.get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_tool_output = validate_tool_output_policy(
+        config["agents"][0].get("kwargs", {}).get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY),
+        arm=prepared["arm"])
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
     configured_transport = validate_semantic_transport_schema(
@@ -536,6 +554,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
                        "supervisor": report,
+                       **({"tool_output_dispatch": tool_output_dispatch_observation(report, tool_output)}
+                          if tool_output != DEFAULT_TOOL_OUTPUT_POLICY else {}),
                        **({"semantic_metadata_dispatch": _metadata_dispatch_observation(report, metadata_view)}
                           if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW else {}),
                        **({"semantic_context_profile_matches": isinstance(report, dict)
@@ -547,6 +567,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **({"provider_profile": prepared["provider_profile"]} if "provider_profile" in prepared else {}),
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
+              **tool_output_selection(tool_output),
+              **({"tool_output_config_unchanged": configured_tool_output == tool_output}
+                 if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
               **semantic_context_selection(semantic_profile),
               **({"semantic_context_config_unchanged": configured_semantic_profile == semantic_profile}
@@ -567,6 +590,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
+                  and configured_tool_output == tool_output
+                  and (tool_output == DEFAULT_TOOL_OUTPUT_POLICY or
+                       trials[0]["tool_output_dispatch"]["effective_advisory_observed"] is True)
                   and configured_numerical == numerical_profile
                   and configured_metadata_view == metadata_view
                   and (metadata_view == DEFAULT_SEMANTIC_METADATA_VIEW or
@@ -601,8 +627,16 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     if reply_mode != config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE):
         raise ValueError("prepared coding reply selection changed")
+    tool_output = validate_tool_output_policy(
+        prepared.get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    configured_tool_output = validate_tool_output_policy(
+        config["agents"][0].get("kwargs", {}).get("tool_output_policy", DEFAULT_TOOL_OUTPUT_POLICY),
+        arm=prepared["arm"])
     transport = validate_semantic_transport_schema(
         prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA), arm=prepared["arm"])
+    if tool_output != configured_tool_output:
+        raise ValueError("prepared tool output policy selection changed")
     if transport != config["agents"][0].get("kwargs", {}).get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
         raise ValueError("prepared semantic transport selection changed")
     metadata_view = validate_semantic_metadata_view(
@@ -629,6 +663,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
+    require_tool_output_archive(current_manifest, tool_output)
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_semantic_context_archive(current_manifest, semantic_profile)
     require_numerical_archive(current_manifest, numerical_profile)
@@ -665,6 +700,8 @@ def main():
     parser.add_argument("--provider-profile", choices=PROVIDER_PROFILES, help="Explicit immutable router route; no cross-provider fallback")
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, help="Explicit coding-context transport; planning remains unchanged")
+    parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES,
+        default=DEFAULT_TOOL_OUTPUT_POLICY, help="Opt-in coding output previews; frozen by preparation")
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,
         default=DEFAULT_CODING_REPLY_MODE, help="Explicit coding acknowledgment contract; frozen by preparation")
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
@@ -689,6 +726,8 @@ def main():
         parser.error("numerical formalization is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
+        parser.error("tool output policy is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.coding_reply_mode != DEFAULT_CODING_REPLY_MODE:
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
@@ -707,6 +746,7 @@ def main():
                          task_profile=args.task_profile, provider_profile=args.provider_profile,
                          semantic_transport_schema=args.semantic_transport_schema,
                          coding_reply_mode=args.coding_reply_mode,
+                         tool_output_policy=args.tool_output_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
                          semantic_context_profile=args.semantic_context_profile,
                          numerical_formalization_profile=args.numerical_formalization_profile)

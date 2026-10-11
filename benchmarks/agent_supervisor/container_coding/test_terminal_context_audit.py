@@ -75,7 +75,7 @@ def compiled(tmp_path):
         "model_prompt_sha256": sha(model), "model_prompt_bytes": len(model.encode()),
         "workspace_advisory_sha256": sha(header), "workspace_advisory_bytes": len(header.encode())}
     return {"state": state, "capsule": capsule, "receipts": [receipt],
-            "workspace_root": workspace_root, "query": query}
+            "workspace_root": workspace_root, "query": query, "native": native}
 
 
 def observe(fixture):
@@ -122,6 +122,24 @@ def test_actual_bounded_child_process_roundtrip(compiled):
         receipts=compiled["receipts"], workspace_root=compiled["workspace_root"])
     assert result["status"] == "verified_all_observed_model_inputs", result
     assert result["provider_calls"] == 0
+
+
+def test_output_policy_exact_audit_survives_removed_worker_and_store(compiled):
+    from ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy import create_binding
+    receipt = compiled["receipts"][0]
+    binding = create_binding(workspace=Path(receipt["workspace"]))
+    model, advisory = render_model_prompt(prompt=compiled["native"], purpose="coding",
+        workspace=Path(receipt["workspace"]), tool_output_binding=binding)
+    receipt.update(provider="codex_cli", tool_output_policy=binding,
+        model_prompt_sha256=sha(model), model_prompt_bytes=len(model.encode()),
+        workspace_advisory_sha256=sha(advisory), workspace_advisory_bytes=len(advisory.encode()))
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"])
+    assert result["all_observed_coding_inputs_verified"] is True, result
+    assert result["matches"][0]["model_input_checks"]["tool_output_helper_source"] is True
+    assert not Path(binding["store_path"]).exists()
+    assert not compiled["workspace_root"].exists()
+    assert binding["store_path"] not in json.dumps(result)
 
 
 @pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity is unavailable")
