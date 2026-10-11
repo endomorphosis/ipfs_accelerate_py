@@ -136,6 +136,8 @@ def _planning_strategy(contract):
 
 def _load_prepared(state):
     prepared = json.loads((state / "prepared.json").read_text())
+    from .terminal_semantic_context_policy import validate_semantic_context_profile
+    validate_semantic_context_profile(prepared.get("semantic_context_profile", "legacy-bounded@1"))
     manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
     repository = Path(prepared["repository"])
     inputs = manifest["planning_inputs"]
@@ -250,13 +252,16 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_intent_family_context: Path | None = None,
             source_unit_intent_logic_families: list[str] | None = None,
             intent_requirement_contract: Path | None = None, resource_profile=None,
-            task_profile: dict | None = None, provider_profile: str | None = None) -> dict:
+            task_profile: dict | None = None, provider_profile: str | None = None,
+            semantic_context_profile: str = "legacy-bounded@1") -> dict:
     """Capture original image bytes, then sign reviewed tasks before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
     restored. Public instruction/check files become immutable signed inputs.
     """
+    from .terminal_semantic_context_policy import semantic_context_selection
+    context_selection = semantic_context_selection(semantic_context_profile)
     provider_selection = resolve_provider_profile(provider_profile)
     from .benchmark_resource_profile import execution_budget, planner_timeout_seconds
     execution = execution_budget(resource_profile)
@@ -493,6 +498,7 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         del prepared["spec"]
     if requirements is not None:
         prepared["intent_requirement_contract"] = requirements
+    prepared.update(context_selection)
     _write(state / "prepared.json", prepared)
     if strategy != "intent_symbolic":
         provider_request = build_prompt_goal_provider_request(
@@ -950,6 +956,7 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
     from ipfs_accelerate_py.agent_supervisor.runtime.supervised_task_context import prepare_supervised_task_context
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import write_task_context_bundle
     from .terminal_program_population import EMPTY_INDEX_SCHEMA, qualify_terminal_population
+    from .terminal_semantic_context_policy import semantic_context_options
 
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
@@ -1007,7 +1014,9 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
                 semantic_defer_task_data=(any(row["role"] == "task_data"
                     for row in partition["support_hashes"].values()) if partition is not None else False),
                 code_query_text=prepared["query"], semantic_max_symbols=1024,
-                semantic_worker_query=prepared["query"], semantic_worker_max_bytes=32768,
+                semantic_worker_query=prepared["query"],
+                **{"semantic_" + key: value for key, value in semantic_context_options(
+                        prepared.get("semantic_context_profile", "legacy-bounded@1")).items()},
             )
         stage_seconds["supervised_semantic_world_context"] = time.monotonic() - stage_started
         diagnostic_artifact = output / "semantic/doctor.json"

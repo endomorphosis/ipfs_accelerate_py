@@ -483,10 +483,12 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
     if report.get("arm") != "full":
         return
     try:
-        from benchmarks.agent_supervisor.container_coding.terminal_context_audit import collect_terminal_context_audit
+        from benchmarks.agent_supervisor.container_coding.terminal_context_audit import (
+            MAX_AUDIT_SECONDS, collect_terminal_context_audit,
+        )
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
-            timeout_seconds=max(0, min(3.0, deadline - time.monotonic() - 1.0)))
+            timeout_seconds=max(0, min(MAX_AUDIT_SECONDS, deadline - time.monotonic() - 1.0)))
     except Exception as error:
         # Observation failure must never suppress provider accounting or the
         # final report. STOP and worker cleanup have already been attempted.
@@ -671,6 +673,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_profile: str | None = None,
         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
         semantic_metadata_view: str = "legacy",
+        semantic_context_profile: str = "legacy-bounded@1",
         metadata_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         resource_profile: str | None = None,
@@ -692,6 +695,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_semantic_transport_policy import validate_semantic_transport_schema, semantic_transport_selection
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
+    from .terminal_semantic_context_policy import validate_semantic_context_profile, semantic_context_selection
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (arm != "full"
@@ -763,6 +768,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
               "provider_profile": provider_selection,
               **semantic_transport_selection(semantic_transport_schema),
+              **semantic_context_selection(semantic_context_profile),
               **coding_reply_selection(coding_reply_mode),
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
               "reserved_cleanup_seconds": reserved_cleanup_seconds,
@@ -884,6 +890,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
                 intent_requirement_contract=intent_requirement_contract,
+                **semantic_context_selection(semantic_context_profile),
                 **({"provider_profile": provider_profile} if provider_profile is not None else {}),
                 **({"task_profile": generic_profile} if generic_profile is not None else {}),
                 **({"resource_profile": resource_profile} if resource_profile is not None else {}))
@@ -1255,6 +1262,9 @@ def main():
     parser.add_argument("--semantic-transport-schema", choices=SEMANTIC_TRANSPORT_SCHEMAS,
         default=DEFAULT_SEMANTIC_TRANSPORT_SCHEMA)
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1"])
+    from .terminal_semantic_context_policy import DEFAULT_SEMANTIC_CONTEXT_PROFILE, SEMANTIC_CONTEXT_PROFILES
+    parser.add_argument("--semantic-context-profile", default=DEFAULT_SEMANTIC_CONTEXT_PROFILE,
+                        choices=SEMANTIC_CONTEXT_PROFILES)
     parser.add_argument("--metadata-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     parser.add_argument("--coding-reply-mode", choices=CODING_REPLY_MODES,

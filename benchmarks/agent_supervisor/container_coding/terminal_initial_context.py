@@ -319,15 +319,20 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             del row
     timings["persisted_snapshot_reopen"] = time.monotonic() - stage
     stage = time.monotonic()
+    from .terminal_semantic_context_policy import semantic_context_options
+    context_profile = prepared.get("semantic_context_profile", "legacy-bounded@1")
+    context_options = semantic_context_options(context_profile)
+    program_options = ({"program_paths": partition["program_paths"], "defer_task_data": any(
+        row["role"] == "task_data" for row in partition["support_hashes"].values())}
+        if partition is not None else {"program_paths": sorted(prepared["worker_inputs"])}
+        if context_profile != "legacy-bounded@1" else {})
     semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
         # Native semantic objectives are trimmed, printable descriptive text.
         # Normalize whitespace only here; the public query remains byte-exact
         # in retrieval, required raw input, planner constraints and hashes.
         required_raw_paths=required_raw_paths, objective=" ".join(prepared["query"].split()), task_id=alias,
-        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768,
-        **({"program_paths": partition["program_paths"], "defer_task_data": any(
-            row["role"] == "task_data" for row in partition["support_hashes"].values())}
-            if partition is not None else {}))
+        output=output / "semantic", max_symbols=1024, worker_query=prepared["query"],
+        **context_options, **program_options)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
     semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
@@ -390,6 +395,11 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "nonoverlapping_seconds": timings, "seconds": time.monotonic() - started,
         "final_result_persistence_included_in_seconds": False,
         "execution_authority": False, "completion_authority": False}
+    if context_profile != "legacy-bounded@1":
+        result.update(semantic_context_profile=context_profile,
+            worker_capsules=semantic["worker_capsules"],
+            worker_payload_bytes=semantic["compact_bytes"],
+            worker_projection=semantic["worker_projection"])
     if empty_population:
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls")})
@@ -464,6 +474,13 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
         raise ValueError("initial public task index scope differs")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
+    from .terminal_semantic_context_policy import semantic_context_options
+    expected_policy = semantic_context_options(prepared.get("semantic_context_profile", "legacy-bounded@1"))
+    projection = semantic.get("worker_projection") or {}
+    if any(projection.get(field) != expected_policy[key] for field, key in (
+            ("selector", "worker_selector"), ("max_capsules", "worker_capsule_limit"),
+            ("max_bytes", "worker_max_bytes"))):
+        raise ValueError("initial semantic context differs from the frozen selection profile")
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])

@@ -35,6 +35,10 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
     semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_semantic_context_policy import (
+    DEFAULT_SEMANTIC_CONTEXT_PROFILE, SEMANTIC_CONTEXT_PROFILES,
+    validate_semantic_context_profile, semantic_context_selection, require_semantic_context_archive,
+)
 from .terminal_numerical_policy import (
     PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
     numerical_observation, require_numerical_archive,
@@ -175,8 +179,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+               semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                numerical_formalization_profile: str | None = None,
                model_revision: str = "") -> dict:
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -199,7 +205,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
                    **numerical_selection(numerical_formalization_profile),
-                   **semantic_metadata_selection(semantic_metadata_view)},
+                   **semantic_metadata_selection(semantic_metadata_view),
+                   **semantic_context_selection(semantic_context_profile)},
     }]
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
@@ -246,7 +253,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+            semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
             numerical_formalization_profile: str | None = None) -> dict:
+    validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
@@ -271,6 +280,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
+    require_semantic_context_archive(manifest, semantic_context_profile)
     require_numerical_archive(manifest, numerical_formalization_profile)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
@@ -309,6 +319,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
         semantic_metadata_view=semantic_metadata_view,
+        semantic_context_profile=semantic_context_profile,
         numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
@@ -340,6 +351,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
+              **semantic_context_selection(semantic_context_profile),
               **numerical_observation(numerical_formalization_profile, arm),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
@@ -381,6 +393,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_metadata_view = validate_semantic_metadata_view(
         config["agents"][0].get("kwargs", {}).get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
         arm=prepared["arm"], transport_schema=configured_transport)
+    semantic_profile = validate_semantic_context_profile(
+        prepared.get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=prepared["arm"])
+    configured_semantic_profile = validate_semantic_context_profile(
+        config["agents"][0].get("kwargs", {}).get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE),
+        arm=prepared["arm"])
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -399,7 +416,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "reward": (native.get("verifier_result") or {}).get("rewards"),
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
-                       "supervisor": report})
+                       "supervisor": report,
+                       **({"semantic_context_profile_matches": isinstance(report, dict)
+                           and report.get("semantic_context_profile") == semantic_profile}
+                          if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE else {})})
     unchanged = _task_hashes(task) == prepared["task_input_sha256"]
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
@@ -407,6 +427,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
+              **semantic_context_selection(semantic_profile),
+              **({"semantic_context_config_unchanged": configured_semantic_profile == semantic_profile}
+                 if "semantic_context_profile" in prepared or "semantic_context_profile" in config["agents"][0].get("kwargs", {}) else {}),
               **numerical_observation(numerical_profile, prepared["arm"]),
               **({"numerical_formalization_config_unchanged": configured_numerical == numerical_profile}
                  if numerical_profile is not None or configured_numerical is not None else {}),
@@ -424,7 +447,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
                   and configured_numerical == numerical_profile
-                  and configured_metadata_view == metadata_view,
+                  and configured_metadata_view == metadata_view
+                  and configured_semantic_profile == semantic_profile
+                  and (semantic_profile == DEFAULT_SEMANTIC_CONTEXT_PROFILE
+                       or trials[0].get("semantic_context_profile_matches") is True),
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -465,6 +491,13 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], transport_schema=transport)
     if metadata_view != configured_metadata_view:
         raise ValueError("prepared semantic metadata view selection changed")
+    semantic_profile = validate_semantic_context_profile(
+        prepared.get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=prepared["arm"])
+    configured_semantic_profile = validate_semantic_context_profile(
+        config["agents"][0].get("kwargs", {}).get("semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE),
+        arm=prepared["arm"])
+    if semantic_profile != configured_semantic_profile:
+        raise ValueError("prepared semantic context profile selection changed")
     if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
@@ -474,6 +507,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
     require_semantic_metadata_archive(current_manifest, metadata_view)
+    require_semantic_context_archive(current_manifest, semantic_profile)
     require_numerical_archive(current_manifest, numerical_profile)
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
@@ -513,6 +547,9 @@ def main():
     parser.add_argument("--semantic-metadata-view", choices=SEMANTIC_METADATA_VIEWS,
         default=DEFAULT_SEMANTIC_METADATA_VIEW,
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
+    parser.add_argument("--semantic-context-profile", choices=SEMANTIC_CONTEXT_PROFILES,
+        default=DEFAULT_SEMANTIC_CONTEXT_PROFILE,
+        help="Frozen semantic capsule selection; select identically except for a matched context ablation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
     parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
         help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
@@ -533,6 +570,8 @@ def main():
         parser.error("coding reply mode is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.semantic_context_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+        parser.error("semantic context profile is frozen by preparation; collect/execute cannot select it")
     if args.operation == "prepare":
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
@@ -546,6 +585,7 @@ def main():
                          semantic_transport_schema=args.semantic_transport_schema,
                          coding_reply_mode=args.coding_reply_mode,
                          semantic_metadata_view=args.semantic_metadata_view,
+                         semantic_context_profile=args.semantic_context_profile,
                          numerical_formalization_profile=args.numerical_formalization_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)

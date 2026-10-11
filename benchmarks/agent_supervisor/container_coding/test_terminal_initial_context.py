@@ -63,6 +63,28 @@ def _version(monkeypatch):
     monkeypatch.setattr(subprocess, "run", run)
 
 
+@pytest.mark.parametrize("profile,limit", [("indexed-default@1", 8), ("indexed-compact@1", 2)])
+def test_indexed_capsule_profile_reaches_real_initial_context_and_refuses_drift(original, profile, limit):
+    root, instruction, state = original
+    with (root / "bottle.py").open("a") as stream:
+        stream.write("\n".join(f"def helper_{i}(value):\n    return value + {i}\n" for i in range(12)))
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state,
+        semantic_context_profile=profile)
+    receipt = prep.initial_context(state=state)
+    loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+    projection = loaded["semantic"]["worker_projection"]
+    assert projection["selector"] == "duckdb-query-symbol-name@1"
+    assert projection["max_capsules"] == limit
+    assert receipt["semantic_context_profile"] == profile
+    assert 0 < receipt["worker_capsules"] <= limit
+    assert receipt["worker_payload_bytes"] <= 32768
+    assert loaded["semantic"]["raw_sources"][prep.INSTRUCTION] == instruction.read_text()
+    changed = dict(prepared, semantic_context_profile=(
+        "indexed-default@1" if profile == "indexed-compact@1" else "indexed-compact@1"))
+    with pytest.raises(ValueError, match="frozen selection profile"):
+        initial.load_initial_context(state=state, prepared=changed, require_empty_owner=True)
+
+
 def test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world(original, monkeypatch):
     root, instruction, state = original
     prepared = prep.prepare(repository=root, instruction=instruction, state=state)

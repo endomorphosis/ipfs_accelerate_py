@@ -40,6 +40,10 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
     semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_semantic_context_policy import (
+    DEFAULT_SEMANTIC_CONTEXT_PROFILE, validate_semantic_context_profile,
+    semantic_context_selection, require_semantic_context_archive,
+)
 from .terminal_numerical_policy import (
     validate_numerical_profile, numerical_observation, require_numerical_archive,
 )
@@ -304,12 +308,14 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 semantic_context_profile: str = DEFAULT_SEMANTIC_CONTEXT_PROFILE,
                  numerical_formalization_profile: str | None = None,
                  metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+        self.semantic_context_profile = validate_semantic_context_profile(semantic_context_profile, arm=arm)
         self.semantic_transport_schema = validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
         self.coding_reply_mode = validate_coding_reply_mode(coding_reply_mode,
             arm=arm, provider=selected_provider["provider"])
@@ -381,6 +387,9 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
             provider=selected_provider["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         require_retrieval_revision(manifest, self.arm, getattr(self, "model_revision", ""))
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
@@ -440,6 +449,9 @@ class FullSupervisorAgent(BaseAgent):
             transport_schema=transport,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         require_semantic_metadata_archive(manifest, metadata_view)
+        semantic_profile = validate_semantic_context_profile(
+            getattr(self, "semantic_context_profile", DEFAULT_SEMANTIC_CONTEXT_PROFILE), arm=self.arm)
+        require_semantic_context_archive(manifest, semantic_profile)
         validate_header_planning_selection(validate_source384_binding(manifest),
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
@@ -470,6 +482,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
+        if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE:
+            argv += ["--semantic-context-profile", semantic_profile]
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
         task_profile = getattr(self, "task_profile", None)
@@ -505,6 +519,7 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
                             **semantic_metadata_observation(metadata_view),
+                            **semantic_context_selection(semantic_profile),
                             **numerical_observation(numerical_profile, self.arm),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],

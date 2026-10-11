@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -29,6 +30,7 @@ MAX_RECEIPTS = 16
 MAX_DEPTH = 32
 MAX_REQUEST_BYTES = 65_536
 MAX_RESULT_BYTES = 262_144
+MAX_AUDIT_SECONDS = 30.0
 RECEIPT_FIELDS = (
     "schema", "phase", "invocation_id", "purpose", "workspace",
     "prompt_sha256", "prompt_bytes", "native_prompt_sha256", "native_prompt_bytes",
@@ -565,9 +567,17 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
-        workspace_root: Path, timeout_seconds: float = 3.0) -> dict:
-    """Run in a time-bounded child; collection failure cannot affect completion."""
+        workspace_root: Path, timeout_seconds: float = MAX_AUDIT_SECONDS) -> dict:
+    """Run in a bounded child, with the caller's remaining cleanup allowance.
+
+    The default is a ceiling rather than a reserved allocation. Owners with an
+    enclosing deadline must pass their remaining time after cleanup reserves.
+    Invalid or exhausted budgets never launch a child or affect completion.
+    """
     started = time.monotonic()
+    if (type(timeout_seconds) not in (int, float)
+            or (type(timeout_seconds) is float and not math.isfinite(timeout_seconds))):
+        return _base(reason="audit_budget_invalid")
     if timeout_seconds < .1:
         return _base(reason="audit_budget_unavailable")
     try:
@@ -590,7 +600,7 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         # that worker-controlled directory to the trusted module search path.
         process = subprocess.run([sys.executable, "-B", "-P", "-m", __name__, "--state", str(state),
             "--workspace-root", str(workspace_root)], input=request, capture_output=True,
-            timeout=min(10.0, timeout_seconds), check=False,
+            timeout=min(MAX_AUDIT_SECONDS, timeout_seconds), check=False,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         if process.returncode or len(process.stdout) > MAX_RESULT_BYTES:
             return _base(reason="audit_process_unavailable")

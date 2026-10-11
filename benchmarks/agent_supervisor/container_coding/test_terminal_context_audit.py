@@ -119,9 +119,62 @@ def test_generic_retrieval_scope_must_match_instruction_bound_signed_profile(com
 
 def test_actual_bounded_child_process_roundtrip(compiled):
     result = audit.collect_terminal_context_audit(state=compiled["state"],
-        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=10)
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"])
     assert result["status"] == "verified_all_observed_model_inputs", result
     assert result["provider_calls"] == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity is unavailable")
+def test_actual_child_roundtrip_on_one_available_cpu(compiled):
+    """A restricted child uses the production ceiling without generating load."""
+    original = os.sched_getaffinity(0)
+    if not original:
+        pytest.skip("no available CPU affinity")
+    before = copy.deepcopy(compiled["receipts"])
+    try:
+        os.sched_setaffinity(0, {min(original)})
+        result = audit.collect_terminal_context_audit(state=compiled["state"],
+            receipts=compiled["receipts"], workspace_root=compiled["workspace_root"],
+            timeout_seconds=audit.MAX_AUDIT_SECONDS)
+    finally:
+        os.sched_setaffinity(0, original)
+    assert result["status"] == "verified_all_observed_model_inputs", result
+    assert result["provider_calls"] == 0
+    assert compiled["receipts"] == before
+
+
+@pytest.mark.parametrize("budget", [True, False, None, "30", float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_or_nonnumeric_budget_never_spawns(compiled, monkeypatch, budget):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid audit budget launched a child")
+    monkeypatch.setattr(audit.subprocess, "run", forbidden)
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=budget)
+    assert result["status"] == "unknown"
+    assert result["reason"] == "audit_budget_invalid"
+
+
+@pytest.mark.parametrize("budget", [-1., 0., .099])
+def test_exhausted_budget_never_spawns(compiled, monkeypatch, budget):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("exhausted audit budget launched a child")
+    monkeypatch.setattr(audit.subprocess, "run", forbidden)
+    result = audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=budget)
+    assert result["status"] == "unknown"
+    assert result["reason"] == "audit_budget_unavailable"
+
+
+@pytest.mark.parametrize("requested, expected", [(1.5, 1.5), (30., 30.), (90., 30.), (10**400, 30.)])
+def test_collector_honors_remaining_budget_and_hard_ceiling(compiled, monkeypatch, requested, expected):
+    calls = []
+    def collect(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(args[0], 0, json.dumps(audit._base()).encode(), b"")
+    monkeypatch.setattr(audit.subprocess, "run", collect)
+    audit.collect_terminal_context_audit(state=compiled["state"],
+        receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=requested)
+    assert calls == [expected]
 
 
 def test_owner_child_does_not_import_from_task_working_directory(compiled, tmp_path, monkeypatch):

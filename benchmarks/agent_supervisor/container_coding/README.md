@@ -122,6 +122,19 @@ native completion, cleanup, and all observed provider usage remain separate
 measurements. See [INDEXED_ABLATIONS.md](INDEXED_ABLATIONS.md) for the larger
 planned matrix and unmeasured parallel-worker comparisons.
 
+For a matched capsule-budget experiment, prepare two `--arm full` trials with
+`--semantic-context-profile indexed-default@1` and
+`--semantic-context-profile indexed-compact@1`. Both use current-source DuckDB
+selection and a 32 KiB payload bound; their capsule limits are eight and two.
+The historical default `legacy-bounded@1` retains lexical selection. These
+profiles do not change vector retrieval, intent transport, model settings, or
+task instructions. Use one fresh archive and identical task/resource settings
+for both trials. Configuration, archive sources, and the observed runtime
+profile are checked before a comparison receipt can be complete. Input audits
+may use up to 30 seconds of the remaining cleanup allowance; missing or timed
+out audits remain unknown. Provider usage across all turns and official reward
+remain necessary to assess total tokens per solved task.
+
 Both supervisor model-coding routes now receive the original public instruction
 verbatim through an owner-selected, signed source binding, in addition to the
 planner's task summary. The router verifies the source and allocated worktree

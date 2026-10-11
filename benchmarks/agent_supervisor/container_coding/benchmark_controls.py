@@ -91,7 +91,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "semantic_context_profile", "numerical_formalization_profile"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "numerical_formalization_profile" in kwargs:
             from .terminal_numerical_policy import validate_numerical_profile
@@ -109,6 +109,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             validate_semantic_metadata_view(kwargs["semantic_metadata_view"], arm=kwargs.get("arm"),
                 transport_schema=kwargs.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
                 provider=selected["provider"])
+        if "semantic_context_profile" in kwargs:
+            from .terminal_semantic_context_policy import validate_semantic_context_profile
+            validate_semantic_context_profile(kwargs["semantic_context_profile"], arm=kwargs.get("arm"))
         if "task_profile" in kwargs:
             from .terminal_task_profile import validate_task_profile
             validate_task_profile(kwargs["task_profile"])
