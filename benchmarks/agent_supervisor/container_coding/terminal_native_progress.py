@@ -39,9 +39,13 @@ QUIESCENT_STOP_REASONS = frozenset({
     "all_selectable_ready_tasks_reached_max_task_attempts",
     "unsettled_portal_failure_quarantine",
 })
-RECEIPT_OPERATIONS = frozenset({
+# The daemon stores database_complete in task.body.completion_receipt. Keep it
+# verbatim; task.database.completion is a different, owner-internal authority
+# operation. Retain the historical observer spelling for older receipts.
+COMPLETION_RECEIPT_OPERATIONS = frozenset({"database_complete", "database_task_completion"})
+RECEIPT_OPERATIONS = COMPLETION_RECEIPT_OPERATIONS | frozenset({
     "database_claim", "database_task_claim_failure", "database_portal_retry",
-    "database_portal_retry_budget_exhausted", "database_task_completion",
+    "database_portal_retry_budget_exhausted",
 })
 REJECTION_REASONS = frozenset({
     "proposal_gate_failed", "proposal_validation_failed",

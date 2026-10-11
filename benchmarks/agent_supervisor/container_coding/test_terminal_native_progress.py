@@ -234,6 +234,38 @@ def test_completion_receipt_diagnostic_projection_keeps_ids_counts_and_closed_fi
     assert "private_" not in json.dumps(recorder.report) and "private-" not in json.dumps(recorder.report)
 
 
+def test_database_complete_receipt_is_preserved_without_its_validation_body():
+    current = task(status="completed", body={"completion_receipt": {
+        "operation": "database_complete", "attempt_id": "private-attempt",
+        "claim_id": "private-claim", "lease_id": "private-lease",
+        "owner_session_id": "private-owner", "fencing_token": 1, "fence_epoch": 1,
+        "evidence_digest": "private-evidence", "coordination_preparation": {"private": True},
+        "validation": {"private": True},
+    }})
+    before = copy.deepcopy(current.body)
+    projected = progress.project_task(current, task_cid=current.task_cid)
+    assert projected["completion_receipt"]["operation"] == "database_complete"
+    assert len(projected["completion_receipt"]["attempt_id_sha256"]) == 64
+    assert projected["completion_receipt"]["fencing_token"] == 1
+    assert current.body == before
+    assert "private" not in json.dumps(projected)
+    assert not {"validation", "coordination_preparation", "evidence_digest"} & projected["completion_receipt"].keys()
+
+
+class _ForeignCompletionOperation(str, Enum):
+    COMPLETE = "database_complete"
+
+
+@pytest.mark.parametrize("operation", [
+    "task.database.completion", "private-operation", None, {}, [],
+    _ForeignCompletionOperation.COMPLETE,
+])
+def test_internal_authority_or_untrusted_completion_operation_is_not_a_task_receipt(operation):
+    current = task(status="completed", body={"completion_receipt": {"operation": operation}})
+    assert progress.project_task(current, task_cid=current.task_cid)["completion_receipt"] == {
+        "operation": "unrecognized"}
+
+
 @pytest.mark.parametrize("bad", ["symlink", "oversized", "duplicate", "nonfinite", "array", "boolean", "birth", "schema"])
 def test_malformed_heartbeat_never_terminates_or_exports_body(tmp_path, bad):
     path = heartbeat(tmp_path, selection_idle_reason="unsettled_portal_failure_quarantine")

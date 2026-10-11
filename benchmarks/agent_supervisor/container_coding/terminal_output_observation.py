@@ -19,6 +19,7 @@ import subprocess
 import sys
 
 from .terminal_context_audit import _open_directory, _json
+from .terminal_native_progress import COMPLETION_RECEIPT_OPERATIONS
 
 SCHEMA = "terminal-declared-output-observation@1"
 MAX_OUTPUTS = 32
@@ -188,13 +189,15 @@ def observe(*, native_state, workspace_root, repository, scope, report):
         task = report["native_progress"]["latest"]["task"]
         state = report["task_state"]
         completion = task["completion_receipt"]
+        operation = completion.get("operation")
         if (task.get("availability") != "observed"
                 or any(task.get(key) != state.get(key) for key in ("task_cid", "revision", "status"))
                 or state.get("task_cid") != scope["task_cid"]
                 or state.get("status") not in {"blocked", "failed", "completed"}
-                or completion.get("operation") not in {"database_task_claim_failure", "database_task_completion"}
-                or completion.get("operation") == "database_task_completion" and state.get("status") != "completed"
-                or completion.get("operation") == "database_task_claim_failure" and (
+                or type(operation) is not str
+                or operation not in COMPLETION_RECEIPT_OPERATIONS | {"database_task_claim_failure"}
+                or operation in COMPLETION_RECEIPT_OPERATIONS and state.get("status") != "completed"
+                or operation == "database_task_claim_failure" and (
                     state.get("status") not in {"blocked", "failed"}
                     or completion.get("failure_kind") != "terminal_portal_bridge_error"
                     or completion.get("automatic_retry_admitted") is not False

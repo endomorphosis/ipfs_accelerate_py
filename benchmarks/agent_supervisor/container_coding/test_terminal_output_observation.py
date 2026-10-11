@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from benchmarks.agent_supervisor.container_coding import terminal_output_observation as observation
+from benchmarks.agent_supervisor.container_coding import terminal_native_progress as progress
 
 
 def sha(value):
@@ -228,6 +229,95 @@ def test_completed_task_byte_observation_is_not_publication_or_correctness(autho
     authored.event["returncode"] = 0
     private_json(authored.directory / "portal-events.jsonl", authored.event)
     assert observe(authored)["status"] == "observed"
+
+
+@pytest.fixture
+def native_completed(authored):
+    """Capture the real daemon's emitted receipt at its authored CAS boundary.
+
+    No live owner mutation or provider execution is performed. The production
+    receipt constructor is exercised, so a copied spelling cannot mask drift.
+    """
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import DatabaseImplementationDaemon
+
+    current = SimpleNamespace(**{key: authored.binding[key] for key in
+        ("task_cid", "attempt_id", "claim_id", "lease_id", "fencing_token", "fence_epoch")})
+    task = SimpleNamespace(task_cid=current.task_cid, status="in_progress", revision=3,
+        body={"completion_receipt": {"operation": "database_attempt_admitted"}})
+    captured = {}
+
+    class CapturedCAS(Exception):
+        pass
+
+    def capture_cas(task_cid, **kwargs):
+        assert task_cid == current.task_cid
+        captured.update(kwargs)
+        raise CapturedCAS
+
+    daemon = SimpleNamespace(get_attempt=lambda _: current,
+        provider_invocation_recorded=lambda *args, **kwargs: {}, require_real_execution=True,
+        owner_session_id="owner:authored", _attempt_claim=lambda _: "claim:authored",
+        _protect_attempt_claim=lambda *args, **kwargs: None, _now_ms=lambda: 1,
+        _cas_task_status_database=capture_cas,
+        task_source=SimpleNamespace(get=lambda _: task, record_validation_result=lambda **kwargs: None),
+        coordinator=SimpleNamespace(prepare_task_completion=lambda *args, **kwargs: {"private": True}))
+    with pytest.raises(CapturedCAS):
+        DatabaseImplementationDaemon.complete_attempt(daemon, current,
+            validation_result={"outcome": "passed", "evidence_digest": "sha256:" + "e" * 64,
+                               "private": "PRIVATE-VALIDATION-CANARY"})
+    assert captured["new_status"] == "completed"
+    assert captured["expected_revision"] == 3
+    assert captured["receipt"]["operation"] == "database_complete"
+    assert captured["evidence_digests"] == [captured["receipt"]["evidence_digest"]]
+    task.status, task.revision = "completed", 4
+    task.body = {"completion_receipt": captured["receipt"]}
+    authored.report["task_state"].update(status="completed", revision=4)
+    authored.report["native_progress"]["latest"]["task"] = progress.project_task(task, task_cid=current.task_cid)
+    authored.event["returncode"] = 0
+    private_json(authored.directory / "portal-events.jsonl", authored.event)
+    return authored, task
+
+
+@pytest.mark.parametrize("arm", ["full", "no-index"])
+def test_real_completion_receipt_survives_projection_and_owner_bound_observation(native_completed, arm):
+    authored, task = native_completed
+    authored.report["arm"] = arm
+    before = deepcopy(task.body)
+    projected = authored.report["native_progress"]["latest"]["task"]
+    assert projected["completion_receipt"]["operation"] == "database_complete"
+    result = observe(authored)
+    assert result["status"] == "observed"
+    assert result["binding_id"] == authored.binding["binding_id"]
+    assert result["outputs"][0]["candidate"]["sha256"] == sha(b"authored changed candidate\n")
+    assert result["outputs"][0]["canonical"]["equals_admitted_baseline"] is True
+    assert authored.report["task_completed"] is False  # Observation does not grant completion.
+    assert task.body == before
+
+
+@pytest.mark.parametrize("part", ["operation", "internal_authority", "status", "attempt", "claim", "lease",
+    "fence", "revision", "binding", "event", "stop", "processes", "close", "worker"])
+def test_real_completed_projection_still_requires_exact_owner_and_cleanup(native_completed, part, monkeypatch):
+    authored, task = native_completed
+    receipt = task.body["completion_receipt"]
+    if part == "operation": receipt["operation"] = "database_claim"
+    elif part == "internal_authority": receipt["operation"] = "task.database.completion"
+    elif part == "status":
+        task.status = "blocked"
+        authored.report["task_state"]["status"] = "blocked"
+    elif part in {"attempt", "claim", "lease"}: receipt[part + "_id"] += ":foreign"
+    elif part == "fence": receipt["fence_epoch"] += 1
+    elif part == "revision": task.revision += 1
+    elif part == "binding": (authored.directory / "database-attempt-binding.json").unlink()
+    elif part == "event":
+        authored.event["lifecycle_finalize"]["finalized"] = False
+        private_json(authored.directory / "portal-events.jsonl", authored.event)
+    elif part == "stop": authored.report["stop"]["status"] = "failed"
+    elif part == "processes": authored.report["remaining_processes"] = 1
+    elif part == "close": authored.report["runtime_close"]["succeeded"] = False
+    elif part == "worker": authored.report["worker_cleanup_returncode"] = 1
+    authored.report["native_progress"]["latest"]["task"] = progress.project_task(task, task_cid=task.task_cid)
+    monkeypatch.setattr(observation, "_file", lambda *args: pytest.fail("unbound completed output read"))
+    assert observe(authored)["status"] == "unavailable"
 
 
 @pytest.mark.parametrize("replaced", ["file", "directory", "root", "delete"])
