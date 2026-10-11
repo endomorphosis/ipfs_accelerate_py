@@ -1,0 +1,177 @@
+{
+  "archive_sha256": "1d71fa6129b09cbac4ecee6daba357af589c2d626cc4892358a6c96ca461049a",
+  "benchmark_result": false,
+  "boundary": {
+    "container_id": "5976839edaf9acec8422f274cc886e6d2e94b46cae4632ae8c904687807e11bb",
+    "image_id": "sha256:1d18fa08951457ed8ac623c7e1f6151398dfaf9d983d1a3441b60b3ef573dbea",
+    "manifest_sha256": "490cf26ef9cd88a3e6888c45dfa1389156d273ca8837bcd0afe0b832dcf36410",
+    "owner_uid": 1000,
+    "purpose": "coding",
+    "schema": "supervisor-container-worker-boundary@1",
+    "worker_uid": 1001
+  },
+  "budgets": {
+    "checker_seconds": 20,
+    "cleanup_seconds": 120,
+    "provider_seconds": 90,
+    "setup_seconds": 1800,
+    "worker_exec_seconds": 150
+  },
+  "cleanup": {
+    "attempted": true,
+    "container_id": "5976839edaf9acec8422f274cc886e6d2e94b46cae4632ae8c904687807e11bb",
+    "samples": [
+      {
+        "absent": true,
+        "observed_at_ns": 1791691146278038065
+      },
+      {
+        "absent": true,
+        "observed_at_ns": 1791691146389421654
+      }
+    ],
+    "succeeded": true
+  },
+  "credential_contents_exported": false,
+  "evidence_sha256": {
+    "diagnostic/execute-02-exit.json": "42cabe684d41c04e8ac21d413bc30ba46074e3b090c26d14032cf549d80f4e4f",
+    "diagnostic/host-import-diagnosis/qualification.json": "b0dd2f724c93d58bd94cf3f1425eb2a594dff77a31e9d751921b87c4bad90ea1",
+    "diagnostic/host-import-diagnosis/reproduction.json": "2ad4bbe2d0164dbe26b3a6b8fa6c0f519ebc28e42b06242e853f8d63938741cc",
+    "diagnostic/preparation.json": "2af69d36947a47fa433609b7499a895f086eb758ce2d748601cc730d81ebe8dc",
+    "diagnostic/run-01/result.json": "2f0331dbe18395379c1d95bfbec7f13763c38916be86a06ba71704ed6fad39c3",
+    "diagnostic/run-02/result.json": "c2085a726ef2d5fe457103563d86d52bbc9d331f6e50d46b369444d523b70e6c"
+  },
+  "full_supervisor_qualification": false,
+  "helpers_unchanged": true,
+  "limitations": {
+    "base_image_tag_not_pinned_digest": true,
+    "model_execution_of_check_not_observed": true,
+    "numeric_source_semantics_not_tested": true,
+    "reported_tokens_not_verified_complete": true,
+    "whole_supervisor_not_exercised": true
+  },
+  "manifest_sha256": "a8c7d4ce0dca021e437921ebe3a4a1896056c263691140731ba8821631844ab8",
+  "output_check": {
+    "benchmark_result": false,
+    "checker_unchanged": true,
+    "evaluated_cases": 5,
+    "output_bytes": 41,
+    "output_exists": true,
+    "output_sha256": "eb03dcb53008b66099f4a3324d5335b3cf0a3e93fefc7836afbb6a9eb88cfbdd",
+    "proof_authority": false,
+    "schema": "authored-grok-output-check@1",
+    "test_exit": 0
+  },
+  "raw_prompts_or_provider_output_exported": false,
+  "resources": {
+    "cpus": 5,
+    "gpus": 0,
+    "memory_mb": 20480
+  },
+  "router": {
+    "allocation_catalog": "aa-intelligence-index-v4.3",
+    "benchmark_result": false,
+    "child_custody_completed": true,
+    "completion_authority": false,
+    "credential_contents_exported": false,
+    "denied_tools": [
+      "search_tool",
+      "use_tool"
+    ],
+    "effective_toolset_verified": false,
+    "max_turns": 4,
+    "model": "grok-4.7",
+    "model_prompt_bytes": 1018,
+    "model_prompt_sha256": "e5d6c7682749a33c1414317574007b2e00f8223f2ad8bf7bc1d3ba625668a45f",
+    "native_provider_outcome": {
+      "classification_source": "stop_reason",
+      "completion_authority": false,
+      "envelope_observed": true,
+      "error_observed": false,
+      "error_subtype": "unknown",
+      "process_outcome": "returned",
+      "raw_provider_data_exported": false,
+      "reason_code": "end_turn",
+      "schema": "native-grok-outcome@1",
+      "stop_reason": "end_turn"
+    },
+    "native_rollout_usage": {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "dollar_cost": null,
+      "observed_final_usage_records": 1,
+      "raw_provider_data_exported": false,
+      "schema": "native-grok-final-usage@1",
+      "task_complete_observed": true,
+      "totals_scope": "native_final_envelope",
+      "usage": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 18176,
+        "input_tokens": 9378,
+        "output_tokens": 700,
+        "reasoning_output_tokens": 528,
+        "total_tokens": 28254
+      },
+      "usage_available": true,
+      "usage_complete_observed": null,
+      "usage_observation_sha256": "3f11358b24933abafe5617b593c1d4182499b08fb12c921e50a6993c144b925e"
+    },
+    "permission_mode": "bypassPermissions",
+    "provider": "grok_cli",
+    "provider_calls": 1,
+    "provider_output_token_cap_enforced": false,
+    "provider_seconds": 16.47092314006295,
+    "provider_timeout_seconds": 90,
+    "raw_provider_data_exported": false,
+    "reasoning_effort": "high",
+    "requested_output_tokens": 4096,
+    "returned_nonempty_text": true,
+    "schema": "authored-grok-router-probe@1",
+    "seconds": 17.769897702964954,
+    "status": "provider_returned",
+    "supervisor_lifecycle_exercised": false,
+    "tools": [
+      "read_file",
+      "search_replace",
+      "grep",
+      "list_dir",
+      "todo_write",
+      "run_terminal_cmd"
+    ],
+    "usage": {
+      "completion_tokens": 700,
+      "exit_code": 0,
+      "num_turns": 4,
+      "prompt_tokens": 9378,
+      "reasoning_tokens": 528
+    }
+  },
+  "schema": "authored-grok-tiny-diagnostic-summary@1",
+  "seconds": 153.93938110698946,
+  "setup_correction": {
+    "corrected_host_environment_tests_passed": 26,
+    "first_attempt_cleanup_succeeded": true,
+    "first_attempt_error_type": "ModuleNotFoundError",
+    "first_attempt_provider_calls": 0,
+    "missing_module_reproduced": "multiformats"
+  },
+  "source_heads": {
+    "datasets": "db432c5a93a207436f9a4279d888fddee931e390",
+    "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "source": "f9dcf5f80121ce659fd8e91feee83eb988dda997"
+  },
+  "source_heads_after": {
+    "datasets": {
+      "clean": true,
+      "head": "db432c5a93a207436f9a4279d888fddee931e390"
+    },
+    "kit": {
+      "clean": true,
+      "head": "8ac00bb1974b1378e12091d546d8425af34049e0"
+    },
+    "source": {
+      "clean": true,
+      "head": "f9dcf5f80121ce659fd8e91feee83eb988dda997"
+    }
+  }
+}

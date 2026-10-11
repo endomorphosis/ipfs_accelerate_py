@@ -1,0 +1,665 @@
+{
+  "archive_sha256": "1d71fa6129b09cbac4ecee6daba357af589c2d626cc4892358a6c96ca461049a",
+  "containers": {
+    "full": {
+      "container_id": "50aa0ad5d7325569972e5e89e0f15ad845d8d4575b23d2c7c906bddef83cbc1c",
+      "every_declared_control_enforcement_proven": false,
+      "memory_bytes": 21474836480,
+      "nano_cpus": 5000000000,
+      "owned_container_absent_twice": true
+    },
+    "no-index": {
+      "container_id": "fb9aaa42f4f8e22d9457e6b60032c087271a51334f86635962e2d7f20f3860e5",
+      "every_declared_control_enforcement_proven": false,
+      "memory_bytes": 21474836480,
+      "nano_cpus": 5000000000,
+      "owned_container_absent_twice": true
+    }
+  },
+  "credential_contents_exported": false,
+  "evidence_files": {
+    "build/build-exit.json": {
+      "bytes": 1560,
+      "sha256": "e3942d58f3c33a11de42de86d9c971774caf81ac3d8e487552cabf3eb7ed585a"
+    },
+    "build/bundle-identity.json": {
+      "bytes": 1816,
+      "sha256": "163829980e19cc154c5bcf499c2e7f59b12dd2bb3d939fe8d08d183526546cf2"
+    },
+    "build/campaign-command-spec.json": {
+      "bytes": 6914,
+      "sha256": "a3ef7e2692ef5f856d3d31aa3cc4fec7e632a6c7d469fd2d4d63a762bbd9fe03"
+    },
+    "build/preflight-exit.json": {
+      "bytes": 1565,
+      "sha256": "0ffa561635908901aa1e79649f248c243833e45890847da5574322c1fe14b91f"
+    },
+    "build/preflight/native-start-stop-result.json": {
+      "bytes": 64674,
+      "sha256": "6c47e569fefa932ac07d5e882358161253c449c136e4b40a265df5c24ea7189d"
+    },
+    "build/preflight/preparation-result.json": {
+      "bytes": 52411,
+      "sha256": "8ab1e45bd744da45bf6d8aedcba16f62b9cf345a65ea19e8052d526659b7f219"
+    },
+    "build/preflight/result.json": {
+      "bytes": 22471,
+      "sha256": "b1dd13390432f28c994734de0d9a7046638d597c5fa4005ababd00bee534c8ba"
+    },
+    "build/qualified-bundle.json": {
+      "bytes": 2102,
+      "sha256": "7d5d26bea49e9b44cc4b6e10961e5afaac1d380f1b4d49d8910106321ee3f68a"
+    },
+    "numerical-semantic-review.json": {
+      "bytes": 15441,
+      "sha256": "e34bfb93bfd42728f0e681eebf02d98b85e8c3dc046b8af6f28b42756d055b91"
+    },
+    "pair/build-preflight-review.json": {
+      "bytes": 2309,
+      "sha256": "2be4b02a173057b928929440297f8a383e24438a0d3e0d40998f8687b312acdb"
+    },
+    "pair/comparison.json": {
+      "bytes": 8919,
+      "sha256": "8d1aee7311d0c6a9b2445c8969fe58f041487a2f173ba86ee0dbc0c980f0ace7"
+    },
+    "pair/grok-coding-code-review.json": {
+      "bytes": 3088,
+      "sha256": "09fbf20d3b8b954314c9a931ae96768f0dd5ebc239ee667aedc5afc7597571eb"
+    },
+    "pair/grok-full-pilot-01/config.json": {
+      "bytes": 3273,
+      "sha256": "91a1ebad2874c9c24699f0d62a5b0862af4a1a9c108852486c8ec10a303c4797"
+    },
+    "pair/grok-full-pilot-01/invocation.json": {
+      "bytes": 266,
+      "sha256": "35ba8841c533e83ae0a356158d97635bd1b04436904a08a84eeca0118a9843dc"
+    },
+    "pair/grok-full-pilot-01/owned-container-absence.json": {
+      "bytes": 488,
+      "sha256": "2f7d568e0ef3eec69ff1f97f088f018b424a198cb23348372120e914fe6a739b"
+    },
+    "pair/grok-full-pilot-01/owned-container-running.json": {
+      "bytes": 938,
+      "sha256": "aeb37874254d750fe8188b43eb7f734e936a6d080274962370db3d97659f1488"
+    },
+    "pair/grok-full-pilot-01/preparation.json": {
+      "bytes": 69208,
+      "sha256": "dbda081af41c0d01bcab01b20eb258d08419b323d107afccc891f4a4c272c234"
+    },
+    "pair/grok-full-pilot-01/receipt.json": {
+      "bytes": 142536,
+      "sha256": "e2540836b60cb551d0536e2c11158a73678866138952382d42a618dbde3a1f26"
+    },
+    "pair/grok-no-index-pilot-01/config.json": {
+      "bytes": 3285,
+      "sha256": "e8f94712d6085d56fd7b728cc9e3c62868036c3237047f1589410fbedf63e9e8"
+    },
+    "pair/grok-no-index-pilot-01/invocation.json": {
+      "bytes": 270,
+      "sha256": "487b9ac1fee1cdd5c46f611ec5d5e819123e48ec7048e4760a21ca03c9816320"
+    },
+    "pair/grok-no-index-pilot-01/owned-container-absence.json": {
+      "bytes": 492,
+      "sha256": "0919e3f5a1b166c63a5621d6b9a086057841f1147995fb067efedf1faee93576"
+    },
+    "pair/grok-no-index-pilot-01/owned-container-running.json": {
+      "bytes": 951,
+      "sha256": "57ffcb7039d73eda784263505d3c6fb0d341085bb14518506c2c6fe6c0f458ba"
+    },
+    "pair/grok-no-index-pilot-01/preparation.json": {
+      "bytes": 69233,
+      "sha256": "90b3e01167b334d1b5a43a8ee0865baac9e116a2bfdb30436a6133c13e47486d"
+    },
+    "pair/grok-no-index-pilot-01/receipt.json": {
+      "bytes": 77996,
+      "sha256": "55bf0c6d29448783f768b347e35cbfc747435b577c8820cc360ae658425b0603"
+    },
+    "pair/grok-pilot-command-spec.json": {
+      "bytes": 11282,
+      "sha256": "7a1ea5dd6f2846dbea539686ab48360d16a3a21ddfebab78bc589419b1b7c619"
+    },
+    "pair/grok-pilot-frozen-review.json": {
+      "bytes": 2577,
+      "sha256": "e5059f8e2909a5efe76968550d1fab7b3d31d870659dcffed9bb545960507a62"
+    },
+    "pair/helper-qualification.json": {
+      "bytes": 1063,
+      "sha256": "35de41bbd5d01f46645b6bf44d9873418f19f8c5719f95a522e5ef0bd3964f7c"
+    },
+    "pair/helper-tests.xml": {
+      "bytes": 4614,
+      "sha256": "82a9de15fbd67194334d16e20cb746f9046ae209fb1786e0529440fed4bf45f1"
+    },
+    "pair/numerical-observer-review.json": {
+      "bytes": 2418,
+      "sha256": "591b1c3be2ea877b57d6c7f45f35dee3e47a501714afd7171ee06863568bc20e"
+    },
+    "pair/outer-helper-tests-02.xml": {
+      "bytes": 4385,
+      "sha256": "63564a7b982c0d3d74c33bd6bd415a4fb9abec3e22119a3a160ad4a35ef2a7d5"
+    },
+    "pair/pilot-execute-full-exit.json": {
+      "bytes": 4103,
+      "sha256": "df2121e3ef39721db248b726f02c9cd36da09ebea7cf165fdfe7eb9df74134bb"
+    },
+    "pair/pilot-execute-no-index-exit.json": {
+      "bytes": 4106,
+      "sha256": "676d2e3e300b6ede59546c48030b6c9eec4195b3d99145b98f144f68d39e1c5c"
+    },
+    "pair/result-review-helper-tests-02.xml": {
+      "bytes": 3499,
+      "sha256": "8932c5a964ceba94212d58ca41456e4d32929a36aad8924aa880d3667d00bc3e"
+    },
+    "pair/review_pair_results.py": {
+      "bytes": 15397,
+      "sha256": "bbd9f5ee7584b478a063325b488b5a101eb776c3465b79e12e9cfab35fe82d57"
+    },
+    "preflight-tests/final-04-command.json": {
+      "bytes": 6423,
+      "sha256": "8c1e2054f770748cc39e6383a2fc0b55fdd91c84686abb5aab81858cfe9c623a"
+    },
+    "review/closed-preflight-pair-review.json": {
+      "bytes": 5848,
+      "sha256": "28c01d4c2277bb5b95cdd99200d18298cf8254bc693e187fd63893a92683bbe7"
+    },
+    "review/create_closed_receipt.py": {
+      "bytes": 11664,
+      "sha256": "3de00649a30e271054b4379698efa5f837b6e6dbd83fd8570f0197062fcab466"
+    },
+    "review/grok-progress-observability.json": {
+      "bytes": 4705,
+      "sha256": "fdee1c020198f700eb37894082902e09d77f23d4e36a15c9a786b73d17a783d1"
+    },
+    "review/observe_container.py": {
+      "bytes": 3937,
+      "sha256": "8dcdf65a5c4b407625f16f3ae10fa847a5ebfc64b8a9a7f21ace72fa17aace55"
+    },
+    "review/observer/qualification.json": {
+      "bytes": 3877,
+      "sha256": "9fda3ceed9e87574123afde8594024c14023a79d98daf9a032146a519a961dd7"
+    }
+  },
+  "limitations": {
+    "background_workloads_controlled": false,
+    "background_workloads_note": "Unrelated task container observed during full setup; none observed at no-index setup. No foreign workload was stopped.",
+    "benchmark_advantage_established": false,
+    "cold_owner_recovery_qualified": false,
+    "learned_vector_retrieval_enabled": false,
+    "native_codex_rerun": false,
+    "native_protected_docker_qualified": false,
+    "numerical_worker_delivery_verified": false,
+    "provider_progress_before_exit_observed": false,
+    "raw_model_prompt_equality_verified": false,
+    "single_task_single_attempt_per_arm": true,
+    "source384_checkpoint_inference_distinct_from_retrieval": true,
+    "source384_supported_function_count": 0,
+    "source_obligations_discharged": 0,
+    "source_semantics_verified": false,
+    "total_token_savings_established": false
+  },
+  "manifest_sha256": "a8c7d4ce0dca021e437921ebe3a4a1896056c263691140731ba8821631844ab8",
+  "numerical_formalization_profile": "python-numerical-structure@1",
+  "paired_results": {
+    "actual_configs_equal_except_arm_job_output": true,
+    "arms": {
+      "full": {
+        "complete_single_trial_receipt": true,
+        "container_cleanup": {
+          "owned_container_cleanup_verified_by_reader": false,
+          "ownership_join_requires_independent_observation": true,
+          "status": "reported_absent_twice"
+        },
+        "declared_budget_matches_selected": true,
+        "durations_seconds": {
+          "agent_execution": 1964.954466,
+          "agent_setup": 227.834869,
+          "environment_setup": 5.820927,
+          "verifier": 7.872728
+        },
+        "harbor_exception_type": null,
+        "lifecycle": {
+          "remaining_processes": 0,
+          "runtime_close_succeeded": true,
+          "start": "succeeded",
+          "stop": "succeeded",
+          "worker_cleanup_returncode": 0
+        },
+        "no_index_runtime_inputs_disabled": null,
+        "numerical_delivery": {
+          "actual_request_observed_in_container": true,
+          "closed_record_sha256": "63b603867053ac7c97657ab9c1157845e2cb42994c008593f98a16fdccda7db0",
+          "delivery_boundary": "native_planner_request_submitted_to_router",
+          "model_summary_equality_verified": false,
+          "raw_request_replayed_by_this_reader": false,
+          "source_obligations_discharged": 0,
+          "status": "verified",
+          "worker_delivery_verified": false
+        },
+        "official_reward": 0.0,
+        "original_task_inputs_unchanged": true,
+        "outer_timeout": false,
+        "planning_seconds": 108.37686531199142,
+        "recorded_source_unchanged": true,
+        "reported_runtime_budget_matches_selected": true,
+        "reported_runtime_budget_seconds": {
+          "implementation_timeout_seconds": 1860,
+          "max_total_agent_seconds": 6420,
+          "provider_coding_timeout_cap_seconds": 1800,
+          "provider_coding_timeout_seconds": 1800,
+          "reserved_cleanup_seconds": 120
+        },
+        "resources_enforced_by_reader": false,
+        "task_completed": false,
+        "usage": {
+          "all_usage_explicitly_complete": false,
+          "billing_total_verified": false,
+          "dollar_cost": null,
+          "observed_invocations": 2,
+          "partial_counts_are_not_aggregate_totals": true,
+          "per_invocation": [
+            {
+              "invocation_id": "d9ddeb52eeb4423ca52a569bb8db65c7",
+              "observed_counts": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1920,
+                "input_tokens": 13905,
+                "output_tokens": 8913,
+                "total_tokens": 24738
+              },
+              "phase": "planning",
+              "provider_timeout_seconds": 600,
+              "status": "provider_returned",
+              "usage_complete": false
+            },
+            {
+              "invocation_id": "0fd60a8b5c7543daaa20120e26428d7c",
+              "observed_counts": null,
+              "phase": "coding",
+              "provider_timeout_seconds": 1800,
+              "status": "failed",
+              "usage_complete": false
+            }
+          ],
+          "total_tokens": null,
+          "totals": null,
+          "unreceipted_attempt": false
+        }
+      },
+      "no-index": {
+        "complete_single_trial_receipt": true,
+        "container_cleanup": {
+          "owned_container_cleanup_verified_by_reader": false,
+          "ownership_join_requires_independent_observation": true,
+          "status": "reported_absent_twice"
+        },
+        "declared_budget_matches_selected": true,
+        "durations_seconds": {
+          "agent_execution": 1898.312964,
+          "agent_setup": 167.674428,
+          "environment_setup": 3.141341,
+          "verifier": 3.289655
+        },
+        "harbor_exception_type": null,
+        "lifecycle": {
+          "remaining_processes": 0,
+          "runtime_close_succeeded": true,
+          "start": "succeeded",
+          "stop": "succeeded",
+          "worker_cleanup_returncode": 0
+        },
+        "no_index_runtime_inputs_disabled": true,
+        "numerical_delivery": {
+          "actual_request_observed_in_container": true,
+          "closed_record_sha256": "b9d60f4938763c2309be02c7e15f8fe7c73cc54a912625d078d9ad637e1b7631",
+          "delivery_boundary": "native_planner_request_submitted_to_router",
+          "model_summary_equality_verified": false,
+          "raw_request_replayed_by_this_reader": false,
+          "source_obligations_discharged": 0,
+          "status": "verified",
+          "worker_delivery_verified": false
+        },
+        "official_reward": 0.0,
+        "original_task_inputs_unchanged": true,
+        "outer_timeout": false,
+        "planning_seconds": 79.86556827288587,
+        "recorded_source_unchanged": true,
+        "reported_runtime_budget_matches_selected": true,
+        "reported_runtime_budget_seconds": {
+          "implementation_timeout_seconds": 1860,
+          "max_total_agent_seconds": 6420,
+          "provider_coding_timeout_cap_seconds": 1800,
+          "provider_coding_timeout_seconds": 1800,
+          "reserved_cleanup_seconds": 120
+        },
+        "resources_enforced_by_reader": false,
+        "task_completed": false,
+        "usage": {
+          "all_usage_explicitly_complete": false,
+          "billing_total_verified": false,
+          "dollar_cost": null,
+          "observed_invocations": 2,
+          "partial_counts_are_not_aggregate_totals": true,
+          "per_invocation": [
+            {
+              "invocation_id": "93fbe91a300c4ab7b50f381329653af8",
+              "observed_counts": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 2048,
+                "input_tokens": 8591,
+                "output_tokens": 7416,
+                "total_tokens": 18055
+              },
+              "phase": "planning",
+              "provider_timeout_seconds": 600,
+              "status": "provider_returned",
+              "usage_complete": false
+            },
+            {
+              "invocation_id": "90804046cb774dffb471bb6b42e12a14",
+              "observed_counts": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 3499264,
+                "input_tokens": 562655,
+                "output_tokens": 111389,
+                "total_tokens": 4173308
+              },
+              "phase": "coding",
+              "provider_timeout_seconds": 1800,
+              "status": "failed",
+              "usage_complete": false
+            }
+          ],
+          "total_tokens": null,
+          "totals": null,
+          "unreceipted_attempt": false
+        }
+      }
+    },
+    "attempts_per_arm": 1,
+    "control_basis": "predeclared_configuration_only",
+    "evidence_sha256": {
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-full-pilot-01/config.json": "91a1ebad2874c9c24699f0d62a5b0862af4a1a9c108852486c8ec10a303c4797",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-full-pilot-01/owned-container-absence.json": "2f7d568e0ef3eec69ff1f97f088f018b424a198cb23348372120e914fe6a739b",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-full-pilot-01/preparation.json": "dbda081af41c0d01bcab01b20eb258d08419b323d107afccc891f4a4c272c234",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-full-pilot-01/receipt.json": "e2540836b60cb551d0536e2c11158a73678866138952382d42a618dbde3a1f26",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-no-index-pilot-01/config.json": "e8f94712d6085d56fd7b728cc9e3c62868036c3237047f1589410fbedf63e9e8",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-no-index-pilot-01/owned-container-absence.json": "0919e3f5a1b166c63a5621d6b9a086057841f1147995fb067efedf1faee93576",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-no-index-pilot-01/preparation.json": "90b3e01167b334d1b5a43a8ee0865baac9e116a2bfdb30436a6133c13e47486d",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-no-index-pilot-01/receipt.json": "55bf0c6d29448783f768b347e35cbfc747435b577c8820cc360ae658425b0603",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-pilot-command-spec.json": "7a1ea5dd6f2846dbea539686ab48360d16a3a21ddfebab78bc589419b1b7c619",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/grok-pilot-frozen-review.json": "e5059f8e2909a5efe76968550d1fab7b3d31d870659dcffed9bb545960507a62",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/pilot-execute-full-exit.json": "df2121e3ef39721db248b726f02c9cd36da09ebea7cf165fdfe7eb9df74134bb",
+      "/home/barberb/lift_coding/artifacts/supervisor-long-pilot-20261011/pair/pilot-execute-no-index-exit.json": "676d2e3e300b6ede59546c48030b6c9eec4195b3d99145b98f144f68d39e1c5c"
+    },
+    "native_codex_rerun": false,
+    "performance_advantage_claimed": false,
+    "raw_provider_data_exported": false,
+    "reviewer_sha256": "bbd9f5ee7584b478a063325b488b5a101eb776c3465b79e12e9cfab35fe82d57",
+    "schema": "closed-long-grok-pair-review@1",
+    "source_proof_claimed": false,
+    "task_count": 1
+  },
+  "provider_free_preflight": {
+    "container_cleanup": {
+      "absence_samples": [
+        {
+          "exact_container_absent": true,
+          "return_code": 0
+        },
+        {
+          "exact_container_absent": true,
+          "return_code": 0
+        }
+      ],
+      "attempted": true,
+      "container_id": "e7510db06802d0d16edf6c794111b2e822025badf9421ea3dea34f013b3025ba",
+      "harbor_stop_succeeded": true,
+      "succeeded": true
+    },
+    "numerical_observation": {
+      "admitted_context_matches_initial": true,
+      "completion_authority": false,
+      "execution_authority": false,
+      "hydration": {
+        "catalog_count": 3,
+        "ducklake_catalogs": 3,
+        "ducklake_links": 3,
+        "ducklake_verified": true,
+        "world_record_cid": "bafkreihagehcgsdxn3yawyiq7bigphv6ptxmjlmvzgtlaml3xid3gliri4"
+      },
+      "live_planner_delivery_verified": false,
+      "model_inference_calls": 0,
+      "producers": {
+        "consumer": "cb702b74ab8cbf580833449ff2e296826c0797e1cace03e758dcb255373279d8",
+        "grammar": "966243b52d57033ee2545142792688af6d2b32c8f6eac6f9f6efd157f03bd3f5",
+        "projections": "e7218c2e25a7a9e7ae2224335acf178549f124843ca5f9df32550c0d17b970d7"
+      },
+      "profile": "python-numerical-structure@1",
+      "proof_authority": false,
+      "provider_calls": 0,
+      "provider_free": true,
+      "receipt_sha256": "f637dca3cb85575f9553b0372f9feb4837d96e69a566d8026b936faf92c4fb15",
+      "schema": "terminal-numerical-provider-free-observation@1",
+      "source_hashes": {
+        "eigen.py": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d",
+        "eval.py": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+      },
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "summary": {
+        "autoencoder_coverage_changed": false,
+        "completion_authority": false,
+        "execution_authority": false,
+        "families_with_artifacts": [
+          "first_order",
+          "higher_order",
+          "program"
+        ],
+        "files": 2,
+        "functions": 4,
+        "interpretation": "Structural syntax and pending obligations; NumPy calls remain opaque. Read source before editing.",
+        "model_inference_calls": 0,
+        "omitted_function_summaries": 0,
+        "omitted_obligation_summaries": 19,
+        "partial_or_unsupported_functions": 2,
+        "pending_obligation_count": 27,
+        "pending_obligations": [
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:293ef6fae216a5ebce55c001043d76af",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "matrix_shape",
+            "obligation_id": "numerical:a0d0f4836a386f59f45de38ddd0ed3dd",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:29",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "eigenpair_residual",
+            "obligation_id": "numerical:0c42cc95aae03f9b1ed2dab3a560ef82",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:44",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:4d6e7f581f3a66d0269b22cf2dc8d26d",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:46",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "library_semantics_and_effects",
+            "obligation_id": "numerical:2d3b5d383860f2db77dadf81224242eb",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:46",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "selection",
+            "obligation_id": "numerical:8d90140bb486c38ae77a53c5693a503c",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:54",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "index_safety",
+            "obligation_id": "numerical:6b7fa0f89f467d7bc0b767dc7d634d6b",
+            "path": "eigen.py",
+            "status": "pending"
+          },
+          {
+            "expression_id": "expr:70",
+            "function_ids": [
+              "function:2"
+            ],
+            "kind": "slice_safety",
+            "obligation_id": "numerical:fbb2402decfd9b58c20de00b45eadb24",
+            "path": "eigen.py",
+            "status": "pending"
+          }
+        ],
+        "per_function": [
+          {
+            "function_id": "function:2",
+            "name_truncated": false,
+            "path": "eigen.py",
+            "pending_obligation_count": 9,
+            "qualified_name": "find_dominant_eigenvalue_and_eigenvector",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:6",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 9,
+            "qualified_name": "ref_solution",
+            "status": "structurally_complete",
+            "structurally_complete": true,
+            "unsupported_construct_count": 0
+          },
+          {
+            "function_id": "function:81",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 9,
+            "qualified_name": "test_eigen_pair",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 1
+          },
+          {
+            "function_id": "function:243",
+            "name_truncated": false,
+            "path": "eval.py",
+            "pending_obligation_count": 0,
+            "qualified_name": "test_speedup",
+            "status": "partial",
+            "structurally_complete": false,
+            "unsupported_construct_count": 4
+          }
+        ],
+        "profile": "python-numerical-structure@1",
+        "proof_authority": false,
+        "provider_calls": 0,
+        "schema": "terminal-numerical-formalization-planning-summary@1",
+        "source_obligations_discharged": 0,
+        "source_semantics_verified": false,
+        "source_tree_id": "baguqeeraanfjei4wydhtho3ymct5ff3frqntxrehd24k7ru4v3mctkugvksq",
+        "structurally_complete_functions": 2,
+        "training_steps": 0,
+        "whole_program_semantics_verified": false
+      },
+      "summary_sha256": "ad5904cb67ccdb752ec58e8951d66eae0650c653e72a98cdc90d514b9947460d",
+      "training_steps": 0,
+      "whole_program_semantics_verified": false,
+      "worker_delivery_verified": false
+    },
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "seconds": 473.10257211199496,
+    "source384_inference": {
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "completion_authority": false,
+      "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "execution_authority": false,
+      "formalization_authority": false,
+      "inference_bytes": 119717,
+      "inference_executed": true,
+      "inference_sha256": "f657cf5986ae407d63a7ca714637836de15a3dc7d58e1bf2d382e17ffa5d1e93",
+      "model_loads": 1,
+      "native_worker_executed": true,
+      "neural_inference_replayed": false,
+      "proof_authority": false,
+      "schema": "local-preflight-source384-inference-observation@1",
+      "source_head": {
+        "ast_revision_id": "rev:terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4:snapshot:baguqeerascusu3525w2sldeyarfmzxjmtq5dge55mzic7j4rhz4cvtsk6mqa",
+        "generation": 1,
+        "manifest_cid": "baguqeera2x6urpbukjvmaf74dxxmsdlh5jshbzxbr5zep2df6yhsjnea3c7q",
+        "receipt_cid": "baguqeeralxcqvypm6vvs5746oi44pnlm3ijinzvkvbsbutokgiigpg6pinra",
+        "repository_id": "terminal-source384:a240005ea4824c20014be1248364dbb75847adf4b3382d9410f2fc50f9bc21d4",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeerascusu3525w2sldeyarfmzxjmtq5dge55mzic7j4rhz4cvtsk6mqa"
+      },
+      "training_steps": 0,
+      "version_id": "sha256:0fdcf87d0926425cc88e81940cdcf0c47ba491d760e79b183a7ee71757847716"
+    }
+  },
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "raw_prompts_or_provider_output_exported": false,
+  "resource_profile": "source384-5cpu-20gib-formalization@1",
+  "runtime_source_heads": {
+    "datasets": "db432c5a93a207436f9a4279d888fddee931e390",
+    "kit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "source": "f9dcf5f80121ce659fd8e91feee83eb988dda997"
+  },
+  "schema": "supervisor-long-budget-pilot-qualification@1",
+  "task": "largest-eigenval",
+  "tests": {
+    "observer_unique_passed": 111,
+    "outer_observation_results": {
+      "failed": 0,
+      "passed": 22,
+      "skipped": 0,
+      "xml_sha256": "63564a7b982c0d3d74c33bd6bd415a4fb9abec3e22119a3a160ad4a35ef2a7d5"
+    },
+    "pair_helper_passed": 26,
+    "preflight_passed": 49,
+    "result_reader_results": {
+      "failed": 0,
+      "passed": 18,
+      "skipped": 0,
+      "xml_sha256": "8932c5a964ceba94212d58ca41456e4d32929a36aad8924aa880d3667d00bc3e"
+    },
+    "total_unique_across_suites_not_claimed": true
+  }
+}

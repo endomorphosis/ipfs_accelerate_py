@@ -1,0 +1,56 @@
+{
+  "all_run_source_snapshots_unchanged": true,
+  "base_commit": "f9dcf5f80121ce659fd8e91feee83eb988dda997",
+  "commands": [
+    "command.json",
+    "comparison-command.json",
+    "observer-final-command.json"
+  ],
+  "commit": "16d687bd68283ead10ba755fe9109166e014fdb3",
+  "correction": "First combined run had four comparison-test import failures; import corrected, malformed-status regression added, affected suite passed. Final observer run added deletion-during-read regression. Earlier successes remain retained, not presented as a single fresh combined run.",
+  "docker_calls": 0,
+  "frozen_pair_exercised_observer": false,
+  "hidden_verifier_reads": 0,
+  "latest_unique_case_counts": {
+    "passed": 256
+  },
+  "provider_calls": 0,
+  "runs": [
+    {
+      "counts": {
+        "failed": 4,
+        "passed": 250
+      },
+      "sha256": "8908e89de3f5e30b9ebd442ab5c72be4813a52aef19639b1f379ffa1a6e77806",
+      "xml": "results.xml"
+    },
+    {
+      "counts": {
+        "passed": 23
+      },
+      "sha256": "8a4d3120fea934adfb84d698eb5f4a45343e4b266a61cc154792e4b7692d28a1",
+      "xml": "comparison-results.xml"
+    },
+    {
+      "counts": {
+        "passed": 65
+      },
+      "sha256": "ebc51cd856ddbcf64415149094f48ba89b4f96759de9913464aa5ea5b2fdcd1e",
+      "xml": "observer-final-results.xml"
+    }
+  ],
+  "schema": "terminal-output-observation-qualification@1",
+  "scope": "Current bytes at owner-bound declared candidate output paths and canonical counterparts only; no patch-publication, writer attribution, correctness, or reward authority.",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "2bd63bfabc9fd6a9ed7d87d27b8e71024cbddc982a631a25d69f5c82813e0233",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "8d45defdf11d5f8127073967023867e2490ea8d7bc0409ee8ecbc6ec29ffe3cf",
+    "benchmarks/agent_supervisor/container_coding/terminal_numerical_policy.py": "0d71a12c808b860d7a6f2e0e5e991a8e385f1ad903038cc08ed6cf215d534596",
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py": "b5336a8cd52b37634af7b62c941aff9a463459d134ace61073f9ad8529c586cb",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "33a718948165d31733b67dd1ff3b89f46f8806daa8d8cc273fa54a9e741f7f80",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "97ffa94651bcad72259b11ce279ff1f18550398b978fc154ac77ec86d7e2521a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py": "ec914c4eef978f7fa56b4eafc880067ef0888c8e84569b1ec165778998d8d3a8",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "02f0b88116acd3d4753010316c05932b988be95af3d05065a5d07229409d2d01"
+  },
+  "working_tree_clean": true,
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-output-observation-20261011"
+}

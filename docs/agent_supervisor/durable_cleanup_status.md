@@ -3,6 +3,105 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Long-budget Docker pilot and planner delivery, 2026-10-11
+
+A fresh archive at supervisor `f9dcf5f80121`, datasets `db432c5a93a2`, and kit
+`8ac00bb1974b` qualified in the actual task container before model calls. The
+provider-free check took 473.10 seconds inside the driver. It exercised checkpoint
+inference, numerical grammar, both DuckLake stores, and native START/STOP; the
+owner heartbeat advanced and cleanup left no native or worker processes.
+The archive SHA-256 is
+`1d71fa6129b09cbac4ecee6daba357af589c2d626cc4892358a6c96ca461049a`.
+
+The preflight now accepts the numerical profile and replays its source, producer,
+artifact, and catalog bindings immediately before START. The live observer binds
+the exact numerical summary to the initial native planner request submitted to
+`llm_router`, its hash, and the returned invocation receipt. This verifies the
+request boundary; it does not assert byte equality with a provider-transformed
+prompt or delivery to the coding worker. No-index checks absence in its actual
+planner request. Focused preflight tests passed 49/49; observer qualification
+passed 111 unique tests. Separate pair, preflight-observer, and result-reader
+helper suites passed 26, 22, and 18 tests respectively; no combined unique count
+is claimed across these suites.
+
+Both arms selected `source384-5cpu-20gib-formalization@1` and
+`python-numerical-structure@1`, using Grok 4.7 through `llm_router`. Full enabled
+lexical retrieval, Source384 inference, and numerical structure; no-index disabled
+them. This was one fresh attempt per arm on `largest-eigenval`.
+
+| Supervisor arm | Official reward | Agent execution (s) | Agent setup (s) | Total tokens |
+| --- | ---: | ---: | ---: | --- |
+| Full: lexical indexes + Source384 + numerical structure | 0 | 1,964.95 | 227.83 | Unknown |
+| No indexes | 0 | 1,898.31 | 167.67 | Unknown |
+
+Both coding calls reached their 1,800-second limit with `TimeoutExpired`.
+Neither Harbor run raised an outer exception. START and STOP succeeded, no native
+processes remained, worker cleanup returned 0, and each exact owned container
+was observed absent twice. Original benchmark inputs and frozen source checkouts
+were unchanged. Actual container observations confirmed 5 CPUs and 20 GiB;
+other declared controls were compared as configuration. The full planner request
+contained the exact numerical summary, while no-index verified its absence and
+had no indexed context or Doctor dispatch. Full initial context took 14.55 seconds;
+the observed failures occurred during coding, after preparation.
+
+Planning usage is only a partial observation: full reported 24,738 tokens and
+no-index reported 18,055. Full coding timed out without a usage envelope.
+No-index retained a native envelope reporting 52 turns and 4,173,308 tokens:
+562,655 input, 3,499,264 cached input, and 111,389 output. Its process nevertheless
+timed out, `task_complete_observed` was false, and usage completeness was absent.
+These observations establish model activity but not why the process failed to
+finish. Aggregate tokens and costs remain unknown; these are not token-savings
+results.
+
+The full numerical context contained four functions, two structurally complete
+and two partial, with 27 pending obligations and zero discharged. Hydration
+retained one world record and three catalog/link pairs. Source384 loaded its
+pinned checkpoint, but all four learned candidates remained unsupported by its
+scalar source contract. Retrieval remained lexical. No native Codex baseline was
+rerun, and this pilot does not establish an advantage for the complete indexed
+system. Unrelated task containers were observed during full setup and early
+execution; none were observed at no-index setup. Host contention was not controlled.
+
+The closed full artifacts do not retain candidate output hashes or a staged patch
+after timeout. Unchanged original benchmark inputs are a separate observation
+and cannot establish whether Grok edited its private worktree. Its JSON output
+mode also supplies no intermediate tool or turn counters. The next diagnostic
+must retain bounded output observations and provider progress before drawing a
+conclusion about why coding used the full allowance.
+
+The [closed pilot qualification](evidence/long-budget-pilot-20261011/qualification.json)
+records source and archive identities, both results, numerical request joins,
+preflight coverage, cleanup, and limitations. An
+[independent paired audit](evidence/long-budget-pilot-20261011/independent-pair-audit.json)
+rechecked the exact receipts and retained coding outcome metadata.
+
+A subsequent observation fix at supervisor `16d687bd6828` now records bounded
+hash/size/existence facts for admitted output paths in the owner-bound candidate
+and canonical checkout after settlement and cleanup, before container removal.
+Native task/attempt/baseline bindings select the allocation. Unsafe, missing or
+unstable evidence remains unavailable; diagnostic import and timeout failures
+cannot suppress the primary result. Existing archive gates bind its producers,
+and the comparison exports a bounded projection. **256 unique tests passed**,
+including final observer and comparison reruns; the
+[separate qualification](evidence/long-budget-pilot-20261011/output-observer-qualification.json)
+records source and test-artifact hashes and the qualification runs. This fix was not used in the pair
+above and cannot recover its deleted candidate worktrees. The observations do not
+establish writer identity, original allocation inode, publication, or correctness.
+
+A subsequent [authored router diagnostic](evidence/long-budget-pilot-20261011/tiny-router-diagnostic.json)
+used the frozen archive, Grok 4.7 through `llm_router`, the same coding tool policy,
+and the isolated UID 1001 boundary, with a four-turn/90-second cap. Grok edited
+the tiny function and returned normally in **16.47 seconds**. A separate protected
+checker verified the accepted AST and passed five cases; it did not observe
+whether the model ran its own requested check. The entire diagnostic took
+153.94 seconds, including setup and successful container cleanup. This was one
+provider call and did not exercise full supervisor planning or the benchmark.
+The initial diagnostic attempt made zero provider calls: its host environment
+lacked `multiformats`. Reusing the qualified campaign's explicit dependency paths
+fixed that setup issue; 26 helper tests passed before the fresh successful run.
+The tiny success establishes basic tool-based editing on this route, while the
+benchmark's long rollout and pending numerical semantics remain unresolved.
+
 ## Reserved preparation budget and numerical structure, 2026-10-11
 
 The explicit `source384-5cpu-20gib-formalization@1` resource profile raises the
@@ -59,9 +158,9 @@ were used for that check. Separate authored Lean qualification passed actual
 `lake build`; removing the nonempty premise from an index lemma correctly failed.
 
 The numerical path is a deterministic grammar extension. It does not improve the
-Source384 checkpoint's learned coverage or prove NumPy semantics. The earlier
-benchmark scores below are unchanged; a newly built archive and a fresh matched
-trial are required to measure this profile's task success and token usage.
+Source384 checkpoint's learned coverage or prove NumPy semantics. This initial
+qualification did not measure task success or token usage; the separate
+long-budget pilot above records subsequent matched trials.
 The [closed qualification receipt](evidence/numerical-budget-20261011/qualification.json)
 records the tested source revisions, test counts, public-source coverage, native
 Lake input/tool hashes, and the distinction between compilation and source proofs.
