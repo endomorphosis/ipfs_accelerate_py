@@ -62433,17 +62433,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "IMPLEMENTATION_DAEMON_COMMAND."
         )
 
-    def _task_metadata_snapshot(
+    def _task_context_snapshot(
         self, task: PortalTask, *, include_context: bool = False,
-    ) -> Mapping[str, str]:
-        """Copy one task's metadata and optionally validate its live nomination."""
+    ) -> tuple[Mapping[str, str], dict | None]:
+        """Observe metadata and formalization evidence from one live selection."""
         normalized = {
             str(key).strip().lower().replace("_", " "): str(value).strip()
             for key, value in task.metadata.items()
         }
+        worker_evidence = None
         bundle = getattr(self, "_task_context_nomination_bundle", None)
         if include_context and bundle is not None:
-            from ..runtime.task_context_bundle import load_task_context_nomination
+            from ..runtime.task_context_bundle import load_task_context_selection
             from .database_portal_bridge import _source384_admission
             deadline = _source384_callback_deadline.get()
             options = {}
@@ -62454,7 +62455,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 options["source384_timeout_seconds"] = min(90.0, remaining)
             task_cid = normalized.get("database task cid") or task.canonical_task_cid
             try:
-                nominations = load_task_context_nomination(
+                selection = load_task_context_selection(
                     repository=self.repo_root, artifact=bundle["artifact"],
                     expected_sha256=bundle["sha256"], task_id=task.task_id,
                     task_cid=task_cid, **options,
@@ -62476,10 +62477,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     task_cid=task_cid, context_sha256=bundle["sha256"]) from exc
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError("Source384 original callback deadline expired")
+            nominations = selection["metadata"]
             if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
                 raise ValueError("launch context nomination conflicts with task metadata")
             normalized.update(nominations)
-        return MappingProxyType(normalized)
+            worker_evidence = selection.get("worker_evidence")
+        return MappingProxyType(normalized), worker_evidence
+
+    def _task_metadata_snapshot(
+        self, task: PortalTask, *, include_context: bool = False,
+    ) -> Mapping[str, str]:
+        """Compatibility metadata view; every live call revalidates its selection."""
+        return self._task_context_snapshot(task, include_context=include_context)[0]
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
         include_context = False
@@ -64665,6 +64674,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             projections.append((name, payload))
         return tuple(projections)
 
+    def _formalization_implementation_references(
+        self, worker_evidence: dict | None, *, repository_id: str, tree_id: str,
+    ) -> tuple:
+        """Retain the exact live task-bound observation as required evidence."""
+        if worker_evidence is None:
+            return ()
+        return build_text_context_references(
+            canonical_json(worker_evidence), reference_prefix="source-formalization",
+            kind="source-formalization-context",
+            path=worker_evidence["context_bundle"]["artifact"],
+            repository_id=repository_id, tree_id=tree_id,
+            required=True, chunk_bytes=6_144,
+        )
+
     def _world_implementation_references(
         self, task: PortalTask, *, repository_id: str, tree_id: str,
         semantic_references: tuple = (), context_metadata: Mapping[str, str] | None = None,
@@ -64854,7 +64877,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         retry_evidence = parent_capsule.evidence
         semantic_changed = False
-        context_metadata = self._task_metadata_snapshot(task, include_context=True)
+        context_metadata, worker_evidence = self._task_context_snapshot(task, include_context=True)
+        formalization_references = self._formalization_implementation_references(
+            worker_evidence, repository_id=repository_id, tree_id=tree_id,
+        )
+        old_formalization = tuple(item for item in retry_evidence if item.kind == "source-formalization-context")
+        if old_formalization != formalization_references:
+            semantic_changed = True
+            retry_evidence = (
+                *(item for item in retry_evidence if item.kind != "source-formalization-context"),
+                *formalization_references,
+            )
         semantic_references = ()
         if context_metadata.get("semantic context artifact"):
             semantic_references = self._semantic_implementation_references(
@@ -65732,13 +65765,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         # One live nomination per construction; no cross-dispatch cache.
         # Each artifact consumer still performs its independent source checks.
-        context_metadata = self._task_metadata_snapshot(task, include_context=True)
+        context_metadata, worker_evidence = self._task_context_snapshot(task, include_context=True)
         semantic_references = self._semantic_implementation_references(
             task, attempt, repository_id=repository_id, tree_id=tree_id,
             context_metadata=context_metadata,
         )
         evidence = (
             *evidence,
+            *self._formalization_implementation_references(
+                worker_evidence, repository_id=repository_id, tree_id=tree_id,
+            ),
             *semantic_references,
             *self._code_retrieval_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
@@ -66122,7 +66158,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     rendered = render_context_capsule(result.capsule)
                 else:
                     repair_round = attempt - 1
-                    if not any(self._task_metadata_value(task, key) for key in ("semantic context artifact", "world context artifact")) and self._fresh_retry_context_matches_diagnostic(
+                    if (getattr(self, "_task_context_nomination_bundle", None) is None
+                            and not any(self._task_metadata_value(task, key) for key in ("semantic context artifact", "world context artifact"))) and self._fresh_retry_context_matches_diagnostic(
                         parent[0],
                         diagnostic,
                         repair_round=repair_round,

@@ -1,0 +1,26 @@
+{
+  "errors": 0,
+  "evidence_sha256": {
+    "run-02-command.json": "1aeae7a7e33e8cd234be48ef1f8b164c04977145dc65df3462a3ffdd2113bde9",
+    "run-02-result.json": "e89df0eae5ec7db81135aed16463968955c578bcc4f2ec43172eff351f080c17",
+    "run-02.log": "03486986d4e03aa0cae25de69a177f90024bea31a777d02ae8717a1cd26e33b0",
+    "run-02.xml": "b124f86be00ca85ee451d5b6875f71c4eac89c5376b9fa343d9972036406a0f6"
+  },
+  "failures": 0,
+  "numerical_scope": "production source grammar, native DuckLake and current source replay",
+  "provider_calls": 0,
+  "run_01_included_in_run_02": true,
+  "schema": "task-formalization-worker-bundle-qualification@1",
+  "skipped": 0,
+  "source384_scope": "authored receipt and validator doubles; no new checkpoint inference or accuracy claim",
+  "source_obligations_discharged": 0,
+  "source_observation": "post_run_sha256; no before/after identity claim",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/test_task_formalization_bundle.py": "71dea1d5a60626f2f4c0d3d00af92ff5d3c6a4e506d4cecb39ca1f1bff3cf8ef",
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "dbc9eaa19c747c0a7f6882a12ee3309c10f13e54dd7362d7cd775cdfd5a8d216",
+    "test/api/semantic_state/test_source384_receipt_reference.py": "d72090f29e52dbdeb399d21012acbf4b8e9d29cb80dcb2bb919b8f83ab908862",
+    "test/api/semantic_state/test_source384_task_context_bundle.py": "abf2f4c69f9f1381a346f6fb22fc09b26b20f5b1af52f78e4aafd6c8e1e3a4e1",
+    "test/api/test_source384_resource_deferral.py": "87ded170955de9248a52424e727a4691783014d9bb8a8f8982d6d5e3c0bd6efd"
+  },
+  "tests": 128
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "seconds": 39.003691383986734,
+  "source_after": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": "ecfca0fd74152dce1ef52157eaa5b1d8c9e8b7b5de3be5b0a5f96dfc5255974e",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "7eee545dd03d0c910beba97f549d399620352923090f095252af2c87835231e7",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": "78cc9fb896945da6d2b8aa6d60a08b59ebdb48ea03ea9e793a524140f9aa4de3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "0462a9b405cda1df787317784996e05a3b484534e1f2f2294266f886c7da5609"
+  },
+  "sources_unchanged": true
+}

@@ -1065,8 +1065,9 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         result["codebase_autoencoder"] = prepared_context["codebase_autoencoder"]
         result["codebase_autoencoder_catalog"] = prepared_context["codebase_autoencoder_catalog"]
         result["new_autoencoder_training_steps"] = prepared_context["new_autoencoder_training_steps"]
-    if prepared_context.get("numerical_formalization") is not None:
-        result["numerical_formalization"] = prepared_context["numerical_formalization"]
+    for key in ("source384_context", "numerical_formalization"):
+        if prepared_context.get(key) is not None:
+            result[key] = prepared_context[key]
     _write(state / "context-result.json", result)
     return result
 

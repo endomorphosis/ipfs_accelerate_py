@@ -65,7 +65,11 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
   q=p/name
   if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
   if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
-command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*sys.argv[1:]]
+sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
+handoff=prepare_container_source_formalization_dispatch(argv=list(sys.argv[1:]),boundary=root/'container-boundary.json',workspace=cwd)
+os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
+command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*handoff['argv']]
 proof_query_guard=None
 if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag in ('--finite-proof-query-context','--finite-proof-query-sha256','--finite-proof-query-context-cid')):
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
@@ -161,6 +165,8 @@ parser.add_argument('--doctor-residual-task-cid')
 parser.add_argument('--public-instruction-artifact',type=pathlib.Path)
 parser.add_argument('--public-instruction-sha256')
 parser.add_argument('--public-instruction-task-cid')
+parser.add_argument('--source-formalization-handoff',type=pathlib.Path)
+parser.add_argument('--source-formalization-handoff-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 args=parser.parse_args()
 if args.provider!=selected_provider:raise SystemExit('provider differs from deployed worker route')
@@ -170,6 +176,8 @@ contract_values=(args.doctor_contract_artifact,args.doctor_contract_sha256,args.
 finite_values=(args.finite_repository_artifact,args.finite_repository_sha256,args.finite_repository_task_cid)
 proof_query_values=(args.finite_proof_query_context,args.finite_proof_query_sha256,args.finite_proof_query_context_cid)
 instruction_values=(args.public_instruction_artifact,args.public_instruction_sha256,args.public_instruction_task_cid)
+formalization_values=(args.source_formalization_handoff,args.source_formalization_handoff_sha256)
+if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
 if args.semantic_metadata_census_only and args.semantic_metadata_view!='common-bindings@1':raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
@@ -241,6 +249,7 @@ else:
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.doctor_residual_artifact is not None:sys.argv+=['--doctor-residual-artifact',str(args.doctor_residual_artifact),'--doctor-residual-sha256',args.doctor_residual_sha256,'--doctor-residual-task-cid',args.doctor_residual_task_cid]
  if args.public_instruction_artifact is not None:sys.argv+=['--public-instruction-artifact',str(args.public_instruction_artifact),'--public-instruction-sha256',args.public_instruction_sha256,'--public-instruction-task-cid',args.public_instruction_task_cid]
+ if args.source_formalization_handoff is not None:sys.argv+=['--source-formalization-handoff',str(args.source_formalization_handoff),'--source-formalization-handoff-sha256',args.source_formalization_handoff_sha256]
  raise SystemExit(run_with_child_custody(main))
 """
 
@@ -298,6 +307,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         f"useradd --uid 1001 --gid supervisor --home-dir {ROOT}/worker-home --shell /usr/sbin/nologin benchmarkworker && "
         f"install -d -o root -g root -m 0755 {ROOT}/bin {ROOT}/provider-bin && "
         f"install -d -o supervisor -g supervisor -m 0750 {ROOT}/worktrees && "
+        f"install -d -o supervisor -g supervisor -m 0750 {ROOT}/worker-observations && "
         f"install -d -o benchmarkworker -g supervisor -m 0700 {ROOT}/worker-home {ROOT}/worker-home/{provider_home} && "
         f"install -o benchmarkworker -g supervisor -m 0600 {ROOT}/{auth_home}/auth.json {ROOT}/worker-home/{provider_home}/auth.json && "
         f"chmod 0700 {ROOT}/home {ROOT}/{auth_home} {ROOT}/state",

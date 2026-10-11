@@ -1,0 +1,49 @@
+{
+  "create": [
+    "docker",
+    "create",
+    "--user",
+    "0:0",
+    "--network",
+    "none",
+    "--memory",
+    "3g",
+    "--cpus",
+    "2",
+    "--pids-limit",
+    "128",
+    "--mount",
+    "type=bind,src=/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011,dst=/opt/ipfs-supervisor/source,readonly",
+    "--mount",
+    "type=bind,src=/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011,dst=/opt/ipfs-supervisor/datasets,readonly",
+    "--mount",
+    "type=bind,src=/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit,dst=/opt/ipfs-supervisor/kit,readonly",
+    "--mount",
+    "type=bind,src=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/docker-qualification.py,dst=/opt/ipfs-supervisor/qualification.py,readonly",
+    "--env",
+    "IPFS_KIT_DISABLE=1",
+    "--env",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "--entrypoint",
+    "/bin/sleep",
+    "ipfs-supervisor-preview-worker:20261005-r3",
+    "300"
+  ],
+  "execute": [
+    "docker",
+    "exec",
+    "--env",
+    "QUAL_CONTAINER_ID=6f163c8506a700031800961a7f970e7d0bb7a6772c2e82b28e8d2a9c73b80f67",
+    "--env",
+    "QUAL_IMAGE_ID=sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+    "6f163c8506a700031800961a7f970e7d0bb7a6772c2e82b28e8d2a9c73b80f67",
+    "/opt/ipfs-supervisor/venv/bin/python",
+    "-I",
+    "/opt/ipfs-supervisor/qualification.py"
+  ],
+  "controller_sha256": "8269248530e6b19a6fa71fa6d5c24056beaa3399987bfcf9596471418a15e430",
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "command": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/integration/test_admitted_context_refresh.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/lifecycle-01.xml",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/lifecycle-01-cache"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/lifecycle-01-seal.duckdb",
+    "IPFS_KIT_DISABLE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/supervisor-comparison-contracts-20261011:/home/barberb/lift_coding/.worktrees/source-unit-numerical-links-20261011:/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages:/usr/lib/python3.12/dist-packages:/home/barberb/.local/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "dc016a187cea99b210e4f65dc9cc082bc462e740b5af5bff3eae79f3a454dab0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "6aff8fed59365fdf3191dad6fb26056f1f24cbdaa6a112c4bea58127f8b14b08",
+    "test/integration/test_admitted_context_refresh.py": "a5ee4b83daa01c00575d6bc17401a441196d24ee9ba90748990b1aa701a3baef"
+  }
+}

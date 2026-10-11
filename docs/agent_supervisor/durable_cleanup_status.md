@@ -3,6 +3,56 @@
 Audit date: 2026-10-11. STOP integration starts from supervisor revision
 `07eed982c7150406480eefdf0c57cdd2f772b671`.
 
+## Task-bound formalization delivery to coding workers, 2026-10-11
+
+Selected Source384 candidate IR and deterministic numerical function links now
+reach required evidence in the native coding-worker capsule. The task bundle
+retains exact owner receipt references; the new `@4` bundle supports numerical
+receipts alone or alongside Source384. Live loading checks the selected task,
+bundle, receipt, producer, model and source bindings through their existing
+owners, then projects the bounded summaries without rerunning neural inference.
+The evidence preserves each summary's origin, omission counts, pending
+obligations and hashes. Warm native-owner rebinding retains both selections,
+and retries revalidate and replace the selected evidence instead of reusing a
+stale parent capsule. Required evidence remains subject to the existing prompt
+byte and token budgets; it cannot be silently omitted to fit those budgets.
+
+The shared `llm_router` coding path verifies the formalization evidence before
+provider dispatch, including its task identity, complete chunk bindings and
+source bytes in the allocated Git worktree. The container owner validates its
+private indexes and seals an invocation-bound handoff for the separate worker
+identity. The worker verifies the protected handoff, its expiry, exact prompt
+and workspace bindings, and current source bytes. This keeps owner-only stores
+private while carrying their bounded observation across the worker boundary.
+The archive capability now binds the handoff validator's source bytes as well.
+
+Completed publication preserves the original numerical receipt as a historical
+observation. Fresh numerical successor generation has no admitted policy yet,
+so post-STOP refresh explicitly returns `successor_unavailable` with
+`numerical_current=false`. A combined selection retains both receipts and does
+not start Source384 regeneration or produce a successor bundle that drops the
+numerical component. This derivative limitation does not undo independently
+validated task completion. Live START and worker loading still reject stale
+source. The existing plain and lexical refresh paths remain available.
+
+The [consolidated qualification](evidence/worker-formalization-delivery-20261011/qualification.json)
+records the tested source hashes, distinct test census and retained failed or
+superseded runs. Coverage includes actual native owner rebinding, numerical
+projections and DuckLake reloads, worker capsule and router transport, invocation
+handoff checks, tamper refusal and publication/STOP behavior. Authored model or
+provider seams are identified separately from pinned checkpoint inference.
+These observations grant no proof, formalization, execution or completion
+authority: **zero source obligations are discharged**. The final historical
+benchmark audit still needs explicit validation of the new formalization
+evidence kind beyond its existing complete-prompt byte accounting.
+
+This change consumes the existing selected Source384 checkpoint; it does not
+enable the separate experimental learned NumPy selection checkpoint or expand
+the learned grammar. No new Terminal Bench run, score or token-efficiency
+comparison was produced. Grok authentication remains unresolved based on the
+previous isolated probe; this change did not repeat that probe or make a live
+provider request.
+
 ## Source384 candidate delivery to planning, 2026-10-11
 
 The bounded Source384 planner summary now prioritizes candidates whose native
@@ -36,14 +86,14 @@ or production files changed for that rerun; the qualified source and test hashes
 remained unchanged. This work does not enable a new numerical checkpoint in the
 supervisor.
 
-Worker context propagation remains incomplete. Task bundles carry a validated
-Source384 receipt, but worker nomination currently returns semantic, world and
-retrieval metadata without explicit learned candidate IR or numerical unit-link
-references. Planner delivery therefore does not demonstrate worker-capsule
-delivery. A future change needs task-bound artifact references, currentness
-validation and an observation of the actual worker request. Native source-unit
-inference also retains its first-128-unit selection policy; this summary change
-does not remove those coverage limits or enable trained child checkpoints.
+At this qualification's revision, worker nomination returned semantic, world
+and retrieval metadata without explicit learned candidate IR or numerical
+unit-link references. Planner delivery alone therefore did not demonstrate
+worker-capsule delivery. The subsequent
+[worker-delivery qualification](evidence/worker-formalization-delivery-20261011/qualification.json)
+addresses that transport gap. Native source-unit inference still retains its
+first-128-unit selection policy; neither change removes those coverage limits
+or enables trained child checkpoints.
 
 The refreshed isolated Grok metadata probe again reported `unauthenticated` /
 `authentication_refused`. It made one model-list command and zero text-generation

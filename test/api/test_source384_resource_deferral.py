@@ -95,6 +95,12 @@ def nomination_case(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.runtime import task_context_bundle as bundles
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as impl
 
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    output = tmp_path / "source384"
+    output.mkdir()
+    source_bytes = b"def authored():\n    return 1\n"
+    (repository / "module.py").write_bytes(source_bytes)
     metadata = {"semantic context artifact": "semantic.json", "semantic context sha256": "b" * 64}
     task = impl.PortalTask(
         task_id="RESOURCE-001", title="Revalidate captured source", status="ready",
@@ -102,16 +108,19 @@ def nomination_case(tmp_path, monkeypatch):
         validation=[], acceptance="Use only current captured source", metadata={},
         canonical_task_cid="task:resource-fixture",
     )
-    receipt = {"schema": "terminal-source384-repository-context@1",
-               "artifact": "source384.json", "sha256": "a" * 64,
-               "completion_authority": False}
+    receipt = dict(schema="terminal-source384-repository-context@1", repository=str(repository),
+        output=str(output), source_hashes={"module.py": hashlib.sha256(source_bytes).hexdigest()},
+        summary=dict(schema="terminal-source384-planning-summary@1", candidate_samples=[],
+                     proof_authority=False, completion_authority=False),
+        proof_authority=False, completion_authority=False)
+    (output / "receipt.json").write_bytes(bundles._raw(receipt))
     payload = {"schema": bundles.SOURCE384_SCHEMA, "completion_authority": False,
                "tasks": [{"task_id": task.task_id, "task_cid": task.canonical_task_cid,
                           "metadata": metadata, "source384_context": receipt}]}
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    (tmp_path / "context.json").write_bytes(raw)
+    (repository / "context.json").write_bytes(raw)
     daemon = object.__new__(impl.TodoImplementationDaemon)
-    daemon.repo_root = tmp_path
+    daemon.repo_root = repository
     daemon._task_context_nomination_bundle = {
         "artifact": "context.json", "sha256": hashlib.sha256(raw).hexdigest()}
     case = SimpleNamespace(daemon=daemon, task=task, receipt=receipt, metadata=metadata,

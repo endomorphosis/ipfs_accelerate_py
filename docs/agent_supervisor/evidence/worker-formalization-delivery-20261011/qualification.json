@@ -1,0 +1,144 @@
+{
+  "completion_authority": false,
+  "counts_scope": "Distinct passing node identities across component qualifications; repeated selected rebind cases count once. Not a single monolithic run.",
+  "datasets_revision": "cdae06198a229760ca139d48f9e311e80d0df8c6",
+  "date": "2026-10-11",
+  "distinct_passing_tests": 338,
+  "docker_cases": 7,
+  "experimental_numpy_checkpoint_enabled": false,
+  "failing_tests": 0,
+  "formalization_authority": false,
+  "grok_probe_repeated": false,
+  "inference_scope": "Two real cached Source384 cases execute native CPU checkpoint/GTE inference. Remaining selected neural/provider seams are authored fixtures. Docker isolates UID transport with authored owner selection and diagnostic worker; production OWNER_ENTRY and guard execute.",
+  "kit_revision": "8ac00bb1974b1378e12091d546d8425af34049e0",
+  "member_sha256": {
+    "bundle.json": "64312d3e67d31656309b649235b2da3975319f45885020c0df8bbc119a552998",
+    "capability-command.json": "76959d12a03414a12443a7fa8be992878c39e554e2907fd32021de6d9ebc89cd",
+    "capability-result.json": "cd7e288620761201c89f72516c00a1f3ea48716af456e162d9892d3edb5d1223",
+    "docker-command.json": "d8046f63b4c1d7d41e95de9d184d2bcf7e84acfabb18e342201b98a0dc6f6cd6",
+    "docker-observation.json": "1cd1da6a7f469d9882478aef72ea83598a21a193406b2fe0bfc3382ce9f4b496",
+    "docker-qualification.py": "8269248530e6b19a6fa71fa6d5c24056beaa3399987bfcf9596471418a15e430",
+    "docker-result.json": "d34025eabb821539c609a30962e7c75f8139f33b2b7286c9e64132d32045e192",
+    "handoff.json": "17111bc84eb133020a8c5368d273aa9c358efa0f95dc9b1082f01c3e99609816",
+    "host.json": "49c15b5abec26486f1329b65dba5d6329ac62104a56a7bd4ccb0b22f438951ab",
+    "lifecycle-command.json": "a229208eb240b24ae481eab0332dc327cf74d728b6a273d20ebe89c4b346fb5e",
+    "lifecycle-result.json": "0553374d9792d06db969e0fd74636201481f0ae96867f7ed84ae2f225d556650",
+    "numerical-adapter-audit.json": "9b0a5c33e1f89284ace84ee2c8ae9ee40133bafa28f69774845561dc3c06ad60",
+    "run-docker-qualification.py": "b89ac704276323bfec06a535ec56ef75d25403dcd8409e85ae51449c55cc1d86",
+    "seam-command.json": "f46a8efefa9c121f92b3277858eca6932259a48e451f84d94a9fc7866e5e15f0",
+    "seam-result.json": "b1b4b02bdc8ac82f321b196e3aba1c945b0f598be1d2fd25fd621890821dccab",
+    "test-census.json": "c269d78938cbd8d058867f7f89e197850d4aa191c1b281d6500ca4758b78a42c"
+  },
+  "model_downloads": 0,
+  "new_benchmark_score": null,
+  "proof_authority": false,
+  "remaining": [
+    "Fresh numerical successor generation has no admitted policy; history reports successor_unavailable.",
+    "Final benchmark historical audit does not independently replay the new formalization evidence kind.",
+    "Learned numerical checkpoint adapter remains designed but unimplemented; existing scalar checkpoint is unchanged.",
+    "Matched live benchmark remains blocked by prior Grok authentication refusal; no new probe or score."
+  ],
+  "remote_provider_calls": 0,
+  "retained_failures": [
+    {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/daemon-01/exit.json",
+      "reason": "Test fixture attempted assignment to frozen task metadata; corrected to clear mapping.",
+      "sha256": "4523312034cfb5036ec1ae5a4104b0b9a29719577442d368dc4efce306d4f055"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/router/run-01-result.json",
+      "reason": "Test fixture selected deterministic-only task incompatible with coding prompt; corrected to ordinary coding task.",
+      "sha256": "f478dfe4f80a35ffd059d31e29a9c494314e0451a5d85079ff6a27bfc7e68f66"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/capability-final/capability-01-exit.json",
+      "reason": "Unrelated platformdirs plugin collection failure; disabled auto-loading, retained explicit AST seal plugin.",
+      "sha256": "a76951c10ad8b9ad52a2c6240464291c147580c7c1f82b12e187fc7a027ece9a"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/docker-01/result.json",
+      "reason": "Qualification controller inherited image nonroot user; rerun specified root for isolated deployer setup.",
+      "sha256": "71e845055693c695dbba2ad5e6a18f7d4dcff2b4b846a20146b4e4320d9e3ee8"
+    }
+  ],
+  "runs": [
+    {
+      "name": "bundle",
+      "tests": 128,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-evidence-20261011/bundle/run-02.xml",
+      "xml_sha256": "b124f86be00ca85ee451d5b6875f71c4eac89c5376b9fa343d9972036406a0f6"
+    },
+    {
+      "name": "host",
+      "tests": 49,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/final-host-01/junit.xml",
+      "xml_sha256": "1c4f3cd83e176b674dcfab8c61bc2168b3778859937e88298c552042e07e3cbe"
+    },
+    {
+      "name": "handoff",
+      "tests": 54,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/owner-handoff-final/result.xml",
+      "xml_sha256": "2cad0c1b6c722ac2404c42701cd4835b04ad133d45e8ea793e0f1fbeda22ef18"
+    },
+    {
+      "name": "capability",
+      "tests": 95,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/capability-final/capability-02.xml",
+      "xml_sha256": "c0edb784af8dc54e81f3bb79f9d065e94c9e4d191d85ce91f1cdf29a46fa1fe6"
+    },
+    {
+      "name": "seam",
+      "tests": 7,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/seam-01.xml",
+      "xml_sha256": "ed5bd6adaf0b097fa486bb25dd1d0823ba248175a488f29ca2012e59128a9453"
+    },
+    {
+      "name": "seam_refinement",
+      "tests": 3,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/seam-02.xml",
+      "xml_sha256": "9748b372c2b3c74592643bbac2e61de98c016094891a51105ab2300324ab42e9"
+    },
+    {
+      "name": "lifecycle",
+      "tests": 5,
+      "xml_path": "/home/barberb/lift_coding/artifacts/supervisor-worker-formalization-20261011/seam/lifecycle-01.xml",
+      "xml_sha256": "507f2fe1b1aa1078c3e87ad3a64a7cef22a1d83c0c2b1d562cd643469c7be9cf"
+    }
+  ],
+  "schema": "supervisor-worker-formalization-qualification@1",
+  "skipped": 0,
+  "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "source_obligations_discharged": 0,
+  "source_observation": "Per-component before/after or post-run observations retained; bundle is post-run only. Seam refinement reruns the three affected positive cases.",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": "ecfca0fd74152dce1ef52157eaa5b1d8c9e8b7b5de3be5b0a5f96dfc5255974e",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "7eee545dd03d0c910beba97f549d399620352923090f095252af2c87835231e7",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "ae571383e9ed5c37fbdfe1d84e2f6c841c0bbea563ababef9d27c5fbf671f38b",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "d856d530a150604a89b635946f43177394c9a365fbeb7708a5b3a900dac54ed8",
+    "benchmarks/agent_supervisor/container_coding/test_task_formalization_bundle.py": "71dea1d5a60626f2f4c0d3d00af92ff5d3c6a4e506d4cecb39ca1f1bff3cf8ef",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": "78cc9fb896945da6d2b8aa6d60a08b59ebdb48ea03ea9e793a524140f9aa4de3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py": "0462a9b405cda1df787317784996e05a3b484534e1f2f2294266f886c7da5609",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": "deb3b2aa5a3b9ba6f5c49f0e1450781934b159700f958f3ae6a5699d0fb835ba",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "ece362d28dfbe7ef5a7250131582b08801e874f471e85c3076436f4455ecb2fa",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "dc016a187cea99b210e4f65dc9cc082bc462e740b5af5bff3eae79f3a454dab0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "6aff8fed59365fdf3191dad6fb26056f1f24cbdaa6a112c4bea58127f8b14b08",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9070328629d9c68c5142746aa57f2566097118ee413a651cef764f79500ff0f3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "dbc9eaa19c747c0a7f6882a12ee3309c10f13e54dd7362d7cd775cdfd5a8d216",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "e199003a7a54d4f012e0c5dc5057d0ec9f23889d45b2e07e552758d4c459fcd8",
+    "test/api/semantic_state/test_source384_receipt_reference.py": "d72090f29e52dbdeb399d21012acbf4b8e9d29cb80dcb2bb919b8f83ab908862",
+    "test/api/semantic_state/test_source384_task_context_bundle.py": "abf2f4c69f9f1381a346f6fb22fc09b26b20f5b1af52f78e4aafd6c8e1e3a4e1",
+    "test/api/semantic_state/test_worker_context_snapshot.py": "cb7a07b1afcf83bf687ce9155c19f92cc821a56042d813edf507d14d15f1fee7",
+    "test/api/test_source384_resource_deferral.py": "87ded170955de9248a52424e727a4691783014d9bb8a8f8982d6d5e3c0bd6efd",
+    "test/api/test_source_formalization_context.py": "8d101363f4491e13bc24c87314fab3708ecd8e52a9de767afa01b0c8f14de6a4",
+    "test/api/test_source_formalization_router.py": "e3a453aaf13060acaa4fc5b80708c81c6fb14aac4dc475c99abed75b4863c792",
+    "test/integration/test_admitted_context_refresh.py": "a5ee4b83daa01c00575d6bc17401a441196d24ee9ba90748990b1aa701a3baef"
+  },
+  "superseded": [
+    "root-qualification-01 passed 42 cases before expanded real higher-entry prompt test; final-host-01 supersedes it.",
+    "dispatch-guard 31 and router 7 earlier passes are covered by final handoff/host counts.",
+    "bundle run-01 is included in run-02, not added to the count."
+  ],
+  "supervisor_base": "088dc16b9f3e6553d6de0a5e80ffbca865e32374"
+}

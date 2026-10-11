@@ -109,7 +109,9 @@ def test_opted_in_runtime_refreshes_only_after_native_stop(scenario, tmp_path, l
             runtime.close()
 
 
-def test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch(scenario, tmp_path, monkeypatch):
+@pytest.mark.parametrize("selected_domain", ["source384", "numerical", "combined"])
+def test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch(
+        scenario, tmp_path, monkeypatch, selected_domain):
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
         write_task_context_bundle, load_task_context_nomination,
     )
@@ -117,29 +119,43 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
 
     root = scenario["repository"]
     baseline_sha = hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()
+    learned = selected_domain in {"source384", "combined"}
+    numeric = selected_domain in {"numerical", "combined"}
     # Actual native owner/publication/completion/lifecycle, with an explicitly
     # authored source-bound validator instead of any model inference claim.
     module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context")
+    from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as native_source384
     checks = []
     def validate(*, repository, expected_receipt):
         checks.append(expected_receipt)
         if hashlib.sha256((repository / "answer.py").read_bytes()).hexdigest() != baseline_sha:
             raise ValueError("selected Source384 source changed")
     module.validate_source384_context = validate
-    monkeypatch.setitem(sys.modules, module.__name__, module)
+    module._sources = native_source384._sources
+    if learned:
+        monkeypatch.setitem(sys.modules, module.__name__, module)
     source384_output = tmp_path / "source384-receipt"
     source384_output.mkdir()
     receipt = {"schema": "terminal-source384-repository-context@1", "source_sha256": baseline_sha,
-               "repository": str(root), "output": str(source384_output), "completion_authority": False}
+               "repository": str(root), "output": str(source384_output), "completion_authority": False,
+               "source_hashes": {"answer.py": baseline_sha},
+               "summary": {"schema": "authored-source384-transport-summary@1", "candidate_samples": [],
+                   "proof_authority": False, "source_semantics_verified": False}}
     (source384_output / "receipt.json").write_bytes(
         json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+    selected_receipts = {"source384_context": receipt} if learned else {}
+    if numeric:
+        from ipfs_accelerate_py.agent_supervisor.runtime import numerical_formalization_context as numerical
+        selected_receipts["numerical_formalization"] = numerical.prepare_numerical_context(
+            repository=root, source_hashes={"answer.py": baseline_sha},
+            output=tmp_path / "numerical-receipt", profile=numerical.PROFILE)
     admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
     with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
         previous = initial_bundle(scenario, owner)
         task_context = json.loads((root / previous["artifact"]).read_bytes())["tasks"][0]
         bundle = write_task_context_bundle(repository=root, prepared=[{
             "schema": "supervisor-task-context-preparation@1", **task_context,
-            "source384_context": receipt}], output=root / ".runtime/source384-launch.json")
+            **selected_receipts}], output=root / ".runtime/formalization-launch.json")
         original_bytes = (root / bundle["artifact"]).read_bytes()
         runtime = AdmittedBenchmarkRuntime.create(tmp_path / "launch", admission=admission,
             server=owner.server, source=owner.source, implement=False, timeout_ms=30_000,
@@ -147,7 +163,7 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
         try:
             assert runtime.start().succeeded
             assert runtime.observe()["published_context"][0]["status"] == "pending_completion"
-            assert checks
+            assert bool(checks) is learned
             task = owner.source.get_task(attempt.task_cid)
             transition = native_published_transition(scenario, tmp_path, owner, attempt)
             with pytest.raises(local.LocalPlanningError, match="no exact native owner observation"):
@@ -160,17 +176,24 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
             complete(owner, attempt, passed["results"][0]["evidence_digest"])
             completed_task = owner.source.get_task(task.task_cid)
             observed = runtime.observe()
-            historical = observed["context_observation"]["source384"][0]
+            historical = observed["context_observation"]["numerical_formalization" if numeric else "source384"][0]
             assert historical["task_status"] == "completed"
-            assert historical["source384_context"] == receipt
+            assert all(historical[key] == value for key, value in selected_receipts.items())
             assert historical["predecessor_bundle"] == bundle
-            assert historical["source384_current"] is False
+            if learned:
+                assert historical["source384_current"] is False
+                assert observed["context_observation"]["source384"][0]["source384_context"] == receipt
+            if numeric:
+                assert historical["numerical_current"] is False
+                assert historical["reason"] == "numerical_successor_not_prepared"
+                assert historical["source_obligations_discharged"] == 0
+                assert historical["dispatch_authority"] is historical["planning_authority"] is False
             assert historical["needs_successor"] is True
             assert historical["completion_authority"] is historical["proof_authority"] is False
             assert observed["published_context"][0]["status"] == "pending_native_stop"
-            with pytest.raises(ValueError, match="Source384 source changed"):
+            with pytest.raises(ValueError, match="source"):
                 runtime._verify()  # START/bootstrap remain on the live path.
-            with pytest.raises(ValueError, match="Source384 source changed"):
+            with pytest.raises(ValueError, match="source"):
                 load_task_context_nomination(repository=root, artifact=bundle["artifact"],
                     expected_sha256=bundle["sha256"], task_cid=task.task_cid, task_id=task.task_alias)
             with pytest.raises(local.LocalPlanningError, match="baseline drift"):
@@ -180,7 +203,7 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
             assert not runtime.process.snapshot(runtime.profile).members
             unavailable = runtime.refresh_after_stop()[0]
             assert unavailable["status"] == "successor_unavailable"
-            assert unavailable["source384_context"] == receipt
+            assert all(unavailable[key] == value for key, value in selected_receipts.items())
             assert "context_bundle" not in unavailable
             assert runtime._published_context == runtime._context_refresh_attempts == {}
             # Direct refresh has the same explicit refusal and writes no v1 successor.
@@ -188,6 +211,18 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
                 predecessor_bundle=bundle, task_cid=task.task_cid, output=root / ".runtime/no-successor")
             assert direct == unavailable
             assert not (root / ".runtime/no-successor").exists()
+            if numeric:
+                # A requested Source384 rebuild does not authorize dropping
+                # the separately selected numerical interpretation. This
+                # short-circuits before writes or inference even when both
+                # receipts were selected.
+                direct = refresh_published_task_context(server=owner.server, admission=admission,
+                    predecessor_bundle=bundle, task_cid=task.task_cid,
+                    output=root / ".runtime/no-mixed-successor",
+                    source384_output=tmp_path / "no-model-successor")
+                assert direct == unavailable
+                assert not (root / ".runtime/no-mixed-successor").exists()
+                assert not (tmp_path / "no-model-successor").exists()
             assert owner.source.get_task(task.task_cid) == completed_task
             assert (root / bundle["artifact"]).read_bytes() == original_bytes
             (root / bundle["artifact"]).write_bytes(original_bytes + b" ")

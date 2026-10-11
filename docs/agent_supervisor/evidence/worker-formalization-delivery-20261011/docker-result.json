@@ -1,0 +1,14 @@
+{
+  "exit_code": 0,
+  "seconds": 12.025918279890902,
+  "container_id": "6f163c8506a700031800961a7f970e7d0bb7a6772c2e82b28e8d2a9c73b80f67",
+  "image_id": "sha256:88463ed5d1f72a79fdd4bac5e2ad1c2a0490c1ae24b21365d14eacd5e2a0a879",
+  "source_before": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f"
+  },
+  "source_after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": "d8cf27c5205c763ce620971a2af0f318075e28268fbe343a58bd97a2077c28f4",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "12181df8e7013abb09ce18fd2cd9e93e223df54a7ff377c2adb695cce9f7b86f"
+  }
+}

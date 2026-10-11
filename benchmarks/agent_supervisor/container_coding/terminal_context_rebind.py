@@ -156,8 +156,9 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     if retrieval.get("retrieval_schema") == "supervisor-empty-code-retrieval@1":
         result.update({key: retrieval[key] for key in (
             "retrieval_schema", "source_population_cid", "disposition", "embedding_calls", "support_hashes", "program_paths")})
-    if "source384_context" in selected_context:
-        result["source384_context"] = selected_context["source384_context"]
+    for key in ("source384_context", "numerical_formalization"):
+        if key in selected_context:
+            result[key] = selected_context[key]
     result["context_bundle"] = write_task_context_bundle(repository=root, prepared=[result],
         output=output / "context-bundle.json")
     prep._write(output / "result.json", result)
@@ -213,6 +214,44 @@ def verify_worker_context_prompt(*, prompt: str, rebound: dict) -> dict:
             or world.get("completion_authority") is not False
             or world.get("execution_authority") is not False):
         raise ValueError("native worker context identity/status differs from nomination")
+    # Observe the exact task-bound advisory that was sealed for this worker.
+    # This deliberately checks retained receipt identity, not current source
+    # validity: dispatch performs the live replay, while a stored prompt may
+    # still be inspected after source changes or a completed publication.
+    from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import _worker_evidence
+    selected = {key: rebound[key] for key in ("source384_context", "numerical_formalization")
+                if key in rebound}
+    kind = "source-formalization-context"
+    refs = sorted((row for row in wire["evidence"] if row["kind"] == kind),
+                  key=lambda row: row["reference_id"])
+    if selected:
+        bundle = rebound["context_bundle"]
+        repository = Path(next(iter(selected.values()))["repository"])
+        expected = _worker_evidence(selected, repository=repository,
+            artifact=bundle["artifact"], expected_sha256=bundle["sha256"],
+            task_cid=rebound["task_cid"], task_id=rebound["task_id"])
+        if not refs or not all(row["metadata"]["required"] is True for row in refs):
+            raise ValueError("native worker prompt omitted required formalization context")
+        text = "".join(row["summary"] for row in refs)
+        from ipfs_accelerate_py.agent_supervisor.context.context_compiler import _canonical_digest
+        artifact_cid = _canonical_digest({"text": text})
+        if (len({row["reference_id"] for row in refs}) != len(refs)
+                or any(row["metadata"].get("chunk_index") != index
+                    or row["metadata"].get("chunk_count") != len(refs)
+                    or row["metadata"].get("artifact_content_id") != artifact_cid
+                    or row.get("path") != bundle["artifact"]
+                    or row.get("repository_id") != wire["repository_id"]
+                    or row.get("tree_id") != wire["tree_id"]
+                    or row.get("referenced_content_id") != "sha256:" + hashlib.sha256(
+                        row["summary"].encode()).hexdigest()
+                    or row.get("byte_count") != len(row["summary"].encode())
+                    for index, row in enumerate(refs))):
+            raise ValueError("native worker formalization chunk identity differs")
+        contexts[kind] = json.loads(text)
+        if contexts[kind] != expected:
+            raise ValueError("native worker formalization context differs from selected task receipts")
+    elif refs:
+        raise ValueError("native worker contains unselected formalization context")
     result = {"schema": "terminal-rebound-worker-context-observation@1",
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         "prompt_bytes": len(prompt.encode()), "required_context_kinds": sorted(contexts),

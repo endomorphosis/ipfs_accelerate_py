@@ -1,0 +1,140 @@
+{
+  "activity": {
+    "downloads": 0,
+    "implementation_files_edited": false,
+    "model_calls": 0,
+    "provider_calls": 0,
+    "tests_executed": false,
+    "training_steps": 0
+  },
+  "checkpoint_selection": {
+    "default_supervisor_enabled": false,
+    "path": "releases/20261011-numpy-unary-selection-384-development-v1/checkpoint.json",
+    "profile": "numpy-unary-selection-384@1",
+    "repo_id": "Publicus/security-ir-autoencoder",
+    "revision": "38666f43e998d55b5f4259e354286f5929027ba1",
+    "sha256": "26ccc7cf8420e0ed6cbbe22603e09be0e3572fb32a1e489e877fc5081f506e03"
+  },
+  "current_contracts": [
+    {
+      "finding": "Closed @1/@2 pinned_parent config validates through scalar SourceProgramDecoder384V2. Numerical selection envelope is not accepted.",
+      "location": "source384_config.py:validate_source384_config/validate_source384_assets"
+    },
+    {
+      "finding": "Current inventory embeds normalized function text and requires registry kind shared_parent. It must not silently select a numerical child.",
+      "location": "codebase_source_units_384.py:prepare_source_units/_context"
+    },
+    {
+      "finding": "Current isolated CPU worker uses SourceProgramDecoder384 over normalized functions. Import context is not preserved in model input.",
+      "location": "codebase_source_units_384_worker.py:execute"
+    },
+    {
+      "finding": "Numerical profile requires original whole-module bytes including imports; exactly one plain function; direct unshadowed NumPy argmax/argmin return with one of 1-4 parameters. Runtime rejects unsupported modules and does not verify caller-supplied embedding provenance.",
+      "location": "numerical_selection_384.py:prepare_selection_unit/NumericalSelectionRuntime384.infer"
+    },
+    {
+      "finding": "At reviewed base the bundle retains metadata and optional Source384 receipt reference; metadata-only loader discards candidates and separate deterministic numerical receipt. Close worker evidence transport first.",
+      "location": "task_context_bundle.py:write_task_context_bundle/load_task_context_nomination"
+    }
+  ],
+  "date": "2026-10-11",
+  "existing_numerical_provenance": {
+    "authority": "Deterministic source projection and pending requirements only. All proof/execution/completion/source-semantics flags false; zero obligations discharged. Lake compilation would be an independently observed syntax check, not a numerical proof.",
+    "checks": [
+      "Retained receipt bytes and artifact inventory",
+      "Current declared source hashes and producer bytes",
+      "Exact source replay of ProgramIR, obligations and family projection contents through validate_numerical_logic_report",
+      "Independent exact-byte function-unit extraction and function span join",
+      "Rebuilt unit-link artifact IDs, obligation IDs and report digests",
+      "Rebuilt planning summary and record",
+      "ProgramWorldDatabase record, SupervisorMetaIndex links and both DuckLake hydrations",
+      "Final source/producer/artifact/receipt read fence"
+    ],
+    "join": "whole-file SHA256 + exact start/end byte range, with eligible normalization; no containment/name-only join",
+    "link_owner": "ipfs_datasets_py.logic.software_contracts.source_unit_numerical_links.bind_function_unit_logic",
+    "new_proof_authority_needed": false,
+    "validator": "ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context.validate_numerical_context",
+    "worker_reference_source": "After canonical receipt validation, read and project the retained unit-links artifacts. The bounded planning summary alone lacks family_artifact_ids and pending_obligation_ids."
+  },
+  "next_action": "Complete versioned task-bound worker evidence transport for existing validated Source384 and deterministic numerical receipts before adding another decoder profile.",
+  "recommended_future_adapter_tests": [
+    "Real local published checkpoint plus actual pinned GTE on frozen authored single-function modules; exact source population and native model-load evidence captured. Compare candidate predictions unchanged with the underlying numerical runtime.",
+    "Unsupported files before eligible files, multifunction modules, aliases/shadowing, and >512 token inputs: every file accounted for; no normalization dropping imports or approximate slicing.",
+    "Real source mismatch and ablation controls retain failed prediction and withhold matched_projection_refs; do not replace prediction with deterministic target.",
+    "Checkpoint drift, producer drift, embedding asset drift, source edits during preparation/replay, task mismatch, tampered references, and stale successor advice fail closed for the selected artifact.",
+    "Repeat exact selection reuses committed receipt without model replay; changing a bound source/model/profile/embedding field creates a distinct identity.",
+    "End-to-end explicit config -> indexed captured source -> isolated inference -> receipt -> planner -> task-bound worker prompt; disabled profile leaves current behavior unchanged."
+  ],
+  "recommended_worker_slice_tests": [
+    "Existing real pinned Security384 checkpoint and GTE inference on authored source, then task bundle, canonical reload and actual worker prompt assembly: byte-identical candidate IR and source map identity arrive with all authority flags false.",
+    "Existing deterministic numerical context through both DuckLakes, then task-bound bundle to worker prompt: source unit/function identity, pending obligation references and family artifact identities survive delivery.",
+    "Negative controls for wrong task CID/ID, source edits, changed checkpoint/config/receipt, changed unit-link or projection content, and mismatched producer; reject before provider dispatch even if outer JSON is rehashed.",
+    "Oversize candidate or summary: bounded deterministic omission accounting; no silently truncated IR, forged completeness, or promoted source-alignment status.",
+    "Old metadata-only bundles continue to load; no-index runs do not acquire hidden indexes/model activity; no configured evidence means no extra model load.",
+    "Existing numerical source/projection Lake tests remain syntax/source-reference verification only; no new training required."
+  ],
+  "reviewed_files": {
+    "accelerate": [
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py",
+        "sha256": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+        "sha256": "2a934f1f54b10c88a073863e4af2f282128fdc24907c2169d71666132ce07326"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_formalization_context.py",
+        "sha256": "9ecc557712f34a81e0aa3b5e2d213da2cf44ee92b77ca5945469f9c33750dd83"
+      },
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+        "sha256": "df27a672d40b2a193746e8b3f0fbfae21902c37dbf22f2b2e4caf3cebd1b788c"
+      }
+    ],
+    "datasets": [
+      {
+        "path": "ipfs_datasets_py/logic/formalization/autoencoder/numerical_selection_384.py",
+        "sha256": "54a5a95769f7ee205226daf03b48f4698acb4c79dbe4c9f667e5a875f77e5855"
+      },
+      {
+        "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+        "sha256": "f6107477e44337e959353ae12c4ec4b9f869424592fa6be05d5e60d9c0d5ea76"
+      },
+      {
+        "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384_worker.py",
+        "sha256": "13f1a5519a4f3a9cec473795521858504d90b41075a554606daa354aff6bca6a"
+      },
+      {
+        "path": "ipfs_datasets_py/logic/software_contracts/source_unit_numerical_links.py",
+        "sha256": "70d2b3caa3089a65dd17c97e2e4904f3c392a94a0b18db5217588427f3333bb0"
+      },
+      {
+        "path": "ipfs_datasets_py/logic/software_verification/numerical_logic.py",
+        "sha256": "1cc68c30efd6719cc3baad17e196c9f9fc43e3f6161604a75e8029c8e53ed822"
+      }
+    ]
+  },
+  "reviewed_revisions": {
+    "accelerate": "088dc16b9f3e6553d6de0a5e80ffbca865e32374",
+    "datasets": "cdae06198a229760ca139d48f9e311e80d0df8c6"
+  },
+  "schema": "supervisor-numerical-adapter-read-only-audit@1",
+  "scope_limits": [
+    "Current learned profile covers only canonical unary selection CALL fragments. It does not cover the largest-eigenval function or arbitrary code.",
+    "Current deterministic numerical projections expose ProgramIR, first-order predicates, selected SMT artifacts and Lean definitions; unsupported families remain explicit.",
+    "No provider/auth/benchmark score claims arise from this audit.",
+    "No new checkpoint training, inference, formal proof discharge or repository mutations were performed."
+  ],
+  "smallest_later_adapter": [
+    "Add a separate explicit opt-in numerical profile/config and receipt; leave scalar config, default checkpoint descriptor and runtime schemas intact.",
+    "Keep checkpoint inference, source preparation and embedding ownership in ipfs_datasets_py. Accelerate selects local pinned assets and consumes a validated advisory receipt.",
+    "Prepare candidates from existing captured index/CAS whole-module bytes. Account for every selected path; unsupported/multifunction/large modules become explicit counted abstentions, never synthetic simplified input.",
+    "Reuse existing bounded isolated worker/resource lease execution and pinned offline GTE-small validation. Strictly count original-module tokens before forward execution; defer >512 without truncation. No LLM/provider or benchmark training.",
+    "Pass source text/path/unit ID and verified embeddings only to NumericalSelectionRuntime384. Retain unchanged learned candidate even on source mismatch; source-aligned rows may carry independently derived family references.",
+    "Bind checkpoint exact bytes, runtime producer pins, source head/path hashes, selected row population, full embedding asset revision and device execution observation into immutable receipt/cache keys. Observe current source before and after execution.",
+    "Persist the separate versioned inference artifact and native operation receipt through existing registry/CAS owners; reload checks retained bytes and currentness without neural replay.",
+    "Expose a bounded summary and complete receipt reference to planner and worker via the task-evidence contract. Invalid selected config/assets/receipt must be rejected; unsupported source/mismatched candidates continue as non-authoritative advice.",
+    "Add explicit archive/preflight asset transport and current-context/successor handling. If no refresh exists after an edit, mark advice stale/unavailable rather than reusing old candidate bindings."
+  ]
+}

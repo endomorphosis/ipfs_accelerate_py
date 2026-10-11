@@ -302,6 +302,38 @@ def observe_source384_successor_unavailable(*, server, admission, predecessor_bu
     return None
 
 
+def _numerical_successor_unavailable(binding, bundle, selected):
+    result = {"schema": "supervisor-numerical-successor-observation@1", **binding,
+        "status": "successor_unavailable", "reason": "numerical_successor_not_prepared",
+        "predecessor_bundle": dict(bundle),
+        "numerical_formalization": selected["numerical_formalization"],
+        "numerical_current": False, "needs_successor": True,
+        "numerical_scope": "sealed historical envelope; current source/projection validity not established",
+        "source_semantics_verified": False, "whole_program_semantics_verified": False,
+        "source_obligations_discharged": 0, "proof_authority": False,
+        "formalization_authority": False, "planning_authority": False, "dispatch_authority": False,
+        "execution_authority": False, "completion_authority": False,
+        "canonical_task_mutated": False, "launch_nomination_mutated": False,
+        "text_generation_calls": 0, "inference_calls": 0}
+    if "source384_context" in selected:
+        result.update(source384_context=selected["source384_context"], source384_current=False,
+            source384_scope="sealed historical envelope; current source/model validity not established")
+    return result
+
+
+def observe_numerical_successor_unavailable(*, server, admission, predecessor_bundle, task_cid):
+    """Retain selected numerical advice only after verified completed publication."""
+    root, binding, _task = _owner_state(server=server, admission=admission, task_cid=task_cid)
+    if not isinstance(predecessor_bundle, dict) or set(predecessor_bundle) != {"artifact", "sha256"}:
+        raise ValueError("exact predecessor bundle reference required")
+    selected = read_task_context_historical_selection(repository=root,
+        artifact=predecessor_bundle["artifact"], expected_sha256=predecessor_bundle["sha256"],
+        task_cid=task_cid, task_id=binding["task_id"])
+    if "numerical_formalization" in selected:
+        return _numerical_successor_unavailable(binding, predecessor_bundle, selected)
+    return None
+
+
 def _block_reader(directory):
     def get_block(cid):
         if not isinstance(cid, str) or not cid or Path(cid).name != cid or cid in {".", ".."}:
@@ -471,6 +503,12 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         "task_cid": task_cid, "task_id": binding["task_id"],
     })
     checkpoint()
+    # Numerical projections have no independently admitted regeneration policy
+    # yet. Preserve the whole selected advice instead of producing a successor
+    # bundle that silently drops its numerical component. In a mixed selection
+    # this also prevents unnecessary Source384 inference before that gap closes.
+    if "numerical_formalization" in selected:
+        return _numerical_successor_unavailable(binding, predecessor_bundle, selected)
     if "source384_context" in selected and source384_output is None:
         return _source384_successor_unavailable(binding, predecessor_bundle, selected["source384_context"])
     source384 = None

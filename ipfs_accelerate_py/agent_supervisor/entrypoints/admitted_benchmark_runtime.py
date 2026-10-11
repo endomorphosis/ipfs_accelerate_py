@@ -971,6 +971,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     from ..runtime.published_task_context import observe_source384_successor_unavailable
                     observations.append(observe_source384_successor_unavailable(server=self.server,
                         admission=self.admission, predecessor_bundle=self.context_bundle, task_cid=task.task_cid))
+                if "numerical_formalization" in selected:
+                    from ..runtime.published_task_context import observe_numerical_successor_unavailable
+                    observations.append(observe_numerical_successor_unavailable(server=self.server,
+                        admission=self.admission, predecessor_bundle=self.context_bundle, task_cid=task.task_cid))
+                if "source384_context" in selected or "numerical_formalization" in selected:
                     continue
             load_task_context_nomination(repository=self.repository,
                                          artifact=self.context_bundle["artifact"],
@@ -1026,7 +1031,12 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 deadline_monotonic=self._replay_lifetime_deadline):
             observations = self._verify(completed_observation=True)
             require_applicability_budget()
-        return {"source384": observations} if observations else None
+        if not observations:
+            return None
+        return {name: rows for name, schema in (
+            ("source384", "supervisor-source384-successor-observation@1"),
+            ("numerical_formalization", "supervisor-numerical-successor-observation@1"),
+        ) if (rows := [item for item in observations if item["schema"] == schema])}
 
     def _operation_timeout_ms(self, operation):
         configured = self._configured_operation_timeout_ms(operation)
@@ -1409,6 +1419,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 continue
             refresh_phase = "rebuilder_selection"
             try:
+                numerical_historical = next((item for item in result.get("context_observation", {}).get(
+                    "numerical_formalization", []) if item["task_cid"] == task.task_cid), None)
+                if numerical_historical is not None:
+                    refreshed.append(numerical_historical)
+                    continue
                 historical = next((item for item in result.get("context_observation", {}).get("source384", [])
                     if item["task_cid"] == task.task_cid), None)
                 source384_policy = policy.get("source384")

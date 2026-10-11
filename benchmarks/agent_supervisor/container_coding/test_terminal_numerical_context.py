@@ -180,6 +180,19 @@ def test_summary_reaches_router_before_goals_and_retains_admitted_index(original
     persisted = json.loads((root / ".runtime/terminal-context/result.json").read_bytes())
     assert persisted["numerical_formalization"] == formal
     assert numerical.validate_numerical_context(repository=root, expected_receipt=formal) == formal
+    from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_selection
+    bundle = admitted["context_bundle"]
+    wire = json.loads((root / bundle["artifact"]).read_bytes())
+    assert wire["schema"] == "supervisor-task-context-nominations@4"
+    selected = load_task_context_selection(repository=root, artifact=bundle["artifact"],
+        expected_sha256=bundle["sha256"], task_cid=admitted["task_cid"], task_id=persisted["task_id"])
+    assert selected["numerical_formalization"] == formal
+    evidence = selected["worker_evidence"]
+    assert evidence["task_cid"] == admitted["task_cid"]
+    assert evidence["context_bundle"] == bundle
+    assert evidence["contexts"][0]["summary"] == formal["summary"]
+    assert evidence["contexts"][0]["summary"]["source_unit_links"] == formal["summary"]["source_unit_links"]
+    assert evidence["source_obligations_discharged"] == 0
 
 
 def test_selected_context_cannot_disappear_before_planning(original, monkeypatch):
