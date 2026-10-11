@@ -16,7 +16,7 @@ import pytest
 
 from benchmarks.agent_supervisor.container_coding import container_worker_deployment as deployment
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    PROFILES, CODING600_SOURCE384_PROFILE, coding_timeout_seconds,
+    PROFILES, CODING600_SOURCE384_PROFILE, FORMALIZATION_SOURCE384_PROFILE, coding_timeout_seconds,
     execution_budget, implementation_watchdog_seconds,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
@@ -127,10 +127,12 @@ def test_worker_ceiling_does_not_change_signed_profile_or_outer_budgets(monkeypa
     calls = []
     monkeypatch.setattr(runner, "main", lambda: calls.append(sys.argv[:]) or 0)
     cap = coding_timeout_seconds(profile)
-    assert cap == (600 if profile == CODING600_SOURCE384_PROFILE else 300)
+    assert cap == (1800 if profile == FORMALIZATION_SOURCE384_PROFILE else
+        600 if profile == CODING600_SOURCE384_PROFILE else 300)
     assert implementation_watchdog_seconds(profile) == cap + 60
-    assert _execute_worker(monkeypatch, ["--timeout", str(cap), "--model", "grok-4.7"]) == 0
+    extra = ["--budget-profile", profile] if profile == FORMALIZATION_SOURCE384_PROFILE else []
+    assert _execute_worker(monkeypatch, ["--timeout", str(cap), "--model", "grok-4.7", *extra]) == 0
     assert calls[0][calls[0].index("--timeout") + 1] == str(cap)
     budget = execution_budget(profile)
-    assert budget["driver_seconds"] in {285, 900}
-    assert budget["cleanup_seconds"] in {40, 60}
+    assert budget["driver_seconds"] in {285, 900, 6420}
+    assert budget["cleanup_seconds"] in {40, 60, 120}

@@ -14,7 +14,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_indexed_prepar
 from benchmarks.agent_supervisor.container_coding import terminal_native_preflight as preflight
 from benchmarks.agent_supervisor.container_coding.benchmark_provider_profile import GROK_PROFILE
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    PLANNER180_SOURCE384_PROFILE, execution_budget,
+    PLANNER180_SOURCE384_PROFILE, FORMALIZATION_SOURCE384_PROFILE, execution_budget,
 )
 from benchmarks.agent_supervisor.container_coding.indexed_doctor_lifecycle import _context
 from benchmarks.agent_supervisor.container_coding.test_terminal_multitask_preparation import multitask_case
@@ -191,7 +191,10 @@ def test_different_instruction_profile_is_refused_before_preparation(tmp_path):
 
 
 @pytest.mark.parametrize("timeout", [None, 12.5])
-def test_source384_controls_precede_admission_and_never_enable_training(tmp_path, monkeypatch, timeout):
+@pytest.mark.parametrize("resource_profile, planner_seconds", [(PLANNER180_SOURCE384_PROFILE, 180),
+    (FORMALIZATION_SOURCE384_PROFILE, 600)])
+def test_source384_controls_precede_admission_and_never_enable_training(
+        tmp_path, monkeypatch, timeout, resource_profile, planner_seconds):
     """Check wiring only; the expensive Source384 stage is deliberately a double."""
     case = _case(tmp_path, "data")
     config = tmp_path / "source384-test-config.json"
@@ -204,7 +207,7 @@ def test_source384_controls_precede_admission_and_never_enable_training(tmp_path
         # learned stage precedes graph admission and task materialization.
         prepared = prep._load_prepared(case["state"])
         assert prepared["provider"] == "grok_cli"
-        assert prepared["planner_timeout_seconds"] == 180
+        assert prepared["planner_timeout_seconds"] == planner_seconds
         assert not (case["state"] / "admission.json").exists()
         assert not (case["state"] / "intent.duckdb").exists()
         calls.append(kwargs)
@@ -223,18 +226,20 @@ def test_source384_controls_precede_admission_and_never_enable_training(tmp_path
     monkeypatch.setattr(preflight, "_authored_graph", authored_graph)
     monkeypatch.setattr(prep, "context", context)
     result = _qualify(case, provider_profile=GROK_PROFILE,
-        resource_profile=PLANNER180_SOURCE384_PROFILE, source384_config=config,
+        resource_profile=resource_profile, source384_config=config,
         source384_timeout_seconds=timeout)
     expected_timeout = timeout if timeout is not None else execution_budget(
-        PLANNER180_SOURCE384_PROFILE)["source384_seconds"]
+        resource_profile)["source384_seconds"]
     assert stages == ["initial", "graph", "context"]
     assert calls == [{"state": case["state"], "model_snapshot": None, "model_revision": "",
         "source384_config": config, "train_autoencoder": False,
-        "source384_timeout_seconds": expected_timeout}]
+        "source384_timeout_seconds": expected_timeout,
+        **({"source384_budget_profile":resource_profile}
+           if resource_profile == FORMALIZATION_SOURCE384_PROFILE else {})}]
     assert result["source384_timeout_seconds"] == expected_timeout
     assert result["initial_context"] == {"fixture_stage_only": True, "learned_inference_exercised": False}
     assert result["provider_profile"] == GROK_PROFILE
-    assert result["resource_profile"] == PLANNER180_SOURCE384_PROFILE
+    assert result["resource_profile"] == resource_profile
     assert result["source384_enabled"] is True
 
 

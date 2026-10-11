@@ -34,7 +34,7 @@ print(json.dumps(dict(schema='terminal-source384-cgroup-observation@1',
 CONTEXT_PROBE = r'''
 from contextlib import redirect_stdout
 import hashlib,json,os,pathlib,signal,sys,time
-from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import execution_budget
+from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import execution_budget, FORMALIZATION_SOURCE384_PROFILE
 profile=os.environ.get("IPFS_SUPERVISOR_BENCHMARK_PROFILE")
 budget=execution_budget(profile)
 started=time.monotonic(); phase='runtime_load';phase_started=started
@@ -57,7 +57,8 @@ try:
   result['prepare_seconds']=time.monotonic()-before
   phase='initial_context';phase_started=before=time.monotonic()
   context=prep.initial_context(state=state,source384_config=config_path,train_autoencoder=False,
-   source384_timeout_seconds=budget["source384_seconds"])
+   source384_timeout_seconds=budget["source384_seconds"],
+   **({"source384_budget_profile":profile} if profile==FORMALIZATION_SOURCE384_PROFILE else {}))
   result['initial_context_seconds']=time.monotonic()-before
   receipt=context['source384_context']
   if len(sys.argv)>1:

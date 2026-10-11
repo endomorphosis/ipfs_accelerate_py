@@ -20,6 +20,12 @@ import uuid
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 
+
+def implementation_timeout_limit(budget_profile=None):
+    from .benchmark_budget_policy import validate_budget_profile
+    validate_budget_profile(budget_profile)
+    return 1800 if budget_profile is not None else MAX_IMPLEMENTATION_TIMEOUT_SECONDS
+
 # Diagnostic vocabulary is intentionally closed: exception messages, dynamic
 # type names, caller paths and locals never enter the child-reported record.
 RUNNER_FAILURE_PHASES = frozenset({
@@ -190,7 +196,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
         public_instruction_artifact: Path | None = None, public_instruction_sha256: str = "",
-        public_instruction_task_cid: str = "") -> tuple[str, dict]:
+        public_instruction_task_cid: str = "", budget_profile: str | None = None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
@@ -202,7 +208,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("explicit supported shared-router coding provider required")
     if provider == "grok_cli" and model != "grok-4.7":
         raise ValueError("explicit pinned Grok benchmark model required")
-    if not model or not 1 <= timeout <= MAX_IMPLEMENTATION_TIMEOUT_SECONDS or not 1 <= max_output_tokens <= 16_384:
+    maximum_timeout = implementation_timeout_limit(budget_profile)
+    if (not model or type(timeout) is not int or not 1 <= timeout <= maximum_timeout
+            or not 1 <= max_output_tokens <= 16_384):
         raise ValueError("explicit model and bounded invocation settings required")
     if reasoning_effort not in {"low", "medium", "high", "xhigh", "max"}:
         raise ValueError("explicit supported reasoning effort required")
@@ -615,6 +623,7 @@ def main():
     parser.add_argument("--provider", default="codex_cli", choices=["codex_cli", "grok_cli"])
     parser.add_argument("--model", required=True)
     parser.add_argument("--timeout", type=int, default=90)
+    parser.add_argument("--budget-profile")
     parser.add_argument("--max-output-tokens", type=int, default=4096)
     parser.add_argument("--reasoning-effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
@@ -639,6 +648,7 @@ def main():
         prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
         output, _ = run(prompt=prompt, provider=args.provider, model=args.model,
                         timeout=args.timeout, max_output_tokens=args.max_output_tokens,
+                        budget_profile=args.budget_profile,
                         reasoning_effort=args.reasoning_effort,
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,

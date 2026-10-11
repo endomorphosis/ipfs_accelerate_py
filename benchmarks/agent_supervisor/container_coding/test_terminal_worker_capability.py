@@ -13,7 +13,7 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
 from benchmarks.agent_supervisor.container_coding import terminal_worker_capability as capability
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    CODING600_SOURCE384_PROFILE, PROFILES,
+    CODING600_SOURCE384_PROFILE, FORMALIZATION_SOURCE384_PROFILE, PROFILES,
 )
 from benchmarks.agent_supervisor.container_coding.terminal_deployment import build_runtime_archive
 from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_inputs
@@ -46,9 +46,10 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     value = capability.require_worker_capability(packaged[1], CODING600_SOURCE384_PROFILE)
     assert value['max_timeout_seconds'] == MAX_IMPLEMENTATION_TIMEOUT_SECONDS == 600
     assert value['worker_entry_sha256'] == hashlib.sha256(WORKER_ENTRY.encode()).hexdigest()
-    assert value['schema'] == 'terminal-router-worker-capability@2'
+    assert value['schema'] == 'terminal-router-worker-capability@3'
+    assert value['budget_profile_max_timeout_seconds'] == {FORMALIZATION_SOURCE384_PROFILE: 1800}
     assert value['worker_child_custody_schema'] == 'terminal-worker-child-custody@1'
-    assert len(value['source_sha256']) == 3
+    assert len(value['source_sha256']) == 4
     assert any(name.endswith('/native_cli_subreaper.py') for name in value['source_sha256'])
 
 
@@ -95,6 +96,10 @@ def _mutate(manifest, kind):
         value['files'].append(next(row for row in value['files'] if row['path'].endswith('native_cli_subreaper.py')))
     elif kind == 'old-cap':
         value[capability.KEY]['max_timeout_seconds'] = 300
+    elif kind == 'wrong-profile-cap':
+        value[capability.KEY]['budget_profile_max_timeout_seconds'][FORMALIZATION_SOURCE384_PROFILE] = 600
+    elif kind == 'missing-budget-source':
+        value['files'] = [row for row in value['files'] if not row['path'].endswith('benchmark_budget_policy.py')]
     elif kind == 'false-cap':
         value[capability.KEY]['max_timeout_seconds'] = True
     elif kind == 'template':
@@ -109,6 +114,7 @@ def _mutate(manifest, kind):
 
 
 @pytest.mark.parametrize('kind', ['legacy', 'v1', 'old-cap', 'false-cap', 'template', 'inventory', 'duplicate', 'extra',
+    'wrong-profile-cap', 'missing-budget-source',
     'missing-custody-feature', 'custody-feature', 'missing-custody-inventory', 'custody-inventory', 'rehashed-custody', 'duplicate-custody'])
 @pytest.mark.parametrize('profile', [None, CODING600_SOURCE384_PROFILE])
 def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp_path, monkeypatch, kind, profile):
@@ -147,7 +153,8 @@ def test_rebuilt_archive_prepares_all_profiles_with_original_budget(packaged, tm
     assert result['prepared']
     assert config['agents'][0]['kwargs'].get('resource_profile') == profile
     from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import coding_timeout_seconds
-    assert coding_timeout_seconds(profile) == (600 if profile == CODING600_SOURCE384_PROFILE else 300)
+    assert coding_timeout_seconds(profile) == (1800 if profile == FORMALIZATION_SOURCE384_PROFILE else
+        600 if profile == CODING600_SOURCE384_PROFILE else 300)
 
 
 class Environment:

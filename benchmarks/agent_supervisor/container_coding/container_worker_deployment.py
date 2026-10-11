@@ -136,6 +136,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--provider',choices=['codex_cli','grok_cli'],default=selected_provider)
 parser.add_argument('--model',default='gpt-6.1-sol');parser.add_argument('--reasoning-effort',choices=['low','medium','high','xhigh','max'],default='high')
 parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-output-tokens',type=int,default=4096)
+parser.add_argument('--budget-profile')
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-transport-schema',choices=['supervisor-semantic-router-input@1','supervisor-semantic-router-input@2'],default='supervisor-semantic-router-input@1')
@@ -183,6 +184,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_ru
 # Earlier archives have no shared constant and retain the original worker cap.
 worker_timeout_limit=getattr(router_runtime,'MAX_IMPLEMENTATION_TIMEOUT_SECONDS',300)
 if type(worker_timeout_limit)is not int or not 1<=worker_timeout_limit<=600:raise SystemExit('invalid runtime timeout ceiling')
+if args.budget_profile is not None:
+ worker_timeout_limit=router_runtime.implementation_timeout_limit(args.budget_profile)
+ if type(worker_timeout_limit)is not int or not 1<=worker_timeout_limit<=1800:raise SystemExit('invalid selected timeout ceiling')
 if not 1<=args.timeout<=worker_timeout_limit or not 0<=args.preflight_sleep<=30:raise SystemExit('bounded timeout required')
 if args.preflight:
  prompt=sys.stdin.buffer.read(2*1024*1024+1)
@@ -229,6 +233,7 @@ else:
  from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import main
  from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_cli_subreaper import run_with_child_custody
  sys.argv=[sys.argv[0],'--provider',args.provider,'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
+ if args.budget_profile is not None:sys.argv+=['--budget-profile',args.budget_profile]
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_transport_schema!='supervisor-semantic-router-input@1':sys.argv+=['--semantic-transport-schema',args.semantic_transport_schema]
  if args.semantic_metadata_view!='legacy':sys.argv+=['--semantic-metadata-view',args.semantic_metadata_view]

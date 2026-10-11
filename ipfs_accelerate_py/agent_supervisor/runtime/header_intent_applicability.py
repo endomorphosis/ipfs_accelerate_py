@@ -21,6 +21,7 @@ import stat
 import time
 
 from ..core.multiformats_identity import cid_for_dag_json
+from .benchmark_budget_policy import local_work_timeout_limit, FORMALIZATION_BUDGET_PROFILE
 
 SCHEMA = "reviewed-header-operation-selector@1"
 NOMINATION_SCHEMA = "source-header-applicability-nomination@1"
@@ -39,6 +40,7 @@ FALSE = dict(proof_authority=False, execution_authority=False,
 @dataclass(frozen=True)
 class _LocalReplayBudget:
     deadline_monotonic: float
+    budget_profile: str | None = None
 
 
 def applicability_replay_timeout(timeout_seconds=None):
@@ -52,14 +54,15 @@ def applicability_replay_timeout(timeout_seconds=None):
 
 
 @contextmanager
-def local_benchmark_applicability_budget(*, deadline_monotonic):
+def local_benchmark_applicability_budget(*, deadline_monotonic, budget_profile=None):
     """Explicit local-profile work deadline, carrying no proof authority."""
     now = time.monotonic()
+    maximum = local_work_timeout_limit(budget_profile)
     if (type(deadline_monotonic) not in (int, float)
             or not math.isfinite(deadline_monotonic)
-            or not 0 < deadline_monotonic - now <= 900):
+            or not 0 < deadline_monotonic - now <= maximum):
         raise ValueError("bounded local applicability work deadline required")
-    with resume_applicability_budget(_LocalReplayBudget(float(deadline_monotonic))) as scope:
+    with resume_applicability_budget(_LocalReplayBudget(float(deadline_monotonic), budget_profile)) as scope:
         yield scope
 
 
@@ -70,7 +73,7 @@ def capture_applicability_budget():
         return None
     inherited = _DEADLINE.get()
     return _LocalReplayBudget(min(scope.deadline_monotonic,
-                                 inherited if inherited is not None else scope.deadline_monotonic))
+                                 inherited if inherited is not None else scope.deadline_monotonic), scope.budget_profile)
 
 
 @contextmanager
@@ -84,8 +87,9 @@ def resume_applicability_budget(scope, *, deadline_monotonic=None):
     if os.environ.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") != "local-benchmark@1":
         raise ValueError("explicit local benchmark resource profile required")
     deadline = scope.deadline_monotonic
+    maximum = local_work_timeout_limit(scope.budget_profile)
     if (type(deadline) not in (int, float) or not math.isfinite(deadline)
-            or deadline - time.monotonic() > 900):
+            or deadline - time.monotonic() > maximum):
         raise ValueError("bounded captured applicability deadline required")
     if deadline_monotonic is not None:
         if type(deadline_monotonic) not in (int, float) or not math.isfinite(deadline_monotonic):
@@ -99,7 +103,8 @@ def resume_applicability_budget(scope, *, deadline_monotonic=None):
         deadline = min(deadline, local.deadline_monotonic)
     if deadline <= time.monotonic():
         raise TimeoutError("aggregate applicability deadline expired before replay")
-    captured = _LocalReplayBudget(deadline)
+    profile = scope.budget_profile if local is None else local.budget_profile
+    captured = _LocalReplayBudget(deadline, profile)
     deadline_token = _DEADLINE.set(deadline)
     local_token = _LOCAL_BUDGET.set(captured)
     try:
@@ -116,8 +121,10 @@ def applicability_budget(timeout_seconds):
     This carries only a deadline, never a checked fact or authority token.
     Nested scopes cannot renew or extend an enclosing caller's deadline.
     """
+    local = _LOCAL_BUDGET.get()
+    maximum = 600 if local is not None and local.budget_profile == FORMALIZATION_BUDGET_PROFILE else 300
     if (type(timeout_seconds) not in (int, float) or not math.isfinite(timeout_seconds)
-            or not 0 < timeout_seconds <= 300):
+            or not 0 < timeout_seconds <= maximum):
         raise ValueError("bounded applicability aggregate deadline required")
     deadline = time.monotonic() + timeout_seconds
     previous = _DEADLINE.get()

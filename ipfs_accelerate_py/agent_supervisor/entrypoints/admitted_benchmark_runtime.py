@@ -267,7 +267,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
                implementation_timeout_seconds: int | None = None,
                max_task_attempts: int = 1, context_bundle: dict | None = None,
-               lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
+               lifetime_seconds: int = 300, budget_profile: str | None = None,
+               worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                refresh_source384_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
@@ -280,7 +281,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             start_timeout_ms=start_timeout_ms,
             implementation_timeout_seconds=implementation_timeout_seconds,
             max_task_attempts=max_task_attempts, context_bundle=context_bundle,
-            lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
+            lifetime_seconds=lifetime_seconds, budget_profile=budget_profile, worker_worktree_root=worker_worktree_root,
             candidate_runner_argv=candidate_runner_argv,
             refresh_context_on_completion=refresh_context_on_completion,
             refresh_source384_on_completion=refresh_source384_on_completion,
@@ -337,7 +338,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
                implementation_timeout_seconds: int | None = None,
                max_task_attempts: int = 1, context_bundle: dict | None = None,
-               lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
+               lifetime_seconds: int = 300, budget_profile: str | None = None,
+               worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                refresh_source384_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
@@ -375,8 +377,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError(f"bounded native launch timeout must fit START/STOP catalog (2000..{maximum_timeout})")
         if type(max_task_attempts) is not int or not 1 <= max_task_attempts <= 10:
             raise ValueError("coordination attempt cap must be in 1..10")
-        if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 900:
-            raise ValueError("signed launch lifetime_seconds must be in 120..900")
+        from ..runtime.benchmark_budget_policy import validate_native_lifetime
+        validate_native_lifetime(lifetime_seconds, budget_profile=budget_profile)
         if implementation_timeout_seconds is not None and (
                 type(implementation_timeout_seconds) is not int
                 or not 1 <= implementation_timeout_seconds <= lifetime_seconds
@@ -472,6 +474,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
             runtime.start_timeout_ms = start_timeout_ms
             runtime.implementation_timeout_seconds = implementation_timeout_seconds
+            runtime.budget_profile = budget_profile
             runtime._startup_trace_lock = threading.Lock()
             runtime._startup_trace = []
             runtime._startup_trace_truncated = False
@@ -606,6 +609,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 runtime.manifest["start_timeout_ms"] = start_timeout_ms
             if implementation_timeout_seconds is not None:
                 runtime.manifest["implementation_timeout_seconds"] = implementation_timeout_seconds
+            if budget_profile is not None:
+                runtime.manifest["budget_profile"] = budget_profile
             if refresh_source384_on_completion:
                 runtime.manifest["context_refresh_policy"].update(
                     schema="admitted-context-refresh-policy@2",
@@ -979,6 +984,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("admitted START budget differs from its signed launch")
         if self.manifest.get("implementation_timeout_seconds") != getattr(self, "implementation_timeout_seconds", None):
             raise ValueError("implementation timeout differs from its signed launch")
+        if self.manifest.get("budget_profile") != getattr(self, "budget_profile", None):
+            raise ValueError("benchmark budget profile differs from its signed launch")
+        if self.manifest.get("budget_profile") is not None:
+            from ..runtime.benchmark_budget_policy import validate_native_lifetime
+            validate_native_lifetime(self.manifest.get("lifetime_seconds"), budget_profile=self.budget_profile)
         if self.service._local_start_timeout_ms != self.start_timeout_ms:
             raise ValueError("local START service budget differs from its signed launch")
         if self.manifest.get("candidate_runner") is not None:

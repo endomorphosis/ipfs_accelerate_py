@@ -26,6 +26,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_indexed_prepar
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
     PROFILES, admission_environment, execution_budget, native_start_timeout_ms, planner_timeout_seconds,
     coding_timeout_seconds, implementation_watchdog_seconds,
+    FORMALIZATION_SOURCE384_PROFILE, ReservedPhaseBudget,
 )
 from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
 from benchmarks.agent_supervisor.container_coding.terminal_shutdown_observation import record as _record_shutdown_failure
@@ -37,6 +38,10 @@ ROOT = Path("/opt/ipfs-supervisor")
 ROUTER = ROOT / "bin/router-worker"
 VALIDATOR = ROOT / "bin/validation-worker"
 WORKTREES = ROOT / "worktrees"
+
+
+class _BenchmarkPhaseExpired(BaseException):
+    """A process deadline must escape optional component Exception handlers."""
 
 
 def _write(path: Path, value):
@@ -678,6 +683,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_checkpoint_descriptor: Path | None = None,
         intent_action_384_config: Path | None = None,
         source384_config: Path | None = None,
+        numerical_formalization_profile: str | None = None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
@@ -706,6 +712,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if (arm not in {"full", "no-index"} or type(timeout_seconds) is not int
             or not 90 <= timeout_seconds <= max(300, budget["driver_seconds"])):
         raise ValueError("explicit bounded arm required")
+    reserved_phases = resource_profile == FORMALIZATION_SOURCE384_PROFILE
+    if reserved_phases and timeout_seconds != budget["driver_seconds"]:
+        raise ValueError("reserved phase profile requires its full declared driver budget")
+    if numerical_formalization_profile is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.numerical_formalization_context import validate_profile
+        validate_profile(numerical_formalization_profile)
     reserved_cleanup_seconds = budget["cleanup_seconds"]
     selected_admission = admission_environment(resource_profile)
     if (any(os.environ.get(key) != value for key, value in selected_admission.items())
@@ -744,6 +756,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     started = time.monotonic()
     deadline = started + timeout_seconds
     work_deadline = deadline - reserved_cleanup_seconds
+    total_work_deadline = work_deadline
+    phase_budget = ReservedPhaseBudget(started=started, profile=resource_profile) if reserved_phases else None
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
               "start_cleanup": _empty_start_cleanup_observation("runtime_not_created"),
@@ -759,6 +773,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    if phase_budget is not None:
+        report["reserved_phase_budgets_seconds"] = dict(phase_budget.limits)
+        report["native_lifetime_seconds"] = budget["native_lifetime_seconds"]
+    if numerical_formalization_profile is not None:
+        report["numerical_formalization_selection"] = {
+            "requested_profile": numerical_formalization_profile, "enabled": arm == "full",
+            "effective_profile": numerical_formalization_profile if arm == "full" else None,
+            "disabled_reason": None if arm == "full" else "no_index_ablation"}
     if metadata_census_only:
         report.update(metadata_census_only=True, metadata_census_succeeded=False,
                       coding_dispatch_possible=False, official_verifier_executed=False)
@@ -776,11 +798,23 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Reserve time for native STOP and durable accounting before Harbor's
         # independent outer timeout destroys the disposable container.
         signal.setitimer(signal.ITIMER_REAL, 0)
-        raise TimeoutError("the total benchmark agent budget is exhausted")
+        message = "the benchmark " + ((phase_budget.phase or "preparation") if phase_budget is not None else "total") + " budget is exhausted"
+        if phase_budget is not None:
+            raise _BenchmarkPhaseExpired(message)
+        raise TimeoutError(message)
 
     previous_alarm = signal.signal(signal.SIGALRM, budget_expired)
     previous_term = signal.signal(signal.SIGTERM, budget_expired)
-    signal.setitimer(signal.ITIMER_REAL, max(1, timeout_seconds - reserved_cleanup_seconds))
+    signal.setitimer(signal.ITIMER_REAL, (
+        max(.001, started + budget["preparation_seconds"] - time.monotonic()) if reserved_phases
+        else max(1, timeout_seconds - reserved_cleanup_seconds)))
+
+    def enter_phase(name):
+        nonlocal work_deadline
+        if phase_budget is not None:
+            now = time.monotonic()
+            work_deadline = phase_budget.enter(name, now=now)
+            signal.setitimer(signal.ITIMER_REAL, max(.001, work_deadline - now))
 
     def remaining(reserve=0):
         value = int(work_deadline - time.monotonic() - reserve)
@@ -837,7 +871,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     try:
         if selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1":
             from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import local_benchmark_applicability_budget
-            replay_scope.enter_context(local_benchmark_applicability_budget(deadline_monotonic=work_deadline))
+            replay_scope.enter_context(local_benchmark_applicability_budget(deadline_monotonic=total_work_deadline,
+                **({"budget_profile": resource_profile} if reserved_phases else {})))
+        enter_phase("preparation")
         before = time.monotonic()
         try:
             prepared = preparation.prepare(repository=Path("/app"), instruction=instruction, state=state,
@@ -859,8 +895,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
                     model_snapshot=model_snapshot, model_revision=model_revision,
+                    **({"numerical_formalization_profile": numerical_formalization_profile}
+                       if numerical_formalization_profile is not None else {}),
                     **({"source384_config": source384_config, "train_autoencoder": False,
-                        "source384_timeout_seconds": min(budget["source384_seconds"], remaining())}
+                        "source384_timeout_seconds": min(budget["source384_seconds"], remaining()),
+                        **({"source384_budget_profile": resource_profile} if reserved_phases else {})}
                        if source384_config is not None else {"train_autoencoder": False}
                        if generic_profile is not None and security_checkpoint is None
                        else _security_runtime_inputs(security_checkpoint=security_checkpoint,
@@ -874,6 +913,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
         phase = "planning"
+        enter_phase("planning")
         before = time.monotonic()
         try:
             planned = preparation.plan(state=state, provider_callable=isolated_planner,
@@ -881,6 +921,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         finally:
             report["phases"]["planning_seconds"] = time.monotonic() - before
         report["planning"] = planned
+        enter_phase("preparation")
         if not planned.get("qualified"):
             raise RuntimeError("planning did not produce a qualified, independently admitted plan")
         bundle = None
@@ -936,8 +977,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Candidate routes carry no provider timeout. Check the same work
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
-        implementation_budget = (remaining() if provider_free_candidate else
+        implementation_budget = (budget["implementation_seconds"] if reserved_phases else
+                                 remaining() if provider_free_candidate else
                                  min(coding_timeout_seconds(resource_profile), remaining(25)))
+        if reserved_phases and not provider_free_candidate:
+            implementation_budget = coding_timeout_seconds(resource_profile)
         report["provider_coding_timeout_cap_seconds"] = (
             None if provider_free_candidate else coding_timeout_seconds(resource_profile))
         report["provider_coding_timeout_seconds"] = None if provider_free_candidate else implementation_budget
@@ -950,6 +994,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             **({"semantic_metadata_view": semantic_metadata_view} if semantic_metadata_view != "legacy" else {}))
         if not provider_free_candidate and provider_selection["provider"] != "codex_cli":
             implementation += ["--provider", provider_selection["provider"]]
+        if reserved_phases and not provider_free_candidate:
+            implementation += ["--budget-profile", resource_profile]
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
             instruction_context = prepare_public_instruction_context(repository=Path("/app"),
@@ -961,6 +1007,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "--public-instruction-task-cid", task.task_cid]
         command = shlex.join(implementation)
         phase = "native_execution"
+        enter_phase("native_setup")
         from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
         from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
         from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
@@ -970,7 +1017,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         # Bind the daemon's implementation watchdog explicitly. Its ordinary
         # 1800s default otherwise outlives this benchmark's work window. The
         # outer work alarm remains the absolute deadline even during START.
-        implementation_timeout = (remaining() if provider_free_candidate
+        implementation_timeout = (budget["implementation_seconds"] if reserved_phases else
+                                  remaining() if provider_free_candidate
                                   else min(implementation_watchdog_seconds(resource_profile), remaining(25)))
         report["implementation_timeout_seconds"] = implementation_timeout
         with open_existing_native_owner(
@@ -984,7 +1032,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 max_task_attempts=1, timeout_ms=20_000,
                 implementation_timeout_seconds=implementation_timeout,
                 **({"start_timeout_ms": start_timeout} if start_timeout is not None else {}),
-                lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
+                lifetime_seconds=(budget["native_lifetime_seconds"] if reserved_phases else
+                    min(900, max(120, remaining() + max(60, reserved_cleanup_seconds)))),
+                **({"budget_profile": resource_profile} if reserved_phases else {}),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
                 refresh_source384_on_completion=(source384_config is not None
@@ -998,6 +1048,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 report["start"] = runtime.start().to_dict()
                 if report["start"]["status"] != "succeeded":
                     raise RuntimeError("native supervisor START failed")
+                enter_phase("implementation")
                 try:
                     startup = _project_native_startup(runtime.startup_diagnostics())
                 except Exception:
@@ -1028,6 +1079,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     time.sleep(.5)
                 report["observation"] = runtime.observe()
             finally:
+                if reserved_phases:
+                    deadline = min(deadline, time.monotonic() + reserved_cleanup_seconds)
                 _arm_cleanup_deadline(deadline)
                 try:
                     report["native_startup"] = _project_native_startup(runtime.startup_diagnostics())
@@ -1073,9 +1126,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             report.get("task_state", {}).get("status") == "completed"
             and report["stop"]["status"] == "succeeded" and report["remaining_processes"] == 0
         )
-    except Exception as error:
-        report["error"] = ({"type": type(error).__name__} if metadata_census_only else
-                           {"type": type(error).__name__, "message": str(error)[:2048]})
+    except (Exception, _BenchmarkPhaseExpired) as error:
+        error_type = "TimeoutError" if type(error) is _BenchmarkPhaseExpired else type(error).__name__
+        report["error"] = ({"type": error_type} if metadata_census_only else
+                           {"type": error_type, "message": str(error)[:2048]})
         report["error_phase"] = phase
         try:
             report.update(_failure_diagnostics(error, phase=phase))
@@ -1084,6 +1138,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             # prevent the existing cleanup and durable result publication.
             report["failure_diagnostics_error"] = type(diagnostic_error).__name__[:128]
     finally:
+        if reserved_phases:
+            deadline = min(deadline, time.monotonic() + reserved_cleanup_seconds)
         replay_scope.close()
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_alarm)
@@ -1187,6 +1243,7 @@ def main():
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
     parser.add_argument("--intent-action-384-config", type=Path)
     parser.add_argument("--source384-config", type=Path)
+    parser.add_argument("--numerical-formalization-profile")
     parser.add_argument("--intent-projection-request", type=Path)
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")

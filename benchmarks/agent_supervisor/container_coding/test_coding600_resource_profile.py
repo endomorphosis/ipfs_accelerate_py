@@ -25,7 +25,8 @@ def test_explicit_coding_allowance_preserves_existing_profiles_and_outer_bounds(
     assert profiles.admission_environment(PROFILE) == profiles.admission_environment(prior)
     assert profiles.coding_timeout_seconds(PROFILE) == 600
     assert profiles.implementation_watchdog_seconds(PROFILE) == 660
-    for selected in (None, *[p for p in profiles.PROFILES if p != PROFILE]):
+    for selected in (None, *[p for p in profiles.PROFILES if p not in {
+            PROFILE, profiles.FORMALIZATION_SOURCE384_PROFILE}]):
         assert profiles.coding_timeout_seconds(selected) == 300
         assert profiles.implementation_watchdog_seconds(selected) == 360
     for function in (profiles.coding_timeout_seconds, profiles.implementation_watchdog_seconds):

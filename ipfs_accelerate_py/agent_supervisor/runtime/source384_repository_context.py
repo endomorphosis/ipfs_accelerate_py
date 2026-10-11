@@ -265,11 +265,11 @@ def _scope_selection(root, output, source_hashes, expected_scope):
 
 def prepare_source384_context(*, repository, source_hashes, output, config_path,
                               timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None,
-                              manifest_envelope=None):
+                              manifest_envelope=None, budget_profile=None):
     return _prepare_source384_context(repository=repository, source_hashes=source_hashes,
         output=output, config_path=config_path, timeout_seconds=timeout_seconds,
         scheduler=scheduler, parent_lease=parent_lease, intent_binding=intent_binding,
-        manifest_envelope=manifest_envelope)
+        manifest_envelope=manifest_envelope, budget_profile=budget_profile)
 
 
 def validate_historical_source384_selection(*, repository, expected_receipt):
@@ -357,9 +357,12 @@ def prepare_source384_successor_context(*, repository, source_hashes, output, pr
 
 def _prepare_source384_context(*, repository, source_hashes, output, config_path,
                               timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None,
-                              predecessor=None, excluded_new_output_paths=(), manifest_envelope=None):
+                              predecessor=None, excluded_new_output_paths=(), manifest_envelope=None,
+                              budget_profile=None):
     started = time.monotonic()
-    _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= 180,
+    from .benchmark_budget_policy import source384_timeout_limit
+    maximum = source384_timeout_limit(budget_profile)
+    _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= maximum,
              "bounded Source384 preparation deadline required")
     def remaining():
         left = timeout_seconds - (time.monotonic() - started)
@@ -422,7 +425,8 @@ def _prepare_source384_context(*, repository, source_hashes, output, config_path
                                         expected_sha256=config["checkpoint_sha256"])
         inference = infer_shared_parent_units(index, root, expected_head=head, registry=registry,
             version_id=version, paths=paths, embedding_snapshot=config["embedding_snapshot"],
-            parent_lease=lease, timeout_seconds=remaining(), memory_mb=4096)
+            parent_lease=lease, timeout_seconds=remaining(), memory_mb=4096,
+            **({"budget_profile": budget_profile} if budget_profile is not None else {}))
         _validate_population(inference, inventory, program_scope)
         nomination = None
         if header_mode:

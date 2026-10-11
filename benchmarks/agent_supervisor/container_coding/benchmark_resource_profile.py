@@ -5,14 +5,19 @@ comparison arm; existing task defaults and the original profile stay unchanged.
 """
 from copy import deepcopy
 import math
+from ipfs_accelerate_py.agent_supervisor.runtime.benchmark_budget_policy import (
+    FORMALIZATION_BUDGET_PROFILE, FORMALIZATION_NATIVE_LIFETIME_SECONDS,
+)
 
 SOURCE384_PROFILE = "source384-5cpu-12gib@1"
 EXTENDED_SOURCE384_PROFILE = "source384-5cpu-16gib-extended@1"
 PLANNER180_SOURCE384_PROFILE = "source384-5cpu-16gib-planner180@1"
 PLANNER180_20GIB_SOURCE384_PROFILE = "source384-5cpu-20gib-planner180@1"
 CODING600_SOURCE384_PROFILE = "source384-5cpu-20gib-coding600@1"
+FORMALIZATION_SOURCE384_PROFILE = FORMALIZATION_BUDGET_PROFILE
 EXTENDED_PROFILES = (EXTENDED_SOURCE384_PROFILE, PLANNER180_SOURCE384_PROFILE,
-                     PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE)
+                     PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE,
+                     FORMALIZATION_SOURCE384_PROFILE)
 PROFILES = (SOURCE384_PROFILE, *EXTENDED_PROFILES)
 SOURCE384_ENVIRONMENT = dict(override_cpus=5, override_memory_mb=12288,
     cpu_enforcement_policy="limit", memory_enforcement_policy="limit")
@@ -22,7 +27,8 @@ def resource_environment(profile):
     if profile not in PROFILES:
         raise ValueError("unknown benchmark resource profile")
     result = dict(SOURCE384_ENVIRONMENT)
-    if profile in (PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE):
+    if profile in (PLANNER180_20GIB_SOURCE384_PROFILE, CODING600_SOURCE384_PROFILE,
+                   FORMALIZATION_SOURCE384_PROFILE):
         result["override_memory_mb"] = 20480
     elif profile in EXTENDED_PROFILES:
         result["override_memory_mb"] = 16384
@@ -32,6 +38,13 @@ def resource_environment(profile):
 def execution_budget(profile=None):
     if profile not in (None, *PROFILES):
         raise ValueError("unknown benchmark resource profile")
+    if profile == FORMALIZATION_SOURCE384_PROFILE:
+        return dict(driver_seconds=6420, cleanup_seconds=120, source384_seconds=3600,
+                    harbor_seconds=6480, exec_seconds=6450, qualification_seconds=3900,
+                    qualification_exec_seconds=3930, native_start_seconds=120,
+                    preparation_seconds=3600, planning_seconds=660,
+                    native_setup_seconds=180, implementation_seconds=1860,
+                    native_lifetime_seconds=FORMALIZATION_NATIVE_LIFETIME_SECONDS)
     if profile in EXTENDED_PROFILES:
         return dict(driver_seconds=900, cleanup_seconds=60, source384_seconds=180,
                     harbor_seconds=960, exec_seconds=910, qualification_seconds=600,
@@ -42,21 +55,69 @@ def execution_budget(profile=None):
 
 
 def planner_timeout_seconds(profile=None):
-    """An explicit planner allowance within the unchanged enclosing work budget."""
+    """Explicit provider allowance within the selected enclosing planner budget."""
     execution_budget(profile)
+    if profile == FORMALIZATION_SOURCE384_PROFILE:
+        return 600
     return 180 if profile in (PLANNER180_SOURCE384_PROFILE, PLANNER180_20GIB_SOURCE384_PROFILE,
                              CODING600_SOURCE384_PROFILE) else 90
 
 
 def coding_timeout_seconds(profile=None):
-    """A provider cap; the driver still clamps it to the original work deadline."""
+    """Provider cap; only the formalization profile reserves it independently."""
     execution_budget(profile)
+    if profile == FORMALIZATION_SOURCE384_PROFILE:
+        return 1800
     return 600 if profile == CODING600_SOURCE384_PROFILE else 300
 
 
 def implementation_watchdog_seconds(profile=None):
     """Allow bounded provider settlement without extending the enclosing run."""
     return coding_timeout_seconds(profile) + 60
+
+
+class ReservedPhaseBudget:
+    """Cumulative preparation and independent later phases under one outer bound.
+
+    Time in planning cannot refill preparation. Every transition checks the
+    preceding deadline, including when an interrupt was caught by a component.
+    The caller installs the returned deadlines as process alarms.
+    """
+    _ORDER = ("preparation", "planning", "preparation", "native_setup", "implementation")
+
+    def __init__(self, *, started, profile):
+        if profile != FORMALIZATION_SOURCE384_PROFILE:
+            raise ValueError("reserved phases require the explicit formalization profile")
+        budget = execution_budget(profile)
+        self.limits = {name: budget[name + "_seconds"] for name in set(self._ORDER)}
+        self.consumed = dict.fromkeys(self.limits, 0.)
+        self.outer_deadline = started + budget["driver_seconds"] - budget["cleanup_seconds"]
+        self.phase = None
+        self.index = 0
+        self.entered = started
+        self.deadline = self.outer_deadline
+
+    def enter(self, phase, *, now):
+        if self.index >= len(self._ORDER) or phase != self._ORDER[self.index]:
+            raise ValueError("benchmark phase transition out of order")
+        if self.phase is not None:
+            self.remaining(now=now)
+            self.consumed[self.phase] += now - self.entered
+        else:
+            # State/report setup and initial scope imports are preparation too;
+            # leaving them outside a phase would steal from the last reserve.
+            self.consumed[phase] += now - self.entered
+        self.phase, self.entered = phase, now
+        self.index += 1
+        self.deadline = min(self.outer_deadline, now + self.limits[phase] - self.consumed[phase])
+        self.remaining(now=now)
+        return self.deadline
+
+    def remaining(self, *, now):
+        value = self.deadline - now
+        if value <= 0:
+            raise TimeoutError("the benchmark " + str(self.phase) + " budget is exhausted")
+        return value
 
 
 def native_start_timeout_ms(profile=None, *, remaining_work_seconds):

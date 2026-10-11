@@ -14,12 +14,14 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_source384_qualification as probe
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
 from benchmarks.agent_supervisor.container_coding import terminal_resource_diagnostics as diagnostics
+from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import FORMALIZATION_SOURCE384_PROFILE
 from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as owner
 
 
 @pytest.mark.parametrize("fault", [None, "digest", "model_loads", "authority", "warm_replay"])
+@pytest.mark.parametrize("resource_profile", [None, FORMALIZATION_SOURCE384_PROFILE])
 def test_probe_releases_bulk_inference_before_independent_warm_replay(
-        tmp_path, monkeypatch, capsys, fault):
+        tmp_path, monkeypatch, capsys, fault, resource_profile):
     # Native/Docker calls are explicit doubles; the actual generated probe runs.
     def path(value):
         value = str(value)
@@ -43,7 +45,11 @@ def test_probe_releases_bulk_inference_before_independent_warm_replay(
                    proof_authority=fault == "authority", execution_authority=False,
                    completion_authority=False, formalization_authority=False)
     context = dict(source384_context=receipt, seconds=2, nonoverlapping_seconds={"context": 2})
-    released, roots, warm = [], [], []
+    released, roots, warm, initial = [], [], [], []
+    if resource_profile is None:
+        monkeypatch.delenv("IPFS_SUPERVISOR_BENCHMARK_PROFILE", raising=False)
+    else:
+        monkeypatch.setenv("IPFS_SUPERVISOR_BENCHMARK_PROFILE", resource_profile)
 
     class BulkBytes(bytes):
         def __del__(self):
@@ -66,11 +72,12 @@ def test_probe_releases_bulk_inference_before_independent_warm_replay(
         gc.collect()
         assert released == ["raw"] and roots[0]() is None
         assert kwargs["expected_receipt"] == receipt
+        assert 0 < kwargs["timeout_seconds"] <= 90
         if fault == "warm_replay":
             raise ValueError("authored warm source drift")
 
     monkeypatch.setattr(prep, "prepare", lambda **kw: {})
-    monkeypatch.setattr(prep, "initial_context", lambda **kw: context)
+    monkeypatch.setattr(prep, "initial_context", lambda **kw: initial.append(kw) or context)
     monkeypatch.setattr(owner, "_pins", lambda: {"authored": True})
     monkeypatch.setattr(owner, "_read", lambda *args: BulkBytes(encoded))
     monkeypatch.setattr(owner, "validate_source384_context", validate)
@@ -93,6 +100,8 @@ def test_probe_releases_bulk_inference_before_independent_warm_replay(
     assert stopped.value.code == (0 if fault is None else 1)
     assert report["qualified"] is (fault is None)
     assert report["provider_calls"] == 0 and report["benchmark_result"] is False
+    assert initial[0].get("source384_budget_profile") == resource_profile
+    assert initial[0]["source384_timeout_seconds"] == (3600 if resource_profile else 90)
     assert len(warm) == int(fault in {None, "warm_replay"})
     if fault is None:
         assert report["native_worker_receipt"] == native["report"]["worker_receipt"]

@@ -70,7 +70,7 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
         TodoImplementationDaemon, PortalTask,
     )
     from .indexed_doctor_lifecycle import _context
-    from .benchmark_resource_profile import execution_budget
+    from .benchmark_resource_profile import execution_budget, FORMALIZATION_SOURCE384_PROFILE
 
     started = time.monotonic()
     # Refuse unsupported declarations before prepare commits public input files
@@ -111,7 +111,9 @@ def qualify(*, repository: Path, instruction: Path, state: Path,
         entered = time.monotonic()
         initial = prep.initial_context(state=state, model_snapshot=model_snapshot,
             model_revision=model_revision, source384_config=source384_config,
-            train_autoencoder=False, source384_timeout_seconds=source384_limit)
+            train_autoencoder=False, source384_timeout_seconds=source384_limit,
+            **({"source384_budget_profile":resource_profile}
+               if resource_profile == FORMALIZATION_SOURCE384_PROFILE else {}))
         initial_seconds = time.monotonic() - entered
     graph = _authored_graph(prepared)
     admission = local.admit_local_benchmark_plan(graph=graph, manifest=prepared["manifest"])
