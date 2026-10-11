@@ -370,6 +370,42 @@ def test_failed_cold_stage_is_retained_without_preparation_or_dispatch_claim(tmp
     assert "| cold-failure | 1 | 55 | unknown | unknown | unknown | unknown |" in markdown(comparison)
 
 
+def test_declared_output_bytes_survive_comparison_without_correctness_or_token_claims(tmp_path):
+    observation = {"schema": "terminal-declared-output-observation@1", "status": "observed",
+        "task_cid_sha256": "a" * 64, "attempt_id_sha256": "b" * 64, "invocation_id_sha256": "c" * 64,
+        "baseline_commit": "d" * 40, "private_prompt": "MUST NOT APPEAR", "task_correctness_established": True,
+        "outputs": [{"path": "eigen.py", "effect": "modify", "baseline_sha256": "e" * 64,
+            "candidate": {"status": "observed", "exists": True, "size_bytes": 100, "sha256": "f" * 64,
+                "equals_admitted_baseline": False, "raw_source": "MUST NOT APPEAR"},
+            "canonical": {"status": "observed", "exists": True, "size_bytes": 80, "sha256": "e" * 64,
+                "equals_admitted_baseline": True}}]}
+    receipt = _receipt(tmp_path, "output.json", SUPERVISOR, [{"trial": "timeout", "reward": {"reward": 0},
+        "supervisor": {"task_completed": False, "declared_output_observation": observation}}], "no-index")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    retained = row["declared_output_observation"]
+    assert retained["status"] == "observed" and retained["invocation_id_sha256"] == "c" * 64
+    assert retained["outputs"][0]["candidate"]["equals_admitted_baseline"] is False
+    assert retained["task_correctness_established"] is retained["patch_application_established"] is False
+    assert row["official_reward"] == 0 and row["native_task_completed"] is False
+    assert row["tokens"]["total_tokens"] is None and "MUST NOT APPEAR" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("malformed", ["missing", "extra_rows", "unsafe_path", "bad_digest", "status_list"])
+def test_absent_or_malformed_byte_observation_remains_unknown(malformed):
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _declared_output_observation
+    raw = {"schema": "terminal-declared-output-observation@1", "status": "observed", "outputs": [
+        {"path": "eigen.py", "effect": "modify", "candidate": {"status": "observed", "exists": True,
+            "size_bytes": 9, "sha256": "bad"}, "canonical": {"status": "unavailable"}}]}
+    if malformed == "extra_rows": raw["outputs"] *= 33
+    elif malformed == "unsafe_path": raw["outputs"][0]["path"] = "../private"
+    elif malformed == "status_list": raw["status"] = []
+    result = _declared_output_observation({} if malformed == "missing" else {"declared_output_observation": raw})
+    assert result["status"] in {"partial", "unavailable"}
+    assert result["task_correctness_established"] is False
+    assert "private" not in json.dumps(result) and "bad" not in json.dumps(result)
+
+
 def test_doctor_selection_is_distinct_from_matching_worker_materialization(tmp_path):
     receipt = _receipt(tmp_path, "doctor.json", SUPERVISOR, [{"trial": "doctor",
         "supervisor": {"implementation_route": "doctor_candidate",

@@ -15,6 +15,10 @@ KEY = "router_worker_capability"
 SCHEMA = "terminal-router-worker-capability@3"
 WORKER_CHILD_CUSTODY_SCHEMA = "terminal-worker-child-custody@1"
 SOURCE_PATHS = (
+    # The owner must retain the observation result before container removal;
+    # an installer from a newer checkout cannot silently use an older driver.
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_output_observation.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py",

@@ -14,6 +14,7 @@ import html
 import json
 import math
 from pathlib import Path
+import re
 
 from benchmarks.agent_supervisor.container_coding.benchmark_controls import compare_controls
 
@@ -125,6 +126,63 @@ def _audit_observation(report):
             if isinstance(audit.get("invocations"), list) else [],
         "task_correctness_established": False,
     } if audit else None
+
+
+def _declared_output_observation(report):
+    """Retain closed byte facts separately from native settlement and reward."""
+    raw = _mapping(report.get("declared_output_observation"))
+    result = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "not_recorded", "outputs": [], "observation_only": True,
+        "completion_authority": False, "settlement_authority": False,
+        "task_correctness_established": False, "patch_application_established": False,
+        "writer_identity_established": False}
+    if not raw:
+        return result
+    result["reason"] = "invalid_observation"
+    if (raw.get("schema") != result["schema"] or type(raw.get("status")) is not str
+            or raw["status"] not in {"observed", "partial", "unavailable"}):
+        return result
+    def digest(value, length=64):
+        return value if type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) else None
+    def file_fact(value):
+        value = _mapping(value)
+        unavailable = dict(status="unavailable", exists=None, size_bytes=None, sha256=None, equals_admitted_baseline=None)
+        if value.get("status") != "observed" or type(value.get("exists")) is not bool:
+            return unavailable
+        present = value["exists"]
+        size, hashed = _count(value.get("size_bytes")), digest(value.get("sha256"))
+        if (present and (size is None or size > 1_000_000 or hashed is None)
+                or not present and (value.get("size_bytes") is not None or value.get("sha256") is not None)):
+            return unavailable
+        return dict(status="observed", exists=present, size_bytes=size, sha256=hashed,
+            equals_admitted_baseline=_boolean(value.get("equals_admitted_baseline")))
+    rows = raw.get("outputs")
+    if type(rows) is not list or len(rows) > 32:
+        return result
+    paths = set()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import _path
+        for row in rows:
+            if type(row) is not dict or type(row.get("path")) is not str or len(row["path"].encode()) > 1024:
+                raise ValueError("invalid output row")
+            path = _path(row["path"])
+            if path == "." or path in paths or row.get("effect") not in {"create", "modify", "delete"}:
+                raise ValueError("invalid output scope")
+            paths.add(path)
+            result["outputs"].append(dict(path=path, effect=row["effect"], baseline_sha256=digest(row.get("baseline_sha256")),
+                candidate=file_fact(row.get("candidate")), canonical=file_fact(row.get("canonical"))))
+    except (TypeError, ValueError):
+        result["outputs"] = []
+        return result
+    result.update(status=raw["status"], reason="reported_declared_byte_observation",
+        **{key: digest(raw.get(key)) for key in ("task_cid_sha256", "attempt_id_sha256", "invocation_id_sha256",
+            "allocation_path_sha256", "owner_events_sha256")}, baseline_commit=digest(raw.get("baseline_commit"), 40),
+        portal_attempt=_count(raw.get("portal_attempt")), original_allocation_inode_verified=False)
+    # Malformed individual facts cannot retain a blanket complete status.
+    if result["status"] == "observed" and (not rows or any(row[label]["status"] != "observed"
+            for row in result["outputs"] for label in ("candidate", "canonical"))):
+        result["status"] = "partial" if rows else "unavailable"
+    return result
 
 
 def _doctor_observation(report):
@@ -376,6 +434,7 @@ def _trial(receipt, raw, *, source):
         "code_learning_observation": _code_learning_observation(report) if not baseline else None,
         "post_publication_proof_index": _proof_index_observation(report) if not baseline else None,
         "context_input_audit": _audit_observation(report) if not baseline else None,
+        "declared_output_observation": _declared_output_observation(report) if not baseline else None,
         "post_publication_context": _refresh_observation(report) if not baseline else None,
         "provider_calls": calls,
         "observed_provider_invocations": len(invocations) if not baseline else calls,

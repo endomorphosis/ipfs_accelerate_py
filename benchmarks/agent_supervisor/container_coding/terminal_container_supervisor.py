@@ -789,6 +789,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             "planning_retained": True, "benchmark_advantage_claimed": False,
             "provider_usage_savings_established": False}
     native_state = None
+    output_observation_scope = None
     progress = NativeProgress(started=started)
     report["native_progress"] = progress.report
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -946,6 +947,13 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         admission = json.loads((state / "admission.json").read_text())
         verified = verify_local_benchmark_admission(admission, initial=True)
         task = verified["graph"].tasks[0]
+        try:
+            from .terminal_output_observation import capture_scope
+            output_observation_scope = capture_scope(verified, task)
+        except Exception:
+            # An optional byte observation cannot alter admission or execution.
+            # Never reconstruct a missing scope from a router-supplied path.
+            output_observation_scope = None
         if metadata_census_only:
             phase = "metadata_census"
             before = time.monotonic()
@@ -1214,6 +1222,21 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "schema": "terminal-native-failure-observations@1", "status": "unavailable",
                 "observation_only": True, "completion_authority": False,
                 "retry_authority": False, "settlement_authority": False,
+            }
+        try:
+            from .terminal_output_observation import collect as collect_outputs
+            report["declared_output_observation"] = collect_outputs(native_state=native_state,
+                workspace_root=WORKTREES, repository=Path("/app"), scope=output_observation_scope,
+                report=report, timeout_seconds=max(0., min(3., deadline - time.monotonic() - 1)))
+        except Exception:
+            # Worker processes are already reaped. Observation happens before
+            # Harbor removes the container, and cannot affect task/reward state.
+            report["declared_output_observation"] = {
+                "schema": "terminal-declared-output-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "outputs": [], "observation_only": True,
+                "completion_authority": False, "settlement_authority": False,
+                "retry_authority": False, "task_correctness_established": False,
+                "patch_application_established": False, "raw_source_exported": False,
             }
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
