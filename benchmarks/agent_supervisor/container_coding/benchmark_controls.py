@@ -12,6 +12,7 @@ import json
 import re
 
 SCHEMA = "terminal-benchmark-declared-controls@1"
+NUMERICAL_SCHEMA = "terminal-benchmark-declared-controls@2"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -90,8 +91,11 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile", "provider_profile", "semantic_transport_schema", "coding_reply_mode", "semantic_metadata_view", "numerical_formalization_profile"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        if "numerical_formalization_profile" in kwargs:
+            from .terminal_numerical_policy import validate_numerical_profile
+            validate_numerical_profile(kwargs["numerical_formalization_profile"])
         if "semantic_transport_schema" in kwargs:
             from .terminal_semantic_transport_policy import validate_semantic_transport_schema
             validate_semantic_transport_schema(kwargs["semantic_transport_schema"], arm=kwargs.get("arm"))
@@ -157,6 +161,12 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
         "job_controls_sha256": {key: _digest(config.get(key)) for key in JOB_KEYS},
         "agent_controls_sha256": {key: _digest(agent.get(key)) for key in AGENT_KEYS},
     }
+    numerical = agent.get("kwargs", {}).get("numerical_formalization_profile")
+    if numerical is not None:
+        from .terminal_numerical_policy import validate_numerical_profile
+        validate_numerical_profile(numerical)
+        controls["schema"] = NUMERICAL_SCHEMA
+        controls["experimental_controls_sha256"] = {"numerical_formalization_profile": _digest(numerical)}
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -165,7 +175,18 @@ def validate_controls(value):
     """Reject edited, partial or malformed declarations without inventing defaults."""
     keys = {"schema", "configuration_sha256", "identity", "task_input_sha256", "job_controls_sha256",
             "agent_controls_sha256", "sha256"}
-    if not isinstance(value, dict) or set(value) != keys or value.get("schema") != SCHEMA:
+    if not isinstance(value, dict):
+        return False
+    if value.get("schema") == NUMERICAL_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or set(experiment) != {"numerical_formalization_profile"}
+                or type(experiment["numerical_formalization_profile"]) is not str
+                or not _DIGEST.fullmatch(experiment["numerical_formalization_profile"])):
+            return False
+    elif value.get("schema") != SCHEMA:
+        return False
+    if set(value) != keys:
         return False
     if not isinstance(value["configuration_sha256"], str) or not _DIGEST.fullmatch(value["configuration_sha256"]):
         return False
@@ -227,6 +248,11 @@ def compare_controls(baseline, candidate):
                    ("identity", "task_input_sha256", "job_controls_sha256", "agent_controls_sha256")
                    for key in sorted(set(left[section]) | set(right[section]))
                    if left[section].get(key) != right[section].get(key)]
+    left_experiment = left.get("experimental_controls_sha256", {})
+    right_experiment = right.get("experimental_controls_sha256", {})
+    differences.extend("experimental_controls_sha256." + key
+                       for key in sorted(set(left_experiment) | set(right_experiment))
+                       if left_experiment.get(key) != right_experiment.get(key))
     unchanged = all(item.get("status") == "observed" and item.get("configuration_unchanged") is True
                     for item in (baseline, candidate))
     return {"matches": not differences and unchanged,

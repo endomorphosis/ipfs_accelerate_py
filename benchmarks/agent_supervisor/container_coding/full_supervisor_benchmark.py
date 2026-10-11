@@ -35,6 +35,10 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, SEMANTIC_METADATA_VIEWS, validate_semantic_metadata_view,
     semantic_metadata_selection, semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_numerical_policy import (
+    PROFILES as NUMERICAL_PROFILES, validate_numerical_profile, numerical_selection,
+    numerical_observation, require_numerical_archive,
+)
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -171,7 +175,9 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+               numerical_formalization_profile: str | None = None,
                model_revision: str = "") -> dict:
+    validate_numerical_profile(numerical_formalization_profile)
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -192,6 +198,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    "model_revision": model_revision if arm == "full" else "",
                    **semantic_transport_selection(semantic_transport_schema),
                    **coding_reply_selection(coding_reply_mode),
+                   **numerical_selection(numerical_formalization_profile),
                    **semantic_metadata_selection(semantic_metadata_view)},
     }]
     if provider_profile is not None:
@@ -238,7 +245,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             task_profile: Path | None = None, provider_profile: str | None = None,
             semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
             coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
-            semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW) -> dict:
+            semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+            numerical_formalization_profile: str | None = None) -> dict:
+    validate_numerical_profile(numerical_formalization_profile)
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
@@ -262,6 +271,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_transport_archive(manifest, semantic_transport_schema)
     require_coding_reply_archive(manifest, coding_reply_mode)
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
+    require_numerical_archive(manifest, numerical_formalization_profile)
     if selected_provider["provider"] == "grok_cli":
         from .terminal_grok_deployment import verify_grok_archive
         verify_grok_archive(archive / "runtime.tar.gz", manifest)
@@ -299,6 +309,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_transport_schema=semantic_transport_schema,
         coding_reply_mode=coding_reply_mode,
         semantic_metadata_view=semantic_metadata_view,
+        numerical_formalization_profile=numerical_formalization_profile,
         **({"provider_profile": provider_profile} if provider_profile is not None else {}))
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
@@ -329,6 +340,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_transport_selection(semantic_transport_schema),
               **coding_reply_selection(coding_reply_mode),
               **semantic_metadata_observation(semantic_metadata_view),
+              **numerical_observation(numerical_formalization_profile, arm),
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
@@ -349,6 +361,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
+    numerical_profile = validate_numerical_profile(prepared.get("numerical_formalization_profile"))
+    configured_numerical = validate_numerical_profile(
+        config["agents"][0].get("kwargs", {}).get("numerical_formalization_profile"))
     reply_mode = validate_coding_reply_mode(prepared.get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
         arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     configured_reply_mode = validate_coding_reply_mode(
@@ -392,6 +407,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               **semantic_transport_selection(transport),
               **coding_reply_selection(reply_mode),
               **semantic_metadata_observation(metadata_view),
+              **numerical_observation(numerical_profile, prepared["arm"]),
+              **({"numerical_formalization_config_unchanged": configured_numerical == numerical_profile}
+                 if numerical_profile is not None or configured_numerical is not None else {}),
               **({"semantic_metadata_config_unchanged": configured_metadata_view == metadata_view}
                  if "semantic_metadata_view" in prepared or "semantic_metadata_view" in config["agents"][0].get("kwargs", {}) else {}),
               **({"coding_reply_config_unchanged": configured_reply_mode == reply_mode}
@@ -405,6 +423,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file()
                   and configured_transport == transport and configured_reply_mode == reply_mode
+                  and configured_numerical == numerical_profile
                   and configured_metadata_view == metadata_view,
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
@@ -424,6 +443,11 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
+    numerical_profile = validate_numerical_profile(prepared.get("numerical_formalization_profile"))
+    configured_numerical = validate_numerical_profile(
+        config["agents"][0].get("kwargs", {}).get("numerical_formalization_profile"))
+    if numerical_profile != configured_numerical:
+        raise ValueError("prepared numerical formalization selection changed")
     reply_mode = validate_coding_reply_mode(prepared.get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE),
         arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     if reply_mode != config["agents"][0].get("kwargs", {}).get("coding_reply_mode", DEFAULT_CODING_REPLY_MODE):
@@ -450,6 +474,7 @@ def execute(output: Path, *, task_name: str | None = None) -> dict:
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
     require_coding_reply_archive(current_manifest, reply_mode)
     require_semantic_metadata_archive(current_manifest, metadata_view)
+    require_numerical_archive(current_manifest, numerical_profile)
     require_retrieval_revision(current_manifest, prepared["arm"],
         config["agents"][0].get("kwargs", {}).get("model_revision", ""))
     from .terminal_worker_capability import require_worker_capability
@@ -489,6 +514,8 @@ def main():
         default=DEFAULT_SEMANTIC_METADATA_VIEW,
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
+    parser.add_argument("--numerical-formalization-profile", choices=NUMERICAL_PROFILES,
+        help="Opt-in source-bound numerical obligations; frozen equally for both arms, consumed only by full")
     from .terminal_setup_cache_advice import POLICIES
     parser.add_argument("--setup-cache-policy", choices=POLICIES,
         help="Explicit matching runtime setup-cache policy; absent preserves default")
@@ -498,6 +525,8 @@ def main():
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
+    if args.operation != "prepare" and args.numerical_formalization_profile is not None:
+        parser.error("numerical formalization is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
         parser.error("semantic transport is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.coding_reply_mode != DEFAULT_CODING_REPLY_MODE:
@@ -516,7 +545,8 @@ def main():
                          task_profile=args.task_profile, provider_profile=args.provider_profile,
                          semantic_transport_schema=args.semantic_transport_schema,
                          coding_reply_mode=args.coding_reply_mode,
-                         semantic_metadata_view=args.semantic_metadata_view)
+                         semantic_metadata_view=args.semantic_metadata_view,
+                         numerical_formalization_profile=args.numerical_formalization_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))

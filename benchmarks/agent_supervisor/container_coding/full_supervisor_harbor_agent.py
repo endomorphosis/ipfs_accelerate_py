@@ -40,6 +40,9 @@ from .terminal_semantic_metadata_policy import (
     DEFAULT_SEMANTIC_METADATA_VIEW, validate_semantic_metadata_view,
     semantic_metadata_observation, require_semantic_metadata_archive,
 )
+from .terminal_numerical_policy import (
+    validate_numerical_profile, numerical_observation, require_numerical_archive,
+)
 
 
 def measured_usage(report: dict) -> dict:
@@ -274,6 +277,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_transport_schema: str = DEFAULT_SEMANTIC_TRANSPORT_SCHEMA,
                  coding_reply_mode: str = DEFAULT_CODING_REPLY_MODE,
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
+                 numerical_formalization_profile: str | None = None,
                  metadata_census_only: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         selected_provider = resolve_provider_profile(provider_profile)
@@ -290,6 +294,7 @@ class FullSupervisorAgent(BaseAgent):
                 or self.coding_reply_mode != "ordinary-completion@1"):
             raise ValueError("live census requires the full common-bindings ordinary-completion route")
         self.metadata_census_only = metadata_census_only
+        self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.runtime_archive = Path(runtime_archive).resolve(strict=True)
@@ -337,6 +342,7 @@ class FullSupervisorAgent(BaseAgent):
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
+        require_numerical_archive(manifest, getattr(self, "numerical_formalization_profile", None))
         require_semantic_transport_archive(manifest,
             getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
         selected_provider = require_runtime_provider_profile(manifest, getattr(self, "provider_profile", None))
@@ -411,6 +417,8 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "intent_requirement_contract", None), self.arm)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
+        numerical_profile = validate_numerical_profile(getattr(self, "numerical_formalization_profile", None))
+        require_numerical_archive(manifest, numerical_profile)
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
@@ -427,6 +435,8 @@ class FullSupervisorAgent(BaseAgent):
         provider_profile = getattr(self, "provider_profile", None)
         if provider_profile is not None:
             argv += ["--provider-profile", provider_profile]
+        if numerical_profile is not None:
+            argv += ["--numerical-formalization-profile", numerical_profile]
         if transport != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA:
             argv += ["--semantic-transport-schema", transport]
         if reply_mode != DEFAULT_CODING_REPLY_MODE:
@@ -468,6 +478,7 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),
                             **semantic_metadata_observation(metadata_view),
+                            **numerical_observation(numerical_profile, self.arm),
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,
